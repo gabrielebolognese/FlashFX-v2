@@ -1,0 +1,136 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --surface-0: #06101a;
+  --surface-1: #0a1628;
+  --surface-2: #0e1c32;
+  --surface-3: #122240;
+  --surface-4: #16294a;
+  --surface-5: #1c3155;
+  --edge: #1a2a42;
+  --edge-subtle: #142236;
+  --edge-strong: #243a5c;
+  --accent: #f7b500;
+  --accent-light: #ffc83d;
+  --accent-dim: #b8860b;
+  --text-primary: #e2e8f0;
+  --text-secondary: #94a3b8;
+  --text-tertiary: #64748b;
+  --text-muted: #475569;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
+  background: var(--surface-0);
+  color: var(--text-primary);
+}
+
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  opacity: 0.3;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--edge);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--edge-strong);
+}
+
+.input-field {
+  width: 100%;
+  background: var(--surface-1);
+  border: 1px solid var(--edge);
+  border-radius: 4px;
+  padding: 3px 6px;
+  font-size: 10px;
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.input-field:focus {
+  border-color: var(--accent-dim);
+  box-shadow: 0 0 0 1px rgba(247, 181, 0, 0.15);
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Panel subtle depth */
+.panel-surface {
+  background: linear-gradient(180deg, var(--surface-2) 0%, var(--surface-1) 100%);
+  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.02);
+}
+
+/* Premium button base */
+.btn-tool {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.12s ease;
+  color: var(--text-secondary);
+}
+
+.btn-tool:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.btn-tool.active {
+  color: var(--accent);
+  background: rgba(247, 181, 0, 0.08);
+}
+
+.loader {
+  width: 24px;
+  height: 24px;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-top-color: #f7b500;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
