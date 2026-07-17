@@ -187,6 +187,8 @@ export function buildClipMenu(layerId: string): MenuEntry[] {
   const layer = editor.composition.layers.find((l) => l.id === layerId);
   const isAudio = layer?.type === 'audio';
   const isVideo = layer?.type === 'video';
+  const isPrecomp = layer?.type === 'precomp';
+  const precompId = isPrecomp ? (layer as { compositionId?: string }).compositionId : undefined;
 
   return [
     {
@@ -249,6 +251,10 @@ export function buildClipMenu(layerId: string): MenuEntry[] {
       items: [
         item('group-sel', 'Group', () => editor.createGroup(), Group, 'Ctrl+G'),
         item('ungroup-sel', 'Ungroup', () => editor.ungroupSelection(), Ungroup, 'Ctrl+Shift+G'),
+        item('precompose-sel', 'Precompose', () => editor.precomposeSelection(), Layers, 'Ctrl+Shift+C'),
+        ...(isPrecomp && precompId
+          ? [item('open-precomp', 'Open Precomposition', () => editor.enterPrecomp(precompId), Folder)]
+          : []),
       ],
     },
     ...(isAudio ? buildAudioClipSection(layerId) : []),
@@ -329,6 +335,7 @@ export function buildMultiClipMenu(): MenuEntry[] {
       label: 'Grouping',
       items: [
         item('multi-group', 'Group', () => editor.createGroup(), Group, 'Ctrl+G'),
+        item('multi-precompose', 'Precompose', () => editor.precomposeSelection(), Layers, 'Ctrl+Shift+C'),
       ],
     },
   ];

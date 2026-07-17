@@ -25,6 +25,7 @@ import type {
   Mask,
   MaskType,
   LottieIconLayer,
+  PrecompLayer,
 } from '../../core/types';
 
 function isObject(v: unknown): v is Record<string, unknown> {
@@ -396,6 +397,36 @@ function validateLayer(raw: unknown): Layer | null {
           color: typeof li.color === 'string' ? li.color : '#ffffff',
         },
       } as LottieIconLayer;
+    }
+    case 'precomp': {
+      if (typeof r.compositionId !== 'string') return null;
+      const tr = isObject(r.timeRemap) ? r.timeRemap as Record<string, unknown> : null;
+      return {
+        ...baseFields,
+        type: 'precomp',
+        compositionId: r.compositionId,
+        timeRemap: tr
+          ? {
+              startFrame: typeof tr.startFrame === 'number' ? tr.startFrame : 0,
+              timeStretch: typeof tr.timeStretch === 'number' ? tr.timeStretch : 1,
+            }
+          : undefined,
+      } as PrecompLayer;
+    }
+    case 'cloner': {
+      // Cloner data (distribution union, effectors, data binding) is app-generated;
+      // pass the structured fields through rather than re-validating them field-by-field.
+      if (!isObject(r.sourceRef) || !isObject(r.distribution)) return null;
+      return {
+        ...baseFields,
+        type: 'cloner',
+        sourceRef: r.sourceRef,
+        distribution: r.distribution,
+        effectors: Array.isArray(r.effectors) ? r.effectors : [],
+        stagger: isObject(r.stagger) ? r.stagger : { delaySeconds: 0 },
+        renderCount: typeof r.renderCount === 'number' ? r.renderCount : 500,
+        dataBinding: isObject(r.dataBinding) ? r.dataBinding : undefined,
+      } as unknown as Layer;
     }
     default:
       return null;

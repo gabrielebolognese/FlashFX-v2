@@ -12,6 +12,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.app.json",
+    "verify:cloner": "node scripts/verify-cloner.mjs",
+    "verify:precomp": "node scripts/verify-precomp.mjs",
     "preinstall": "echo ignore-scripts=true > .npmrc || true"
   },
   "dependencies": {

@@ -148,6 +148,8 @@ export function Viewport() {
 
   useEffect(() => {
     timelineEngine.setComposition(composition);
+    // Precomp layers resolve their referenced sub-compositions from the registry.
+    timelineEngine.setResolveContext({ getComposition: (id) => useEditorStore.getState().getComposition(id) });
     playbackController.setFrameRate(composition.settings.frameRate);
     playbackController.setDuration(composition.settings.durationFrames);
     playbackController.renderCurrentFrame();

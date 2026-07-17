@@ -24,9 +24,27 @@ interface FrameEntryData {
 
 type BufferEntry = FrameEntryData | 'in-flight';
 
+/**
+ * The exact source-frame requirement for one video layer at the current
+ * playhead, reported by the renderer after it resolves the layer. This is the
+ * SINGLE source of truth for comp-frame → source-frame mapping
+ * (core/interpolation.ts:resolveVideoLayer): the scheduler consumes the value
+ * rather than recomputing it, so inPoint / startOffset / playbackRate can never
+ * diverge between what the renderer draws and what the scheduler prefetches.
+ */
+interface VideoRequirement {
+  assetId: string;
+  /** Source frame the renderer needs NOW (already trimmed + rate-scaled + clamped). */
+  sourceFrame: number;
+  /** The layer's video playbackRate; scales the prefetch lookahead velocity. */
+  playbackRate: number;
+}
+
 class FrameScheduler {
   private buffers = new Map<string, Map<number, BufferEntry>>();
   private registrations: AssetRegistration[] = [];
+  /** Per-layer source-frame requirements, keyed by layerId (see VideoRequirement). */
+  private requirements = new Map<string, VideoRequirement>();
   private currentFrame = 0;
   private compositionFrameRate = 30;
   private playbackRate = 0;
@@ -70,6 +88,16 @@ class FrameScheduler {
     this.prefetch();
   }
 
+  /**
+   * Report the exact source frame a video layer needs at the current playhead.
+   * Called by the renderer once per video layer per frame, right after it
+   * resolves the layer. The scheduler uses this as the prefetch anchor so its
+   * lookahead tracks the same trim/offset/rate the renderer actually draws.
+   */
+  reportVideoRequirement(layerId: string, assetId: string, sourceFrame: number, playbackRate: number): void {
+    this.requirements.set(layerId, { assetId, sourceFrame, playbackRate });
+  }
+
   registerAsset(assetId: string, layerId: string, frameRate: number, totalFrames: number): void {
     const existing = this.registrations.find(
       (r) => r.assetId === assetId && r.layerId === layerId
@@ -95,6 +123,9 @@ class FrameScheduler {
 
   unregisterAsset(assetId: string): void {
     this.registrations = this.registrations.filter((r) => r.assetId !== assetId);
+    for (const [layerId, req] of this.requirements) {
+      if (req.assetId === assetId) this.requirements.delete(layerId);
+    }
     const buffer = this.buffers.get(assetId);
     if (buffer) {
       for (const entry of buffer.values()) {
@@ -212,21 +243,39 @@ class FrameScheduler {
 
   private computeFramesToRequest(assetId: string, totalFrames: number): number[] {
     const frames: number[] = [];
-    const current = this.currentFrame;
+    const compRate = this.compositionFrameRate;
     const reg = this.registrations.find((r) => r.assetId === assetId);
     const sourceRate = reg?.frameRate ?? 30;
-    const compRate = this.compositionFrameRate;
 
-    const toSourceFrame = (compFrame: number): number => {
-      const timeSec = compFrame / compRate;
-      return Math.max(0, Math.min(Math.floor(timeSec * sourceRate), totalFrames - 1));
+    // Prefer the renderer-reported requirements for this asset (exact source
+    // frames, honoring each layer's inPoint/startOffset/playbackRate). Fall back
+    // to the naive comp→source mapping only until the first render reports one
+    // (e.g. the frame right after load), which assumes inPoint/startOffset 0.
+    const reqs = [...this.requirements.values()].filter((r) => r.assetId === assetId);
+    const anchors: { sourceFrame: number; advancePerCompFrame: number }[] =
+      reqs.length > 0
+        ? reqs.map((r) => ({
+            sourceFrame: r.sourceFrame,
+            // d(sourceFrame)/d(compFrame) = sourceRate * playbackRate / compRate.
+            advancePerCompFrame: (sourceRate * r.playbackRate) / compRate,
+          }))
+        : [{
+            sourceFrame: Math.floor((this.currentFrame / compRate) * sourceRate),
+            advancePerCompFrame: sourceRate / compRate,
+          }];
+
+    const seen = new Set<number>();
+    const addFrame = (sf: number) => {
+      const clamped = Math.max(0, Math.min(sf, totalFrames - 1));
+      if (clamped >= 0 && clamped < totalFrames && !seen.has(clamped)) {
+        seen.add(clamped);
+        frames.push(clamped);
+      }
     };
 
     if (this.isScrubbing) {
-      const sf = toSourceFrame(current);
-      if (sf >= 0 && sf < totalFrames) {
-        frames.push(sf);
-      }
+      // Only the exact current source frame(s) matter while scrubbing.
+      for (const a of anchors) addFrame(a.sourceFrame);
       return frames;
     }
 
@@ -234,18 +283,12 @@ class FrameScheduler {
     const lookahead = Math.abs(rate) > 1.5 ? LOOKAHEAD_FAST : LOOKAHEAD_NORMAL;
     const direction = rate >= 0 ? 1 : -1;
 
-    const seen = new Set<number>();
-    const addFrame = (sf: number) => {
-      if (sf >= 0 && sf < totalFrames && !seen.has(sf)) {
-        seen.add(sf);
-        frames.push(sf);
+    // Interleave anchors so each layer's current frame is requested before any
+    // layer's deep lookahead (prioritizes what's on screen now).
+    for (let i = 0; i <= lookahead; i++) {
+      for (const a of anchors) {
+        addFrame(Math.round(a.sourceFrame + i * direction * a.advancePerCompFrame));
       }
-    };
-
-    addFrame(toSourceFrame(current));
-
-    for (let i = 1; i <= lookahead; i++) {
-      addFrame(toSourceFrame(current + i * direction));
     }
 
     return frames;
@@ -267,12 +310,24 @@ class FrameScheduler {
       const reg = this.registrations.find((r) => r.assetId === assetId);
       const sourceRate = reg?.frameRate ?? 30;
       const compRate = this.compositionFrameRate;
-      const currentSourceFrame = Math.floor((this.currentFrame / compRate) * sourceRate);
+      // Anchor eviction distance on the renderer-reported source frames so we
+      // never evict what's on screen. A frame's distance is to the NEAREST
+      // active layer's source frame; fall back to the naive mapping pre-report.
+      const anchorFrames = [...this.requirements.values()]
+        .filter((r) => r.assetId === assetId)
+        .map((r) => r.sourceFrame);
+      if (anchorFrames.length === 0) {
+        anchorFrames.push(Math.floor((this.currentFrame / compRate) * sourceRate));
+      }
 
       for (const [idx, entry] of buffer) {
         if (entry === 'in-flight') continue;
-        const distance = Math.abs(idx - currentSourceFrame);
-        const ahead = idx >= currentSourceFrame;
+        let distance = Infinity;
+        let ahead = true;
+        for (const a of anchorFrames) {
+          const d = Math.abs(idx - a);
+          if (d < distance) { distance = d; ahead = idx >= a; }
+        }
         allEntries.push({ assetId, frameIndex: idx, data: entry, distance, ahead });
       }
     }

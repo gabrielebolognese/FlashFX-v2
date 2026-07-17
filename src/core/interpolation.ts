@@ -29,7 +29,13 @@ import type {
 import type { ResolvedMotionBlur, ResolvedShadow, ResolvedBlur, LayerShadow, LayerGlow, LayerBlur, ResolvedGlow, ResolvedParticle, ResolvedProceduralLoop } from './types';
 import { measureText } from '../engine/textAtlas';
 import { evaluateMotionPathAtFrame } from './motionPath';
-import { resolveDominantColor, hexToVec4 } from './material';
+import { computeInstanceTransforms, selectClonerRenderPath, buildDataBoundSources } from '../cloner';
+import type { ClonerLayer } from '../cloner/types';
+import { rasterizeField, type FieldGrid } from '../field-sampling/fields';
+import { precompLocalFrame, MAX_PRECOMP_DEPTH } from './precomp';
+import type { ResolveContext } from './precomp';
+import type { PrecompLayer } from './types';
+import { resolveDominantColor, resolveShapeFill, resolveShapePattern, hexToVec4 } from './material';
 import { getMotionBlur } from './layerSwitches';
 import { evaluateBinding as evaluateProceduralBinding } from '../procedural/engine';
 import { evaluateAnimationItem } from '../animation-items/engine';
@@ -274,6 +280,9 @@ function resolveShapeLayer(layer: ShapeLayer, frame: number): ResolvedShape {
     height: 0,
     fillColor,
     strokeColor,
+    fill: resolveShapeFill(layer.materialConfig, fillColor),
+    stroke: resolveShapeFill(layer.strokeMaterialConfig, strokeColor),
+    pattern: resolveShapePattern(layer.patternFill),
     strokeWidth: evaluateNumber(shape.strokeWidth ?? { defaultValue: 0, keyframes: [] }, frame),
     borderRadius: 0,
     radius: 0,
@@ -497,12 +506,19 @@ function resolveVideoLayer(layer: VideoLayer, frame: number, compositionFrameRat
 }
 
 function resolveImageLayer(layer: ImageLayer): ResolvedImage {
+  // Effects are static scalars for now (params copied through). When they become
+  // animatable, evaluate each param here via evaluateNumber(prop, frame) — the
+  // renderer and shader stay unchanged.
+  const effects = (layer.effects ?? [])
+    .filter((e) => e.enabled !== false)
+    .map((e) => ({ type: e.type, params: e.params }));
   return {
     assetId: layer.image.assetId,
     sourceWidth: layer.image.sourceWidth,
     sourceHeight: layer.image.sourceHeight,
     filters: layer.filters,
     colorCorrection: layer.colorCorrection,
+    effects,
   };
 }
 
@@ -702,7 +718,33 @@ function measureLayerPreferredSize(layer: Layer, frame: number): { width: number
   return { width: 100, height: 100 };
 }
 
-export function resolveFrame(composition: Composition, frame: number): RenderFrame {
+// Resolve a cloner field ref → an already-sampled FieldGrid, reusing the procedural
+// field engine's rasterizer. Cached by the field's configJSON so it is NOT re-
+// rasterized every frame (field data is treated as static; keeps instance placement
+// stable/deterministic). The async worker path isn't needed here — CPU rasterization
+// is synchronous, matching the pure engine's synchronous contract.
+const CLONER_FIELD_RES = 128;
+const _clonerFieldCache = new Map<string, { hash: string; grid: FieldGrid }>();
+function resolveClonerField(fieldRef: string, layers: Layer[]): FieldGrid | undefined {
+  const layer = layers.find((l) => l.id === fieldRef);
+  if (!layer || layer.type !== 'fieldSampled') return undefined;
+  const configJSON = layer.fieldSampled.configJSON;
+  const cached = _clonerFieldCache.get(fieldRef);
+  if (cached && cached.hash === configJSON) return cached.grid;
+  try {
+    const config = JSON.parse(configJSON);
+    if (!config?.field) return undefined;
+    const grid = rasterizeField(config.field, CLONER_FIELD_RES, CLONER_FIELD_RES, 0);
+    _clonerFieldCache.set(fieldRef, { hash: configJSON, grid });
+    return grid;
+  } catch {
+    return undefined;
+  }
+}
+
+const EMPTY_VISITED: ReadonlySet<string> = new Set();
+
+export function resolveFrame(composition: Composition, frame: number, ctx?: ResolveContext): RenderFrame {
   const { settings, layers } = composition;
   const motionPaths = composition.motionPaths || [];
   const resolvedLayers: ResolvedLayer[] = [];
@@ -1043,6 +1085,93 @@ export function resolveFrame(composition: Composition, frame: number): RenderFra
           glow,
           blur,
           layerType: 'lottieIcon',
+        });
+      } else if (layer.type === 'cloner') {
+        // Resolve the cloner to per-instance transforms. The renderer (later)
+        // consumes `cloner.instances` via the instanced-shape or texture-stamp path.
+        const cloner = layer as ClonerLayer;
+        const sourceLayerId = cloner.sourceRef.type === 'layer' ? cloner.sourceRef.layerId : null;
+        const source = sourceLayerId ? layers.find((l) => l.id === sourceLayerId) : undefined;
+        const sdfTypes = ['rectangle', 'circle', 'star'];
+        const isSdf = source?.type === 'shape' && sdfTypes.includes((source as ShapeLayer).shape?.type ?? '');
+        // Data-bound sources force the full per-instance render path regardless of type.
+        const isDataBound = !!(cloner.dataBinding && cloner.dataBinding.data.length > 0);
+        const renderPath = selectClonerRenderPath({ layerType: source?.type ?? 'image', isSdfShape: isSdf, isDataBound });
+        // Per-instance source animation reuses the EXISTING transform evaluator at
+        // each instance's staggered local frame — no keyframe re-implementation.
+        const instances = computeInstanceTransforms(cloner, frame, {
+          fps: settings.frameRate,
+          getMotionPath: (id) => motionPaths.find((p) => p.id === id),
+          getField: (ref) => resolveClonerField(ref, layers),
+          evaluateSourceTransform: source
+            ? (localFrame) => {
+                const st = resolveTransform(source.transform, localFrame);
+                return {
+                  position: { x: st.positionX, y: st.positionY, z: 0 },
+                  rotationDegrees: { x: 0, y: 0, z: st.rotation },
+                  scale: { x: st.scaleX, y: st.scaleY, z: 1 },
+                  opacity: st.opacity,
+                };
+              }
+            : undefined,
+        });
+        // Data-bound source: apply the instance-override mechanism (core/overrides,
+        // via buildDataBoundSources) to produce one content-overridden source per
+        // instance — the inputs the full per-instance render path renders.
+        const instanceSources = isDataBound && source
+          ? buildDataBoundSources(source, cloner.dataBinding!, instances.length)
+          : undefined;
+        resolvedLayers.push({
+          id: layer.id,
+          visible: true,
+          blendMode: layer.blendMode,
+          transform: worldTransform,
+          cloner: { renderPath, sourceLayerId, instances, instanceSources },
+          layerType: 'cloner',
+        });
+      } else if (layer.type === 'precomp') {
+        // Precomp: recursively resolve the referenced sub-composition at a time-
+        // remapped local frame into its own nested RenderFrame, for the renderer to
+        // render offscreen and composite. Guards: registry present, no reference
+        // cycle (visited set), and a hard depth cap.
+        const precomp = layer as PrecompLayer;
+        const getComposition = ctx?.getComposition;
+        const depth = ctx?.depth ?? 0;
+        const visited = ctx?.visited ?? EMPTY_VISITED;
+        const sub = getComposition?.(precomp.compositionId);
+        let nested: RenderFrame | null = null;
+        // This composition + its ancestors are "in progress"; if the referenced
+        // sub-composition is among them, it's a cycle (incl. self-reference) → stop.
+        const inProgress = visited.has(composition.id) ? visited : new Set(visited).add(composition.id);
+        if (sub && depth < MAX_PRECOMP_DEPTH && !inProgress.has(precomp.compositionId)) {
+          const subLocalFrame = precompLocalFrame(precomp, frame, settings.frameRate, sub);
+          // RE-ENTRANCY FIX: the recursive resolveFrame reassigns the module-level
+          // layout maps; save and restore them so the outer comp's still-running
+          // loop keeps reading its own offsets/sizes.
+          const savedOffsets = _layoutOffsets;
+          const savedSizes = _layoutContainerSizes;
+          nested = resolveFrame(sub, subLocalFrame, { getComposition, depth: depth + 1, visited: inProgress });
+          _layoutOffsets = savedOffsets;
+          _layoutContainerSizes = savedSizes;
+        }
+        resolvedLayers.push({
+          id: layer.id,
+          visible: true,
+          blendMode: layer.blendMode,
+          transform: worldTransform,
+          mask: resolveMask(precomp.masks, frame),
+          masks: resolveMasks(precomp.masks, frame),
+          motionBlur,
+          shadow,
+          glow,
+          blur,
+          precomp: {
+            compositionId: precomp.compositionId,
+            renderFrame: nested,
+            width: sub?.settings.width ?? settings.width,
+            height: sub?.settings.height ?? settings.height,
+          },
+          layerType: 'precomp',
         });
       }
     } catch (e) {

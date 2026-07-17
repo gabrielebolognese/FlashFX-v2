@@ -1,3 +1,9 @@
+// The cloner is a first-class layer; its data-model types live in the feature
+// module (src/cloner) and are imported type-only here (erased at runtime — no
+// runtime dependency of core on the feature module).
+import type { ClonerLayer, InstanceTransform } from '../cloner/types';
+import type { ClonerRenderPath } from '../cloner/renderPath';
+
 export type Vec2 = [number, number];
 export type Vec4 = [number, number, number, number];
 
@@ -291,6 +297,9 @@ export interface LayerGlow {
   intensity: number;
   radius: number;
   threshold: number;
+  /** Which filter-panel "wire" filter (glow/bloom/softGlow/…) authored this, so
+   * the panel can read its slider back unambiguously. Ignored by the renderer. */
+  variant?: string;
 }
 
 export type BlurType = 'gaussian' | 'directional' | 'radial' | 'kawase';
@@ -304,6 +313,9 @@ export interface LayerBlur {
   centerY: number;
   strength: number;
   passes: number;
+  /** Which filter-panel "wire" filter (gaussianBlur/boxBlur/…) authored this, so
+   * the panel can read its slider back unambiguously. Ignored by the renderer. */
+  variant?: string;
 }
 
 export interface ShapeLayer {
@@ -425,6 +437,17 @@ export interface ImageFilters {
   gamma: number;
 }
 
+// One entry in an image layer's ordered effect stack. `type` is a frozen numeric
+// id from the effect registry (core/effects/effectRegistry) that maps to a WGSL
+// shader case; `params` are static scalars (up to 7) whose meaning the registry
+// defines. This generic stack is how the catalog of image filters is rendered
+// without a uniform field per filter.
+export interface LayerEffect {
+  type: number;
+  enabled: boolean;
+  params: number[];
+}
+
 export interface ColorWheelValues {
   r: number;
   g: number;
@@ -473,6 +496,7 @@ export interface ImageLayer {
   };
   filters: ImageFilters;
   colorCorrection: ImageColorCorrection;
+  effects?: LayerEffect[];
   inPoint: number;
   outPoint: number;
 }
@@ -740,10 +764,50 @@ export interface LayoutContainerLayer {
   outPoint: number;
 }
 
-export type Layer = ShapeLayer | TextLayer | GroupLayer | VideoLayer | ImageLayer | AudioLayer | ParticleLayer | AnimationItemLayer | FieldSampledLayer | LottieIconLayer | LayoutObjectLayer | LayoutContainerLayer;
+/** Optional time-remap of a precomp layer into its referenced sub-composition. */
+export interface PrecompTimeRemap {
+  /** Frame offset into the sub-composition at the precomp layer's inPoint. */
+  startFrame: number;
+  /** Playback speed multiplier (1 = realtime, 0 = frozen, negative = reverse). */
+  timeStretch: number;
+}
+
+/**
+ * A precomposition layer: references another Composition by id and renders it (a
+ * nested RenderFrame, resolved recursively at a time-remapped local frame) as a
+ * single layer in this composition. Mirrors the common Layer fields (there is no
+ * shared BaseLayer interface in this codebase — each variant spells them out).
+ */
+export interface PrecompLayer {
+  id: string;
+  type: 'precomp';
+  name: string;
+  parentId: string | null;
+  trackId: string | null;
+  visible: boolean;
+  locked: boolean;
+  blendMode: BlendMode;
+  transform: Transform;
+  inPoint: number;
+  outPoint: number;
+  // Optional common-layer effect fields (so Layer-union accesses type-check).
+  effectsEnabled?: boolean;
+  motionBlur?: boolean;
+  motionBlurShutter?: number;
+  shadow?: LayerShadow;
+  glow?: LayerGlow;
+  blur?: LayerBlur;
+  is3D?: boolean;
+  masks?: Mask[];
+  /** Registry key of the referenced sub-composition. */
+  compositionId: string;
+  timeRemap?: PrecompTimeRemap;
+}
+
+export type Layer = ShapeLayer | TextLayer | GroupLayer | VideoLayer | ImageLayer | AudioLayer | ParticleLayer | AnimationItemLayer | FieldSampledLayer | LottieIconLayer | LayoutObjectLayer | LayoutContainerLayer | ClonerLayer | PrecompLayer;
 
 // Track system
-export type TrackType = 'video' | 'image' | 'text' | 'shape' | 'group' | 'audio' | 'particle' | 'animationItem' | 'fieldSampled' | 'lottieIcon' | 'hbox' | 'vbox' | 'grid' | 'layoutContainer' | 'mixed';
+export type TrackType = 'video' | 'image' | 'text' | 'shape' | 'group' | 'audio' | 'particle' | 'animationItem' | 'fieldSampled' | 'lottieIcon' | 'hbox' | 'vbox' | 'grid' | 'layoutContainer' | 'cloner' | 'precomp' | 'mixed';
 
 export interface Track {
   id: string;
@@ -867,6 +931,18 @@ export interface Composition {
   physicsBindings?: PhysicsBindingDef[];
   physicsWorld?: PhysicsWorldDef;
   staggerBindings?: StaggerBindingDef[];
+}
+
+/**
+ * The persisted multi-composition document: a registry of compositions (root +
+ * precomps referenced by precomp/cloner layers) and which one is the root the
+ * editor opens to. Legacy scenes serialized a bare `Composition`; those migrate to
+ * a single-entry document (see serializeDocument/deserializeDocument).
+ */
+export interface SceneDocument {
+  version: number;
+  rootCompositionId: string;
+  compositions: Record<string, Composition>;
 }
 
 export type StaggerDirectionMode =
@@ -1001,12 +1077,59 @@ export interface ResolvedTransform {
 
 export type ShapeRenderType = 'rectangle' | 'circle' | 'star' | 'polygon';
 
+// A gradient/solid fill resolved to plain numbers ready for GPU packing.
+// One `ResolvedFill` describes either a solid color (kind = 0) or a stack of
+// gradient layers (kind = 1) composited with blend modes, mirroring the
+// multi-layer ShapeMaterialConfig / the DOM preview.
+export interface ResolvedFillStop {
+  // rgb + alpha, alpha already folded with the layer's opacity, all in 0..1.
+  color: Vec4;
+  // 0..1 along the gradient.
+  position: number;
+}
+
+export interface ResolvedFillLayer {
+  gradientType: number; // 0 linear, 1 radial
+  angle: number;        // radians, CSS convention (0 = toward top)
+  centerX: number;      // 0..1 in the shape box (radial)
+  centerY: number;      // 0..1 in the shape box (radial)
+  blendMode: number;    // MaterialBlendMode index, 0..11
+  stops: ResolvedFillStop[];
+}
+
+export interface ResolvedFill {
+  kind: number;  // 0 solid, 1 gradient
+  color: Vec4;   // solid color / fallback when kind = 0
+  layers: ResolvedFillLayer[];
+}
+
+// A pattern fill resolved for the GPU. Built-in patterns are drawn analytically
+// in the shader; custom-SVG patterns can't be shaderized and resolve to
+// `enabled: false`.
+export interface ResolvedPattern {
+  enabled: boolean;
+  patternType: number;   // 0 dots, 1 lines, 2 grid, 3 diagonal, 4 chevron
+  color: Vec4;           // mark color (rgb; alpha unused, coverage-driven)
+  hasBackground: boolean;
+  backgroundColor: Vec4; // tile background (rgb) when hasBackground
+  size: number;          // mark size in px (dot diameter / stroke width)
+  spacing: number;       // gap between tiles in px
+  angle: number;         // radians
+  opacity: number;       // 0..1
+}
+
 export interface ResolvedShape {
   renderType: ShapeRenderType;
   width: number;
   height: number;
   fillColor: Vec4;
   strokeColor: Vec4;
+  // Full gradient/solid descriptors for GPU rendering. `fillColor`/`strokeColor`
+  // remain as flat fallbacks (dominant color) for consumers that don't render
+  // gradients (polygon path pipeline, thumbnails).
+  fill?: ResolvedFill;
+  stroke?: ResolvedFill;
+  pattern?: ResolvedPattern;
   strokeWidth: number;
   borderRadius: number;
   // Circle
@@ -1053,12 +1176,20 @@ export interface ResolvedVideo {
   proxyScale: number;
 }
 
+// A resolved image effect: the frozen numeric type + its static params, ready
+// to pack into the shader's effect-slot array.
+export interface ResolvedEffect {
+  type: number;
+  params: number[];
+}
+
 export interface ResolvedImage {
   assetId: string;
   sourceWidth: number;
   sourceHeight: number;
   filters: ImageFilters;
   colorCorrection: ImageColorCorrection;
+  effects: ResolvedEffect[];
 }
 
 // Per-pixel velocity field for analytic motion blur, derived from the layer's
@@ -1143,6 +1274,22 @@ export interface ResolvedLottieIcon {
   color: string;
 }
 
+/**
+ * A resolved cloner: the render path (chosen from the source's type) plus the
+ * per-instance transforms already computed, capped, and composed (distribution +
+ * effectors + staggered source animation). `sourceLayerId` lets the renderer fetch
+ * the source's geometry (instanced-shape) or render it once to a texture (stamp).
+ */
+export interface ResolvedCloner {
+  renderPath: ClonerRenderPath;
+  sourceLayerId: string | null;
+  instances: InstanceTransform[];
+  /** Content-overridden source layers, one per instance (data-bound source): the
+   *  instance-override mechanism (core/overrides) applied to the source. Present
+   *  only on the `per-instance` render path; instanceSources[i] ↔ instances[i]. */
+  instanceSources?: Layer[];
+}
+
 export interface ResolvedLayer {
   id: string;
   visible: boolean;
@@ -1162,7 +1309,9 @@ export interface ResolvedLayer {
   shadow?: ResolvedShadow;
   glow?: ResolvedGlow;
   blur?: ResolvedBlur;
-  layerType: 'shape' | 'text' | 'video' | 'image' | 'audio' | 'particle' | 'fieldSampled' | 'lottieIcon';
+  cloner?: ResolvedCloner;
+  precomp?: ResolvedPrecomp;
+  layerType: 'shape' | 'text' | 'video' | 'image' | 'audio' | 'particle' | 'fieldSampled' | 'lottieIcon' | 'cloner' | 'precomp';
 }
 
 export interface RenderFrame {
@@ -1173,4 +1322,18 @@ export interface RenderFrame {
   backgroundColor: Vec4;
   background: Background;
   layers: ResolvedLayer[];
+}
+
+/**
+ * A resolved precomp: the referenced sub-composition already recursively resolved
+ * into its own RenderFrame (at the time-remapped local frame), for the renderer to
+ * render offscreen and composite under the precomp layer's transform/opacity/blend.
+ * `renderFrame` is null when the reference is missing or a cycle/depth-cap was hit
+ * (renders nothing — safe). width/height are the sub-composition's resolution.
+ */
+export interface ResolvedPrecomp {
+  compositionId: string;
+  renderFrame: RenderFrame | null;
+  width: number;
+  height: number;
 }

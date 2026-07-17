@@ -1,7 +1,8 @@
-import { useState, useRef } from 'react';
-import { X, Download, Film, Zap, Crown, Check } from 'lucide-react';
+import { useState, useRef, useMemo } from 'react';
+import { X, Download, Film, Zap, Crown, Check, Volume2, VolumeX } from 'lucide-react';
 import { useEditorStore } from '../../store/editor';
 import { exportToMp4, downloadBlob, formatFileSize, estimateDuration, type ExportProgress, type ExportSettings } from '../../codec/exporter';
+import { compositionHasAudio } from '../../codec/audioMixer';
 
 interface ExportModalProps {
   onClose: () => void;
@@ -28,6 +29,8 @@ export function ExportModal({ onClose }: ExportModalProps) {
   const [quality, setQuality] = useState<QualityPreset>('high');
   const [resolution, setResolution] = useState({ width: composition.settings.width, height: composition.settings.height });
   const [frameRate, setFrameRate] = useState(composition.settings.frameRate);
+  const hasAudio = useMemo(() => compositionHasAudio(composition), [composition]);
+  const [includeAudio, setIncludeAudio] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [progress, setProgress] = useState<ExportProgress | null>(null);
   const [exportedBlob, setExportedBlob] = useState<Blob | null>(null);
@@ -53,6 +56,7 @@ export function ExportModal({ onClose }: ExportModalProps) {
       frameRate,
       bitrate: preset.bitrate,
       codec: preset.codec,
+      includeAudio: hasAudio && includeAudio,
     };
 
     try {
@@ -184,6 +188,22 @@ export function ExportModal({ onClose }: ExportModalProps) {
                 ))}
               </div>
             </div>
+
+            {/* Audio */}
+            {hasAudio && (
+              <button
+                onClick={() => setIncludeAudio((v) => !v)}
+                className="w-full flex items-center justify-between bg-[#122240] hover:bg-[#1a2a42] rounded-lg px-3 py-2.5 transition-colors"
+              >
+                <span className="flex items-center gap-2 text-[11px] text-slate-300">
+                  {includeAudio ? <Volume2 size={13} className="text-yellow-400" /> : <VolumeX size={13} className="text-slate-500" />}
+                  Include audio
+                </span>
+                <span className={`relative w-8 h-4 rounded-full transition-colors ${includeAudio ? 'bg-yellow-400' : 'bg-[#1a2a42]'}`}>
+                  <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-[#0e1c32] transition-all ${includeAudio ? 'left-4' : 'left-0.5'}`} />
+                </span>
+              </button>
+            )}
 
             {/* Summary */}
             <div className="bg-[#0a1628] rounded-lg p-3 border border-[#1a2a42]">

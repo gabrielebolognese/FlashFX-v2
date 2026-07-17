@@ -1,4 +1,15 @@
-import type { RenderFrame, ResolvedLayer, ResolvedMask, Background } from '../core/types';
+import type { RenderFrame, ResolvedLayer, ResolvedMask, ResolvedFill, ResolvedPattern, ResolvedEffect, Background } from '../core/types';
+import { MAX_PRECOMP_DEPTH } from '../core/precomp';
+
+/** Options for a recursive precomp render into an offscreen target texture. */
+interface PrecompRenderOpts {
+  depth?: number;
+  targetView?: GPUTextureView;
+  targetW?: number;
+  targetH?: number;
+  clearAlpha?: number;
+}
+import { EFFECT_TYPE } from '../core/effects/effectRegistry';
 import { renderTextToCanvas, textCacheKey } from './textAtlas';
 import { mediaAssetManager } from './media/assetManager';
 import { tessellatePathCached, PATH_FLOATS_PER_VERTEX, getPathTessellationStats } from './pathTessellation';
@@ -271,23 +282,39 @@ struct MaskSlot {
   _pad: f32,
 }
 
+const FILL_MAX_LAYERS: i32 = 8;
+const FILL_MAX_STOPS: i32 = 8;
+const FILL_STRIDE: i32 = 64;   // FILL_MAX_LAYERS * FILL_MAX_STOPS (stops per fill)
+
 struct Uniforms {
   resolution: vec2f,
   rectPos: vec2f,
   rectSize: vec2f,
   anchorPoint: vec2f,
-  fillColor: vec4f,
   rotation: f32,
   opacity: f32,
   borderRadius: f32,
   shapeType: f32,
   shapeParams: vec4f,
-  strokeColor: vec4f,
   strokeWidth: f32,
   maskCount: f32,
   _pad1: f32,
   _pad2: f32,
   masks: array<MaskSlot, 8>,
+  // Fill data. Index 0 = fill, 1 = stroke. Each supports up to 8 gradient
+  // layers composited with blend modes (matching the DOM preview) and up to
+  // 8 stops per layer. Solid fills set fHeader.x = 0 and use fSolid.
+  fHeader: array<vec4f, 2>,    // per fill: (kind, layerCount, _, _)
+  fSolid: array<vec4f, 2>,     // per fill: solid / fallback rgba
+  fMeta: array<vec4f, 16>,     // per (fill,layer): (gradientType, angle, cx, cy)
+  fMeta2: array<vec4f, 16>,    // per (fill,layer): (blendMode, stopCount, _, _)
+  fColors: array<vec4f, 128>,  // per (fill,layer,stop): rgba
+  fPos: array<vec4f, 32>,      // per (fill,layer,stop): position, packed 4/vec4
+  // Pattern fill (built-in analytic patterns). patA.x = 0 disables it.
+  patA: vec4f,                 // (enabled, patternType, tile, angle)
+  patB: vec4f,                 // (markSize, opacity, hasBackground, _)
+  patColor: vec4f,             // mark rgb
+  patBg: vec4f,                // background rgb
 }
 
 @group(0) @binding(0) var<uniform> u: Uniforms;
@@ -372,6 +399,196 @@ fn starSDF(p: vec2f, points: f32, outerR: f32, innerR: f32) -> f32 {
 
 ${MASK_WGSL}
 
+// ── Gradient fill evaluation ──────────────────────────────────────────────
+// Separable blend modes per the W3C Compositing spec, evaluated per channel.
+// The mode index matches MaterialBlendMode order (see material.ts).
+fn blendChannel(mode: i32, cb: f32, cs: f32) -> f32 {
+  if (mode == 1) { return cb * cs; }                         // multiply
+  if (mode == 2) { return cb + cs - cb * cs; }               // screen
+  if (mode == 3) {                                           // overlay = hardLight(cs, cb)
+    if (cb <= 0.5) { return 2.0 * cb * cs; }
+    return 1.0 - 2.0 * (1.0 - cb) * (1.0 - cs);
+  }
+  if (mode == 4) { return min(cb, cs); }                     // darken
+  if (mode == 5) { return max(cb, cs); }                     // lighten
+  if (mode == 6) {                                           // color-dodge
+    if (cs >= 1.0) { return 1.0; }
+    return min(1.0, cb / (1.0 - cs));
+  }
+  if (mode == 7) {                                           // color-burn
+    if (cs <= 0.0) { return 0.0; }
+    return 1.0 - min(1.0, (1.0 - cb) / cs);
+  }
+  if (mode == 8) {                                           // hard-light
+    if (cs <= 0.5) { return 2.0 * cs * cb; }
+    return 1.0 - 2.0 * (1.0 - cs) * (1.0 - cb);
+  }
+  if (mode == 9) {                                           // soft-light
+    if (cs <= 0.5) {
+      return cb - (1.0 - 2.0 * cs) * cb * (1.0 - cb);
+    }
+    var d: f32;
+    if (cb <= 0.25) { d = ((16.0 * cb - 12.0) * cb + 4.0) * cb; }
+    else { d = sqrt(cb); }
+    return cb + (2.0 * cs - 1.0) * (d - cb);
+  }
+  if (mode == 10) { return abs(cb - cs); }                   // difference
+  if (mode == 11) { return cb + cs - 2.0 * cb * cs; }        // exclusion
+  return cs;                                                 // normal
+}
+
+fn blendRGB(mode: i32, cb: vec3f, cs: vec3f) -> vec3f {
+  if (mode == 0) { return cs; }
+  return vec3f(
+    blendChannel(mode, cb.r, cs.r),
+    blendChannel(mode, cb.g, cs.g),
+    blendChannel(mode, cb.b, cs.b),
+  );
+}
+
+// Position along a gradient in 0..1. Linear uses the CSS gradient-line formula
+// (0deg points toward the top); radial uses a circle with farthest-corner
+// extent. boxSize is the shape's bounding box in pixels.
+fn gradientT(gType: i32, angle: f32, center: vec2f, uv: vec2f, boxSize: vec2f) -> f32 {
+  let localPos = (uv - vec2f(0.5)) * boxSize;
+  if (gType == 1) {
+    let centerPix = (center - vec2f(0.5)) * boxSize;
+    let dv = localPos - centerPix;
+    let cxk = max(abs(boxSize.x * 0.5 - centerPix.x), abs(-boxSize.x * 0.5 - centerPix.x));
+    let cyk = max(abs(boxSize.y * 0.5 - centerPix.y), abs(-boxSize.y * 0.5 - centerPix.y));
+    let maxDist = max(length(vec2f(cxk, cyk)), 1e-4);
+    return clamp(length(dv) / maxDist, 0.0, 1.0);
+  }
+  let d = vec2f(sin(angle), -cos(angle));
+  let denom = max(abs(boxSize.x * d.x) + abs(boxSize.y * d.y), 1e-4);
+  return clamp(0.5 + dot(localPos, d) / denom, 0.0, 1.0);
+}
+
+// Stop positions are packed 4 per vec4. localG is the stop index within the
+// fill (layer * FILL_MAX_STOPS + stop), fi selects fill (0) vs stroke (1).
+fn readFillPos(fi: i32, localG: i32) -> f32 {
+  let g = fi * FILL_STRIDE + localG;
+  let v = u.fPos[g >> 2];
+  let c = g & 3;
+  if (c == 0) { return v.x; }
+  if (c == 1) { return v.y; }
+  if (c == 2) { return v.z; }
+  return v.w;
+}
+
+fn sampleGradientLayer(fi: i32, layer: i32, uv: vec2f, boxSize: vec2f) -> vec4f {
+  let m = u.fMeta[fi * FILL_MAX_LAYERS + layer];
+  let m2 = u.fMeta2[fi * FILL_MAX_LAYERS + layer];
+  let stopCount = i32(m2.y);
+  let cbase = fi * FILL_STRIDE + layer * FILL_MAX_STOPS;
+  if (stopCount <= 1) { return u.fColors[cbase]; }
+
+  let t = gradientT(i32(m.x), m.y, vec2f(m.z, m.w), uv, boxSize);
+  let sbase = layer * FILL_MAX_STOPS;
+  if (t <= readFillPos(fi, sbase)) { return u.fColors[cbase]; }
+  for (var s: i32 = 0; s < stopCount - 1; s = s + 1) {
+    let pa = readFillPos(fi, sbase + s);
+    let pb = readFillPos(fi, sbase + s + 1);
+    if (t <= pb) {
+      let k = clamp((t - pa) / max(pb - pa, 1e-5), 0.0, 1.0);
+      return mix(u.fColors[cbase + s], u.fColors[cbase + s + 1], k);
+    }
+  }
+  return u.fColors[cbase + stopCount - 1];
+}
+
+// Composite a fill's gradient layers (straight-alpha, W3C blend + source-over),
+// matching how the DOM preview stacks background layers: index 0 is topmost.
+fn sampleFill(fi: i32, uv: vec2f, boxSize: vec2f) -> vec4f {
+  if (i32(u.fHeader[fi].x) == 0) { return u.fSolid[fi]; }
+  let layerCount = i32(u.fHeader[fi].y);
+
+  var accRGB = vec3f(0.0);
+  var accA = 0.0;
+  for (var li: i32 = 0; li < FILL_MAX_LAYERS; li = li + 1) {
+    if (li >= layerCount) { break; }
+    let idx = layerCount - 1 - li;   // composite bottom-up
+    let src = sampleGradientLayer(fi, idx, uv, boxSize);
+    let mode = i32(u.fMeta2[fi * FILL_MAX_LAYERS + idx].x);
+    let blended = mix(src.rgb, blendRGB(mode, accRGB, src.rgb), accA);
+    let sa = src.a;
+    let outA = sa + accA * (1.0 - sa);
+    var outRGB = vec3f(0.0);
+    if (outA > 0.0) {
+      outRGB = (blended * sa + accRGB * accA * (1.0 - sa)) / outA;
+    }
+    accRGB = outRGB;
+    accA = outA;
+  }
+  return vec4f(accRGB, accA);
+}
+
+// ── Pattern fill evaluation ───────────────────────────────────────────────
+fn segDist(p: vec2f, a: vec2f, b: vec2f) -> f32 {
+  let pa = p - a;
+  let ba = b - a;
+  let h = clamp(dot(pa, ba) / max(dot(ba, ba), 1e-6), 0.0, 1.0);
+  return length(pa - ba * h);
+}
+
+// Coverage (0..1) of a pattern mark at content-space point cr within one tile,
+// mirroring the SVG geometry in material.ts (tile = size + spacing).
+fn patternCoverage(ptype: i32, cr: vec2f, tile: f32, s: f32, aa: f32) -> f32 {
+  let half = s * 0.5;
+  let c = tile * 0.5;
+  if (ptype == 0) {
+    // dots: circle radius s/2 at tile center
+    return 1.0 - smoothstep(half - aa, half + aa, length(cr - vec2f(c)));
+  }
+  if (ptype == 1) {
+    // horizontal line, stroke width s at y = tile/2
+    return 1.0 - smoothstep(half - aa, half + aa, abs(cr.y - c));
+  }
+  if (ptype == 2) {
+    // grid: horizontal + vertical lines, stroke width max(1, s/2)
+    let hw = max(1.0, s * 0.5) * 0.5;
+    let h = 1.0 - smoothstep(hw - aa, hw + aa, abs(cr.y - c));
+    let v = 1.0 - smoothstep(hw - aa, hw + aa, abs(cr.x - c));
+    return max(h, v);
+  }
+  if (ptype == 3) {
+    // diagonal segment (0,tile)-(tile,0), stroke width s
+    return 1.0 - smoothstep(half - aa, half + aa, segDist(cr, vec2f(0.0, tile), vec2f(tile, 0.0)));
+  }
+  if (ptype == 4) {
+    // chevron polyline (0,t/2)-(t/2,0)-(t,t/2), stroke width s
+    let d = min(
+      segDist(cr, vec2f(0.0, c), vec2f(c, 0.0)),
+      segDist(cr, vec2f(c, 0.0), vec2f(tile, c)),
+    );
+    return 1.0 - smoothstep(half - aa, half + aa, d);
+  }
+  return 0.0;
+}
+
+// Straight-alpha pattern color at pixel p (shape-local px). Tiles by size+spacing
+// and rotates the tile content around its center, matching the SVG.
+fn samplePattern(p: vec2f, aa: f32) -> vec4f {
+  if (u.patA.x < 0.5) { return vec4f(0.0); }
+  let tile = max(u.patA.z, 1.0);
+  let angle = u.patA.w;
+  let opacity = u.patB.y;
+
+  let cell = fract(p / tile) * tile;
+  let cen = vec2f(tile * 0.5);
+  let ca = cos(-angle);
+  let sa = sin(-angle);
+  let rel = cell - cen;
+  let cr = vec2f(rel.x * ca - rel.y * sa, rel.x * sa + rel.y * ca) + cen;
+
+  let cov = patternCoverage(i32(u.patA.y), cr, tile, u.patB.x, aa);
+  if (u.patB.z > 0.5) {
+    // Opaque tile background with marks composited on top.
+    return vec4f(mix(u.patBg.rgb, u.patColor.rgb, cov), opacity);
+  }
+  return vec4f(u.patColor.rgb, cov * opacity);
+}
+
 @fragment
 fn fs(in: VertexOutput) -> @location(0) vec4f {
   let localUV = (in.uv - vec2f(0.5)) * u.rectSize;
@@ -393,17 +610,42 @@ fn fs(in: VertexOutput) -> @location(0) vec4f {
 
   let aa = fwidth(dist);
 
+  // Circle/star quads are expanded 1.1x for SDF margin (see fillLayerData);
+  // undo that so gradients map to the true shape box.
+  var expansion = 1.0;
+  if (st == 1 || st == 2) { expansion = 1.1; }
+  let boxSize = u.rectSize / expansion;
+
   // Fill
+  let fillC = sampleFill(0, in.uv, boxSize);
+  var baseRGB = fillC.rgb;
+  var baseA = fillC.a;
+
+  // Pattern overlay (composited over the fill, clipped to the shape below).
+  let pPat = in.uv * u.rectSize;
+  let pAA = max(fwidth(pPat.x), fwidth(pPat.y));
+  let pat = samplePattern(pPat, pAA);
+  if (pat.a > 0.0) {
+    let outA = pat.a + baseA * (1.0 - pat.a);
+    if (outA > 0.0) {
+      baseRGB = (pat.rgb * pat.a + baseRGB * baseA * (1.0 - pat.a)) / outA;
+    }
+    baseA = outA;
+  }
+
   let fillAlpha = 1.0 - smoothstep(-aa, aa, dist);
-  var color = vec4f(u.fillColor.rgb, u.fillColor.a * u.opacity * fillAlpha);
+  var color = vec4f(baseRGB, baseA * u.opacity * fillAlpha);
 
   // Stroke
-  if (u.strokeWidth > 0.0 && u.strokeColor.a > 0.0) {
-    let strokeOuter = 1.0 - smoothstep(-aa, aa, dist - u.strokeWidth * 0.5);
-    let strokeInner = 1.0 - smoothstep(-aa, aa, -(dist + u.strokeWidth * 0.5));
-    let strokeAlpha = strokeOuter * strokeInner;
-    let sc = vec4f(u.strokeColor.rgb, u.strokeColor.a * u.opacity * strokeAlpha);
-    color = vec4f(mix(color.rgb, sc.rgb, sc.a), max(color.a, sc.a));
+  if (u.strokeWidth > 0.0) {
+    let strokeC = sampleFill(1, in.uv, boxSize);
+    if (strokeC.a > 0.0) {
+      let strokeOuter = 1.0 - smoothstep(-aa, aa, dist - u.strokeWidth * 0.5);
+      let strokeInner = 1.0 - smoothstep(-aa, aa, -(dist + u.strokeWidth * 0.5));
+      let strokeAlpha = strokeOuter * strokeInner;
+      let sc = vec4f(strokeC.rgb, strokeC.a * u.opacity * strokeAlpha);
+      color = vec4f(mix(color.rgb, sc.rgb, sc.a), max(color.a, sc.a));
+    }
   }
 
   let mA = computeMaskStackAlpha(in.worldPos, i32(u.maskCount + 0.5), u.masks);
@@ -488,9 +730,16 @@ fn fs(in: VertexOutput) -> @location(0) vec4f {
 }
 `;
 
-const UNIFORM_SIZE = 496;
 const UNIFORM_ALIGN = 512;
 const MAX_LAYERS = 512;
+// The shape (rect/circle/star) uniform carries per-shape gradient fill + stroke
+// data plus a pattern block, so it has its own larger stride, independent of the
+// other pipelines. Layout (bytes): base 80 + masks 384 + fill/stroke arrays 3136
+// + pattern 64 = 3664 (916 f32). The fill/stroke arrays are flat with index
+// 0 = fill, 1 = stroke. Aligned up to a 256-byte multiple for dynamic offsets.
+const SHAPE_UNIFORM_SIZE = 3664;
+const SHAPE_UNIFORM_ALIGN = 3840;
+const SHAPE_UNIFORM_FLOATS = 916;
 const TEXT_UNIFORM_SIZE = 432;
 
 const IMAGE_SHADER = /* wgsl */ `
@@ -502,6 +751,12 @@ struct MaskSlot {
   points: f32,
   inner: f32,
   _pad: f32,
+}
+
+// One entry in the image effect stack: type + up to 7 params.
+struct EffectSlot {
+  a: vec4f, // (type, p0, p1, p2)
+  b: vec4f, // (p3, p4, p5, p6)
 }
 
 struct ImageUniforms {
@@ -530,6 +785,12 @@ struct ImageUniforms {
   gainB: f32,
   gainIntensity: f32,
   masks: array<MaskSlot, 8>,
+  // Effect stack appended after masks (mask base index unchanged).
+  effectCount: f32,
+  effectTime: f32,  // frame number, seeds procedural/noise effects
+  _epad1: f32,
+  _epad2: f32,
+  effects: array<EffectSlot, 16>,
 }
 
 @group(0) @binding(0) var<uniform> u: ImageUniforms;
@@ -596,11 +857,1006 @@ fn applyLiftGammaGain(color: vec3f) -> vec3f {
   return clamp(c, vec3f(0.0), vec3f(1.0));
 }
 
+fn rgb2hsv(c: vec3f) -> vec3f {
+  let K = vec4f(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
+  let p = mix(vec4f(c.bg, K.wz), vec4f(c.gb, K.xy), step(c.b, c.g));
+  let q = mix(vec4f(p.xyw, c.r), vec4f(c.r, p.yzx), step(p.x, c.r));
+  let d = q.x - min(q.w, q.y);
+  let e = 1.0e-10;
+  return vec3f(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x);
+}
+
+fn hsv2rgb(c: vec3f) -> vec3f {
+  let K = vec4f(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
+  let p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+  return c.z * mix(K.xxx, clamp(p - K.xxx, vec3f(0.0), vec3f(1.0)), c.y);
+}
+
+fn hash21(p: vec2f) -> f32 {
+  var p3 = fract(vec3f(p.xyx) * 0.1031);
+  p3 = p3 + dot(p3, p3.yzx + 33.33);
+  return fract((p3.x + p3.y) * p3.z);
+}
+
+fn valueNoise(p: vec2f) -> f32 {
+  let i = floor(p);
+  let f = fract(p);
+  let u = f * f * (3.0 - 2.0 * f);
+  let a = hash21(i);
+  let b = hash21(i + vec2f(1.0, 0.0));
+  let c = hash21(i + vec2f(0.0, 1.0));
+  let d = hash21(i + vec2f(1.0, 1.0));
+  return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+}
+
+fn fbm(p: vec2f) -> f32 {
+  var v = 0.0;
+  var amp = 0.5;
+  var freq = p;
+  for (var i = 0; i < 5; i = i + 1) {
+    v = v + amp * valueNoise(freq);
+    freq = freq * 2.0;
+    amp = amp * 0.5;
+  }
+  return v;
+}
+
+// Nearest Worley/Voronoi feature point to p (searches the 3x3 neighbourhood of
+// jittered cell centres). Shared by the cellular warps (crystallize/voronoi/
+// facet/pointillize snap the sample UV to it) and the cellular color patterns.
+fn voronoiCenter(p: vec2f) -> vec2f {
+  let ip = floor(p);
+  var best = 1.0e9;
+  var bestC = p;
+  for (var j = -1; j <= 1; j = j + 1) {
+    for (var i = -1; i <= 1; i = i + 1) {
+      let cell = ip + vec2f(f32(i), f32(j));
+      let o = vec2f(hash21(cell), hash21(cell + vec2f(37.2, 17.1)));
+      let cp = cell + o;
+      let d = distance(p, cp);
+      if (d < best) {
+        best = d;
+        bestC = cp;
+      }
+    }
+  }
+  return bestC;
+}
+
+// Snap p to the centre of its pointy-top hexagonal cell via cube-coordinate
+// rounding. Used by the hexPixelate warp.
+fn hexCenter(p: vec2f) -> vec2f {
+  let q = 0.5773502692 * p.x - 0.3333333333 * p.y;
+  let rr = 0.6666666667 * p.y;
+  let cx = q;
+  let cz = rr;
+  let cy = -cx - cz;
+  var rx = round(cx);
+  var ry = round(cy);
+  var rz = round(cz);
+  let dx = abs(rx - cx);
+  let dy = abs(ry - cy);
+  let dz = abs(rz - cz);
+  if (dx > dy && dx > dz) {
+    rx = -ry - rz;
+  } else if (dy > dz) {
+    ry = -rx - rz;
+  } else {
+    rz = -rx - ry;
+  }
+  return vec2f(1.7320508076 * (rx + rz * 0.5), 1.5 * rz);
+}
+
+// ── Texture-aware helpers (class C single-pass). Layer textures have no mipmaps,
+// so textureSampleLevel at LOD 0 is exact and, unlike textureSample, is valid in
+// the non-uniform control flow these run under. ──
+fn sampleTex(uv: vec2f) -> vec3f {
+  return textureSampleLevel(texData, texSampler, uv, 0.0).rgb;
+}
+
+fn lumaOf(rgb: vec3f) -> f32 {
+  return dot(rgb, vec3f(0.299, 0.587, 0.114));
+}
+
+// 3x3 gaussian; pass a scaled texel to widen the blur radius.
+fn blur3x3(uv: vec2f, texel: vec2f) -> vec3f {
+  var s = sampleTex(uv) * 0.25;
+  s = s + sampleTex(uv + vec2f(0.0, -texel.y)) * 0.125;
+  s = s + sampleTex(uv + vec2f(0.0, texel.y)) * 0.125;
+  s = s + sampleTex(uv + vec2f(-texel.x, 0.0)) * 0.125;
+  s = s + sampleTex(uv + vec2f(texel.x, 0.0)) * 0.125;
+  s = s + sampleTex(uv + vec2f(-texel.x, -texel.y)) * 0.0625;
+  s = s + sampleTex(uv + vec2f(texel.x, -texel.y)) * 0.0625;
+  s = s + sampleTex(uv + vec2f(-texel.x, texel.y)) * 0.0625;
+  s = s + sampleTex(uv + vec2f(texel.x, texel.y)) * 0.0625;
+  return s;
+}
+
+// Sobel gradient magnitude on luma over a 3x3 neighbourhood.
+fn sobelLuma(uv: vec2f, texel: vec2f) -> f32 {
+  let tl = lumaOf(sampleTex(uv + vec2f(-texel.x, -texel.y)));
+  let tc = lumaOf(sampleTex(uv + vec2f(0.0, -texel.y)));
+  let tr = lumaOf(sampleTex(uv + vec2f(texel.x, -texel.y)));
+  let ml = lumaOf(sampleTex(uv + vec2f(-texel.x, 0.0)));
+  let mr = lumaOf(sampleTex(uv + vec2f(texel.x, 0.0)));
+  let bl = lumaOf(sampleTex(uv + vec2f(-texel.x, texel.y)));
+  let bc = lumaOf(sampleTex(uv + vec2f(0.0, texel.y)));
+  let br = lumaOf(sampleTex(uv + vec2f(texel.x, texel.y)));
+  let gx = -tl - 2.0 * ml - bl + tr + 2.0 * mr + br;
+  let gy = -tl - 2.0 * tc - tr + bl + 2.0 * bc + br;
+  return sqrt(gx * gx + gy * gy);
+}
+
+// Constant-cost disc ops: sample two concentric rings (+center) scaled by a uv
+// radius, so cost is independent of the radius in pixels. Used by the C2
+// morphological / matte / blur filters.
+fn discBlurRGBA(uv: vec2f, rad: vec2f) -> vec4f {
+  var sum = textureSampleLevel(texData, texSampler, uv, 0.0);
+  var cnt = 1.0;
+  for (var i = 0; i < 12; i = i + 1) {
+    let ang = f32(i) * 0.5235988;
+    let d = vec2f(cos(ang), sin(ang));
+    sum = sum + textureSampleLevel(texData, texSampler, uv + d * rad, 0.0);
+    sum = sum + textureSampleLevel(texData, texSampler, uv + d * rad * 0.5, 0.0);
+    cnt = cnt + 2.0;
+  }
+  return sum / cnt;
+}
+
+fn discDilate(uv: vec2f, rad: vec2f) -> vec4f {
+  var mx = textureSampleLevel(texData, texSampler, uv, 0.0);
+  for (var i = 0; i < 8; i = i + 1) {
+    let ang = f32(i) * 0.7853982;
+    let d = vec2f(cos(ang), sin(ang));
+    mx = max(mx, textureSampleLevel(texData, texSampler, uv + d * rad, 0.0));
+    mx = max(mx, textureSampleLevel(texData, texSampler, uv + d * rad * 0.5, 0.0));
+  }
+  return mx;
+}
+
+fn discErode(uv: vec2f, rad: vec2f) -> vec4f {
+  var mn = textureSampleLevel(texData, texSampler, uv, 0.0);
+  for (var i = 0; i < 8; i = i + 1) {
+    let ang = f32(i) * 0.7853982;
+    let d = vec2f(cos(ang), sin(ang));
+    mn = min(mn, textureSampleLevel(texData, texSampler, uv + d * rad, 0.0));
+    mn = min(mn, textureSampleLevel(texData, texSampler, uv + d * rad * 0.5, 0.0));
+  }
+  return mn;
+}
+
+// Single-pass approximations of morphological opening (erode then dilate) and
+// closing (dilate then erode): per direction erode/dilate against the centre,
+// then dilate/erode across directions. Identity at rad 0.
+fn morphOpen(uv: vec2f, rad: vec2f) -> vec4f {
+  let center = textureSampleLevel(texData, texSampler, uv, 0.0);
+  var res = vec4f(0.0);
+  for (var i = 0; i < 8; i = i + 1) {
+    let ang = f32(i) * 0.7853982;
+    let d = vec2f(cos(ang), sin(ang));
+    res = max(res, min(center, textureSampleLevel(texData, texSampler, uv + d * rad, 0.0)));
+  }
+  return res;
+}
+
+fn morphClose(uv: vec2f, rad: vec2f) -> vec4f {
+  let center = textureSampleLevel(texData, texSampler, uv, 0.0);
+  var res = vec4f(1.0);
+  for (var i = 0; i < 8; i = i + 1) {
+    let ang = f32(i) * 0.7853982;
+    let d = vec2f(cos(ang), sin(ang));
+    res = min(res, max(center, textureSampleLevel(texData, texSampler, uv + d * rad, 0.0)));
+  }
+  return res;
+}
+
+// Kuwahara edge-preserving smoothing: the mean of whichever of the 4 corner 3x3
+// quadrants has the least colour variance — the classic oil-painting operator.
+fn kuwahara(uv: vec2f, rad: vec2f) -> vec3f {
+  var bestMean = sampleTex(uv);
+  var bestVar = 1.0e9;
+  for (var q = 0; q < 4; q = q + 1) {
+    let sx = select(-1.0, 1.0, q == 1 || q == 3);
+    let sy = select(-1.0, 1.0, q == 2 || q == 3);
+    var mean = vec3f(0.0);
+    var m2 = vec3f(0.0);
+    for (var j = 0; j < 3; j = j + 1) {
+      for (var i = 0; i < 3; i = i + 1) {
+        let s = sampleTex(uv + vec2f(f32(i) * sx, f32(j) * sy) * rad);
+        mean = mean + s;
+        m2 = m2 + s * s;
+      }
+    }
+    mean = mean / 9.0;
+    let varc = m2 / 9.0 - mean * mean;
+    let vsum = varc.r + varc.g + varc.b;
+    if (vsum < bestVar) {
+      bestVar = vsum;
+      bestMean = mean;
+    }
+  }
+  return bestMean;
+}
+
+// Per-pixel color effect stack (class A). type ids match effectRegistry.EFFECT_TYPE,
+// interpolated below so registry and shader can't drift. Unknown types are no-ops.
+// uv (0..1 across the image) and time (frame number) drive procedural/noise
+// effects; effects may modify alpha (keying/opacity).
+fn applyColorEffect(color: vec4f, a: vec4f, b: vec4f, uv: vec2f, time: f32) -> vec4f {
+  let t = i32(a.x);
+  let p0 = a.y;
+  var c = color.rgb;
+  var alpha = color.a;
+  let luma = dot(c, vec3f(0.2126, 0.7152, 0.0722));
+  switch t {
+    case ${EFFECT_TYPE.vibrance}: {
+      let sat = max(c.r, max(c.g, c.b)) - min(c.r, min(c.g, c.b));
+      c = mix(vec3f(luma), c, 1.0 + p0 * (1.0 - sat));
+    }
+    case ${EFFECT_TYPE.hueShift}: {
+      var hsv = rgb2hsv(c);
+      hsv.x = fract(hsv.x + p0 / 360.0);
+      c = hsv2rgb(hsv);
+    }
+    case ${EFFECT_TYPE.temperature}: {
+      c = c + vec3f(p0 * 0.2, 0.0, -p0 * 0.2);
+    }
+    case ${EFFECT_TYPE.tint}: {
+      c = c + vec3f(-p0 * 0.1, p0 * 0.2, -p0 * 0.1);
+    }
+    case ${EFFECT_TYPE.whiteBalance}: {
+      c = c + vec3f(p0 * 0.15, p0 * 0.05, -p0 * 0.15);
+    }
+    case ${EFFECT_TYPE.blacks}: {
+      c = c + vec3f(p0 * 0.15 * (1.0 - smoothstep(0.0, 0.4, luma)));
+    }
+    case ${EFFECT_TYPE.whites}: {
+      c = c + vec3f(p0 * 0.15 * smoothstep(0.6, 1.0, luma));
+    }
+    case ${EFFECT_TYPE.shadows}: {
+      c = c + vec3f(p0 * 0.25 * (1.0 - smoothstep(0.0, 0.5, luma)));
+    }
+    case ${EFFECT_TYPE.highlights}: {
+      c = c + vec3f(p0 * 0.25 * smoothstep(0.5, 1.0, luma));
+    }
+    case ${EFFECT_TYPE.midtones}: {
+      c = pow(max(c, vec3f(0.0)), vec3f(1.0 / max(1.0 + p0 * 0.5, 0.01)));
+    }
+    case ${EFFECT_TYPE.lift}: {
+      c = c + vec3f(p0 * 0.2) * (vec3f(1.0) - c);
+    }
+    case ${EFFECT_TYPE.gammaColor}: {
+      c = pow(max(c, vec3f(0.0)), vec3f(1.0 / max(p0, 0.01)));
+    }
+    case ${EFFECT_TYPE.gain}: {
+      c = c * p0;
+    }
+    case ${EFFECT_TYPE.levels}: {
+      c = clamp((c - vec3f(p0)) / max(1.0 - p0, 0.001), vec3f(0.0), vec3f(1.0));
+    }
+    case ${EFFECT_TYPE.curvesRGB}: {
+      c = mix(c, smoothstep(vec3f(0.0), vec3f(1.0), c), p0);
+    }
+    case ${EFFECT_TYPE.curvesR}: {
+      c.r = mix(c.r, smoothstep(0.0, 1.0, c.r), p0);
+    }
+    case ${EFFECT_TYPE.curvesG}: {
+      c.g = mix(c.g, smoothstep(0.0, 1.0, c.g), p0);
+    }
+    case ${EFFECT_TYPE.curvesB}: {
+      c.b = mix(c.b, smoothstep(0.0, 1.0, c.b), p0);
+    }
+    case ${EFFECT_TYPE.posterize}: {
+      let n = max(floor(p0), 2.0);
+      c = round(c * (n - 1.0)) / (n - 1.0);
+    }
+    case ${EFFECT_TYPE.solarize}: {
+      c = select(c, vec3f(1.0) - c, c > vec3f(p0));
+    }
+
+    // ── A2: stylization & palette mapping ──
+    case ${EFFECT_TYPE.threshold}: {
+      c = vec3f(select(0.0, 1.0, luma > p0));
+    }
+    case ${EFFECT_TYPE.invert}: {
+      c = mix(c, vec3f(1.0) - c, p0);
+    }
+    case ${EFFECT_TYPE.colorize}: {
+      c = mix(c, luma * vec3f(1.0, 0.75, 0.4), p0);
+    }
+    case ${EFFECT_TYPE.duotone}: {
+      let dt = mix(vec3f(0.1, 0.1, 0.4), vec3f(1.0, 0.85, 0.3), luma);
+      c = mix(c, dt, p0);
+    }
+    case ${EFFECT_TYPE.tritone}: {
+      let sh = vec3f(0.05, 0.05, 0.2);
+      let mid = vec3f(0.6, 0.3, 0.4);
+      let hi = vec3f(1.0, 0.9, 0.7);
+      var tt = mix(sh, mid, clamp(luma * 2.0, 0.0, 1.0));
+      tt = mix(tt, hi, clamp((luma - 0.5) * 2.0, 0.0, 1.0));
+      c = mix(c, tt, p0);
+    }
+    case ${EFFECT_TYPE.gradientMap}: {
+      let g0 = vec3f(0.0, 0.1, 0.4);
+      let g1 = vec3f(0.8, 0.1, 0.5);
+      let g2 = vec3f(1.0, 0.9, 0.2);
+      var gm = mix(g0, g1, clamp(luma * 2.0, 0.0, 1.0));
+      gm = mix(gm, g2, clamp((luma - 0.5) * 2.0, 0.0, 1.0));
+      c = mix(c, gm, p0);
+    }
+    case ${EFFECT_TYPE.sepia}: {
+      let se = vec3f(
+        dot(c, vec3f(0.393, 0.769, 0.189)),
+        dot(c, vec3f(0.349, 0.686, 0.168)),
+        dot(c, vec3f(0.272, 0.534, 0.131)),
+      );
+      c = mix(c, se, p0);
+    }
+    case ${EFFECT_TYPE.monochrome}: {
+      c = mix(c, vec3f(luma), p0);
+    }
+    case ${EFFECT_TYPE.bwMixer}: {
+      c = vec3f(mix(luma, dot(c, vec3f(0.5, 0.35, 0.15)), p0));
+    }
+    case ${EFFECT_TYPE.colorBalance}: {
+      c = c + vec3f(p0 * 0.1, 0.0, -p0 * 0.1);
+    }
+    case ${EFFECT_TYPE.splitToning}: {
+      let toned = c * mix(vec3f(0.4, 0.6, 1.0), vec3f(1.0, 0.8, 0.5), luma);
+      c = mix(c, toned, p0);
+    }
+    case ${EFFECT_TYPE.falseColor}: {
+      let fc = vec3f(smoothstep(0.0, 0.5, luma), smoothstep(0.25, 0.75, luma), smoothstep(0.5, 1.0, luma));
+      c = mix(c, fc, p0);
+    }
+    case ${EFFECT_TYPE.thermalVision}: {
+      let tc = vec3f(
+        clamp(luma * 2.0, 0.0, 1.0),
+        clamp(luma * 2.0 - 0.5, 0.0, 1.0),
+        clamp(luma * 4.0 - 3.0, 0.0, 1.0) + clamp(1.0 - luma * 4.0, 0.0, 1.0),
+      );
+      c = mix(c, tc, p0);
+    }
+    case ${EFFECT_TYPE.infrared}: {
+      c = mix(c, vec3f(c.g, c.b, c.r), p0);
+    }
+    case ${EFFECT_TYPE.selectiveColor}: {
+      let w = clamp(c.r - max(c.g, c.b), 0.0, 1.0);
+      c = mix(c, mix(vec3f(luma), c, 1.0 + p0), w);
+    }
+    case ${EFFECT_TYPE.replaceColor}: {
+      let d = 1.0 - clamp(length(c - vec3f(0.8, 0.1, 0.1)) * 2.0, 0.0, 1.0);
+      c = mix(c, vec3f(0.1, 0.3, 0.9), d * p0);
+    }
+    case ${EFFECT_TYPE.channelMixer}: {
+      c = vec3f(
+        c.r + p0 * (c.g - c.r),
+        c.g + p0 * (c.b - c.g),
+        c.b + p0 * (c.r - c.b),
+      );
+    }
+    case ${EFFECT_TYPE.extractRed}: {
+      c = mix(c, vec3f(c.r, 0.0, 0.0), p0);
+    }
+    case ${EFFECT_TYPE.extractGreen}: {
+      c = mix(c, vec3f(0.0, c.g, 0.0), p0);
+    }
+    case ${EFFECT_TYPE.extractBlue}: {
+      c = mix(c, vec3f(0.0, 0.0, c.b), p0);
+    }
+
+    // ── A3: channel/alpha math + procedural + grain ──
+    case ${EFFECT_TYPE.alphaOnly}: {
+      c = mix(c, vec3f(alpha), p0);
+    }
+    case ${EFFECT_TYPE.swapChannels}: {
+      let mode = i32(p0 + 0.5);
+      if (mode == 1) { c = vec3f(c.g, c.r, c.b); }
+      else if (mode == 2) { c = vec3f(c.b, c.g, c.r); }
+      else if (mode == 3) { c = vec3f(c.r, c.b, c.g); }
+    }
+    case ${EFFECT_TYPE.opacity}: {
+      alpha = alpha * p0;
+    }
+    case ${EFFECT_TYPE.alphaThreshold}: {
+      alpha = alpha * step(p0, alpha);
+    }
+    case ${EFFECT_TYPE.lumaKey}: {
+      alpha = alpha * smoothstep(p0 - 0.05, p0 + 0.05, luma);
+    }
+    case ${EFFECT_TYPE.spillSuppression}: {
+      let m = max(c.r, c.b);
+      c.g = mix(c.g, min(c.g, m), p0 * step(m, c.g));
+    }
+    case ${EFFECT_TYPE.gradientFill}: {
+      c = mix(c, mix(vec3f(0.1, 0.2, 0.6), vec3f(0.9, 0.5, 0.2), uv.y), p0);
+    }
+    case ${EFFECT_TYPE.noiseFill}: {
+      c = mix(c, vec3f(hash21(uv * 500.0 + time)), p0);
+    }
+    case ${EFFECT_TYPE.patternFill}: {
+      c = mix(c, vec3f(step(0.5, fract((uv.x + uv.y) * 20.0))), p0);
+    }
+    case ${EFFECT_TYPE.checkerboard}: {
+      let ch = (floor(uv.x * 16.0) + floor(uv.y * 16.0)) % 2.0;
+      c = mix(c, vec3f(ch), p0);
+    }
+    case ${EFFECT_TYPE.dots}: {
+      let g = fract(uv * 20.0) - vec2f(0.5);
+      c = mix(c, vec3f(step(length(g), 0.3)), p0);
+    }
+    case ${EFFECT_TYPE.stripes}: {
+      c = mix(c, vec3f(step(0.5, fract(uv.y * 20.0))), p0);
+    }
+    case ${EFFECT_TYPE.plasma}: {
+      let v = sin(uv.x * 10.0 + time * 0.1) + sin(uv.y * 10.0 + time * 0.1) + sin((uv.x + uv.y) * 10.0);
+      let pc = 0.5 + 0.5 * vec3f(sin(v), sin(v + 2.0), sin(v + 4.0));
+      c = mix(c, pc, p0);
+    }
+    case ${EFFECT_TYPE.clouds}: {
+      c = mix(c, vec3f(fbm(uv * 4.0 + vec2f(time * 0.01))), p0);
+    }
+    case ${EFFECT_TYPE.addNoise}: {
+      c = c + vec3f((hash21(uv * 800.0 + time) - 0.5) * p0);
+    }
+    case ${EFFECT_TYPE.filmGrain}: {
+      c = c + vec3f((hash21(uv * 1000.0 + time * 1.7) - 0.5) * p0 * 0.6);
+    }
+    case ${EFFECT_TYPE.gaussianNoise}: {
+      let n = (hash21(uv * 700.0 + time) + hash21(uv * 700.0 + time + 13.0) + hash21(uv * 700.0 + time + 27.0)) / 3.0 - 0.5;
+      c = c + vec3f(n * p0);
+    }
+    case ${EFFECT_TYPE.saltAndPepper}: {
+      let r = hash21(uv * 900.0 + time);
+      if (r < p0 * 0.5) { c = vec3f(0.0); }
+      else if (r > 1.0 - p0 * 0.5) { c = vec3f(1.0); }
+    }
+    case ${EFFECT_TYPE.perlinNoise}: {
+      c = mix(c, vec3f(valueNoise(uv * 20.0 + vec2f(time * 0.05))), p0);
+    }
+    case ${EFFECT_TYPE.fractalNoise}: {
+      c = mix(c, vec3f(fbm(uv * 8.0 + vec2f(time * 0.03))), p0);
+    }
+    case ${EFFECT_TYPE.dust}: {
+      c = c + vec3f(step(1.0 - p0 * 0.05, hash21(uv * 1500.0 + floor(time))));
+    }
+    case ${EFFECT_TYPE.voronoiPattern}: {
+      let sp = uv * 12.0;
+      let cell = floor(voronoiCenter(sp));
+      let col = vec3f(hash21(cell + vec2f(1.3, 5.7)), hash21(cell + vec2f(13.1, 7.7)), hash21(cell + vec2f(41.2, 91.3)));
+      c = mix(c, col, p0);
+    }
+    case ${EFFECT_TYPE.cellularPattern}: {
+      let sp = uv * 12.0;
+      let d = clamp(distance(sp, voronoiCenter(sp)), 0.0, 1.0);
+      c = mix(c, vec3f(d), p0);
+    }
+
+    default: {}
+  }
+  return vec4f(c, alpha);
+}
+
+// Pre-sample UV warp stack (class B). Each case remaps the sampling coordinate;
+// the caller composes them in effect order BEFORE the texture is sampled. type ids
+// match effectRegistry.EFFECT_TYPE (interpolated below so registry and shader can't
+// drift). Unknown types pass through. Contract: geometric warps let uv leave 0..1
+// (revealed as a transparent border by the caller); tiling/fold warps keep uv in
+// range themselves. aspect keeps radial distortions circular on screen; time
+// animates the wave family. ctr is uv centred at 0; ca is aspect-corrected.
+fn applyWarpEffect(uv: vec2f, a: vec4f, b: vec4f, aspect: f32, time: f32) -> vec2f {
+  let t = i32(a.x);
+  let p0 = a.y;
+  var w = uv;
+  let ctr = uv - vec2f(0.5);
+  let ca = vec2f(ctr.x * aspect, ctr.y);
+  let r = length(ca);
+  switch t {
+    // ── B1: geometry & radial distortion ──
+    case ${EFFECT_TYPE.rotate}: {
+      let ang = -p0 * 0.017453292;
+      let cs = cos(ang);
+      let sn = sin(ang);
+      let d = vec2f(ca.x * cs - ca.y * sn, ca.x * sn + ca.y * cs);
+      w = vec2f(d.x / aspect, d.y) + vec2f(0.5);
+    }
+    case ${EFFECT_TYPE.flipH}: {
+      if (p0 > 0.5) { w = vec2f(1.0 - uv.x, uv.y); }
+    }
+    case ${EFFECT_TYPE.flipV}: {
+      if (p0 > 0.5) { w = vec2f(uv.x, 1.0 - uv.y); }
+    }
+    case ${EFFECT_TYPE.scale}: {
+      w = ctr / max(p0, 0.001) + vec2f(0.5);
+    }
+    case ${EFFECT_TYPE.crop}: {
+      let m = p0 * 0.5;
+      if (uv.x < m || uv.x > 1.0 - m || uv.y < m || uv.y > 1.0 - m) {
+        w = vec2f(-1.0, -1.0);
+      }
+    }
+    case ${EFFECT_TYPE.perspective}: {
+      let sx = 1.0 + p0 * (uv.y - 0.5) * 2.0;
+      w = vec2f(ctr.x / max(sx, 0.05) + 0.5, uv.y);
+    }
+    case ${EFFECT_TYPE.shear}: {
+      w = vec2f(uv.x + (uv.y - 0.5) * p0, uv.y);
+    }
+    case ${EFFECT_TYPE.skew}: {
+      let k = tan(clamp(p0, -80.0, 80.0) * 0.017453292);
+      w = vec2f(uv.x + (uv.y - 0.5) * k, uv.y);
+    }
+    case ${EFFECT_TYPE.affineTransform}: {
+      let ang = -p0 * 0.7853982;
+      let cs = cos(ang);
+      let sn = sin(ang);
+      let d = vec2f(ca.x * cs - ca.y * sn, ca.x * sn + ca.y * cs) / max(1.0 + p0 * 0.3, 0.05);
+      w = vec2f(d.x / aspect, d.y) + vec2f(0.5);
+    }
+    case ${EFFECT_TYPE.offset}: {
+      w = vec2f(fract(uv.x - p0), uv.y);
+    }
+    case ${EFFECT_TYPE.lensDistortion}: {
+      let f = 1.0 + p0 * (r * r) + p0 * 0.5 * (r * r * r * r);
+      let d = ca * f;
+      w = vec2f(d.x / aspect, d.y) + vec2f(0.5);
+    }
+    case ${EFFECT_TYPE.barrelDistortion}: {
+      let d = ca * (1.0 + p0 * 0.8 * (r * r));
+      w = vec2f(d.x / aspect, d.y) + vec2f(0.5);
+    }
+    case ${EFFECT_TYPE.pincushion}: {
+      let d = ca * (1.0 - p0 * 0.8 * (r * r));
+      w = vec2f(d.x / aspect, d.y) + vec2f(0.5);
+    }
+    case ${EFFECT_TYPE.fisheye}: {
+      let maxr = 0.7071;
+      let rn = clamp(r / maxr, 0.0, 1.0);
+      let theta = atan2(ca.y, ca.x);
+      let rr = mix(r, sin(rn * 1.5707963) * maxr, p0);
+      let d = vec2f(cos(theta), sin(theta)) * rr;
+      w = vec2f(d.x / aspect, d.y) + vec2f(0.5);
+    }
+    case ${EFFECT_TYPE.spherize}: {
+      let maxr = 0.5;
+      if (r < maxr && r > 1.0e-5) {
+        let rn = r / maxr;
+        let d = ca * mix(1.0, sin(rn * 1.5707963) / rn, p0);
+        w = vec2f(d.x / aspect, d.y) + vec2f(0.5);
+      }
+    }
+    case ${EFFECT_TYPE.bulge}: {
+      let maxr = 0.5;
+      if (r < maxr && r > 1.0e-5) {
+        let d = normalize(ca) * pow(r / maxr, 1.0 - p0) * maxr;
+        w = vec2f(d.x / aspect, d.y) + vec2f(0.5);
+      }
+    }
+    case ${EFFECT_TYPE.pinch}: {
+      let maxr = 0.5;
+      if (r < maxr && r > 1.0e-5) {
+        let d = normalize(ca) * pow(r / maxr, 1.0 + p0) * maxr;
+        w = vec2f(d.x / aspect, d.y) + vec2f(0.5);
+      }
+    }
+    case ${EFFECT_TYPE.twirl}: {
+      let maxr = 0.7071;
+      let frac = clamp(1.0 - r / maxr, 0.0, 1.0);
+      let ang = p0 * 0.017453292 * frac;
+      let cs = cos(ang);
+      let sn = sin(ang);
+      let d = vec2f(ca.x * cs - ca.y * sn, ca.x * sn + ca.y * cs);
+      w = vec2f(d.x / aspect, d.y) + vec2f(0.5);
+    }
+    case ${EFFECT_TYPE.polarCoordinates}: {
+      let theta = atan2(ctr.y, ctr.x);
+      let rad = clamp(length(ctr) * 2.0, 0.0, 1.0);
+      w = mix(uv, vec2f((theta + 3.14159265) / 6.2831853, rad), p0);
+    }
+
+    // ── B2: waves, tiling, pixelation, cellular ──
+    case ${EFFECT_TYPE.wave}: {
+      w = vec2f(uv.x + sin(uv.y * 12.0 + time * 0.05) * (p0 / 500.0), uv.y);
+    }
+    case ${EFFECT_TYPE.ripple}: {
+      let off = sin(r * 40.0 - time * 0.08) * (p0 / 800.0);
+      let d = ca + normalize(ca + vec2f(1.0e-5)) * off;
+      w = vec2f(d.x / aspect, d.y) + vec2f(0.5);
+    }
+    case ${EFFECT_TYPE.zigzag}: {
+      let tw = abs(fract(r * 20.0) - 0.5) * 4.0 - 1.0;
+      let d = ca + normalize(ca + vec2f(1.0e-5)) * tw * (p0 / 800.0);
+      w = vec2f(d.x / aspect, d.y) + vec2f(0.5);
+    }
+    case ${EFFECT_TYPE.turbulentDisplace}: {
+      let amp = p0 / 400.0;
+      let nx = fbm(uv * 6.0 + vec2f(time * 0.02, 0.0)) - 0.5;
+      let ny = fbm(uv * 6.0 + vec2f(31.4, 17.7) + vec2f(0.0, time * 0.02)) - 0.5;
+      w = uv + vec2f(nx, ny) * amp;
+    }
+    case ${EFFECT_TYPE.perspectiveWarp}: {
+      let sy = 1.0 + p0 * (uv.x - 0.5) * 2.0;
+      w = vec2f(uv.x, ctr.y / max(sy, 0.05) + 0.5);
+    }
+    case ${EFFECT_TYPE.mirror}: {
+      w = vec2f(mix(uv.x, 0.5 - abs(uv.x - 0.5), p0), uv.y);
+    }
+    case ${EFFECT_TYPE.kaleidoscope}: {
+      let wedge = 6.2831853 / max(p0, 2.0);
+      var ang = atan2(ca.y, ca.x);
+      ang = ang - floor(ang / wedge) * wedge;
+      ang = abs(ang - wedge * 0.5);
+      let d = vec2f(cos(ang), sin(ang)) * r;
+      w = vec2f(d.x / aspect, d.y) + vec2f(0.5);
+    }
+    case ${EFFECT_TYPE.pixelate}: {
+      let cells = max(u.quadSize / max(p0, 1.0), vec2f(1.0));
+      w = (floor(uv * cells) + vec2f(0.5)) / cells;
+    }
+    case ${EFFECT_TYPE.mosaic}: {
+      let n = max(max(u.quadSize.x, u.quadSize.y) / max(p0, 1.0), 1.0);
+      w = (floor(uv * n) + vec2f(0.5)) / n;
+    }
+    case ${EFFECT_TYPE.blockPixelation}: {
+      let cells = max(u.quadSize / max(p0 * 2.0, 1.0), vec2f(1.0));
+      w = (floor(uv * cells) + vec2f(0.5)) / cells;
+    }
+    case ${EFFECT_TYPE.hexPixelate}: {
+      let cells = max(u.quadSize.y / max(p0, 1.0), 1.0);
+      let hc = hexCenter(vec2f(uv.x * aspect, uv.y) * cells);
+      w = vec2f((hc.x / cells) / aspect, hc.y / cells);
+    }
+    case ${EFFECT_TYPE.crystallize}: {
+      let cells = max(u.quadSize.y / max(p0, 1.0), 1.0);
+      let cc = voronoiCenter(vec2f(uv.x * aspect, uv.y) * cells);
+      w = vec2f((cc.x / cells) / aspect, cc.y / cells);
+    }
+    case ${EFFECT_TYPE.voronoi}: {
+      let cells = max(u.quadSize.y / max(p0, 1.0), 1.0);
+      let cc = voronoiCenter(vec2f(uv.x * aspect, uv.y) * cells);
+      w = vec2f((cc.x / cells) / aspect, cc.y / cells);
+    }
+    case ${EFFECT_TYPE.facet}: {
+      let cells = max(u.quadSize.y / max(p0 * 0.5, 1.0), 1.0);
+      let cc = voronoiCenter(vec2f(uv.x * aspect, uv.y) * cells);
+      w = vec2f((cc.x / cells) / aspect, cc.y / cells);
+    }
+    case ${EFFECT_TYPE.pointillize}: {
+      let cells = max(u.quadSize.y / max(p0, 1.0), 1.0);
+      let cc = voronoiCenter(vec2f(uv.x * aspect, uv.y) * cells);
+      w = vec2f((cc.x / cells) / aspect, cc.y / cells);
+    }
+    default: {}
+  }
+  return w;
+}
+
+// Texture-aware spatial stack (class C, single-pass). Runs right after the base
+// sample so it can re-read the texture: B3 chromatic/retro re-sample at per-channel
+// offset UVs; C1 convolution reads 3x3 neighbours; C2 morphological/matte scan a
+// disc. Neighbour reads come from the raw texture (composing multiple spatial ops
+// needs an RTT ping-pong, a later batch). type ids match effectRegistry.EFFECT_TYPE.
+// texel = 1 uv per screen pixel; effects are identity at their default param (0).
+fn applySpatialEffect(color: vec4f, a: vec4f, b: vec4f, uv: vec2f, texel: vec2f, time: f32) -> vec4f {
+  let t = i32(a.x);
+  let p0 = a.y;
+  var c = color.rgb;
+  var alpha = color.a;
+  switch t {
+    // ── B3: chromatic & retro ──
+    case ${EFFECT_TYPE.rgbSplit}: {
+      let off = p0 * texel.x;
+      c = vec3f(sampleTex(uv + vec2f(off, 0.0)).r, c.g, sampleTex(uv - vec2f(off, 0.0)).b);
+    }
+    case ${EFFECT_TYPE.channelOffset}: {
+      let off = p0 * texel.x;
+      c = vec3f(sampleTex(uv + vec2f(off, 0.0)).r, c.g, sampleTex(uv - vec2f(off, 0.0)).b);
+    }
+    case ${EFFECT_TYPE.chromaticAberration}: {
+      let dir = uv - vec2f(0.5);
+      let amt = p0 * 0.002;
+      c = vec3f(sampleTex(uv + dir * amt).r, c.g, sampleTex(uv - dir * amt).b);
+    }
+    case ${EFFECT_TYPE.refraction}: {
+      let n = vec2f(fbm(uv * 8.0) - 0.5, fbm(uv * 8.0 + vec2f(21.7, 9.3)) - 0.5);
+      c = sampleTex(uv + n * p0 * 0.05);
+    }
+    case ${EFFECT_TYPE.heatDistortion}: {
+      let dx = sin(uv.y * 40.0 + time * 0.2) * p0 * 0.01;
+      let dy = (fbm(uv * 10.0 + vec2f(0.0, time * 0.1)) - 0.5) * p0 * 0.01;
+      c = sampleTex(uv + vec2f(dx, dy));
+    }
+    case ${EFFECT_TYPE.digitalGlitch}: {
+      let row = floor(uv.y * 40.0);
+      var du = 0.0;
+      if (hash21(vec2f(row, floor(time * 0.5))) < p0 * 0.5) {
+        du = (hash21(vec2f(row, 7.0)) - 0.5) * p0 * 0.2;
+      }
+      let off = p0 * texel.x * 6.0;
+      c = vec3f(
+        sampleTex(uv + vec2f(du + off, 0.0)).r,
+        sampleTex(uv + vec2f(du, 0.0)).g,
+        sampleTex(uv + vec2f(du - off, 0.0)).b,
+      );
+    }
+    case ${EFFECT_TYPE.vhs}: {
+      let jitter = (hash21(vec2f(floor(uv.y * 220.0), floor(time))) - 0.5) * p0 * 0.02;
+      let off = p0 * texel.x * 3.0;
+      var vc = vec3f(
+        sampleTex(uv + vec2f(jitter + off, 0.0)).r,
+        sampleTex(uv + vec2f(jitter, 0.0)).g,
+        sampleTex(uv + vec2f(jitter - off, 0.0)).b,
+      );
+      vc = vc * (1.0 - p0 * 0.2 * (0.5 + 0.5 * sin(uv.y * 400.0)));
+      vc = vc + vec3f((hash21(uv * 500.0 + time) - 0.5) * p0 * 0.1);
+      c = vc;
+    }
+    case ${EFFECT_TYPE.vhsNoise}: {
+      let n = hash21(uv * vec2f(300.0, 800.0) + floor(time * 2.0));
+      let band = step(0.985, fract(uv.y * 3.0 + time * 0.05));
+      c = mix(c, vec3f(n), p0 * (0.3 + band * 0.7));
+    }
+    case ${EFFECT_TYPE.crtMonitor}: {
+      let cc = uv - vec2f(0.5);
+      let r2 = dot(cc, cc);
+      let buv = uv + cc * r2 * p0 * 0.3;
+      var col = sampleTex(buv);
+      col = col * (1.0 - p0 * 0.3 * (0.5 - 0.5 * sin(buv.x * 500.0)));
+      col = col * (1.0 - p0 * 0.3 * (0.5 - 0.5 * sin(buv.y * 350.0)));
+      col = col * (1.0 - p0 * r2 * 1.2);
+      c = col;
+    }
+    case ${EFFECT_TYPE.scanlines}: {
+      c = c * (1.0 - p0 * 0.5 * (0.5 - 0.5 * sin(uv.y * 300.0)));
+    }
+    case ${EFFECT_TYPE.scanlineNoise}: {
+      c = c * (1.0 - p0 * 0.5 * (0.5 - 0.5 * sin(uv.y * 300.0)));
+      c = c + vec3f((hash21(uv * 400.0 + floor(time)) - 0.5) * p0 * 0.15);
+    }
+
+    // ── C1: convolution — sharpen & edge detect ──
+    case ${EFFECT_TYPE.sharpen}: {
+      let n = sampleTex(uv + vec2f(0.0, -texel.y)) + sampleTex(uv + vec2f(0.0, texel.y))
+            + sampleTex(uv + vec2f(-texel.x, 0.0)) + sampleTex(uv + vec2f(texel.x, 0.0));
+      c = c + (c * 4.0 - n) * p0;
+    }
+    case ${EFFECT_TYPE.unsharpMask}: {
+      c = c + (c - blur3x3(uv, texel * 1.5)) * p0;
+    }
+    case ${EFFECT_TYPE.highPass}: {
+      let hp = vec3f(0.5) + (c - blur3x3(uv, texel * (1.0 + p0)));
+      c = mix(c, hp, min(p0 * 0.2, 1.0));
+    }
+    case ${EFFECT_TYPE.edgeEnhance}: {
+      let n = sampleTex(uv + vec2f(0.0, -texel.y)) + sampleTex(uv + vec2f(0.0, texel.y))
+            + sampleTex(uv + vec2f(-texel.x, 0.0)) + sampleTex(uv + vec2f(texel.x, 0.0));
+      c = c + (c * 4.0 - n) * p0 * 0.6;
+    }
+    case ${EFFECT_TYPE.detailEnhance}: {
+      c = c + (c - blur3x3(uv, texel * 2.5)) * p0;
+    }
+    case ${EFFECT_TYPE.clarity}: {
+      c = clamp(c + (c - blur3x3(uv, texel * 3.0)) * p0 * 1.5, vec3f(0.0), vec3f(1.0));
+    }
+    case ${EFFECT_TYPE.localContrast}: {
+      c = clamp(c + (c - blur3x3(uv, texel * 5.0)) * p0 * 2.0, vec3f(0.0), vec3f(1.0));
+    }
+    case ${EFFECT_TYPE.sobel}: {
+      c = mix(c, vec3f(clamp(sobelLuma(uv, texel), 0.0, 1.0)), p0);
+    }
+    case ${EFFECT_TYPE.laplacian}: {
+      let n = lumaOf(sampleTex(uv + vec2f(0.0, -texel.y))) + lumaOf(sampleTex(uv + vec2f(0.0, texel.y)))
+            + lumaOf(sampleTex(uv + vec2f(-texel.x, 0.0))) + lumaOf(sampleTex(uv + vec2f(texel.x, 0.0)));
+      let e = abs(lumaOf(c) * 4.0 - n);
+      c = mix(c, vec3f(clamp(e, 0.0, 1.0)), p0);
+    }
+    case ${EFFECT_TYPE.outline}: {
+      let mag = clamp(sobelLuma(uv, texel) * 1.5, 0.0, 1.0);
+      c = mix(c, c * (1.0 - mag), p0);
+    }
+    case ${EFFECT_TYPE.findEdges}: {
+      let mag = clamp(sobelLuma(uv, texel) * 2.0, 0.0, 1.0);
+      c = mix(c, vec3f(1.0 - mag), p0);
+    }
+    case ${EFFECT_TYPE.glowEdges}: {
+      let mag = clamp(sobelLuma(uv, texel) * 2.0, 0.0, 1.0);
+      c = mix(c, c * mag * 3.0, p0);
+    }
+    case ${EFFECT_TYPE.emboss}: {
+      let e = 0.5 + lumaOf(sampleTex(uv + vec2f(-texel.x, -texel.y)) - sampleTex(uv + vec2f(texel.x, texel.y))) * 2.0;
+      c = mix(c, vec3f(clamp(e, 0.0, 1.0)), p0);
+    }
+    case ${EFFECT_TYPE.edgeDetectColor}: {
+      let gx = sampleTex(uv + vec2f(texel.x, 0.0)) - sampleTex(uv + vec2f(-texel.x, 0.0));
+      let gy = sampleTex(uv + vec2f(0.0, texel.y)) - sampleTex(uv + vec2f(0.0, -texel.y));
+      c = mix(c, clamp(sqrt(gx * gx + gy * gy), vec3f(0.0), vec3f(1.0)), p0);
+    }
+
+    // ── C2: morphological & matte (disc-sampled; radius param in px) ──
+    case ${EFFECT_TYPE.dilate}: {
+      c = discDilate(uv, p0 * texel).rgb;
+    }
+    case ${EFFECT_TYPE.erode}: {
+      c = discErode(uv, p0 * texel).rgb;
+    }
+    case ${EFFECT_TYPE.opening}: {
+      c = morphOpen(uv, p0 * texel).rgb;
+    }
+    case ${EFFECT_TYPE.closing}: {
+      c = morphClose(uv, p0 * texel).rgb;
+    }
+    case ${EFFECT_TYPE.distanceTransform}: {
+      let field = discBlurRGBA(uv, vec2f(p0 * 0.15)).a;
+      c = mix(c, vec3f(field), p0);
+    }
+    case ${EFFECT_TYPE.matteExpansion}: {
+      if (p0 > 0.0) { alpha = discDilate(uv, p0 * texel).a; }
+      else if (p0 < 0.0) { alpha = discErode(uv, -p0 * texel).a; }
+    }
+    case ${EFFECT_TYPE.matteShrink}: {
+      alpha = discErode(uv, p0 * texel).a;
+    }
+    case ${EFFECT_TYPE.featherAlpha}: {
+      alpha = discBlurRGBA(uv, p0 * texel).a;
+    }
+    case ${EFFECT_TYPE.alphaBlur}: {
+      alpha = discBlurRGBA(uv, p0 * texel).a;
+    }
+    case ${EFFECT_TYPE.channelBlur}: {
+      let bl = discBlurRGBA(uv, p0 * texel);
+      c = bl.rgb;
+      alpha = bl.a;
+    }
+
+    // ── W (lighting): single-pass radial light shafts / flare ──
+    case ${EFFECT_TYPE.lightRays}: {
+      let toCenter = vec2f(0.5) - uv;
+      var acc = vec3f(0.0);
+      var wsum = 0.0;
+      var wgt = 1.0;
+      for (var i = 0; i < 16; i = i + 1) {
+        let s = sampleTex(uv + toCenter * (f32(i) / 16.0));
+        acc = acc + max(s - vec3f(0.6), vec3f(0.0)) * wgt;
+        wsum = wsum + wgt;
+        wgt = wgt * 0.92;
+      }
+      c = c + (acc / max(wsum, 1.0)) * p0 * 2.5;
+    }
+    case ${EFFECT_TYPE.sunRays}: {
+      let toSun = vec2f(0.5, 0.0) - uv;
+      var acc = vec3f(0.0);
+      var wsum = 0.0;
+      var wgt = 1.0;
+      for (var i = 0; i < 16; i = i + 1) {
+        let s = sampleTex(uv + toSun * (f32(i) / 16.0));
+        acc = acc + max(s - vec3f(0.55), vec3f(0.0)) * wgt;
+        wsum = wsum + wgt;
+        wgt = wgt * 0.9;
+      }
+      c = c + (acc / max(wsum, 1.0)) * p0 * 2.5;
+    }
+    case ${EFFECT_TYPE.lightWrap}: {
+      let bright = max(blur3x3(uv, texel * 4.0) - vec3f(0.5), vec3f(0.0));
+      c = c + bright * p0;
+    }
+    case ${EFFECT_TYPE.lensFlare}: {
+      let axis = vec2f(0.5) - uv;
+      var flare = vec3f(0.0);
+      for (var i = 1; i <= 4; i = i + 1) {
+        let s = sampleTex(uv + axis * (f32(i) * 0.35));
+        flare = flare + max(s - vec3f(0.7), vec3f(0.0)) / f32(i);
+      }
+      let halo = smoothstep(0.32, 0.28, abs(length(uv - vec2f(0.5)) - 0.3));
+      c = c + (flare + vec3f(halo) * 0.3) * p0;
+    }
+    case ${EFFECT_TYPE.specularHighlight}: {
+      c = c + vec3f(smoothstep(0.7, 1.0, lumaOf(c))) * p0 * 0.8;
+    }
+
+    // ── C3: artistic / painterly ──
+    case ${EFFECT_TYPE.oilPainting}: {
+      c = mix(c, kuwahara(uv, texel * 2.0), p0);
+    }
+    case ${EFFECT_TYPE.watercolor}: {
+      let b = discBlurRGBA(uv, texel * 4.0).rgb;
+      let edge = clamp(sobelLuma(uv, texel) * 2.0, 0.0, 1.0);
+      let wc = mix(round(b * 5.0) / 5.0, b, 0.5) * (1.0 - edge * 0.3);
+      c = mix(c, wc, p0);
+    }
+    case ${EFFECT_TYPE.pencilSketch}: {
+      let g = lumaOf(c);
+      let bl = lumaOf(blur3x3(uv, texel * 3.0));
+      c = mix(c, vec3f(clamp(g / max(bl, 0.001), 0.0, 1.0)), p0);
+    }
+    case ${EFFECT_TYPE.ink}: {
+      let edge = clamp(sobelLuma(uv, texel) * 3.0, 0.0, 1.0);
+      c = mix(c, vec3f(step(0.5, lumaOf(c)) * (1.0 - edge)), p0);
+    }
+    case ${EFFECT_TYPE.comic}: {
+      let edge = step(0.3, clamp(sobelLuma(uv, texel) * 2.0, 0.0, 1.0));
+      c = mix(c, (round(c * 4.0) / 4.0) * (1.0 - edge), p0);
+    }
+    case ${EFFECT_TYPE.cartoon}: {
+      let toon = round(discBlurRGBA(uv, texel * 2.0).rgb * 4.0) / 4.0;
+      let edge = step(0.25, clamp(sobelLuma(uv, texel) * 2.0, 0.0, 1.0));
+      c = mix(c, toon * (1.0 - edge), p0);
+    }
+    case ${EFFECT_TYPE.posterPaint}: {
+      let post = round(c * 3.0) / 3.0;
+      let sat = mix(vec3f(lumaOf(post)), post, 1.4);
+      c = mix(c, clamp(sat, vec3f(0.0), vec3f(1.0)), p0);
+    }
+    case ${EFFECT_TYPE.chalk}: {
+      let edge = clamp(sobelLuma(uv, texel) * 3.0, 0.0, 1.0);
+      c = mix(c, vec3f(clamp(edge + hash21(uv * 800.0) * 0.15 * edge, 0.0, 1.0)), p0);
+    }
+    case ${EFFECT_TYPE.halftone}: {
+      let cell = fract(uv * 80.0) - vec2f(0.5);
+      let dot = step(length(cell), (1.0 - lumaOf(c)) * 0.7);
+      c = mix(c, vec3f(1.0 - dot), p0);
+    }
+    case ${EFFECT_TYPE.crossHatch}: {
+      let g = lumaOf(c);
+      var h = 1.0;
+      if (g < 0.8) { h = min(h, step(0.5, fract((uv.x + uv.y) * 60.0))); }
+      if (g < 0.6) { h = min(h, step(0.5, fract((uv.x - uv.y) * 60.0))); }
+      if (g < 0.4) { h = min(h, step(0.5, fract(uv.x * 60.0))); }
+      if (g < 0.2) { h = min(h, step(0.5, fract(uv.y * 60.0))); }
+      c = mix(c, vec3f(h), p0);
+    }
+    case ${EFFECT_TYPE.woodcut}: {
+      let wave = 0.5 + 0.4 * sin(uv.x * 12.0);
+      c = mix(c, vec3f(step(fract(uv.y * 40.0 * wave), lumaOf(c))), p0);
+    }
+    case ${EFFECT_TYPE.stainedGlass}: {
+      let sp = uv * 14.0;
+      let center = voronoiCenter(sp);
+      let glass = sampleTex(clamp(center / 14.0, vec2f(0.0), vec2f(1.0)));
+      let lead = smoothstep(0.35, 0.5, distance(sp, center));
+      c = mix(c, glass * (1.0 - lead * 0.7), p0);
+    }
+    case ${EFFECT_TYPE.paintDaubs}: {
+      let ang = fbm(uv * 10.0) * 6.2831853;
+      let daub = discBlurRGBA(uv + vec2f(cos(ang), sin(ang)) * texel * 4.0, texel * 2.0).rgb;
+      c = mix(c, round(daub * 6.0) / 6.0, p0);
+    }
+
+    default: {}
+  }
+  return vec4f(c, alpha);
+}
+
 ${MASK_WGSL}
 
 @fragment
 fn fs(in: VertexOutput) -> @location(0) vec4f {
-  var color = textureSample(texData, texSampler, in.uv);
+  let aspect = max(u.quadSize.x, 1.0) / max(u.quadSize.y, 1.0);
+  let ec = i32(u.effectCount + 0.5);
+
+  // Pre-sample warp stack (class B): compose the sampling UV in effect order
+  // before the texture read. Warp-type slots match here; color-type slots don't.
+  var uv = in.uv;
+  for (var wi = 0; wi < ec; wi = wi + 1) {
+    uv = applyWarpEffect(uv, u.effects[wi].a, u.effects[wi].b, aspect, u.effectTime);
+  }
+
+  // Layer textures have no mipmaps, so LOD 0 == textureSample, and an explicit
+  // level keeps the read valid across the UV discontinuities that tiling/fold
+  // warps introduce.
+  var color = textureSampleLevel(texData, texSampler, uv, 0.0);
+
+  // Spatial stage (class C, texture-aware): chromatic/retro (B3), convolution (C1),
+  // morphological/matte (C2). Reads texels around the warped uv, so it runs before
+  // the border test. Warp/color-type slots hit its default and pass through.
+  let texel = 1.0 / max(u.quadSize, vec2f(1.0));
+  for (var si = 0; si < ec; si = si + 1) {
+    color = applySpatialEffect(color, u.effects[si].a, u.effects[si].b, uv, texel, u.effectTime);
+  }
+
+  // The clamp-to-edge sampler + this bounds test give geometric warps a transparent
+  // border (tiling/fold warps keep uv in range, so inBounds stays 1).
+  let inBounds = step(0.0, uv.x) * step(uv.x, 1.0) * step(0.0, uv.y) * step(uv.y, 1.0);
+  color = color * inBounds;
 
   // Exposure
   let exposureMul = pow(2.0, u.exposure);
@@ -625,13 +1881,32 @@ fn fs(in: VertexOutput) -> @location(0) vec4f {
   // Lift/Gamma/Gain color correction
   color = vec4f(applyLiftGammaGain(color.rgb), color.a);
 
+  // Effect stack (class A per-pixel color). Bounded by effectCount (0 for video).
+  // Uses in.uv (the true fragment UV) so procedural fills/patterns stay put while
+  // the warp stack above only affected the sampling coordinate.
+  for (var ei = 0; ei < ec; ei = ei + 1) {
+    color = applyColorEffect(color, u.effects[ei].a, u.effects[ei].b, in.uv, u.effectTime);
+  }
+
   let mA = computeMaskStackAlpha(in.worldPos, i32(u.maskCount + 0.5), u.masks);
   color = vec4f(clamp(color.rgb, vec3f(0.0), vec3f(1.0)), color.a * u.opacity * mA);
   return color;
 }
 `;
 
-const IMAGE_UNIFORM_SIZE = 496;
+// Image + video layers share this uniform buffer. Its stride is independent of
+// the shared UNIFORM_ALIGN (512), enlarged to fit the effect-slot array appended
+// AFTER the masks (so the mask base index at float 28 never moves). Layout (bytes):
+// header 112 + masks 384 + effectCount(+pad) 16 + effects 512 = 1024 (256 f32).
+const IMAGE_UNIFORM_SIZE = 1024;
+const IMAGE_UNIFORM_ALIGN = 1024;
+const IMAGE_UNIFORM_FLOATS = 256;
+// Effect slots: 16 × (2 vec4f = type + 7 params). effectCount at float 124,
+// effects array base at float 128.
+const IMAGE_MAX_EFFECTS = 16;
+const IMAGE_EFFECTCOUNT_FLOAT = 124;
+const IMAGE_EFFECTTIME_FLOAT = 125;
+const IMAGE_EFFECTS_BASE_FLOAT = 128;
 
 const PATH_SHADER = /* wgsl */ `
 struct MaskSlot {
@@ -1408,7 +2683,7 @@ export class WebGPURenderer {
     const shaderModule = device.createShaderModule({ code: RECT_SHADER });
 
     const uniformBuffer = device.createBuffer({
-      size: UNIFORM_ALIGN * MAX_LAYERS,
+      size: SHAPE_UNIFORM_ALIGN * MAX_LAYERS,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
 
@@ -1416,7 +2691,7 @@ export class WebGPURenderer {
       entries: [{
         binding: 0,
         visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
-        buffer: { type: 'uniform', hasDynamicOffset: true, minBindingSize: UNIFORM_SIZE },
+        buffer: { type: 'uniform', hasDynamicOffset: true, minBindingSize: SHAPE_UNIFORM_SIZE },
       }],
     });
 
@@ -1519,7 +2794,7 @@ export class WebGPURenderer {
     const imageShaderModule = device.createShaderModule({ code: IMAGE_SHADER });
 
     const imageUniformBuffer = device.createBuffer({
-      size: UNIFORM_ALIGN * MAX_LAYERS,
+      size: IMAGE_UNIFORM_ALIGN * MAX_LAYERS,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
 
@@ -1797,6 +3072,39 @@ export class WebGPURenderer {
   // Allocate (or reuse) the scene + isolated-layer textures used by the
   // motion-blur passes. Allocation only happens on first use and when the
   // target dimensions change — never per frame — so VRAM stays bounded.
+  // Per-precomp offscreen render targets (nested composition → texture), pooled by
+  // precomp layer id and reused across frames; reallocated on a size change.
+  private precompTexPool = new Map<string, { tex: GPUTexture; view: GPUTextureView; w: number; h: number }>();
+
+  private ensurePrecompTexture(gpu: GPUState, id: string, w: number, h: number): GPUTextureView {
+    const width = Math.max(1, Math.round(w));
+    const height = Math.max(1, Math.round(h));
+    const existing = this.precompTexPool.get(id);
+    if (existing && existing.w === width && existing.h === height) return existing.view;
+    existing?.tex.destroy();
+    const tex = gpu.device.createTexture({
+      size: { width, height },
+      format: gpu.format,
+      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+    });
+    const view = tex.createView();
+    this.precompTexPool.set(id, { tex, view, w: width, h: height });
+    return view;
+  }
+
+  // Recursively pin text-texture cache keys for nested precomp frames so the LRU
+  // cannot evict a texture a sub-composition still needs this frame.
+  private pinNestedTextKeys(frame: RenderFrame): void {
+    for (const layer of frame.layers) {
+      if (layer.layerType === 'text' && layer.text) {
+        const key = textCacheKey(layer.text);
+        if (key) this.activeTextKeys.add(key);
+      } else if (layer.layerType === 'precomp' && layer.precomp?.renderFrame) {
+        this.pinNestedTextKeys(layer.precomp.renderFrame);
+      }
+    }
+  }
+
   private ensureBlurTextures(gpu: GPUState, width: number, height: number): void {
     if (gpu.sceneTex && gpu.layerTex && gpu.blurTexW === width && gpu.blurTexH === height) return;
 
@@ -1938,32 +3246,45 @@ export class WebGPURenderer {
     }
   }
 
-  private renderFrameUnsafe(frame: RenderFrame, target: 'screen' | 'offscreen' = 'screen'): void {
+  private renderFrameUnsafe(frame: RenderFrame, target: 'screen' | 'offscreen' = 'screen', opts?: PrecompRenderOpts): void {
     const gpu = target === 'screen' ? this.gpu : this.offscreenGpu;
     if (!gpu) return;
+    const depth = opts?.depth ?? 0;
 
     const { device, context, pipeline, textPipeline, imagePipeline, bgPipeline, pathPipeline, uniformBuffer, textUniformBuffer, imageUniformBuffer, pathUniformBuffer, bgBindGroup, bindGroupLayout, textBindGroupLayout, imageBindGroupLayout, pathBindGroupLayout, textSampler } = gpu;
 
-    // Upload background uniforms
+    // Upload background uniforms (per-call — a nested precomp frame has its own bg).
     this.uploadBackgroundUniforms(gpu, frame.background);
 
-    // Cached Render Tree pass 1 — invalidation. Reconcile nodes against this
-    // frame's layers; content-signature changes (local geometry/text/etc.) mark
-    // nodes dirty, world transforms do not. Pin the text keys drawn this frame
-    // so the LRU cannot evict a texture that is still needed below.
-    this.frameClock++;
-    this.renderTree.syncFromLayers(frame.layers);
-    this.activeTextKeys.clear();
-    for (const layer of frame.layers) {
-      if (layer.layerType === 'text' && layer.text) {
-        const key = textCacheKey(layer.text);
-        if (key) this.activeTextKeys.add(key);
+    // Cached Render Tree bookkeeping runs ONLY at the top level; nested precomp
+    // frames re-render fully into their own textures (no dirty-tracking). Text keys
+    // are pinned recursively so a sub-composition's text texture can't be evicted.
+    if (depth === 0) {
+      this.frameClock++;
+      this.renderTree.syncFromLayers(frame.layers);
+      this.activeTextKeys.clear();
+      this.pinNestedTextKeys(frame);
+      this.renderTree.markAllClean(this.frameClock);
+    }
+
+    // Precomp pre-pass: render each precomp layer's nested composition into its own
+    // pooled texture, via a RECURSIVE renderFrameUnsafe with its own encoder+submit
+    // (so passes never alias the parent's in-flight scene pass). The resolve step
+    // already bounded nesting (renderFrame is null past the cap); a render-depth cap
+    // is a second backstop.
+    const precompViews = new Map<string, GPUTextureView>();
+    if (depth < MAX_PRECOMP_DEPTH) {
+      for (const layer of frame.layers) {
+        if (layer.layerType === 'precomp' && layer.precomp?.renderFrame) {
+          const pc = layer.precomp;
+          const view = this.ensurePrecompTexture(gpu, layer.id, pc.width, pc.height);
+          this.renderFrameUnsafe(pc.renderFrame!, target, {
+            depth: depth + 1, targetView: view, targetW: pc.width, targetH: pc.height, clearAlpha: 0,
+          });
+          precompViews.set(layer.id, view);
+        }
       }
     }
-    // Pass 2 bookkeeping: artifacts for dirty nodes are (re)generated lazily by
-    // the content-signature caches during the draws below, so the tree's nodes
-    // are valid for this frame once sync has run.
-    this.renderTree.markAllClean(this.frameClock);
 
     const shapeLayers: { index: number; layer: ResolvedLayer }[] = [];
     const textLayers: { index: number; layer: ResolvedLayer }[] = [];
@@ -2027,7 +3348,9 @@ export class WebGPURenderer {
         textLayers.push({ index: i, layer });
       } else if (layer.layerType === 'video') {
         videoLayers.push({ index: i, layer });
-      } else if (layer.layerType === 'image' || layer.layerType === 'particle' || layer.layerType === 'fieldSampled' || layer.layerType === 'lottieIcon') {
+      } else if (layer.layerType === 'image' || layer.layerType === 'particle' || layer.layerType === 'fieldSampled' || layer.layerType === 'lottieIcon' || layer.layerType === 'precomp') {
+        // A precomp composites like an image: its pre-rendered texture as a
+        // transformed, opacity-scaled quad through the image pipeline.
         imageLayers.push({ index: i, layer });
       } else if (layer.shape && layer.shape.renderType === 'polygon') {
         pathLayers.push({ index: i, layer });
@@ -2037,12 +3360,12 @@ export class WebGPURenderer {
     }
 
     if (shapeLayers.length > 0) {
-      const bufferData = new ArrayBuffer(UNIFORM_ALIGN * shapeLayers.length);
+      const bufferData = new ArrayBuffer(SHAPE_UNIFORM_ALIGN * shapeLayers.length);
       for (let i = 0; i < shapeLayers.length; i++) {
-        const data = new Float32Array(bufferData, UNIFORM_ALIGN * i, 124);
+        const data = new Float32Array(bufferData, SHAPE_UNIFORM_ALIGN * i, SHAPE_UNIFORM_FLOATS);
         this.fillLayerData(data, shapeLayers[i].layer, frame.width, frame.height);
       }
-      device.queue.writeBuffer(uniformBuffer, 0, bufferData, 0, UNIFORM_ALIGN * shapeLayers.length);
+      device.queue.writeBuffer(uniformBuffer, 0, bufferData, 0, SHAPE_UNIFORM_ALIGN * shapeLayers.length);
     }
 
     const textBindGroups: (GPUBindGroup | null)[] = [];
@@ -2097,7 +3420,7 @@ export class WebGPURenderer {
 
     const videoBindGroups: (GPUBindGroup | null)[] = [];
     if (videoLayers.length > 0) {
-      const videoBufData = new ArrayBuffer(UNIFORM_ALIGN * videoLayers.length);
+      const videoBufData = new ArrayBuffer(IMAGE_UNIFORM_ALIGN * videoLayers.length);
       for (let i = 0; i < videoLayers.length; i++) {
         const vidLayer = videoLayers[i].layer;
         const video = vidLayer.video;
@@ -2107,9 +3430,16 @@ export class WebGPURenderer {
         }
 
         const sourceFrame = video.sourceFrame;
-        const videoFrame = frameScheduler.getFrame(video.assetId, sourceFrame);
-        if (videoFrame) {
-          videoTextureCache.uploadFrame(vidLayer.id, sourceFrame, videoFrame);
+        // Report the exact resolved source frame so the scheduler prefetches from
+        // the same trim/offset/rate the renderer draws (single mapping source).
+        frameScheduler.reportVideoRequirement(vidLayer.id, video.assetId, sourceFrame, video.playbackRate);
+        // Only upload when the layer's texture doesn't already hold this exact
+        // source frame — avoids a redundant GPU copy every render while paused.
+        if (videoTextureCache.getCurrentFrameIndex(vidLayer.id) !== sourceFrame) {
+          const videoFrame = frameScheduler.getFrame(video.assetId, sourceFrame);
+          if (videoFrame) {
+            videoTextureCache.uploadFrame(vidLayer.id, sourceFrame, videoFrame);
+          }
         }
 
         const gpuTexture = videoTextureCache.getTexture(vidLayer.id);
@@ -2119,7 +3449,7 @@ export class WebGPURenderer {
         }
 
         const t = vidLayer.transform;
-        const data = new Float32Array(videoBufData, UNIFORM_ALIGN * i, 124);
+        const data = new Float32Array(videoBufData, IMAGE_UNIFORM_ALIGN * i, IMAGE_UNIFORM_FLOATS);
         data[0] = frame.width;
         data[1] = frame.height;
         data[2] = t.positionX;
@@ -2130,7 +3460,10 @@ export class WebGPURenderer {
         data[7] = t.anchorY;
         data[8] = t.rotation * (Math.PI / 180);
         data[9] = t.opacity;
-        // filters zeroed for video
+        // filters zeroed for video, EXCEPT gamma: the shader computes
+        // 1/max(gamma,0.01), so a zeroed gamma slot yields pow(color, 100) →
+        // near-black. Write the identity (1) to keep video color untouched.
+        data[14] = 1;
         this.writeMaskUniforms(data, 15, 28, vidLayer.masks);
 
         const vbg = device.createBindGroup({
@@ -2143,13 +3476,13 @@ export class WebGPURenderer {
         });
         videoBindGroups.push(vbg);
       }
-      device.queue.writeBuffer(imageUniformBuffer, 0, videoBufData, 0, UNIFORM_ALIGN * videoLayers.length);
+      device.queue.writeBuffer(imageUniformBuffer, 0, videoBufData, 0, IMAGE_UNIFORM_ALIGN * videoLayers.length);
     }
 
     // Image layers - use imagePipeline with filter uniforms
     const imageBindGroups: (GPUBindGroup | null)[] = [];
     if (imageLayers.length > 0) {
-      const imageBufData = new ArrayBuffer(UNIFORM_ALIGN * imageLayers.length);
+      const imageBufData = new ArrayBuffer(IMAGE_UNIFORM_ALIGN * imageLayers.length);
       for (let i = 0; i < imageLayers.length; i++) {
         const imgLayer = imageLayers[i].layer;
 
@@ -2157,7 +3490,9 @@ export class WebGPURenderer {
         let sourceWidth = 0;
         let sourceHeight = 0;
         let textureKey = '';
+        let precompView: GPUTextureView | null = null; // set for precomp layers (pre-rendered texture)
         const imgFilters = { brightness: 0, contrast: 0, saturation: 0, exposure: 0, gamma: 1 };
+        let imgEffects: ResolvedEffect[] = [];
         const imgCC = {
           lift: { r: 0, g: 0, b: 0, intensity: 0, luminance: 0 },
           gamma: { r: 0, g: 0, b: 0, intensity: 0, luminance: 0 },
@@ -2208,6 +3543,16 @@ export class WebGPURenderer {
           sourceWidth = imgLayer.lottieIcon.sourceWidth || lottieCanvas.width;
           sourceHeight = imgLayer.lottieIcon.sourceHeight || lottieCanvas.height;
           textureKey = `__lottie_${imgLayer.id}_${imgLayer.lottieIcon.localFrame}_${imgLayer.lottieIcon.color}`;
+        } else if (imgLayer.layerType === 'precomp') {
+          const view = precompViews.get(imgLayer.id);
+          if (!view || !imgLayer.precomp) {
+            imageBindGroups.push(null);
+            continue;
+          }
+          precompView = view;
+          sourceWidth = imgLayer.precomp.width;
+          sourceHeight = imgLayer.precomp.height;
+          // filters/CC/effects stay identity → the precomp texture composites as-is.
         } else {
           const img = imgLayer.image;
           if (!img) {
@@ -2226,10 +3571,11 @@ export class WebGPURenderer {
           Object.assign(imgCC.lift, img.colorCorrection.lift);
           Object.assign(imgCC.gamma, img.colorCorrection.gamma);
           Object.assign(imgCC.gain, img.colorCorrection.gain);
+          imgEffects = img.effects;
         }
 
         const t = imgLayer.transform;
-        const data = new Float32Array(imageBufData, UNIFORM_ALIGN * i, 124);
+        const data = new Float32Array(imageBufData, IMAGE_UNIFORM_ALIGN * i, IMAGE_UNIFORM_FLOATS);
         data[0] = frame.width;
         data[1] = frame.height;
         data[2] = t.positionX;
@@ -2260,9 +3606,17 @@ export class WebGPURenderer {
         data[27] = imgCC.gain.intensity;
 
         this.writeMaskUniforms(data, 15, 28, imgLayer.masks);
+        this.writeEffectSlots(data, imgEffects);
+        data[IMAGE_EFFECTTIME_FLOAT] = frame.frameNumber; // seeds procedural/noise effects
 
-        const gpuTexture = this.getOrCreateImageTexture(gpu, textureKey, bitmap, sourceWidth, sourceHeight);
-        if (!gpuTexture) {
+        let textureView: GPUTextureView | null;
+        if (precompView) {
+          textureView = precompView;
+        } else {
+          const gpuTexture = bitmap ? this.getOrCreateImageTexture(gpu, textureKey, bitmap, sourceWidth, sourceHeight) : null;
+          textureView = gpuTexture?.createView() ?? null;
+        }
+        if (!textureView) {
           imageBindGroups.push(null);
           continue;
         }
@@ -2272,12 +3626,12 @@ export class WebGPURenderer {
           entries: [
             { binding: 0, resource: { buffer: imageUniformBuffer, size: IMAGE_UNIFORM_SIZE } },
             { binding: 1, resource: textSampler },
-            { binding: 2, resource: gpuTexture.createView() },
+            { binding: 2, resource: textureView },
           ],
         });
         imageBindGroups.push(ibg);
       }
-      device.queue.writeBuffer(imageUniformBuffer, UNIFORM_ALIGN * videoLayers.length, imageBufData, 0, UNIFORM_ALIGN * imageLayers.length);
+      device.queue.writeBuffer(imageUniformBuffer, IMAGE_UNIFORM_ALIGN * videoLayers.length, imageBufData, 0, IMAGE_UNIFORM_ALIGN * imageLayers.length);
     }
 
     // Path layers - tessellate vector geometry into a shared vertex buffer
@@ -2330,7 +3684,7 @@ export class WebGPURenderer {
       layout: bindGroupLayout,
       entries: [{
         binding: 0,
-        resource: { buffer: uniformBuffer, size: UNIFORM_SIZE },
+        resource: { buffer: uniformBuffer, size: SHAPE_UNIFORM_SIZE },
       }],
     });
 
@@ -2352,16 +3706,20 @@ export class WebGPURenderer {
     const draws: Draw[] = [];
     {
       let shapeIdx = 0, textIdx = 0, videoIdx = 0, imageIdx = 0, pathIdx = 0;
-      for (let i = 0; i < frame.layers.length; i++) {
-        const blur = frame.layers[i].motionBlur;
-        const shadow = frame.layers[i].shadow;
-        const glow = frame.layers[i].glow;
-        const blurFx = frame.layers[i].blur;
+      // Iterate expandedLayers (NOT frame.layers): bucket `index` values refer to
+      // expandedLayers positions, and procedural loops make expandedLayers longer
+      // than frame.layers. Bounding by frame.layers.length would silently drop
+      // every expanded copy past the original layer count (incl. looped video).
+      for (let i = 0; i < expandedLayers.length; i++) {
+        const blur = expandedLayers[i].motionBlur;
+        const shadow = expandedLayers[i].shadow;
+        const glow = expandedLayers[i].glow;
+        const blurFx = expandedLayers[i].blur;
         if (shapeIdx < shapeLayers.length && shapeLayers[shapeIdx].index === i) {
           const slot = shapeIdx;
           draws.push({ blur, shadow, glow, blurFx, fn: (p) => {
             p.setPipeline(pipeline);
-            p.setBindGroup(0, shapeBindGroup, [UNIFORM_ALIGN * slot]);
+            p.setBindGroup(0, shapeBindGroup, [SHAPE_UNIFORM_ALIGN * slot]);
             p.draw(6);
           } });
           shapeIdx++;
@@ -2395,7 +3753,7 @@ export class WebGPURenderer {
           if (bindGroup) {
             draws.push({ blur, shadow, glow, blurFx, fn: (p) => {
               p.setPipeline(imagePipeline);
-              p.setBindGroup(0, bindGroup, [UNIFORM_ALIGN * slot]);
+              p.setBindGroup(0, bindGroup, [IMAGE_UNIFORM_ALIGN * slot]);
               p.draw(6);
             } });
           }
@@ -2406,7 +3764,7 @@ export class WebGPURenderer {
           if (bindGroup) {
             draws.push({ blur, shadow, glow, blurFx, fn: (p) => {
               p.setPipeline(imagePipeline);
-              p.setBindGroup(0, bindGroup, [UNIFORM_ALIGN * slot]);
+              p.setBindGroup(0, bindGroup, [IMAGE_UNIFORM_ALIGN * slot]);
               p.draw(6);
             } });
           }
@@ -2425,19 +3783,24 @@ export class WebGPURenderer {
     const hasBlurFx = blurFxDraws.length > 0;
     const hasMultipass = hasBlur || hasShadow || hasGlow || hasBlurFx;
 
-    const texture = context.getCurrentTexture();
+    // Render target: the swapchain at the top level, or a precomp's offscreen
+    // texture when rendering a nested composition (clearAlpha 0 → transparent).
+    const swapTexture = opts?.targetView ? null : context.getCurrentTexture();
+    const targetView = opts?.targetView ?? swapTexture!.createView();
+    const targetW = opts?.targetW ?? swapTexture!.width;
+    const targetH = opts?.targetH ?? swapTexture!.height;
+    const clearAlpha = opts?.clearAlpha ?? 1;
     const encoder = device.createCommandEncoder();
 
     if (!hasMultipass) {
-      // Fast path: composite the whole scene directly to the swapchain in a
-      // single pass. No extra textures, no extra GPU work when neither motion
-      // blur nor shadow is in use.
+      // Fast path: composite the whole scene directly to the target in a single
+      // pass. No extra textures, no extra GPU work when no effects are in use.
       const pass = encoder.beginRenderPass({
         colorAttachments: [{
-          view: texture.createView(),
+          view: targetView,
           loadOp: 'clear',
           storeOp: 'store',
-          clearValue: { r: 0, g: 0, b: 0, a: 1 },
+          clearValue: { r: 0, g: 0, b: 0, a: clearAlpha },
         }],
       });
       pass.setPipeline(bgPipeline);
@@ -2446,7 +3809,7 @@ export class WebGPURenderer {
       for (const d of draws) d.fn(pass);
       pass.end();
     } else {
-      this.ensureBlurTextures(gpu, texture.width, texture.height);
+      this.ensureBlurTextures(gpu, targetW, targetH);
 
       // Upload one blur uniform slot per blur-enabled layer.
       if (hasBlur) {
@@ -2793,13 +4156,13 @@ export class WebGPURenderer {
       }
       scenePass.end();
 
-      // Blit the composited scene to the swapchain.
+      // Blit the composited scene to the target (swapchain or precomp texture).
       const blitPass = encoder.beginRenderPass({
         colorAttachments: [{
-          view: texture.createView(),
+          view: targetView,
           loadOp: 'clear',
           storeOp: 'store',
-          clearValue: { r: 0, g: 0, b: 0, a: 1 },
+          clearValue: { r: 0, g: 0, b: 0, a: clearAlpha },
         }],
       });
       blitPass.setPipeline(gpu.blitPipeline);
@@ -2947,7 +4310,8 @@ export class WebGPURenderer {
     const t = layer.transform;
     const s = layer.shape!;
 
-    // Expand size for star/circle to give SDF margin
+    // Expand size for star/circle to give SDF margin (undone in the shader for
+    // gradient mapping via the same 1.1 factor).
     let w = s.width * t.scaleX;
     let h = s.height * t.scaleY;
     if (s.renderType === 'star' || s.renderType === 'circle') {
@@ -2955,6 +4319,7 @@ export class WebGPURenderer {
       h *= 1.1;
     }
 
+    // Base block (floats 0..19). See SHAPE_UNIFORM layout notes.
     data[0] = canvasW;
     data[1] = canvasH;
     data[2] = t.positionX;
@@ -2963,38 +4328,102 @@ export class WebGPURenderer {
     data[5] = h;
     data[6] = t.anchorX;
     data[7] = t.anchorY;
-    // fillColor
-    data[8] = s.fillColor[0];
-    data[9] = s.fillColor[1];
-    data[10] = s.fillColor[2];
-    data[11] = s.fillColor[3];
     // rotation, opacity, borderRadius, shapeType
-    data[12] = t.rotation * (Math.PI / 180);
-    data[13] = t.opacity;
-    data[14] = s.borderRadius;
+    data[8] = t.rotation * (Math.PI / 180);
+    data[9] = t.opacity;
+    data[10] = s.borderRadius;
 
     const shapeTypeMap: Record<string, number> = { rectangle: 0, circle: 1, star: 2, polygon: 3 };
-    data[15] = shapeTypeMap[s.renderType] ?? 0;
+    data[11] = shapeTypeMap[s.renderType] ?? 0;
 
-    // shapeParams: vec4 at offset 16
-    data[16] = s.points;
-    data[17] = s.outerRadius * t.scaleX;
-    data[18] = s.innerRadius * t.scaleX;
+    // shapeParams: vec4 at floats 12..15
+    data[12] = s.points;
+    data[13] = s.outerRadius * t.scaleX;
+    data[14] = s.innerRadius * t.scaleX;
+    data[15] = 0;
+
+    // strokeWidth (16); maskCount (17) written by writeMaskUniforms; pad 18,19
+    data[16] = s.strokeWidth * t.scaleX;
+    data[18] = 0;
     data[19] = 0;
 
-    // strokeColor: vec4 at offset 20
-    data[20] = s.strokeColor[0];
-    data[21] = s.strokeColor[1];
-    data[22] = s.strokeColor[2];
-    data[23] = s.strokeColor[3];
+    // masks: floats 20..115 (8 slots * 12)
+    this.writeMaskUniforms(data, 17, 20, layer.masks);
 
-    // strokeWidth + padding at offset 24
-    data[24] = s.strokeWidth * t.scaleX;
-    // data[25] = maskCount (written by writeMaskUniforms)
-    data[26] = 0;
-    data[27] = 0;
+    // Fill (index 0) and stroke (index 1) descriptors.
+    this.packFill(data, 0, s.fill ?? { kind: 0, color: s.fillColor, layers: [] });
+    this.packFill(data, 1, s.stroke ?? { kind: 0, color: s.strokeColor, layers: [] });
 
-    this.writeMaskUniforms(data, 25, 28, layer.masks);
+    // Pattern overlay (floats 900..915).
+    this.packPattern(data, s.pattern);
+  }
+
+  // Writes a ResolvedPattern into the pattern block of the shape uniform.
+  //   patA @900 (enabled, type, tile, angle), patB @904 (markSize, opacity,
+  //   hasBg, _), patColor @908 (rgb), patBg @912 (rgb).
+  private packPattern(data: Float32Array, pat: ResolvedPattern | undefined): void {
+    if (!pat || !pat.enabled) {
+      data[900] = 0; // disabled (buffer is zero-initialized, but be explicit)
+      return;
+    }
+    data[900] = 1;
+    data[901] = pat.patternType;
+    data[902] = pat.size + pat.spacing; // tile
+    data[903] = pat.angle;
+    data[904] = pat.size;
+    data[905] = pat.opacity;
+    data[906] = pat.hasBackground ? 1 : 0;
+    data[908] = pat.color[0];
+    data[909] = pat.color[1];
+    data[910] = pat.color[2];
+    data[912] = pat.backgroundColor[0];
+    data[913] = pat.backgroundColor[1];
+    data[914] = pat.backgroundColor[2];
+  }
+
+  // Writes a ResolvedFill into the flat fill arrays of the shape uniform.
+  // `fi` selects fill (0) or stroke (1). Float offsets index the shared arrays:
+  //   fHeader @116, fSolid @124, fMeta @132, fMeta2 @196, fColors @260, fPos @772
+  private packFill(data: Float32Array, fi: number, fill: ResolvedFill): void {
+    const layerCount = Math.min(fill.layers.length, 8);
+    // fHeader[fi] = (kind, layerCount, _, _)
+    const hBase = 116 + fi * 4;
+    data[hBase] = fill.kind;
+    data[hBase + 1] = layerCount;
+    // fSolid[fi] = rgba
+    const sBase = 124 + fi * 4;
+    data[sBase] = fill.color[0];
+    data[sBase + 1] = fill.color[1];
+    data[sBase + 2] = fill.color[2];
+    data[sBase + 3] = fill.color[3];
+
+    for (let L = 0; L < layerCount; L++) {
+      const ly = fill.layers[L];
+      const gi = fi * 8 + L;                 // global (fill,layer) index
+      // fMeta = (gradientType, angle, cx, cy)
+      const mBase = 132 + gi * 4;
+      data[mBase] = ly.gradientType;
+      data[mBase + 1] = ly.angle;
+      data[mBase + 2] = ly.centerX;
+      data[mBase + 3] = ly.centerY;
+      // fMeta2 = (blendMode, stopCount, _, _)
+      const m2Base = 196 + gi * 4;
+      const stopCount = Math.min(ly.stops.length, 8);
+      data[m2Base] = ly.blendMode;
+      data[m2Base + 1] = stopCount;
+
+      for (let sIdx = 0; sIdx < stopCount; sIdx++) {
+        const stop = ly.stops[sIdx];
+        const g = fi * 64 + L * 8 + sIdx;    // global stop index
+        const cBase = 260 + g * 4;           // fColors
+        data[cBase] = stop.color[0];
+        data[cBase + 1] = stop.color[1];
+        data[cBase + 2] = stop.color[2];
+        data[cBase + 3] = stop.color[3];
+        // fPos packs 4 positions per vec4 contiguously, so linear indexing works.
+        data[772 + g] = stop.position;
+      }
+    }
   }
 
   private writeMaskUniforms(
@@ -3026,6 +4455,22 @@ export class WebGPURenderer {
     for (let i = count; i < 8; i++) {
       const base = masksOffset + i * 12;
       for (let j = 0; j < 12; j++) data[base + j] = 0;
+    }
+  }
+
+  // Packs the image effect stack into the uniform (effectCount at float 124,
+  // then IMAGE_MAX_EFFECTS slots of 8 floats each: type + 7 params). The buffer
+  // is freshly zero-initialized each frame, so unused slots stay 0 (harmless).
+  private writeEffectSlots(data: Float32Array, effects: ResolvedEffect[]): void {
+    const count = Math.min(effects.length, IMAGE_MAX_EFFECTS);
+    data[IMAGE_EFFECTCOUNT_FLOAT] = count;
+    for (let i = 0; i < count; i++) {
+      const e = effects[i];
+      const base = IMAGE_EFFECTS_BASE_FLOAT + i * 8;
+      data[base] = e.type;
+      for (let p = 0; p < 7; p++) {
+        data[base + 1 + p] = e.params[p] ?? 0;
+      }
     }
   }
 

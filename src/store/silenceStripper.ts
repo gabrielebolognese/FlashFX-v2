@@ -213,9 +213,8 @@ export const useSilenceStore = create<SilenceState>((set, get) => ({
         return;
       }
 
-      const comp = useEditorStore.getState().composition;
       try {
-        await useProjectStore.getState().saveCurrentProject(comp);
+        await useProjectStore.getState().saveCurrentProject();
       } catch {
         // Best-effort save
       }

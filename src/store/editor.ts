@@ -1,9 +1,10 @@
 import { create } from 'zustand';
-import type { Composition, Layer, AnimatableProperty, Keyframe, Vec2, BackgroundLayer, MotionPath, Track, TrackType, AudioLayer, VideoPlaybackMode, PathVertex, VertexType, Mask, MaskType, ProceduralBinding, AnchorEdge, PhysicsBindingDef, PhysicsWorldDef, StaggerBindingDef, LayoutObjectLayer, LayoutContainerLayer, LayoutParams, ChildLayoutOverride, ContainerShapeType, ContainerDistributionMode } from '../core/types';
+import type { Composition, SceneDocument, Layer, AnimatableProperty, Keyframe, Vec2, BackgroundLayer, MotionPath, Track, TrackType, AudioLayer, VideoPlaybackMode, PathVertex, VertexType, Mask, MaskType, ProceduralBinding, AnchorEdge, PhysicsBindingDef, PhysicsWorldDef, StaggerBindingDef, LayoutObjectLayer, LayoutContainerLayer, LayoutParams, ChildLayoutOverride, ContainerShapeType, ContainerDistributionMode } from '../core/types';
 import { createComposition, createRectangleLayer, createCircleLayer, createStarLayer, createPolygonLayer, createDefaultPolygonVertices, createTextLayer, createVideoLayer, createImageLayer, createAudioLayer, createGroupLayer, createKeyframe, createBackgroundLayer, createMask, createParticleLayer, createAnimationItemLayer, createFieldSampledLayer, createLottieIconLayer, createLayoutObjectLayer, createLayoutContainerLayer, createDefaultChildOverride, uid } from '../core/factory';
 import { evaluateVec2, evaluateNumber, buildPhysicsEvaluator } from '../core/interpolation';
 import { generatePresetKeyframes, getPresetById, type PresetContext } from '../core/animationPresets';
 import { getDescendants } from '../core/sceneGraph';
+import { buildPrecompose } from '../core/precompose';
 import { createMotionPath } from './motionPath';
 import { useHistoryStore, type Command } from './history';
 import { mediaAssetManager } from '../engine/media/assetManager';
@@ -71,7 +72,18 @@ function defaultClipFrames(comp: Composition): number {
 export const DEFAULT_PROXY_SCALE = 0.25;
 
 interface EditorState {
+  /** The live, actively-edited composition (the mirror of the active registry entry). */
   composition: Composition;
+  /** Multi-composition document: resting state of all compositions (precomps + root).
+   *  The active entry may be stale — `composition` is authoritative for it; use
+   *  `getComposition()` which merges the two. */
+  compositions: Record<string, Composition>;
+  /** The top-level composition id (what a project opens to). */
+  rootCompositionId: string;
+  /** Which composition `composition` currently mirrors (root, or a precomp entered). */
+  activeCompositionId: string;
+  /** Breadcrumb of composition ids from root to the active one (precomp navigation). */
+  navStack: string[];
   currentFrame: number;
   isPlaying: boolean;
   selection: SelectionState;
@@ -102,6 +114,24 @@ interface EditorState {
   deselectAll: () => void;
   toggleGroupCollapsed: (groupId: string) => void;
   loadComposition: (comp: Composition) => void;
+
+  // Precomposition (multi-composition document)
+  /** Merge lookup: the live active comp for its id, else the registry entry. */
+  getComposition: (id: string) => Composition | undefined;
+  /** Enter a sub-composition (precomp) for editing; pushes the breadcrumb. */
+  enterPrecomp: (compositionId: string) => void;
+  /** Go up one level in the breadcrumb. */
+  exitPrecomp: () => void;
+  /** Jump to a composition by breadcrumb index (0 = root). */
+  navigateToComposition: (index: number) => void;
+  /** Wrap the current selection into a new sub-composition (undoable). */
+  precomposeSelection: () => void;
+  /** Rename a composition in the registry (undoable). */
+  renameComposition: (id: string, name: string) => void;
+  /** The full multi-composition document (folds the live active comp into the registry). */
+  getDocument: () => SceneDocument;
+  /** Replace the whole document (multi-composition load); resets navigation to root. */
+  loadDocument: (doc: SceneDocument) => void;
 
   // Undoable actions
   addRectangle: () => void;
@@ -144,6 +174,11 @@ interface EditorState {
   removeLayer: (id: string) => void;
   removeLayers: (ids: string[]) => void;
   updateLayerProperty: (layerId: string, path: string, value: unknown) => void;
+  // Image effect-stack actions (see core/effects/effectRegistry). `type` is the
+  // frozen numeric effect id; upsert sets one param (creating the effect if
+  // absent), remove deletes the whole effect.
+  setLayerEffectParam: (layerId: string, type: number, paramIndex: number, value: number, defaults?: number[]) => void;
+  removeLayerEffect: (layerId: string, type: number) => void;
   setLayerParent: (childId: string, parentId: string | null) => void;
   addKeyframe: (layerId: string, propertyPath: string, frame: number, value: number | [number, number]) => void;
   applyAnimationPreset: (layerId: string, presetId: string) => void;
@@ -273,6 +308,8 @@ function layerTypeToTrackType(type: Layer['type']): TrackType {
     case 'animationItem': return 'animationItem';
     case 'fieldSampled': return 'fieldSampled';
     case 'lottieIcon': return 'lottieIcon';
+    case 'cloner': return 'cloner';
+    case 'precomp': return 'precomp';
     default: return 'mixed';
   }
 }
@@ -679,8 +716,14 @@ function scheduleAutoBake() {
   }, 300);
 }
 
+const _initialRoot = getDefaultComposition();
+
 export const useEditorStore = create<EditorState>((set, get) => ({
-  composition: getDefaultComposition(),
+  composition: _initialRoot,
+  compositions: { [_initialRoot.id]: _initialRoot },
+  rootCompositionId: _initialRoot.id,
+  activeCompositionId: _initialRoot.id,
+  navStack: [_initialRoot.id],
   currentFrame: 0,
   isPlaying: false,
   selection: { selectedIds: [], activeId: null, selectedKeyframes: [], selectedCurvePoints: [] },
@@ -843,6 +886,124 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     migrated = settleComposition(migrated);
     set({
       composition: migrated,
+      compositions: { [migrated.id]: migrated },
+      rootCompositionId: migrated.id,
+      activeCompositionId: migrated.id,
+      navStack: [migrated.id],
+      currentFrame: 0,
+      isPlaying: false,
+      selection: { selectedIds: [], activeId: null, selectedKeyframes: [], selectedCurvePoints: [] },
+      hoveredLayerId: null,
+      renamingLayerId: null,
+    });
+  },
+
+  getComposition: (id) => {
+    const { activeCompositionId, composition, compositions } = get();
+    return id === activeCompositionId ? composition : compositions[id];
+  },
+
+  enterPrecomp: (compositionId) => {
+    const { composition, compositions, activeCompositionId, navStack } = get();
+    if (compositionId === activeCompositionId) return;
+    const target = compositions[compositionId];
+    if (!target) return;
+    set({
+      // Fold the live active comp back into the registry, then swap.
+      compositions: { ...compositions, [activeCompositionId]: composition },
+      composition: target,
+      activeCompositionId: compositionId,
+      navStack: [...navStack, compositionId],
+      currentFrame: 0,
+      selection: { selectedIds: [], activeId: null, selectedKeyframes: [], selectedCurvePoints: [] },
+    });
+  },
+
+  exitPrecomp: () => {
+    const { navStack } = get();
+    if (navStack.length <= 1) return;
+    get().navigateToComposition(navStack.length - 2);
+  },
+
+  navigateToComposition: (index) => {
+    const { composition, compositions, activeCompositionId, navStack } = get();
+    if (index < 0 || index >= navStack.length) return;
+    const targetId = navStack[index];
+    if (targetId === activeCompositionId) return;
+    const folded = { ...compositions, [activeCompositionId]: composition };
+    const target = folded[targetId];
+    if (!target) return;
+    set({
+      compositions: folded,
+      composition: target,
+      activeCompositionId: targetId,
+      navStack: navStack.slice(0, index + 1),
+      currentFrame: 0,
+      selection: { selectedIds: [], activeId: null, selectedKeyframes: [], selectedCurvePoints: [] },
+    });
+  },
+
+  precomposeSelection: () => {
+    const { composition, compositions, selection } = get();
+    const built = buildPrecompose(composition, selection.selectedIds, `Precomp ${Object.keys(compositions).length}`);
+    if (!built) return;
+    const oldComp = composition;
+    const oldSel = selection;
+    const oldRegistry = compositions;
+    // Give the sub-comp's layers tracks + settle both comps (reuse store helpers).
+    let sub = built.subComposition;
+    for (const l of built.subComposition.layers) sub = ensureLayerHasTrack(sub, l);
+    sub = settleComposition(sub);
+    const newComp = settleComposition(ensureLayerHasTrack({ ...composition, layers: built.parentLayers }, built.precompLayer));
+    const newRegistry = { ...compositions, [sub.id]: sub };
+    const newSel: SelectionState = sel([built.precompLayer.id], built.precompLayer.id);
+    exec({
+      label: 'Precompose',
+      execute: () => { set({ composition: newComp, compositions: newRegistry, selection: newSel }); },
+      undo: () => { set({ composition: oldComp, compositions: oldRegistry, selection: oldSel }); },
+    });
+  },
+
+  renameComposition: (id, name) => {
+    const { composition, compositions, activeCompositionId } = get();
+    const isActive = id === activeCompositionId;
+    const current = isActive ? composition : compositions[id];
+    if (!current) return;
+    const oldComp = composition;
+    const oldRegistry = compositions;
+    const renamed = { ...current, name };
+    const newComp = isActive ? renamed : composition;
+    const newRegistry = { ...compositions, [id]: renamed };
+    exec({
+      label: 'Rename Composition',
+      execute: () => { set({ composition: newComp, compositions: newRegistry }); },
+      undo: () => { set({ composition: oldComp, compositions: oldRegistry }); },
+    });
+  },
+
+  getDocument: () => {
+    const { compositions, activeCompositionId, composition, rootCompositionId } = get();
+    // Fold the live active comp into the registry so the document is complete.
+    return { version: 2, rootCompositionId, compositions: { ...compositions, [activeCompositionId]: composition } };
+  },
+
+  loadDocument: (doc) => {
+    useHistoryStore.getState().clear();
+    const compositions: Record<string, Composition> = {};
+    for (const id of Object.keys(doc.compositions)) {
+      let c: Composition = { ...doc.compositions[id], tracks: doc.compositions[id].tracks ?? [] };
+      for (const layer of c.layers) if (!layer.trackId) c = ensureLayerHasTrack(c, layer);
+      compositions[id] = settleComposition(c);
+    }
+    const ids = Object.keys(compositions);
+    if (ids.length === 0) return;
+    const rootId = doc.rootCompositionId && compositions[doc.rootCompositionId] ? doc.rootCompositionId : ids[0];
+    set({
+      compositions,
+      composition: compositions[rootId],
+      rootCompositionId: rootId,
+      activeCompositionId: rootId,
+      navStack: [rootId],
       currentFrame: 0,
       isPlaying: false,
       selection: { selectedIds: [], activeId: null, selectedKeyframes: [], selectedCurvePoints: [] },
@@ -1884,6 +2045,58 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
     exec({
       label: 'Update Property',
+      execute: () => { set({ composition: newComp }); },
+      undo: () => { set({ composition: oldComp }); },
+    });
+  },
+
+  setLayerEffectParam: (layerId, type, paramIndex, value, defaults = []) => {
+    const applyToLayer = (layer: Layer): Layer => {
+      if (layer.type !== 'image') return layer;
+      const effects = layer.effects ? layer.effects.slice() : [];
+      const idx = effects.findIndex((e) => e.type === type);
+      const params = idx >= 0 ? effects[idx].params.slice() : defaults.slice();
+      while (params.length <= paramIndex) params.push(0);
+      params[paramIndex] = value;
+      if (idx >= 0) {
+        effects[idx] = { ...effects[idx], params };
+      } else {
+        effects.push({ type, enabled: true, params });
+      }
+      return { ...layer, effects };
+    };
+
+    const { composition } = get();
+    const history = useHistoryStore.getState();
+    if (history.isUndoing || history.isBatching) {
+      set({ composition: { ...composition, layers: composition.layers.map((l) => (l.id === layerId ? applyToLayer(l) : l)) } });
+      return;
+    }
+    const layer = composition.layers.find((l) => l.id === layerId);
+    if (!layer || layer.type !== 'image') return;
+    const oldComp = composition;
+    const newComp = { ...composition, layers: composition.layers.map((l) => (l.id === layerId ? applyToLayer(l) : l)) };
+    exec({
+      label: 'Adjust Filter',
+      execute: () => { set({ composition: newComp }); },
+      undo: () => { set({ composition: oldComp }); },
+    });
+  },
+
+  removeLayerEffect: (layerId, type) => {
+    const { composition } = get();
+    const layer = composition.layers.find((l) => l.id === layerId);
+    if (!layer || layer.type !== 'image' || !layer.effects?.some((e) => e.type === type)) return;
+    const oldComp = composition;
+    const newComp = {
+      ...composition,
+      layers: composition.layers.map((l) => {
+        if (l.id !== layerId || l.type !== 'image') return l;
+        return { ...l, effects: (l.effects ?? []).filter((e) => e.type !== type) };
+      }),
+    };
+    exec({
+      label: 'Remove Filter',
       execute: () => { set({ composition: newComp }); },
       undo: () => { set({ composition: oldComp }); },
     });
@@ -3545,18 +3758,29 @@ function deepGet(obj: unknown, path: string): unknown {
   return current;
 }
 
+// Immutable set at `key` on either an object or an array. Arrays MUST be cloned
+// via slice() with a numeric index — spreading an array into `{...arr}` would
+// corrupt it into an index-keyed object (breaks `effects.0.params.1` paths).
+function cloneWith(container: unknown, key: string, value: unknown): unknown {
+  if (Array.isArray(container)) {
+    const arr = container.slice();
+    arr[Number(key)] = value;
+    return arr;
+  }
+  return { ...(container as Record<string, unknown>), [key]: value };
+}
+
 function deepSet(obj: unknown, path: string, value: unknown): unknown {
   const keys = path.split('.');
   if (keys.length === 0) return value;
-  if (keys.length === 1) {
-    return { ...(obj as Record<string, unknown>), [keys[0]]: value };
-  }
   const [head, ...rest] = keys;
-  const current = obj as Record<string, unknown>;
-  return {
-    ...current,
-    [head]: deepSet(current[head], rest.join('.'), value),
-  };
+  if (rest.length === 0) {
+    return cloneWith(obj, head, value);
+  }
+  const child = Array.isArray(obj)
+    ? (obj as unknown[])[Number(head)]
+    : (obj as Record<string, unknown>)[head];
+  return cloneWith(obj, head, deepSet(child, rest.join('.'), value));
 }
 
 // ─── Vector path geometry helpers ───

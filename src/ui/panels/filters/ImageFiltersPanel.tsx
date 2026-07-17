@@ -3,6 +3,8 @@ import { ChevronRight, Search, RotateCcw, Upload } from 'lucide-react';
 import { FILTER_CATEGORIES, type FilterDef, type FilterCategory } from './filterDefinitions';
 import type { ImageLayer } from '../../../core/types';
 import { useEditorStore } from '../../../store/editor';
+import { getEffectDef, isLegacyFilter } from '../../../core/effects/effectRegistry';
+import { isWireFilter, buildWire, readWireValue } from '../../../core/effects/wireEffects';
 
 interface FilterValues {
   [filterId: string]: number | string;
@@ -10,8 +12,13 @@ interface FilterValues {
 
 export function ImageFiltersPanel({ layer }: { layer: ImageLayer }) {
   const updateLayerProperty = useEditorStore((s) => s.updateLayerProperty);
+  const setLayerEffectParam = useEditorStore((s) => s.setLayerEffectParam);
+  const removeLayerEffect = useEditorStore((s) => s.removeLayerEffect);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set(['essentials']));
   const [searchQuery, setSearchQuery] = useState('');
+  // Local state is only used for filters that are not yet implemented (no
+  // registry entry) so their sliders still respond; implemented filters read
+  // their value straight from the layer (the source of truth).
   const [filterValues, setFilterValues] = useState<FilterValues>({});
 
   const toggleCategory = useCallback((categoryId: string) => {
@@ -27,37 +34,61 @@ export function ImageFiltersPanel({ layer }: { layer: ImageLayer }) {
   }, []);
 
   const handleFilterChange = useCallback((filterId: string, value: number) => {
-    setFilterValues((prev) => ({ ...prev, [filterId]: value }));
-
-    const knownFilters = ['brightness', 'contrast', 'saturation', 'exposure', 'gamma'];
-    if (knownFilters.includes(filterId)) {
+    if (isLegacyFilter(filterId)) {
       updateLayerProperty(layer.id, `filters.${filterId}`, value);
+      return;
     }
-  }, [layer.id, updateLayerProperty]);
+    // "Wire" filters (blur/glow) drive the layer's LayerBlur/LayerGlow property
+    // (and the renderer's real RTT passes), not the effect stack.
+    if (isWireFilter(filterId)) {
+      const w = buildWire(filterId, value);
+      if (w) updateLayerProperty(layer.id, w.path, w.value);
+      return;
+    }
+    const def = getEffectDef(filterId);
+    if (def) {
+      setLayerEffectParam(layer.id, def.type, 0, value, def.defaults);
+      return;
+    }
+    // Not implemented yet — keep local UI state so the slider still moves.
+    setFilterValues((prev) => ({ ...prev, [filterId]: value }));
+  }, [layer.id, updateLayerProperty, setLayerEffectParam]);
 
   const handleResetFilter = useCallback((filter: FilterDef) => {
     const defaultVal = filter.defaultValue ?? 0;
-    setFilterValues((prev) => ({ ...prev, [filter.id]: defaultVal }));
-
-    const knownFilters = ['brightness', 'contrast', 'saturation', 'exposure', 'gamma'];
-    if (knownFilters.includes(filter.id)) {
+    if (isLegacyFilter(filter.id)) {
       updateLayerProperty(layer.id, `filters.${filter.id}`, defaultVal);
+      return;
     }
-  }, [layer.id, updateLayerProperty]);
+    if (isWireFilter(filter.id)) {
+      // value 0 → disabled LayerBlur/LayerGlow (renderer skips it).
+      const w = buildWire(filter.id, 0);
+      if (w) updateLayerProperty(layer.id, w.path, w.value);
+      return;
+    }
+    const def = getEffectDef(filter.id);
+    if (def) {
+      removeLayerEffect(layer.id, def.type);
+      return;
+    }
+    setFilterValues((prev) => ({ ...prev, [filter.id]: defaultVal }));
+  }, [layer.id, updateLayerProperty, removeLayerEffect]);
 
   const getFilterValue = useCallback((filter: FilterDef): number => {
+    if (isLegacyFilter(filter.id)) {
+      return (layer.filters as unknown as Record<string, number>)[filter.id] ?? filter.defaultValue ?? 0;
+    }
+    if (isWireFilter(filter.id)) {
+      return readWireValue(filter.id, layer);
+    }
+    const def = getEffectDef(filter.id);
+    if (def) {
+      const e = layer.effects?.find((x) => x.type === def.type);
+      return e ? (e.params[0] ?? filter.defaultValue ?? 0) : (filter.defaultValue ?? 0);
+    }
     if (filterValues[filter.id] !== undefined) return filterValues[filter.id] as number;
-
-    const knownFilters: Record<string, number> = {
-      brightness: layer.filters.brightness,
-      contrast: layer.filters.contrast,
-      saturation: layer.filters.saturation,
-      exposure: layer.filters.exposure,
-      gamma: layer.filters.gamma,
-    };
-    if (filter.id in knownFilters) return knownFilters[filter.id];
     return filter.defaultValue ?? 0;
-  }, [filterValues, layer.filters]);
+  }, [filterValues, layer.filters, layer.effects, layer.blur, layer.glow]);
 
   const filteredCategories = searchQuery.trim()
     ? FILTER_CATEGORIES.map((cat) => ({
@@ -68,17 +99,8 @@ export function ImageFiltersPanel({ layer }: { layer: ImageLayer }) {
       })).filter((cat) => cat.filters.length > 0)
     : FILTER_CATEGORIES;
 
-  const activeFilterCount = Object.entries(filterValues).filter(([id, val]) => {
-    const filter = FILTER_CATEGORIES.flatMap((c) => c.filters).find((f) => f.id === id);
-    if (!filter) return false;
-    return val !== (filter.defaultValue ?? 0);
-  }).length;
-
-  const knownActive = (['brightness', 'contrast', 'saturation', 'exposure'] as const)
-    .filter((k) => layer.filters[k] !== 0).length
-    + (layer.filters.gamma !== 1 ? 1 : 0);
-
-  const totalActive = activeFilterCount + knownActive;
+  const totalActive = FILTER_CATEGORIES.flatMap((c) => c.filters)
+    .filter((f) => getFilterValue(f) !== (f.defaultValue ?? 0)).length;
 
   return (
     <div className="flex flex-col h-full min-h-0">

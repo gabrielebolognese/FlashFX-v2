@@ -419,19 +419,32 @@ class StreamingDemuxer {
 // ---------------------------------------------------------------------------
 
 interface PendingDecode {
+  requestId: number;
   frameIndex: number;
   resolve: (frame: VideoFrame) => void;
   reject: (err: Error) => void;
   cancelled: boolean;
+  /** True once resolved/rejected — guards double-settle and skips redundant passes. */
+  settled: boolean;
 }
 
 class VideoDecoderController {
   private decoder: VideoDecoder | null = null;
   private demuxer: StreamingDemuxer;
   private assetId: string;
+  /**
+   * Keyed by requestId, NOT frameIndex: two concurrent requests for the same
+   * frame would otherwise clobber each other's entry, leaving the first promise
+   * unresolved forever (and its scheduler slot stuck 'in-flight').
+   */
   private pendingDecodes = new Map<number, PendingDecode>();
-  private lastKeyframeFed = -1;
-  private lastFrameFed = -1;
+  private nextRequestId = 1;
+  /**
+   * Serializes decode passes. A VideoDecoder is a single pipeline: concurrent
+   * passes would interleave flush()/reset() and the shared feed position, so one
+   * pass could reset the decoder while another was mid-feed.
+   */
+  private decodeChain: Promise<void> = Promise.resolve();
   private configured = false;
 
   constructor(demuxer: StreamingDemuxer, assetId: string) {
@@ -455,139 +468,173 @@ class VideoDecoderController {
 
     this.decoder.configure(config);
     this.configured = true;
-    this.lastKeyframeFed = -1;
-    this.lastFrameFed = -1;
   }
 
-  async decodeFrame(frameIndex: number): Promise<VideoFrame> {
-    if (!this.decoder || !this.configured) {
-      await this.configure();
+  /** Resolve/reject a pending exactly once and drop it from the map. */
+  private settle(pending: PendingDecode, action: () => void): void {
+    if (pending.settled) return;
+    pending.settled = true;
+    this.pendingDecodes.delete(pending.requestId);
+    action();
+  }
+
+  decodeFrame(frameIndex: number): Promise<VideoFrame> {
+    const requestId = this.nextRequestId++;
+    let resolve!: (frame: VideoFrame) => void;
+    let reject!: (err: Error) => void;
+    const promise = new Promise<VideoFrame>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+
+    const pending: PendingDecode = {
+      requestId,
+      frameIndex,
+      resolve,
+      reject,
+      cancelled: false,
+      settled: false,
+    };
+    // Register before queuing so cancelFrame() can mark a request that hasn't
+    // started its pass yet.
+    this.pendingDecodes.set(requestId, pending);
+
+    // Queue the pass behind any in-flight one. The .catch keeps the chain alive:
+    // a rejected link would otherwise skip every subsequent pass.
+    this.decodeChain = this.decodeChain.then(() => this.runDecodePass(pending)).catch(() => {});
+    return promise;
+  }
+
+  /**
+   * Extend a pass to cover every queued request sharing this GOP. flush() forces
+   * a keyframe restart, so decoding one frame per pass would re-decode the GOP
+   * from its keyframe every time. Feeding through to the furthest pending frame
+   * lets a single pass emit them all (onFrame resolves each), and those queued
+   * passes then short-circuit on `settled`.
+   */
+  private maxPendingInGop(frameIndex: number, nearestKf: number): number {
+    let feedEnd = frameIndex;
+    for (const p of this.pendingDecodes.values()) {
+      if (p.settled || p.cancelled || p.frameIndex <= feedEnd) continue;
+      if (this.demuxer.getNearestKeyframeBefore(this.assetId, p.frameIndex) !== nearestKf) continue;
+      feedEnd = p.frameIndex;
+    }
+    return feedEnd;
+  }
+
+  private async runDecodePass(pending: PendingDecode): Promise<void> {
+    // An earlier pass in this burst may have already emitted this frame.
+    if (pending.settled) return;
+    if (pending.cancelled) {
+      this.settle(pending, () => pending.reject(new Error('Decode cancelled')));
+      return;
     }
 
-    return new Promise<VideoFrame>(async (resolve, reject) => {
-      const pending: PendingDecode = { frameIndex, resolve, reject, cancelled: false };
-      this.pendingDecodes.set(frameIndex, pending);
+    try {
+      if (!this.decoder || !this.configured) {
+        await this.configure();
+      }
+      const decoder = this.decoder;
+      if (!decoder) throw new Error('Decoder unavailable');
 
-      try {
-        const nearestKf = this.demuxer.getNearestKeyframeBefore(this.assetId, frameIndex);
-        let feedStart: number;
+      const frameIndex = pending.frameIndex;
+      const nearestKf = this.demuxer.getNearestKeyframeBefore(this.assetId, frameIndex);
+      const feedEnd = this.maxPendingInGop(frameIndex, nearestKf);
 
-        if (this.lastKeyframeFed === nearestKf && this.lastFrameFed >= nearestKf && this.lastFrameFed < frameIndex) {
-          feedStart = this.lastFrameFed + 1;
-        } else if (this.lastKeyframeFed !== nearestKf || this.lastFrameFed < nearestKf) {
-          await this.flush();
-          feedStart = nearestKf;
-          this.lastKeyframeFed = nearestKf;
-        } else {
-          feedStart = nearestKf;
-          this.lastKeyframeFed = nearestKf;
-        }
+      // ALWAYS feed from the nearest keyframe. Every pass ends with flush() to
+      // force the target frame out of the pipeline, and per the WebCodecs spec
+      // flush() sets [[key chunk required]] — so resuming mid-GOP with a delta
+      // chunk throws DataError. (The old code did exactly that, which meant only
+      // keyframes ever decoded.)
+      const samples = this.demuxer.getSamplesInRange(this.assetId, nearestKf, feedEnd);
+      if (samples.length === 0) {
+        this.settle(pending, () => pending.reject(new Error(`No samples found for frame ${frameIndex}`)));
+        return;
+      }
 
-        const samples = this.demuxer.getSamplesInRange(this.assetId, feedStart, frameIndex);
-        if (samples.length === 0) {
-          this.pendingDecodes.delete(frameIndex);
-          reject(new Error(`No samples found for frame ${frameIndex}`));
+      const dataBuffers = await this.demuxer.fetchSampleData(this.assetId, samples);
+      const timescale = this.demuxer.getTimescale(this.assetId);
+
+      for (let i = 0; i < samples.length; i++) {
+        if (pending.cancelled) {
+          this.settle(pending, () => pending.reject(new Error('Decode cancelled')));
           return;
         }
 
-        const dataBuffers = await this.demuxer.fetchSampleData(this.assetId, samples);
-        const timescale = this.demuxer.getTimescale(this.assetId);
-
-        for (let i = 0; i < samples.length; i++) {
-          if (pending.cancelled) {
-            this.pendingDecodes.delete(frameIndex);
-            reject(new Error('Decode cancelled'));
-            return;
-          }
-
-          const sample = samples[i];
-          const data = dataBuffers[i];
-          const timestamp = Math.round((sample.cts / timescale) * 1_000_000);
-          const duration = Math.round((sample.duration / timescale) * 1_000_000);
-
-          const chunk = new EncodedVideoChunk({
-            type: sample.is_sync ? 'key' : 'delta',
-            timestamp,
-            duration,
-            data,
-          });
-
-          this.decoder!.decode(chunk);
-          this.lastFrameFed = feedStart + i;
-        }
-
-        await this.decoder!.flush();
-      } catch (err) {
-        if (this.pendingDecodes.has(frameIndex)) {
-          this.pendingDecodes.delete(frameIndex);
-          reject(err instanceof Error ? err : new Error(String(err)));
-        }
+        const sample = samples[i];
+        const chunk = new EncodedVideoChunk({
+          type: sample.is_sync ? 'key' : 'delta',
+          timestamp: Math.round((sample.cts / timescale) * 1_000_000),
+          duration: Math.round((sample.duration / timescale) * 1_000_000),
+          data: dataBuffers[i],
+        });
+        decoder.decode(chunk);
       }
-    });
+
+      // Drain the pipeline: emits every frame fed above. onFrame resolves this
+      // pass's pending plus any other queued pendings in the same range.
+      await decoder.flush();
+
+      if (!pending.settled) {
+        this.settle(pending, () => pending.reject(new Error(`Frame ${frameIndex} not emitted by decoder`)));
+      }
+    } catch (err) {
+      this.settle(pending, () => pending.reject(err instanceof Error ? err : new Error(String(err))));
+    }
   }
 
   private onFrame(frame: VideoFrame): void {
     const timescale = this.demuxer.getTimescale(this.assetId);
-    const samples = this.demuxer.getSamplesInRange(this.assetId, 0, Infinity as any);
-
-    let matchedIndex = -1;
     const frameTimestamp = frame.timestamp;
 
-    for (const [idx, pending] of this.pendingDecodes) {
-      const sample = this.demuxer.getSampleForFrame(this.assetId, idx);
-      if (sample) {
-        const sampleTimestamp = Math.round((sample.cts / timescale) * 1_000_000);
-        if (Math.abs(frameTimestamp - sampleTimestamp) < 1000) {
-          matchedIndex = idx;
-          break;
-        }
+    let matched: PendingDecode | null = null;
+    for (const pending of this.pendingDecodes.values()) {
+      if (pending.settled) continue;
+      const sample = this.demuxer.getSampleForFrame(this.assetId, pending.frameIndex);
+      if (!sample) continue;
+      const sampleTimestamp = Math.round((sample.cts / timescale) * 1_000_000);
+      if (Math.abs(frameTimestamp - sampleTimestamp) < 1000) {
+        matched = pending;
+        break;
       }
     }
 
-    if (matchedIndex >= 0) {
-      const pending = this.pendingDecodes.get(matchedIndex)!;
-      this.pendingDecodes.delete(matchedIndex);
-      if (pending.cancelled) {
-        frame.close();
-      } else {
-        pending.resolve(frame);
-      }
-    } else {
+    if (!matched) {
       frame.close();
+      return;
     }
+    if (matched.cancelled) {
+      const m = matched;
+      this.settle(m, () => m.reject(new Error('Decode cancelled')));
+      frame.close();
+      return;
+    }
+    const m = matched;
+    this.settle(m, () => m.resolve(frame));
   }
 
   private onError(err: DOMException): void {
     this.configured = false;
-    for (const [, pending] of this.pendingDecodes) {
-      pending.reject(new Error(`Decoder error: ${err.message}`));
+    for (const pending of [...this.pendingDecodes.values()]) {
+      this.settle(pending, () => pending.reject(new Error(`Decoder error: ${err.message}`)));
     }
     this.pendingDecodes.clear();
   }
 
-  private async flush(): Promise<void> {
-    if (this.decoder && this.decoder.state !== 'closed') {
-      try {
-        await this.decoder.flush();
-      } catch {}
-      await this.decoder.reset();
-      const config = this.demuxer.getCodecConfig(this.assetId);
-      if (config) this.decoder.configure(config);
-    }
-  }
-
   cancelFrame(frameIndex: number): boolean {
-    const pending = this.pendingDecodes.get(frameIndex);
-    if (pending) {
-      pending.cancelled = true;
-      return true;
+    let found = false;
+    for (const pending of this.pendingDecodes.values()) {
+      if (pending.frameIndex === frameIndex && !pending.settled) {
+        pending.cancelled = true;
+        found = true;
+      }
     }
-    return false;
+    return found;
   }
 
   async reset(): Promise<void> {
-    for (const [, pending] of this.pendingDecodes) {
-      pending.reject(new Error('Decoder reset'));
+    for (const pending of [...this.pendingDecodes.values()]) {
+      this.settle(pending, () => pending.reject(new Error('Decoder reset')));
     }
     this.pendingDecodes.clear();
 
@@ -600,8 +647,6 @@ class VideoDecoderController {
 
     this.decoder = null;
     this.configured = false;
-    this.lastKeyframeFed = -1;
-    this.lastFrameFed = -1;
   }
 
   async destroy(): Promise<void> {

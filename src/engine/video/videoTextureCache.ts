@@ -17,11 +17,15 @@ class VideoTextureCache {
 
   /**
    * Upload a VideoFrame or ImageBitmap to the GPU texture for a layer.
-   * Closes the source after upload.
+   *
+   * Does NOT close the source: the frameScheduler owns every buffered frame and
+   * closes it on eviction/unregister. Closing here would detach a frame the
+   * scheduler still holds, so the next re-render of the same frame (e.g. paused
+   * on a frame) would call copyExternalImageToTexture on a detached frame and
+   * throw. The copy reads the source synchronously, so it stays valid.
    */
   uploadFrame(layerId: string, frameIndex: number, source: VideoFrame | ImageBitmap): void {
     if (!this.device) {
-      source.close();
       return;
     }
 
@@ -47,7 +51,6 @@ class VideoTextureCache {
 
     this.copyToTexture(record.texture, source, width, height);
     record.frameIndex = frameIndex;
-    source.close();
   }
 
   private copyToTexture(texture: GPUTexture, source: VideoFrame | ImageBitmap, width: number, height: number): void {

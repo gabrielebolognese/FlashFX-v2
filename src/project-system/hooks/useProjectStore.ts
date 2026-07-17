@@ -13,8 +13,9 @@ import {
   getProjectMetadata,
 } from '../services/projects';
 import { exportProjectToFile, importProjectFromFile } from '../services/ffx';
-import type { Composition } from '../../core/types';
+import type { Composition, SceneDocument } from '../../core/types';
 import { usePanelStore } from '../../store/panels';
+import { useEditorStore } from '../../store/editor';
 
 export type SortField = 'name' | 'modifiedAt' | 'createdAt';
 export type SortDirection = 'asc' | 'desc';
@@ -32,12 +33,12 @@ interface ProjectState {
   // Actions
   loadProjects: () => Promise<void>;
   createAndOpenProject: (options: CreateProjectOptions) => Promise<void>;
-  openProject: (id: string) => Promise<Composition | null>;
+  openProject: (id: string) => Promise<SceneDocument | null>;
   closeProject: () => void;
   deleteProject: (id: string) => Promise<void>;
   renameProject: (id: string, name: string) => Promise<void>;
   duplicateProject: (id: string) => Promise<void>;
-  saveCurrentProject: (composition: Composition) => Promise<void>;
+  saveCurrentProject: () => Promise<void>;
   savePreview: (blob: Blob) => Promise<void>;
   exportProject: (id: string, composition?: Composition) => Promise<void>;
   importProject: (file: File) => Promise<ProjectMetadata>;
@@ -71,21 +72,21 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   createAndOpenProject: async (options) => {
     const metadata = await createProject(options);
-    const composition = await loadProjectScene(metadata.id);
-    if (composition) {
+    const doc = await loadProjectScene(metadata.id);
+    if (doc) {
       usePanelStore.getState().setVideoFormat(metadata.videoFormat ?? 'long');
       set({ activeProjectId: metadata.id, view: 'editor' });
     }
   },
 
   openProject: async (id) => {
-    const composition = await loadProjectScene(id);
-    if (composition) {
+    const doc = await loadProjectScene(id);
+    if (doc) {
       const metadata = await getProjectMetadata(id);
       usePanelStore.getState().setVideoFormat(metadata?.videoFormat ?? 'long');
       set({ activeProjectId: id, view: 'editor' });
     }
-    return composition;
+    return doc;
   },
 
   closeProject: () => {
@@ -130,10 +131,11 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     }
   },
 
-  saveCurrentProject: async (composition) => {
+  saveCurrentProject: async () => {
     const { activeProjectId } = get();
     if (!activeProjectId) return;
-    await saveProjectScene(activeProjectId, composition);
+    // Persist the full multi-composition document (registry + root).
+    await saveProjectScene(activeProjectId, useEditorStore.getState().getDocument());
   },
 
   savePreview: async (blob) => {

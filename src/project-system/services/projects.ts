@@ -14,7 +14,8 @@ import {
   deleteAssetsByProject,
 } from '../storage/db';
 import type { ProjectScene, ProjectPreview } from '../types';
-import { serializeComposition, deserializeComposition } from './serialization';
+import { serializeDocument, deserializeDocument } from './serialization';
+import type { SceneDocument } from '../../core/types';
 import { createComposition, createDefaultBackground } from '../../core/factory';
 import type { Composition } from '../../core/types';
 import { videoAssetStore } from '../../engine/video/videoAssetStore';
@@ -52,7 +53,7 @@ export async function createProject(options: CreateProjectOptions): Promise<Proj
 
   const scene: ProjectScene = {
     id,
-    data: serializeComposition(composition),
+    data: serializeDocument({ version: 2, rootCompositionId: composition.id, compositions: { [composition.id]: composition } }),
   };
 
   const preview: ProjectPreview = {
@@ -75,16 +76,16 @@ export async function getProjectMetadata(id: string): Promise<ProjectMetadata | 
   return getMetadata(id);
 }
 
-export async function loadProjectScene(id: string): Promise<Composition | null> {
+export async function loadProjectScene(id: string): Promise<SceneDocument | null> {
   const scene = await getScene(id);
   if (!scene) return null;
-  return deserializeComposition(scene.data);
+  return deserializeDocument(scene.data);
 }
 
-export async function saveProjectScene(id: string, composition: Composition): Promise<void> {
+export async function saveProjectScene(id: string, document: SceneDocument): Promise<void> {
   const scene: ProjectScene = {
     id,
-    data: serializeComposition(composition),
+    data: serializeDocument(document),
   };
   await putScene(scene);
 

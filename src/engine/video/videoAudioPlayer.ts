@@ -113,6 +113,19 @@ class VideoAudioPlayer {
     }
   }
 
+  /**
+   * Pause a single asset's audio element. Used when a clip scrolls out of range:
+   * syncToPlayhead only self-pauses when targetTime leaves [0, duration], which a
+   * *trimmed* clip (outPoint before the source end) never does, so the caller
+   * must pause it explicitly.
+   */
+  pause(assetId: string): void {
+    const record = this.players.get(assetId);
+    if (record && !record.element.paused) {
+      record.element.pause();
+    }
+  }
+
   setMuted(assetId: string, muted: boolean): void {
     const record = this.players.get(assetId);
     if (!record) return;

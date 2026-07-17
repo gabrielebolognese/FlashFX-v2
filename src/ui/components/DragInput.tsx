@@ -1,5 +1,11 @@
 import { useCallback, useRef, useState, useEffect } from 'react';
 import { getSettingValue } from '../../settings/store';
+import { useEditorStore } from '../../store/editor';
+import { useHistoryStore } from '../../store/history';
+
+/** Derived from the store so this stays in step with it (SelectionState isn't exported). */
+type EditorState = ReturnType<typeof useEditorStore.getState>;
+type DragSnapshot = { comp: EditorState['composition']; sel: EditorState['selection'] };
 
 function getDragThreshold(): number {
   return getSettingValue<number>('editor.dragThreshold') ?? 3;
@@ -15,6 +21,8 @@ interface DragInputProps {
   precision?: number;
   suffix?: string;
   className?: string;
+  /** Undo-history label for the single entry a drag commits on release. */
+  commitLabel?: string;
 }
 
 export function DragInput({
@@ -27,6 +35,7 @@ export function DragInput({
   precision = 2,
   suffix,
   className = '',
+  commitLabel = 'Update Property',
 }: DragInputProps) {
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
@@ -62,6 +71,8 @@ export function DragInput({
     const startClientX = e.clientX;
     const target = e.currentTarget as HTMLElement;
     let activated = false;
+    // Snapshot taken at drag activation so the whole drag collapses to one entry.
+    let snapshot: DragSnapshot | null = null;
 
     dragState.current = {
       startX: e.clientX,
@@ -76,6 +87,12 @@ export function DragInput({
         setDragging(true);
         document.body.style.cursor = 'ew-resize';
         document.body.style.userSelect = 'none';
+        // Enter batching BEFORE the first onChange below: while isBatching, the
+        // store's undoable actions apply silently (live preview) without pushing
+        // a command, so a drag no longer emits one undo entry per pointermove.
+        const { composition, selection } = useEditorStore.getState();
+        snapshot = { comp: composition, sel: selection };
+        useHistoryStore.getState().setBatching(true);
         try {
           target.requestPointerLock();
         } catch { /* pointer lock may not be available */ }
@@ -97,6 +114,14 @@ export function DragInput({
         try {
           document.exitPointerLock();
         } catch { /* noop */ }
+        // Leave batching FIRST, then push exactly one entry for the whole drag.
+        // commitDrag no-ops when the composition is untouched (reference equality),
+        // so this stays safe for DragInputs bound to non-composition state.
+        useHistoryStore.getState().setBatching(false);
+        if (snapshot) {
+          useEditorStore.getState().commitDrag(commitLabel, snapshot.comp, snapshot.sel);
+          snapshot = null;
+        }
       } else {
         // No meaningful drag: treat as a click and switch to manual text entry.
         setEditing(true);
@@ -106,7 +131,7 @@ export function DragInput({
 
     document.addEventListener('pointermove', handlePointerMove);
     document.addEventListener('pointerup', handlePointerUp);
-  }, [editing, value, onChange, clampValue, getMultiplier, precision]);
+  }, [editing, value, onChange, clampValue, getMultiplier, precision, commitLabel]);
 
   const handleDoubleClick = useCallback((e: React.MouseEvent) => {
     e.preventDefault();

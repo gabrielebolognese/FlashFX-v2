@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { ChevronRight, ChevronDown, Folder, Type, Film, Image, GripVertical, Sparkles } from 'lucide-react';
+import { ChevronRight, ChevronDown, Folder, Type, Film, Image, GripVertical, Sparkles, Layers } from 'lucide-react';
 import type { Layer, GroupLayer, ShapeLayer } from '../../../core/types';
 import { useEditorStore } from '../../../store/editor';
 import { getDepth } from '../../../core/sceneGraph';
@@ -21,6 +21,7 @@ export function LayerRow({
   isDragging, isDragSource, dropIndicator, onDragStart,
 }: LayerRowProps) {
   const selectLayer = useEditorStore((s) => s.selectLayer);
+  const enterPrecomp = useEditorStore((s) => s.enterPrecomp);
   const toggleGroupCollapsed = useEditorStore((s) => s.toggleGroupCollapsed);
   const hoveredLayerId = useEditorStore((s) => s.hoveredLayerId);
   const setHoveredLayer = useEditorStore((s) => s.setHoveredLayer);
@@ -60,6 +61,10 @@ export function LayerRow({
           if (isDragging) return;
           const additive = e.shiftKey || e.ctrlKey || e.metaKey;
           selectLayer(layer.id, additive, 'timeline');
+        }}
+        onDoubleClick={() => {
+          // Double-click a precomp layer to open (edit) its sub-composition.
+          if (layer.type === 'precomp') enterPrecomp((layer as { compositionId: string }).compositionId);
         }}
         onPointerEnter={() => { if (!isDragging) setHoveredLayer(layer.id); }}
         onPointerLeave={() => { if (!isDragging) setHoveredLayer(null); }}
@@ -118,6 +123,8 @@ export function LayerRow({
             <Image size={10} className="text-emerald-400" />
           ) : layer.type === 'lottieIcon' ? (
             <Sparkles size={10} className="text-violet-400" />
+          ) : layer.type === 'precomp' ? (
+            <Layers size={10} className="text-amber-400" />
           ) : (
             <div
               className="w-[8px] h-[8px] rounded-sm flex-shrink-0"

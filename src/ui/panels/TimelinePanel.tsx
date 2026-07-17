@@ -10,6 +10,7 @@ import { Film, Scissors, ArrowLeftToLine, ArrowRightToLine, ArrowUpToLine, Arrow
 import type { Track } from '../../core/types';
 import { useContextMenu } from '../context-menu';
 import { buildTimelineEmptyMenu } from '../context-menu/menuDefinitions';
+import { CompositionBreadcrumb } from './CompositionBreadcrumb';
 
 const TOOL_SIDEBAR_WIDTH = 32;
 const LABEL_COLUMN_WIDTH = 360;
@@ -130,6 +131,10 @@ export function TimelinePanel() {
       onDragLeave={handleFileDragLeave}
       onDrop={handleFileDrop}
     >
+      {/* Precomp breadcrumb (renders nothing at the root composition). */}
+      <div className="absolute top-0 left-0 right-0 z-40">
+        <CompositionBreadcrumb />
+      </div>
       {fileDragOver && (
         <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none bg-[#0a1628]/80 backdrop-blur-sm border-2 border-dashed border-sky-400 rounded-lg m-2">
           <div className="flex flex-col items-center gap-3">

@@ -1,4 +1,4 @@
-import type { Composition, AudioLayer, VideoLayer } from '../../core/types';
+import type { Composition, AudioLayer } from '../../core/types';
 import { evaluateNumber } from '../../core/interpolation';
 import { mediaAssetManager } from './assetManager';
 import { videoAudioPlayer } from '../video/videoAudioPlayer';
@@ -28,6 +28,8 @@ class AudioPlaybackEngine {
   private gainNodes = new Map<string, GainNode>();
   private sourceNodes = new Map<string, AudioBufferSourceNode>();
   private activeKeys = new Set<string>();
+  /** Asset ids whose video audio is currently synced (played through videoAudioPlayer). */
+  private activeVideoAssets = new Set<string>();
   private isPlaying = false;
   private lastComposition: Composition | null = null;
   private lastFrame = 0;
@@ -122,7 +124,10 @@ class AudioPlaybackEngine {
     const tracks = composition.tracks || [];
     const mutedTrackIds = new Set(tracks.filter((t) => t.muted || !t.visible).map((t) => t.id));
 
-    // Determine which layers should be audible right now
+    // Determine which AUDIO layers should be audible right now. Video layers are
+    // handled separately (reconcileVideoAudio) because their audio plays through
+    // <video> elements that must be re-synced/re-muted every frame, not just at
+    // clip activation.
     const shouldBeActive = new Set<string>();
 
     for (const layer of composition.layers) {
@@ -132,20 +137,19 @@ class AudioPlaybackEngine {
 
       if (layer.type === 'audio' && !layer.audio.muted) {
         shouldBeActive.add(layerKey(layer));
-      } else if (layer.type === 'video' && !layer.video.muted) {
-        shouldBeActive.add(layerKey(layer));
       }
     }
 
-    // Stop sources for layers that are no longer active
+    // Stop sources for audio layers that are no longer active
     for (const key of this.activeKeys) {
       if (!shouldBeActive.has(key)) {
         this.stopSource(key);
       }
     }
 
-    // Start sources for newly-active layers
+    // Start sources for newly-active audio layers (one-shot AudioBufferSourceNodes)
     for (const layer of composition.layers) {
+      if (layer.type !== 'audio') continue;
       if (!layer.visible) continue;
       if (layer.trackId && mutedTrackIds.has(layer.trackId)) continue;
       if (currentFrame < layer.inPoint || currentFrame >= layer.outPoint) continue;
@@ -154,12 +158,61 @@ class AudioPlaybackEngine {
       if (!shouldBeActive.has(key)) continue;
       if (this.activeKeys.has(key)) continue; // Already playing
 
-      if (layer.type === 'audio') {
-        this.scheduleAudioLayer(layer, currentTime, currentFrame, frameRate, ctx);
-      } else if (layer.type === 'video') {
-        this.scheduleVideoLayer(layer, currentTime, currentFrame, frameRate, ctx);
+      this.scheduleAudioLayer(layer, currentTime, currentFrame, frameRate, ctx);
+    }
+
+    // Reconcile video audio every frame (drift correction + live mute + pause
+    // clips that left range).
+    this.reconcileVideoAudio(composition, currentFrame, frameRate, mutedTrackIds);
+  }
+
+  /**
+   * Reconcile video-layer audio every frame. Unlike `audio` layers (one-shot
+   * AudioBufferSourceNodes started once), video audio plays through <video>
+   * elements managed by videoAudioPlayer and must be re-synced to the playhead
+   * each frame (drift correction), re-muted when the mute flag toggles mid-play,
+   * and paused when a clip scrolls out of range. The old code only touched video
+   * at clip activation, so video audio drifted, ignored live mute toggles, and
+   * kept playing after a trimmed clip ended.
+   */
+  private reconcileVideoAudio(
+    composition: Composition,
+    currentFrame: number,
+    frameRate: number,
+    mutedTrackIds: Set<string>
+  ): void {
+    const currentTime = currentFrame / frameRate;
+    const stillActive = new Set<string>();
+
+    for (const layer of composition.layers) {
+      if (layer.type !== 'video') continue;
+      if (!layer.visible) continue;
+      if (layer.trackId && mutedTrackIds.has(layer.trackId)) continue;
+      if (currentFrame < layer.inPoint || currentFrame >= layer.outPoint) continue;
+
+      const assetId = layer.video.assetId;
+      const layerStartTimeSec = layer.inPoint / frameRate;
+      const sourceStartOffsetSec = (layer.video.startOffset ?? 0) / layer.video.sourceFrameRate;
+
+      videoAudioPlayer.syncToPlayhead(
+        assetId,
+        currentTime,
+        this.isPlaying,
+        layer.video.playbackRate,
+        layerStartTimeSec,
+        sourceStartOffsetSec
+      );
+      videoAudioPlayer.setMuted(assetId, layer.video.muted);
+      stillActive.add(assetId);
+    }
+
+    // Pause assets whose clips left range (or whose track was muted/hidden).
+    for (const assetId of this.activeVideoAssets) {
+      if (!stillActive.has(assetId)) {
+        videoAudioPlayer.pause(assetId);
       }
     }
+    this.activeVideoAssets = stillActive;
   }
 
   private scheduleAudioLayer(
@@ -211,31 +264,6 @@ class AudioPlaybackEngine {
     this.activeKeys.add(key);
   }
 
-  private scheduleVideoLayer(
-    layer: VideoLayer,
-    currentTime: number,
-    _currentFrame: number,
-    frameRate: number,
-    _ctx: AudioContext
-  ): void {
-    const assetId = layer.video.assetId;
-    const layerStartTimeSec = layer.inPoint / frameRate;
-    const sourceStartOffsetSec = (layer.video.startOffset ?? 0) / layer.video.sourceFrameRate;
-    const playbackRate = layer.video.playbackRate;
-
-    videoAudioPlayer.syncToPlayhead(
-      assetId,
-      currentTime,
-      true,
-      playbackRate,
-      layerStartTimeSec,
-      sourceStartOffsetSec
-    );
-    videoAudioPlayer.setMuted(assetId, layer.video.muted);
-
-    this.activeKeys.add(layerKey(layer));
-  }
-
   private stopSource(key: string): void {
     const source = this.sourceNodes.get(key);
     if (source) {
@@ -271,26 +299,18 @@ class AudioPlaybackEngine {
     const now = this.context.currentTime;
 
     for (const layer of composition.layers) {
-      if (layer.type === 'audio') {
-        const key = layerKey(layer);
-        const gain = this.gainNodes.get(key);
-        if (!gain) continue;
-        if (layer.audio.muted) {
-          gain.gain.setTargetAtTime(0, now, 0.02);
-          continue;
-        }
-        const volume = evaluateNumber(layer.audio.volume, currentFrame);
-        gain.gain.setTargetAtTime(Math.max(0, Math.min(2, volume)), now, 0.02);
-      } else if (layer.type === 'video') {
-        const key = layerKey(layer);
-        const gain = this.gainNodes.get(key);
-        if (!gain) continue;
-        if (layer.video.muted) {
-          gain.gain.setTargetAtTime(0, now, 0.02);
-        } else {
-          gain.gain.setTargetAtTime(1.0, now, 0.02);
-        }
+      // Video volume/mute is applied in reconcileVideoAudio via videoAudioPlayer
+      // (its gain lives on the <video> element's node, not in this.gainNodes).
+      if (layer.type !== 'audio') continue;
+      const key = layerKey(layer);
+      const gain = this.gainNodes.get(key);
+      if (!gain) continue;
+      if (layer.audio.muted) {
+        gain.gain.setTargetAtTime(0, now, 0.02);
+        continue;
       }
+      const volume = evaluateNumber(layer.audio.volume, currentFrame);
+      gain.gain.setTargetAtTime(Math.max(0, Math.min(2, volume)), now, 0.02);
     }
   }
 
@@ -314,9 +334,15 @@ class AudioPlaybackEngine {
     for (const gain of this.gainNodes.values()) {
       try { gain.disconnect(); } catch {}
     }
+    // Pause video audio too: it plays through <video> elements that stopping the
+    // buffer sources doesn't touch, so without this it kept playing after pause.
+    for (const assetId of this.activeVideoAssets) {
+      videoAudioPlayer.pause(assetId);
+    }
     this.sourceNodes.clear();
     this.gainNodes.clear();
     this.activeKeys.clear();
+    this.activeVideoAssets.clear();
   }
 
   getDiagnostics(): AudioDiagnostics {

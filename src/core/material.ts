@@ -1,11 +1,15 @@
 import type {
   MaterialFillLayer,
   MaterialColorStop,
+  MaterialBlendMode,
   MaterialLinearDirection,
   MaterialRadialType,
   ShapeMaterialConfig,
   ShapePatternConfig,
   ShapePatternType,
+  ResolvedFill,
+  ResolvedFillLayer,
+  ResolvedPattern,
   Vec4,
 } from './types';
 
@@ -162,6 +166,108 @@ export function resolveDominantColor(config: ShapeMaterialConfig | undefined, fa
   const sorted = [...firstLayer.colorStops].sort((a, b) => a.position - b.position);
   const first = sorted[0];
   return hexToVec4(first.color, (first.opacity / 100) * (firstLayer.opacity / 100));
+}
+
+// GPU fill limits. The shader reserves fixed array slots per shape, so these
+// must stay in sync with the WGSL constants in renderer.ts (FILL_MAX_LAYERS,
+// FILL_MAX_STOPS). 8 layers matches the material model's MAX_LAYERS; 8 stops
+// covers virtually all real gradients (extra stops are clamped).
+export const FILL_MAX_LAYERS = 8;
+export const FILL_MAX_STOPS = 8;
+
+// Must match MaterialBlendMode order and the blend switch in the shader.
+const BLEND_MODE_INDEX: Record<MaterialBlendMode, number> = {
+  normal: 0, multiply: 1, screen: 2, overlay: 3, darken: 4, lighten: 5,
+  'color-dodge': 6, 'color-burn': 7, 'hard-light': 8, 'soft-light': 9,
+  difference: 10, exclusion: 11,
+};
+
+function clamp01(v: number): number {
+  return v < 0 ? 0 : v > 1 ? 1 : v;
+}
+
+function radialCenter(radialType?: MaterialRadialType): [number, number] {
+  switch (radialType) {
+    case 'top-left': return [0, 0];
+    case 'top-right': return [1, 0];
+    case 'bottom-left': return [0, 1];
+    case 'bottom-right': return [1, 1];
+    case 'center':
+    default: return [0.5, 0.5];
+  }
+}
+
+// Flatten a ShapeMaterialConfig into a GPU-ready ResolvedFill. Disabled/empty
+// configs (or configs whose layers are all invisible) collapse to a solid fill
+// using `fallback`, so the shader always has a valid color.
+export function resolveShapeFill(config: ShapeMaterialConfig | undefined, fallback: Vec4): ResolvedFill {
+  if (!config || !config.enabled || config.layers.length === 0) {
+    return { kind: 0, color: fallback, layers: [] };
+  }
+
+  const layers: ResolvedFillLayer[] = [];
+  for (const layer of config.layers) {
+    if (layers.length >= FILL_MAX_LAYERS) break;
+    const layerOpacity = clamp01(layer.opacity / 100);
+    if (layerOpacity <= 0) continue;
+
+    const sorted = [...layer.colorStops]
+      .sort((a, b) => a.position - b.position)
+      .slice(0, FILL_MAX_STOPS);
+    if (sorted.length === 0) continue;
+
+    const stops = sorted.map((s) => ({
+      // Fold both the stop opacity and the layer opacity into alpha so the
+      // shader composites each layer as a straight-alpha source.
+      color: hexToVec4(s.color, clamp01(s.opacity / 100) * layerOpacity),
+      position: clamp01(s.position / 100),
+    }));
+
+    const angleDeg = layer.type === 'linear'
+      ? (layer.angle ?? (layer.direction ? getLinearAngle(layer.direction) : 180))
+      : 0;
+    const [cx, cy] = radialCenter(layer.radialType);
+
+    layers.push({
+      gradientType: layer.type === 'radial' ? 1 : 0,
+      angle: angleDeg * (Math.PI / 180),
+      centerX: cx,
+      centerY: cy,
+      blendMode: BLEND_MODE_INDEX[layer.blendMode] ?? 0,
+      stops,
+    });
+  }
+
+  if (layers.length === 0) return { kind: 0, color: fallback, layers: [] };
+  return { kind: 1, color: fallback, layers };
+}
+
+// Must match the pattern branch order in the shader (renderer.ts). 'custom' has
+// no shader equivalent and disables GPU rendering.
+const PATTERN_TYPE_INDEX: Record<ShapePatternType, number> = {
+  dots: 0, lines: 1, grid: 2, diagonal: 3, chevron: 4, custom: -1,
+};
+
+// Flatten a ShapePatternConfig into GPU-ready numbers. Disabled configs, or
+// custom-SVG patterns (which can't be evaluated in a shader), resolve to
+// `enabled: false` so the shader skips them.
+export function resolveShapePattern(config: ShapePatternConfig | undefined): ResolvedPattern | undefined {
+  if (!config || !config.enabled) return undefined;
+  const patternType = PATTERN_TYPE_INDEX[config.patternType];
+  if (patternType < 0) return undefined; // custom: unsupported on GPU
+
+  const hasBackground = !!config.backgroundColor && config.backgroundColor !== 'transparent';
+  return {
+    enabled: true,
+    patternType,
+    color: hexToVec4(config.color, 1),
+    hasBackground,
+    backgroundColor: hasBackground ? hexToVec4(config.backgroundColor, 1) : [0, 0, 0, 0],
+    size: Math.max(0, config.size),
+    spacing: Math.max(0, config.spacing),
+    angle: (config.angle ?? 0) * (Math.PI / 180),
+    opacity: clamp01(config.opacity / 100),
+  };
 }
 
 function generatePatternSvgContent(config: ShapePatternConfig): string {

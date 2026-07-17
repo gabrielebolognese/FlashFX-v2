@@ -4,6 +4,7 @@ import { WebGPURenderer } from '../engine/renderer';
 import { EXPORT_MOTION_BLUR_SAMPLES } from '../store/preview';
 import { videoDecoderPool } from '../engine/video/videoDecoderPool';
 import { frameScheduler } from '../engine/video/frameScheduler';
+import { exportCompositionAudio, type EncodedAudio } from './audioMixer';
 
 export interface ExportSettings {
   width: number;
@@ -11,6 +12,7 @@ export interface ExportSettings {
   frameRate: number;
   bitrate: number;
   codec: string;
+  includeAudio: boolean;
 }
 
 export interface ExportProgress {
@@ -55,10 +57,34 @@ export async function exportToMp4(
 
   const canvas = renderer.getOffscreenCanvas()!;
 
+  // Mix + encode audio up front — the muxer needs the audio track configured at
+  // construction. Failures are non-fatal: we fall back to a video-only export.
+  let audio: EncodedAudio | null = null;
+  if (settings.includeAudio ?? true) {
+    onProgress?.({
+      phase: 'initializing',
+      currentFrame: 0,
+      totalFrames,
+      percent: 1,
+      message: 'Mixing audio...',
+    });
+    try {
+      audio = await exportCompositionAudio(composition, { frameRate, durationFrames: totalFrames }, signal);
+    } catch (e) {
+      if ((e as Error).message === 'Export cancelled') {
+        renderer.destroy();
+        throw e;
+      }
+      console.warn('[export] audio mixing/encoding failed; exporting video only:', e);
+      audio = null;
+    }
+  }
+
   const target = new ArrayBufferTarget();
   const muxer = new Muxer({
     target,
     video: { codec: 'avc', width, height },
+    audio: audio ? { codec: 'aac', sampleRate: audio.sampleRate, numberOfChannels: audio.numberOfChannels } : undefined,
     fastStart: 'in-memory',
   });
 
@@ -164,6 +190,12 @@ export async function exportToMp4(
 
   for (const { chunk, meta } of encodedChunks) {
     muxer.addVideoChunk(chunk, meta);
+  }
+
+  if (audio) {
+    for (const { chunk, meta } of audio.chunks) {
+      muxer.addAudioChunk(chunk, meta);
+    }
   }
 
   muxer.finalize();

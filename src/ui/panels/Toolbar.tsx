@@ -52,6 +52,7 @@ export function Toolbar() {
   const removeLayers = useEditorStore((s) => s.removeLayers);
   const createGroup = useEditorStore((s) => s.createGroup);
   const ungroupSelection = useEditorStore((s) => s.ungroupSelection);
+  const precomposeSelection = useEditorStore((s) => s.precomposeSelection);
   const reorderLayers = useEditorStore((s) => s.reorderLayers);
   const addImage = useEditorStore((s) => s.addImage);
   const copySelection = useEditorStore((s) => s.copySelection);
@@ -97,15 +98,15 @@ export function Toolbar() {
 
   const handleSave = useCallback(() => {
     if (currentProjectId) {
-      saveCurrentProject(composition);
+      saveCurrentProject();
     }
-  }, [currentProjectId, saveCurrentProject, composition]);
+  }, [currentProjectId, saveCurrentProject]);
 
   const ffxInputRef = useRef<HTMLInputElement>(null);
 
   const handleDownloadProject = useCallback(() => {
     if (!currentProjectId) return;
-    saveCurrentProject(composition);
+    saveCurrentProject();
     exportProject(currentProjectId, composition).catch((err) =>
       alert(err instanceof Error ? err.message : 'Failed to download project')
     );
@@ -262,6 +263,7 @@ export function Toolbar() {
       items: [
         { label: 'Group', shortcut: 'Ctrl+G', action: createGroup, disabled: !hasMultiSelection },
         { label: 'Ungroup', shortcut: 'Ctrl+Shift+G', action: ungroupSelection, disabled: !hasSelection },
+        { label: 'Precompose', shortcut: 'Ctrl+Shift+C', action: precomposeSelection, disabled: !hasSelection },
         { label: '', divider: true },
         { label: 'Bring to Front', shortcut: 'Ctrl+Shift+]', action: handleBringToFront, disabled: !hasSelection },
         { label: 'Bring Forward', shortcut: 'Ctrl+]', action: handleBringForward, disabled: !hasSelection },

@@ -16,6 +16,7 @@ import type {
   LottieIconLayer,
   LayoutObjectLayer,
   LayoutContainerLayer,
+  PrecompLayer,
   LayoutParams,
   VideoPlaybackMode,
   ImageFilters,
@@ -82,6 +83,29 @@ export function createTransform(
     scale: createProperty('Scale', 'vec2', [scaleX, scaleY]),
     anchorPoint: createProperty('Anchor Point', 'vec2', [0, 0]),
     opacity: createProperty('Opacity', 'number', 1),
+  };
+}
+
+/** A precomposition layer referencing an existing sub-composition by id. Identity
+ *  transform by default so precomposed children keep their world positions. */
+export function createPrecompLayer(
+  name: string,
+  compositionId: string,
+  durationFrames: number,
+): PrecompLayer {
+  return {
+    id: uid(),
+    type: 'precomp',
+    name,
+    parentId: null,
+    trackId: null,
+    visible: true,
+    locked: false,
+    blendMode: 'normal',
+    transform: createTransform(0, 0),
+    inPoint: 0,
+    outPoint: durationFrames,
+    compositionId,
   };
 }
 

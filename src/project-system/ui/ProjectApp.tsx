@@ -14,7 +14,7 @@ interface Props {
 export function ProjectApp({ editorComponent: EditorComponent }: Props) {
   const view = useProjectStore((s) => s.view);
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
-  const loadComposition = useEditorStore((s) => s.loadComposition);
+  const loadDocument = useEditorStore((s) => s.loadDocument);
   const loadedRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -28,7 +28,7 @@ export function ProjectApp({ editorComponent: EditorComponent }: Props) {
         const comp = await loadProjectScene(activeProjectId);
         await mediaAssetManager.loadProjectAssets(activeProjectId);
         if (comp) {
-          loadComposition(comp);
+          loadDocument(comp);
           requestAnimationFrame(() => {
             playbackController.renderCurrentFrame();
           });
@@ -38,7 +38,7 @@ export function ProjectApp({ editorComponent: EditorComponent }: Props) {
     if (view === 'dashboard') {
       loadedRef.current = null;
     }
-  }, [view, activeProjectId, loadComposition]);
+  }, [view, activeProjectId, loadDocument]);
 
   if (view === 'dashboard') {
     return <Dashboard />;
