@@ -172,7 +172,6 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
 
   const activeLayer = composition.layers.find((l) => l.id === selection.activeId) || null;
   const isGroupActive = activeLayer?.type === 'group';
-  const isLeafActive = activeLayer != null && activeLayer.type !== 'group';
 
   const compW = composition.settings.width;
   const compH = composition.settings.height;
@@ -209,7 +208,7 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
     // Check for physics baked position
     const baked = sampleBakedFrame(activeLayer.id, currentFrame);
     const physicsBindings = composition.physicsBindings || [];
-    const hasPhysics = baked && physicsBindings.some((b: any) => b.layerId === activeLayer.id && b.role === 'dynamic' && b.enabled);
+    const hasPhysics = baked && physicsBindings.some((b) => b.layerId === activeLayer.id && b.role === 'dynamic' && b.enabled);
     if (hasPhysics && baked) {
       pos = [baked.x, baked.y] as Vec2;
     }
@@ -460,17 +459,15 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
     if (e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
+    if (!activeLayer) return;
     const state = getTransformState();
     if (!state) return;
-    const gPos = activeLayer?.type === 'group' ? evaluateVec2(activeLayer.transform.position, currentFrame) : null;
+    const gPos = activeLayer.type === 'group' ? evaluateVec2(activeLayer.transform.position, currentFrame) : null;
     let initFontSize = 0;
-    let initScale: Vec2 = [1, 1];
-    if (activeLayer?.type === 'text') {
-      initFontSize = evaluateNumber((activeLayer as TextLayer).animOverrides.fontSize, currentFrame);
-      initScale = evaluateProperty(activeLayer.transform.scale, currentFrame) as Vec2;
-    } else if (activeLayer) {
-      initScale = evaluateProperty(activeLayer.transform.scale, currentFrame) as Vec2;
+    if (activeLayer.type === 'text') {
+      initFontSize = evaluateNumber(activeLayer.animOverrides.fontSize, currentFrame);
     }
+    const initScale = evaluateProperty(activeLayer.transform.scale, currentFrame) as Vec2;
     dragStart.current = { mx: e.clientX, my: e.clientY, state, groupPos: gPos, initFontSize, initScale, multiPositions: [] };
     dragSnapshot.current = { comp: composition, sel: selection };
 
@@ -699,7 +696,6 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
         } else if (activeLayer.type === 'text') {
           const textLayer = activeLayer as TextLayer;
           if (textLayer.layoutConfig.boundingBox.type !== 'auto') {
-            const bb = textLayer.layoutConfig.boundingBox;
             updateLayerProperty(activeLayer.id, 'layoutConfig.boundingBox', { type: 'fixed' as const, width: Math.max(8, newW), height: Math.max(8, newH) });
           } else {
             const scaleFactor = Math.max(newW / state.w, newH / state.h);

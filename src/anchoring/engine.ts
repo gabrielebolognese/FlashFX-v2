@@ -1,4 +1,4 @@
-import type { AnchorEdge, AnchorPropertyMapping, AnchorTransferFunction, AnchorPropertyType } from '../core/types';
+import type { AnchorEdge, AnchorTransferFunction, AnchorPropertyType } from '../core/types';
 import type { ResolvedTransform } from '../core/types';
 import { AnchorGraph } from './graph';
 import { remapFrame } from './temporal';

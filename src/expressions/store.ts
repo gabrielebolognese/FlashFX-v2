@@ -15,10 +15,6 @@ interface ExpressionStoreState {
   loadSnapshot: (data: Record<string, Record<string, ExpressionDef>>) => void;
 }
 
-function makeKey(layerId: string, propertyPath: string): string {
-  return `${layerId}::${propertyPath}`;
-}
-
 export const useExpressionStore = create<ExpressionStoreState>((set, get) => ({
   expressions: new Map(),
 

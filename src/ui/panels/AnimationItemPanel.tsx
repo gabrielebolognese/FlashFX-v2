@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Activity, Trash2 } from 'lucide-react';
+import { Activity } from 'lucide-react';
 import { useEditorStore } from '../../store/editor';
 import { BrandColorPicker } from '../components/BrandColorPicker';
 import type { AnimationItemLayer } from '../../core/types';

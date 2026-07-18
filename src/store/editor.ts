@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Composition, SceneDocument, Layer, AnimatableProperty, Keyframe, Vec2, BackgroundLayer, MotionPath, Track, TrackType, AudioLayer, VideoPlaybackMode, PathVertex, VertexType, Mask, MaskType, ProceduralBinding, AnchorEdge, PhysicsBindingDef, PhysicsWorldDef, StaggerBindingDef, LayoutObjectLayer, LayoutContainerLayer, LayoutParams, ChildLayoutOverride, ContainerShapeType, ContainerDistributionMode } from '../core/types';
+import type { Composition, SceneDocument, Layer, AnimatableProperty, Keyframe, Vec2, BackgroundLayer, Track, TrackType, VideoPlaybackMode, PathVertex, VertexType, Mask, MaskType, AnchorEdge, PhysicsBindingDef, PhysicsWorldDef, StaggerBindingDef, LayoutObjectLayer, LayoutContainerLayer, ContainerShapeType } from '../core/types';
 import { createComposition, createRectangleLayer, createCircleLayer, createStarLayer, createPolygonLayer, createDefaultPolygonVertices, createTextLayer, createVideoLayer, createImageLayer, createAudioLayer, createGroupLayer, createKeyframe, createBackgroundLayer, createMask, createParticleLayer, createAnimationItemLayer, createFieldSampledLayer, createLottieIconLayer, createLayoutObjectLayer, createLayoutContainerLayer, createDefaultChildOverride, uid } from '../core/factory';
 import { evaluateVec2, evaluateNumber, buildPhysicsEvaluator } from '../core/interpolation';
 import { generatePresetKeyframes, getPresetById, type PresetContext } from '../core/animationPresets';
@@ -577,6 +577,18 @@ function executeTrim(
   // split, cutUp, cutDown all create two clips
   const clipA = { ...layer, outPoint: playheadFrame };
   const clipB: Layer = { ...JSON.parse(JSON.stringify(layer)), id: uid(), inPoint: playheadFrame, outPoint: originalOut };
+
+  // The two halves together must render exactly what the original did. For
+  // media clips, source time 0 aligns with (inPoint - startOffset), so pushing
+  // clipB's inPoint forward to the playhead requires the same push on its
+  // startOffset — otherwise the right-hand half replays the source from the
+  // original clip's start. Comp frames, matching resolveVideoLayer/stripSilence.
+  const splitDelta = playheadFrame - originalIn;
+  if (clipB.type === 'video') {
+    clipB.video.startOffset += splitDelta;
+  } else if (clipB.type === 'audio') {
+    clipB.audio.startOffset += splitDelta;
+  }
 
   let newTracks = composition.tracks;
 
@@ -1673,6 +1685,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     // each pointing at its own slice of the source via startOffset. Cloned
     // animatable ids are regenerated so the segments never share keyframe
     // identity with the original (or each other).
+    const sourceStartOffset =
+      layer.type === 'video' ? layer.video.startOffset : layer.audio.startOffset;
+
     let place = originalIn;
     const newSegmentLayers: Layer[] = [];
     for (let i = 0; i < segments.length; i++) {
@@ -1685,9 +1700,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       clone.outPoint = place + seg.lengthFrames;
       clone.name = segments.length > 1 ? `${layer.name} ${i + 1}` : layer.name;
       if (clone.type === 'video') {
-        clone.video.startOffset = (layer.video.startOffset ?? 0) + seg.sourceLocalStart;
+        clone.video.startOffset = sourceStartOffset + seg.sourceLocalStart;
       } else if (clone.type === 'audio') {
-        clone.audio.startOffset = (layer.audio.startOffset ?? 0) + seg.sourceLocalStart;
+        clone.audio.startOffset = sourceStartOffset + seg.sourceLocalStart;
       }
       place += seg.lengthFrames;
       newSegmentLayers.push(clone);

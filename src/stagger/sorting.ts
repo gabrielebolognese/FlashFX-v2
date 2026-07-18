@@ -1,4 +1,4 @@
-import type { DirectionMode, BoundingBox, StaggerConfig } from './types';
+import type { BoundingBox, StaggerConfig } from './types';
 
 type BoundsGetter = (id: string) => BoundingBox;
 

@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import {
-  Code2, Play, Trash2, ToggleLeft, ToggleRight, ChevronDown, ChevronRight,
+  Play, Trash2, ToggleLeft, ToggleRight, ChevronDown, ChevronRight,
   AlertCircle, CheckCircle2, Zap, Clock,
 } from 'lucide-react';
 import type { Layer } from '../../../core/types';
@@ -32,7 +32,6 @@ export function CodeTab({ layer }: CodeTabProps) {
         layerExpressions={layerExpressions}
       />
       <ExpressionsList
-        layerId={layer.id}
         layerExpressions={layerExpressions}
         onSelect={setSelectedProp}
       />
@@ -218,11 +217,9 @@ function ExpressionEditor({
 // ---------------------------------------------------------------------------
 
 function ExpressionsList({
-  layerId,
   layerExpressions,
   onSelect,
 }: {
-  layerId: string;
   layerExpressions: Map<string, ExpressionDef>;
   onSelect: (propName: string) => void;
 }) {

@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useEditorStore } from '../../store/editor';
 import { useHistoryStore } from '../../store/history';
 import { useTimelineStore } from '../../store/timeline';
-import { usePanelStore, type PanelId } from '../../store/panels';
+import { usePanelStore } from '../../store/panels';
 import { useGridStore } from '../../store/grid';
 import { useProjectStore } from '../../project-system/hooks/useProjectStore';
 import { useRecoveryStore } from '../../store/recovery';
@@ -13,8 +13,7 @@ import { GridSettingsPanel } from './GridSettingsPanel';
 import { BackgroundRemovalPanel } from './background-removal';
 import {
   FilePlus, FolderOpen, Save, Download, Upload, Link2,
-  Cog, MonitorPlay, FileCode, Eye, EyeOff,
-  Layers, LayoutGrid, SlidersHorizontal, Clock,
+  Cog, MonitorPlay, FileCode, SlidersHorizontal,
   Square, Paintbrush, Grid3x3, Sparkles, Shuffle, Settings2, Scissors,
 } from 'lucide-react';
 import { IconLibraryModal } from '../../components/icons/IconLibraryModal';
@@ -35,13 +34,6 @@ interface MenuGroup {
   label: string;
   items: MenuItem[];
 }
-
-const PANEL_META: { id: PanelId; label: string; icon: typeof Layers; locked?: boolean }[] = [
-  { id: 'layers', label: 'Layers', icon: Layers },
-  { id: 'canvas', label: 'Canvas', icon: LayoutGrid, locked: true },
-  { id: 'properties', label: 'Properties', icon: SlidersHorizontal },
-  { id: 'timeline', label: 'Timeline', icon: Clock },
-];
 
 export function Toolbar() {
   const composition = useEditorStore((s) => s.composition);

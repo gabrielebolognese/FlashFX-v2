@@ -8,7 +8,7 @@ import { computeStaggerOffsets } from '../../stagger/timing';
 import type { StaggerConfig, BoundingBox } from '../../stagger/types';
 import { DEFAULT_STAGGER_CONFIG } from '../../stagger/types';
 import { evaluateVec2, evaluateNumber } from '../../core/interpolation';
-import { Layers, ArrowRight, ArrowDown, Target, Shuffle, Grid3x3, RotateCcw, Play, Zap } from 'lucide-react';
+import { Layers, ArrowRight, ArrowDown, Target, Shuffle, Grid3x3, RotateCcw, Zap } from 'lucide-react';
 
 const DIRECTION_OPTIONS: { value: StaggerDirectionMode; label: string; icon?: React.ReactNode }[] = [
   { value: 'spatialLeftToRight', label: 'Left to Right', icon: <ArrowRight size={10} /> },

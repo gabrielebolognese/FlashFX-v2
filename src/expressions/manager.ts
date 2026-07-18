@@ -1,7 +1,6 @@
 import type {
   ExpressionContext,
   ExpressionValue,
-  KeyframeData,
   WorkerInbound,
   WorkerOutbound,
 } from './types';

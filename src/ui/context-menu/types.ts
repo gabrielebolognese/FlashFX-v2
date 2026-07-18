@@ -1,10 +1,10 @@
-import type { ComponentType } from 'react';
+import type { LucideIcon } from 'lucide-react';
 
 export interface MenuItemDef {
   type: 'item';
   id: string;
   label: string;
-  icon?: ComponentType<{ size?: number; className?: string }>;
+  icon?: LucideIcon;
   shortcut?: string;
   enabled?: boolean;
   action?: () => void;
@@ -19,7 +19,7 @@ export interface MenuSubmenuDef {
   type: 'submenu';
   id: string;
   label: string;
-  icon?: ComponentType<{ size?: number; className?: string }>;
+  icon?: LucideIcon;
   enabled?: boolean;
   items: MenuEntry[];
 }

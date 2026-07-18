@@ -9,7 +9,6 @@ import {
   getRulerTicks,
   getMaxScrollX,
   getFrameWidth,
-  formatRulerLabel,
 } from './timeline/timeUtils';
 
 const TRACK_HEIGHT = 120;
@@ -162,11 +161,10 @@ function interpolateAtFrame(keyframes: Keyframe[], frame: number, component: 'x'
   return getKeyframeValue(keyframes[keyframes.length - 1], component);
 }
 
-function HandleNumericField({ label, value, onChange, step = 0.05, precision = 2, min, max }: {
+function HandleNumericField({ label, value, onChange, precision = 2, min, max }: {
   label: string;
   value: number;
   onChange: (v: number) => void;
-  step?: number;
   precision?: number;
   min?: number;
   max?: number;
@@ -501,7 +499,7 @@ export function InterpolationGraph() {
   }, [selectedKeyframeData, activeLayer, updateLayerProperty]);
 
   const visibleRange = getVisibleFrameRange(containerWidth, zoomLevel, scrollX);
-  const ticks = getRulerTicks(visibleRange, zoomLevel);
+  const ticks = getRulerTicks(visibleRange, zoomLevel, frameRate);
   const playheadX = frameToPixel(currentFrame, zoomLevel, scrollX);
 
   if (!activeLayer || activeLayer.type === 'group') {
@@ -543,7 +541,6 @@ export function InterpolationGraph() {
             label="Value"
             value={getKeyframeValue(selectedKeyframeData.kf, selectedKeyframeData.propId.endsWith('_y') || selectedKeyframeData.propId === 'scale_y' ? 'y' : selectedKeyframeData.propId.endsWith('_x') || selectedKeyframeData.propId === 'pos_x' || selectedKeyframeData.propId === 'scale_x' ? 'x' : 'single')}
             onChange={updateKeyframeValue}
-            step={1}
             precision={1}
           />
           <span className="text-[8px] text-slate-600">|</span>
@@ -554,7 +551,6 @@ export function InterpolationGraph() {
                 label="X"
                 value={selectedKeyframeData.kf.handleOut[0]}
                 onChange={(v) => updateHandleValue('out', 0, v)}
-                step={0.05}
                 precision={2}
                 min={0}
                 max={1}
@@ -563,7 +559,6 @@ export function InterpolationGraph() {
                 label="Y"
                 value={selectedKeyframeData.kf.handleOut[1]}
                 onChange={(v) => updateHandleValue('out', 1, v)}
-                step={0.05}
                 precision={2}
                 min={-2}
                 max={3}
@@ -577,7 +572,6 @@ export function InterpolationGraph() {
                 label="X"
                 value={selectedKeyframeData.kf.handleIn[0]}
                 onChange={(v) => updateHandleValue('in', 0, v)}
-                step={0.05}
                 precision={2}
                 min={0}
                 max={1}
@@ -586,7 +580,6 @@ export function InterpolationGraph() {
                 label="Y"
                 value={selectedKeyframeData.kf.handleIn[1]}
                 onChange={(v) => updateHandleValue('in', 1, v)}
-                step={0.05}
                 precision={2}
                 min={-2}
                 max={3}
@@ -616,9 +609,7 @@ export function InterpolationGraph() {
               scrollX={scrollX}
               ticks={ticks}
               playheadX={playheadX}
-              currentFrame={currentFrame}
               durationFrames={durationFrames}
-              frameRate={frameRate}
               onScrub={handleScrub}
               onContextMenu={handleContextMenu}
               selectedCurvePoints={selectedCurvePoints}
@@ -677,9 +668,7 @@ interface PropertyTrackRowProps {
   scrollX: number;
   ticks: { frame: number; major: boolean }[];
   playheadX: number;
-  currentFrame: number;
   durationFrames: number;
-  frameRate: number;
   onScrub: (e: React.MouseEvent | MouseEvent) => void;
   onContextMenu: (e: React.MouseEvent, trackId: string, kfFrame: number) => void;
   selectedCurvePoints: string[];
@@ -690,7 +679,7 @@ interface PropertyTrackRowProps {
   updateLayerProperty: (layerId: string, path: string, value: unknown) => void;
 }
 
-function PropertyTrackRow({ prop, containerWidth, zoomLevel, scrollX, ticks, playheadX, currentFrame, durationFrames, frameRate, onScrub, onContextMenu, selectedCurvePoints, selectedKeyframes, onSelectPoint, activeLayerId, propertyPath, updateLayerProperty }: PropertyTrackRowProps) {
+function PropertyTrackRow({ prop, containerWidth, zoomLevel, scrollX, ticks, playheadX, durationFrames, onScrub, onContextMenu, selectedCurvePoints, selectedKeyframes, onSelectPoint, activeLayerId, propertyPath, updateLayerProperty }: PropertyTrackRowProps) {
   const keyframes = prop.property.keyframes;
   const component: 'x' | 'y' | 'single' = prop.id.endsWith('_y') || prop.id === 'scale_y' ? 'y'
     : prop.id.endsWith('_x') || prop.id === 'pos_x' || prop.id === 'scale_x' ? 'x' : 'single';

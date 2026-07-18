@@ -4,7 +4,7 @@ import { useTimelineStore } from '../../store/timeline';
 import { useShapeToolStore, isVectorTool } from '../../store/shapeTool';
 import { usePathEditStore, type HandleSide } from '../../store/pathEdit';
 import { resolveXform, localToComp, compToLocal } from '../../store/pathTransform';
-import type { PathVertex, Vec2, Layer, ShapeLayer } from '../../core/types';
+import type { PathVertex, Vec2, Layer, ShapeLayer, PolygonShape } from '../../core/types';
 
 interface PenToolOverlayProps {
   style?: React.CSSProperties;
@@ -41,7 +41,10 @@ function dist2(a: Vec2, b: Vec2): number {
   return dx * dx + dy * dy;
 }
 
-function isPolygonLayer(l: Layer | null | undefined): l is ShapeLayer {
+/** A shape layer whose geometry is specifically a polygon (the only vertex-editable shape). */
+type PolygonLayer = ShapeLayer & { shape: PolygonShape };
+
+function isPolygonLayer(l: Layer | null | undefined): l is PolygonLayer {
   return !!l && l.type === 'shape' && l.shape.type === 'polygon';
 }
 
@@ -84,9 +87,8 @@ export function PenToolOverlay({ style, compW, compH }: PenToolOverlayProps) {
   const sY = overlayH > 0 ? overlayH / compH : 0;
 
   // The layer currently editable by point tools (active polygon).
-  const editLayer = isPolygonLayer(composition.layers.find((l) => l.id === selection.activeId))
-    ? (composition.layers.find((l) => l.id === selection.activeId) as ShapeLayer)
-    : null;
+  const activeLayer = composition.layers.find((l) => l.id === selection.activeId);
+  const editLayer = isPolygonLayer(activeLayer) ? activeLayer : null;
   const xform = editLayer ? resolveXform(editLayer, currentFrame) : null;
 
   const toComp = useCallback((clientX: number, clientY: number): Vec2 => {
@@ -449,14 +451,14 @@ function PenDraft({
 function PathAnchors({
   layer, toScreen, selectedVertices, tool, onAnchorDown, onHandleDown,
 }: {
-  layer: ShapeLayer;
+  layer: PolygonLayer;
   toScreen: (p: Vec2) => Vec2;
   selectedVertices: number[];
   tool: string;
   onAnchorDown: (e: React.PointerEvent, index: number) => void;
   onHandleDown: (e: React.PointerEvent, index: number, side: HandleSide) => void;
 }) {
-  const verts = (layer.shape as Extract<ShapeLayer['shape'], { type: 'polygon' }>).vertices;
+  const verts = layer.shape.vertices;
 
   return (
     <g style={{ pointerEvents: 'auto' }}>

@@ -341,7 +341,7 @@ export function KeyframeTimeline() {
   }, [kfMarquee === null && kfMarqueeRef.current !== null]);
 
   const visibleRange = getVisibleFrameRange(containerWidth, zoomLevel, scrollX);
-  const ticks = getRulerTicks(visibleRange, zoomLevel);
+  const ticks = getRulerTicks(visibleRange, zoomLevel, frameRate);
   const playheadX = frameToPixel(currentFrame, zoomLevel, scrollX);
 
   // Build flat list of visible rows

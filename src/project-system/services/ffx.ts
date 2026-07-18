@@ -1,5 +1,5 @@
-import type { Composition } from '../../core/types';
-import type { ProjectMetadata } from '../types';
+import type { Composition, Layer, SceneDocument } from '../../core/types';
+import type { ProjectMetadata, VideoFormat } from '../types';
 import { deriveOrientation } from '../types';
 import {
   getMetadata,
@@ -11,11 +11,13 @@ import {
   getAssetsByProject,
   putAsset,
 } from '../storage/db';
-import { serializeComposition, deserializeComposition } from './serialization';
+import { serializeDocument, deserializeDocument } from './serialization';
 
 export const FFX_EXTENSION = 'ffx';
 const FFX_FORMAT = 'flashfx-project';
 const FFX_VERSION = 1;
+// Matches the version written by `serializeDocument` callers (see services/projects.ts).
+const SCENE_DOCUMENT_VERSION = 2;
 
 interface FfxAsset {
   id: string;
@@ -31,7 +33,7 @@ interface FfxBundle {
   ffxVersion: number;
   exportedAt: number;
   metadata: ProjectMetadata;
-  scene: string; // serialized composition JSON
+  scene: string; // serialized SceneDocument JSON (legacy bundles hold a bare Composition)
   assets: FfxAsset[];
   preview: string | null; // base64-encoded image
 }
@@ -65,6 +67,29 @@ function base64ToBlob(base64: string, mimeType: string): Blob {
   return new Blob([bytes], { type: mimeType || 'application/octet-stream' });
 }
 
+// A bundle's metadata is untrusted JSON, so the persisted format is only taken
+// when it is a real VideoFormat. Bundles written before videoFormat existed fall
+// back to the dimensions, matching how the create-project presets pair them
+// (short-form is vertical, everything else is long-form).
+function readVideoFormat(value: unknown, width: number, height: number): VideoFormat {
+  if (value === 'short' || value === 'long') return value;
+  return deriveOrientation(width, height) === 'portrait' ? 'short' : 'long';
+}
+
+// Point a re-imported layer at the fresh asset id its binary was written under.
+function remapLayerAssetId(layer: Layer, assetIdMap: Map<string, string>): void {
+  if (layer.type === 'video') {
+    const mapped = assetIdMap.get(layer.video.assetId);
+    if (mapped) layer.video.assetId = mapped;
+  } else if (layer.type === 'image') {
+    const mapped = assetIdMap.get(layer.image.assetId);
+    if (mapped) layer.image.assetId = mapped;
+  } else if (layer.type === 'audio') {
+    const mapped = assetIdMap.get(layer.audio.assetId);
+    if (mapped) layer.audio.assetId = mapped;
+  }
+}
+
 function sanitizeFileName(name: string): string {
   const cleaned = name.trim().replace(/[^a-z0-9-_ ]/gi, '').replace(/\s+/g, '_');
   return cleaned || 'project';
@@ -81,9 +106,11 @@ function triggerDownload(blob: Blob, fileName: string): void {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-// Bundle the complete project (composition + every media binary + preview) into
-// a single .ffx file and trigger a browser download. When the editor's live
-// composition is supplied it is used verbatim so unsaved edits are captured.
+// Bundle the complete project (every composition + media binary + preview) into
+// a single .ffx file and trigger a browser download. The persisted scene is a
+// multi-composition SceneDocument, so it is bundled whole and precomps travel
+// with the project. When the editor's live composition is supplied it replaces
+// its registry entry so unsaved edits are captured.
 export async function exportProjectToFile(
   projectId: string,
   liveComposition?: Composition,
@@ -91,14 +118,22 @@ export async function exportProjectToFile(
   const metadata = await getMetadata(projectId);
   if (!metadata) throw new Error('Project not found');
 
-  let sceneData: string | undefined;
+  const scene = await getScene(projectId);
+  let sceneDoc: SceneDocument | null = scene ? deserializeDocument(scene.data) : null;
   if (liveComposition) {
-    sceneData = serializeComposition(liveComposition);
-  } else {
-    const scene = await getScene(projectId);
-    sceneData = scene?.data;
+    sceneDoc = sceneDoc
+      ? {
+          ...sceneDoc,
+          compositions: { ...sceneDoc.compositions, [liveComposition.id]: liveComposition },
+        }
+      : {
+          version: SCENE_DOCUMENT_VERSION,
+          rootCompositionId: liveComposition.id,
+          compositions: { [liveComposition.id]: liveComposition },
+        };
   }
-  if (!sceneData) throw new Error('Project scene data is missing');
+  if (!sceneDoc) throw new Error('Project scene data is missing');
+  const sceneData = serializeDocument(sceneDoc);
 
   const assets = await getAssetsByProject(projectId);
   const ffxAssets: FfxAsset[] = await Promise.all(
@@ -130,8 +165,8 @@ export async function exportProjectToFile(
 }
 
 // Restore a .ffx bundle into a brand-new project: media binaries are written
-// back to storage under fresh asset ids, the composition's asset references are
-// remapped to match, and metadata/scene/preview are persisted.
+// back to storage under fresh asset ids, every composition's asset references
+// are remapped to match, and metadata/scene/preview are persisted.
 export async function importProjectFromFile(file: File): Promise<ProjectMetadata> {
   let bundle: FfxBundle;
   try {
@@ -153,17 +188,15 @@ export async function importProjectFromFile(file: File): Promise<ProjectMetadata
     assetIdMap.set(a.id, generateAssetId());
   }
 
-  const composition = deserializeComposition(bundle.scene);
-  for (const layer of composition.layers) {
-    if (layer.type === 'video') {
-      const mapped = assetIdMap.get(layer.video.assetId);
-      if (mapped) layer.video.assetId = mapped;
-    } else if (layer.type === 'image') {
-      const mapped = assetIdMap.get(layer.image.assetId);
-      if (mapped) layer.image.assetId = mapped;
-    } else if (layer.type === 'audio') {
-      const mapped = assetIdMap.get(layer.audio.assetId);
-      if (mapped) layer.audio.assetId = mapped;
+  // Handles both current bundles (a SceneDocument) and legacy ones holding a
+  // bare Composition — deserializeDocument migrates those into a one-entry doc.
+  const sceneDoc = deserializeDocument(bundle.scene);
+  const rootComposition = sceneDoc.compositions[sceneDoc.rootCompositionId];
+  if (!rootComposition) throw new Error('This .ffx project contains no composition data');
+
+  for (const comp of Object.values(sceneDoc.compositions)) {
+    for (const layer of comp.layers) {
+      remapLayerAssetId(layer, assetIdMap);
     }
   }
 
@@ -180,9 +213,9 @@ export async function importProjectFromFile(file: File): Promise<ProjectMetadata
   }
 
   const meta = bundle.metadata ?? ({} as Partial<ProjectMetadata>);
-  const width = typeof meta.width === 'number' ? meta.width : composition.settings.width;
-  const height = typeof meta.height === 'number' ? meta.height : composition.settings.height;
-  const baseName = meta.name || composition.name || 'Imported Project';
+  const width = typeof meta.width === 'number' ? meta.width : rootComposition.settings.width;
+  const height = typeof meta.height === 'number' ? meta.height : rootComposition.settings.height;
+  const baseName = meta.name || rootComposition.name || 'Imported Project';
 
   const metadata: ProjectMetadata = {
     id: newProjectId,
@@ -190,16 +223,17 @@ export async function importProjectFromFile(file: File): Promise<ProjectMetadata
     width,
     height,
     orientation: deriveOrientation(width, height),
-    frameRate: typeof meta.frameRate === 'number' ? meta.frameRate : composition.settings.frameRate,
+    videoFormat: readVideoFormat(meta.videoFormat, width, height),
+    frameRate: typeof meta.frameRate === 'number' ? meta.frameRate : rootComposition.settings.frameRate,
     durationFrames:
-      typeof meta.durationFrames === 'number' ? meta.durationFrames : composition.settings.durationFrames,
+      typeof meta.durationFrames === 'number' ? meta.durationFrames : rootComposition.settings.durationFrames,
     createdAt: now,
     modifiedAt: now,
     version: 1,
   };
 
   await putMetadata(metadata);
-  await putScene({ id: newProjectId, data: serializeComposition(composition) });
+  await putScene({ id: newProjectId, data: serializeDocument(sceneDoc) });
   await putPreview({
     id: newProjectId,
     blob: bundle.preview ? base64ToBlob(bundle.preview, 'image/webp') : null,

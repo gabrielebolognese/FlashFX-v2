@@ -1,4 +1,4 @@
-import type { ProceduralBinding, TransformLoopParams, GridArrayParams, TileScrollParams } from './types';
+import type { ProceduralBinding } from './types';
 
 let presetIdCounter = 0;
 function nextId(): string {

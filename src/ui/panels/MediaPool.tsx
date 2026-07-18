@@ -10,7 +10,10 @@ import { rasterizeIconToFile } from '../../components/icons/rasterizeIcon';
 import type { IconData } from '../../components/icons/types';
 import { usePanelStore } from '../../store/panels';
 import { useContextMenu } from '../context-menu';
-import { buildMediaPoolEmptyMenu, buildMediaAssetMenu } from '../context-menu/menuDefinitions';
+// buildMediaAssetMenu is deliberately NOT wired: every one of its 20 items is a
+// disabled placeholder, so right-clicking an asset would pop an all-grey menu —
+// worse than no menu. Wire it once those actions exist.
+import { buildMediaPoolEmptyMenu } from '../context-menu/menuDefinitions';
 import { BrandsTab } from './BrandsTab';
 import { SavedAssetsTab } from './SavedAssetsTab';
 import { LibraryTab } from '../../library/LibraryTab';

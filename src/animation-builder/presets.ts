@@ -1,5 +1,5 @@
 import { uid } from '../core/factory';
-import type { FlowChart, Block, Connection, AnimateBlock, RelativeAnimateBlock, WaitBlock, LoopBlock, PingPongBlock } from './types';
+import type { FlowChart, Block, Connection } from './types';
 import type { InterpolationType } from '../core/types';
 
 export interface PresetDefinition {

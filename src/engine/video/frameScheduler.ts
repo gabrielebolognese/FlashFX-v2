@@ -1,6 +1,5 @@
 import { videoDecoderPool } from './videoDecoderPool';
 
-const DEFAULT_BUFFER_SIZE = 60;
 const LOOKAHEAD_NORMAL = 30;
 const LOOKAHEAD_FAST = 60;
 const MEMORY_BUDGET_BYTES = 512 * 1024 * 1024; // 512 MB
@@ -49,7 +48,6 @@ class FrameScheduler {
   private compositionFrameRate = 30;
   private playbackRate = 0;
   private isScrubbing = false;
-  private maxBufferSize = DEFAULT_BUFFER_SIZE;
   private totalMemoryUsage = 0;
   private proxyActive = new Map<string, boolean>();
   private proxySettleTimer: ReturnType<typeof setTimeout> | null = null;
@@ -96,6 +94,14 @@ class FrameScheduler {
    */
   reportVideoRequirement(layerId: string, assetId: string, sourceFrame: number, playbackRate: number): void {
     this.requirements.set(layerId, { assetId, sourceFrame, playbackRate });
+
+    // If the frame the renderer just asked for isn't buffered or already being
+    // decoded, kick a prefetch now. Otherwise a video whose playhead doesn't move
+    // (just added, or seeked while paused) would never request its frame and show
+    // black until the next playhead change. prefetch() dedupes against the buffer,
+    // so this is a no-op once the frame is in flight.
+    const entry = this.buffers.get(assetId)?.get(sourceFrame);
+    if (!entry) this.prefetch();
   }
 
   registerAsset(assetId: string, layerId: string, frameRate: number, totalFrames: number): void {

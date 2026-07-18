@@ -14,9 +14,7 @@ import type {
   ConditionBlock,
   MacroBlock,
   MacroDefinition,
-  PropertyDescriptor,
 } from './types';
-import type { InterpolationType } from '../core/types';
 
 interface CompilerState {
   tv: number;
@@ -118,7 +116,7 @@ function compileBlock(
       compileInstantSet(block, state, frameRate);
       break;
     case 'wait':
-      compileWait(block, state, frameRate);
+      compileWait(block, state);
       break;
     case 'loop':
       compileLoop(block, chart, state, frameRate, macros, conditionContext);
@@ -226,7 +224,7 @@ function compileInstantSet(block: InstantSetBlock, state: CompilerState, frameRa
   state.properties.set(property, value);
 }
 
-function compileWait(block: WaitBlock, state: CompilerState, frameRate: number): void {
+function compileWait(block: WaitBlock, state: CompilerState): void {
   state.tv += block.duration;
 }
 

@@ -10,7 +10,10 @@ export async function ensureRapierInit(): Promise<void> {
   initPromise = (async () => {
     const mod = await import('@dimforge/rapier2d-compat');
     RAPIER = mod.default;
-    await RAPIER.init('/rapier_wasm2d_bg.wasm');
+    // The `-compat` build inlines the wasm binary as base64 and decodes it in
+    // init(); it takes no arguments and never fetches a URL. The copy at
+    // public/rapier_wasm2d_bg.wasm is therefore not loaded by this path.
+    await RAPIER.init();
     rapierInitialized = true;
   })();
   return initPromise;

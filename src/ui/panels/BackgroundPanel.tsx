@@ -648,7 +648,8 @@ function ColorStopsEditor({ stops, showPosition, onChange }: { stops: GradientSt
   const addStop = () => {
     if (stops.length >= 6) return;
     const midPos = stops.length > 1 ? (stops[stops.length - 2].position + stops[stops.length - 1].position) / 2 : 0.5;
-    onChange([...stops, { color: [0.5, 0.5, 0.5], position: midPos, opacity: 1 }].sort((a, b) => a.position - b.position));
+    const newStop: GradientStop = { color: [0.5, 0.5, 0.5], position: midPos, opacity: 1 };
+    onChange([...stops, newStop].sort((a, b) => a.position - b.position));
   };
 
   const removeStop = (idx: number) => {

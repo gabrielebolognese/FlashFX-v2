@@ -1,5 +1,13 @@
 import type { EmitterConfig, Particle, ParticleSnapshot, ColorStop } from './types';
 
+/**
+ * Either 2D canvas context. The particle renderer draws into an OffscreenCanvas
+ * (engine/particleRenderer.ts) while on-screen/preview callers pass a plain
+ * canvas context; the two interfaces share no base type in lib.dom, but every
+ * member used below (state, transform, path, fill, gradient ops) exists on both.
+ */
+export type Particle2DContext = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
+
 function mulberry32(seed: number): () => number {
   let s = seed | 0;
   return () => {
@@ -274,7 +282,7 @@ export class ParticleEngine {
     return -1;
   }
 
-  render(ctx: CanvasRenderingContext2D, width: number, height: number, offsetX: number, offsetY: number) {
+  render(ctx: Particle2DContext, width: number, height: number, offsetX: number, offsetY: number) {
     const cfg = this.config;
     ctx.clearRect(0, 0, width, height);
     ctx.save();
@@ -342,7 +350,7 @@ export class ParticleEngine {
   }
 }
 
-function drawStar(ctx: CanvasRenderingContext2D, r: number) {
+function drawStar(ctx: Particle2DContext, r: number) {
   ctx.beginPath();
   for (let i = 0; i < 5; i++) {
     const angle = (i * 72 - 90) * Math.PI / 180;
@@ -359,7 +367,7 @@ function drawStar(ctx: CanvasRenderingContext2D, r: number) {
   ctx.fill();
 }
 
-function drawSpark(ctx: CanvasRenderingContext2D, r: number, vx: number, vy: number) {
+function drawSpark(ctx: Particle2DContext, r: number, vx: number, vy: number) {
   const speed = Math.sqrt(vx * vx + vy * vy);
   const stretch = Math.min(speed * 0.02, 3);
   ctx.beginPath();
@@ -367,7 +375,7 @@ function drawSpark(ctx: CanvasRenderingContext2D, r: number, vx: number, vy: num
   ctx.fill();
 }
 
-function drawSmoke(ctx: CanvasRenderingContext2D, r: number, red: number, green: number, blue: number, alpha: number) {
+function drawSmoke(ctx: Particle2DContext, r: number, red: number, green: number, blue: number, alpha: number) {
   const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, r);
   grad.addColorStop(0, `rgba(${red},${green},${blue},${alpha})`);
   grad.addColorStop(0.6, `rgba(${red},${green},${blue},${alpha * 0.4})`);

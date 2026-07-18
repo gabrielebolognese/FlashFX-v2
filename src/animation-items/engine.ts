@@ -191,7 +191,7 @@ function evaluateProgressBar(config: ProgressBarConfig, progress: number): Resol
   return elements;
 }
 
-function evaluateStopwatch(config: StopwatchConfig, progress: number, frame: number, inPoint: number, outPoint: number): ResolvedAnimationElement[] {
+function evaluateStopwatch(config: StopwatchConfig, _progress: number, frame: number, inPoint: number, outPoint: number): ResolvedAnimationElement[] {
   const elements: ResolvedAnimationElement[] = [];
   const totalFrames = outPoint - inPoint;
   const localFrame = frame - inPoint;

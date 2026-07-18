@@ -16,7 +16,6 @@ export class PlaybackController {
   private _durationFrames = 150;
   private listeners: Set<FrameCallback> = new Set();
   private lagListeners: Set<LagCallback> = new Set();
-  private pendingReRender = false;
 
   private playStartTime = 0;
   private playStartFrame = 0;
@@ -26,11 +25,22 @@ export class PlaybackController {
   private emaDt = 0;
   private behindSince = 0;
   private _isLagging = false;
-
-  private isScrubbing = false;
+  private repaintQueued = false;
 
   constructor(engine: TimelineEngine) {
     this.engine = engine;
+    // When a prefetched video frame finishes decoding, repaint the current frame
+    // so a scrubbed-to / paused-on frame that wasn't ready yet actually appears.
+    // During playback the rAF tick already repaints, so only act when paused, and
+    // coalesce bursts of arrivals into a single rAF repaint.
+    frameScheduler.onFrameReady = () => {
+      if (this._isPlaying || this.repaintQueued) return;
+      this.repaintQueued = true;
+      requestAnimationFrame(() => {
+        this.repaintQueued = false;
+        if (!this._isPlaying) this.renderCurrentFrame();
+      });
+    };
   }
 
   attachRenderer(renderer: WebGPURenderer): void {
@@ -103,7 +113,6 @@ export class PlaybackController {
   play(): void {
     if (this._isPlaying) return;
     this._isPlaying = true;
-    this.isScrubbing = false;
     this.anchorClock();
     this.resetLagMonitor();
 
@@ -118,7 +127,6 @@ export class PlaybackController {
 
   pause(): void {
     this._isPlaying = false;
-    this.isScrubbing = false;
     cancelAnimationFrame(this.animFrameId);
     audioPlaybackEngine.stopPlayback();
     this.resetLagMonitor();
@@ -127,7 +135,6 @@ export class PlaybackController {
 
   stop(): void {
     this._isPlaying = false;
-    this.isScrubbing = false;
     cancelAnimationFrame(this.animFrameId);
     audioPlaybackEngine.stopPlayback();
     this.resetLagMonitor();
@@ -155,7 +162,6 @@ export class PlaybackController {
     const clamped = Math.max(0, Math.min(frame, this._durationFrames - 1));
     if (clamped === this._currentFrame) return;
     this._currentFrame = clamped;
-    this.isScrubbing = true;
     frameScheduler.setPlaybackState(clamped, 0, true);
 
     if (this._isPlaying) this.anchorClock();

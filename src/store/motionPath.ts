@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { MotionPath, MotionPathNode, MotionPathAnchor, MotionPathLoop, Vec2 } from '../core/types';
+import type { MotionPath, MotionPathNode, Vec2 } from '../core/types';
 import { uid } from '../core/factory';
 import { createProperty } from '../core/factory';
 

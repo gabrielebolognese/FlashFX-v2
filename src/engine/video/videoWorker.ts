@@ -1,4 +1,4 @@
-import { createFile, DataStream, type ISOFile as MP4File, type MP4BoxBuffer as MP4ArrayBuffer } from 'mp4box';
+import { createFile, DataStream, Endianness, type ISOFile as MP4File, type MP4BoxBuffer as MP4ArrayBuffer } from 'mp4box';
 import type {
   WorkerInboundMessage,
   WorkerOutboundMessage,
@@ -120,148 +120,148 @@ class StreamingDemuxer {
   }
 
   private parseFile(assetId: string, byteSource: ByteSource): Promise<DemuxerAssetState> {
-    return new Promise(async (resolve, reject) => {
+    return new Promise((resolve, reject) => {
       const mp4file = createFile() as unknown as MP4File;
-      let resolved = false;
+      let settled = false;
 
-      const samplesCollected: Sample[] = [];
+      const finish = (err: Error | null, state?: DemuxerAssetState): void => {
+        if (settled) return;
+        settled = true;
+        if (err) reject(err);
+        else resolve(state!);
+      };
+
+      mp4file.onError = (e: string) => finish(new Error(`MP4 parse error for ${assetId}: ${e}`));
 
       mp4file.onReady = (info: MP4Info) => {
-        const videoTrack = info.tracks.find((t: any) => t.type === 'video');
-        if (!videoTrack) {
-          reject(new Error(`No video track found in asset ${assetId}`));
-          return;
-        }
-
-        const timescale = videoTrack.timescale;
-        const duration = videoTrack.duration / timescale;
-        const width = videoTrack.video?.width ?? videoTrack.track_width;
-        const height = videoTrack.video?.height ?? videoTrack.track_height;
-
-        const trak = (mp4file as any).getTrackById(videoTrack.id);
-        const codecConfig = this.extractCodecConfig(videoTrack, trak);
-
-        // Extract rotation from track header matrix
-        let rotation = 0;
-        const matrix = videoTrack.matrix ?? trak?.tkhd?.matrix;
-        if (matrix && matrix.length >= 6) {
-          const a = matrix[0] / 65536;
-          const b = matrix[1] / 65536;
-          const angle = Math.round(Math.atan2(b, a) * (180 / Math.PI));
-          if (angle === 90 || angle === 180 || angle === 270 || angle === -90) {
-            rotation = angle < 0 ? angle + 360 : angle;
+        try {
+          const videoTrack = info.tracks.find((t: any) => t.type === 'video');
+          if (!videoTrack) {
+            finish(new Error(`No video track found in asset ${assetId}`));
+            return;
           }
-        }
 
-        mp4file.onSamples = (_trackId: number, _user: any, samples: Sample[]) => {
-          for (const s of samples) {
-            samplesCollected.push(s);
-          }
-        };
+          const timescale = videoTrack.timescale;
+          const duration = videoTrack.duration / timescale;
+          const width = videoTrack.video?.width ?? videoTrack.track_width;
+          const height = videoTrack.video?.height ?? videoTrack.track_height;
 
-        mp4file.setExtractionOptions(videoTrack.id, null, { nbSamples: Infinity });
-        mp4file.start();
-        mp4file.flush();
+          const trak = (mp4file as any).getTrackById(videoTrack.id);
+          const codecConfig = this.extractCodecConfig(videoTrack, trak);
 
-        const frameCount = samplesCollected.length || videoTrack.nb_samples;
-        const frameRate = frameCount > 0 && duration > 0
-          ? frameCount / duration
-          : (videoTrack as any).fps ?? 30;
-
-        const keyframeIndices: number[] = [];
-        for (let i = 0; i < samplesCollected.length; i++) {
-          if (samplesCollected[i].is_sync) {
-            keyframeIndices.push(i);
-          }
-        }
-
-        // VFR / timestamp gap detection
-        const checkCount = Math.min(100, samplesCollected.length);
-        if (checkCount > 1) {
-          let hasGaps = false;
-          const avgDuration = samplesCollected.slice(0, checkCount).reduce((sum, s) => sum + s.duration, 0) / checkCount;
-          for (let i = 1; i < checkCount; i++) {
-            const gap = Math.abs(samplesCollected[i].duration - avgDuration);
-            if (gap > avgDuration * 0.5) {
-              hasGaps = true;
-              break;
+          // Extract rotation from track header matrix.
+          let rotation = 0;
+          const matrix = videoTrack.matrix ?? trak?.tkhd?.matrix;
+          if (matrix && matrix.length >= 6) {
+            const a = matrix[0] / 65536;
+            const b = matrix[1] / 65536;
+            const angle = Math.round(Math.atan2(b, a) * (180 / Math.PI));
+            if (angle === 90 || angle === 180 || angle === 270 || angle === -90) {
+              rotation = angle < 0 ? angle + 360 : angle;
             }
           }
-          if (hasGaps) {
-            console.warn(`[VideoWorker] Variable frame rate detected for asset ${assetId}. Playback timing may be approximate.`);
+
+          // Build the FULL random-access sample table from the parsed moov.
+          // mp4box populates trak.samples (offset/size/cts/dts/duration/is_sync)
+          // from stco/stsc/stsz/stts/ctts/stss during moov parse — BEFORE onReady
+          // — so the complete index is available WITHOUT appending any mdat media
+          // bytes. fetchSampleData() reads the actual bytes on demand via byte
+          // ranges. (The old code collected samples via onSamples, which only
+          // delivers samples whose media bytes were appended; with the head/tail
+          // feed that meant everything past the first few MB was missing, so any
+          // real-length clip only decoded its opening fraction, then froze.)
+          const raw = (trak?.samples ?? []) as any[];
+          if (raw.length === 0) {
+            finish(new Error(`No sample table in moov for asset ${assetId} (fragmented MP4 is not supported)`));
+            return;
           }
+
+          const samples: Sample[] = new Array(raw.length);
+          const keyframeIndices: number[] = [];
+          for (let i = 0; i < raw.length; i++) {
+            const s = raw[i];
+            samples[i] = {
+              offset: s.offset,
+              size: s.size,
+              cts: s.cts,
+              duration: s.duration,
+              is_sync: !!s.is_sync,
+            };
+            if (s.is_sync) keyframeIndices.push(i);
+          }
+          // A decoder can only start at a sync sample, so frame 0 must be one.
+          // If stss somehow omits it, treat index 0 as an implicit keyframe AND
+          // type it 'key' (below), so a keyframe-start feed never trips the
+          // [[key chunk required]] rule with a delta chunk.
+          if (keyframeIndices.length === 0 || keyframeIndices[0] !== 0) {
+            keyframeIndices.unshift(0);
+            samples[0].is_sync = true;
+          }
+
+          const frameCount = samples.length;
+          const frameRate = frameCount > 0 && duration > 0
+            ? frameCount / duration
+            : (videoTrack as any).fps ?? 30;
+
+          finish(null, {
+            mp4file,
+            byteSource,
+            samples,
+            keyframeIndices,
+            timescale,
+            codecConfig,
+            width,
+            height,
+            frameRate: Math.round(frameRate * 1000) / 1000,
+            duration,
+            frameCount,
+            rotation,
+            byteCache: new Map(),
+          });
+        } catch (err) {
+          finish(err instanceof Error ? err : new Error(String(err)));
         }
-
-        const state: DemuxerAssetState = {
-          mp4file,
-          byteSource,
-          samples: samplesCollected,
-          keyframeIndices,
-          timescale,
-          codecConfig,
-          width,
-          height,
-          frameRate: Math.round(frameRate * 1000) / 1000,
-          duration,
-          frameCount: samplesCollected.length,
-          rotation,
-          byteCache: new Map(),
-        };
-
-        resolved = true;
-        resolve(state);
       };
 
-      mp4file.onError = (e: string) => {
-        if (!resolved) reject(new Error(`MP4 parse error for ${assetId}: ${e}`));
-      };
-
-      try {
-        await this.feedUntilReady(mp4file, byteSource);
-        if (!resolved) {
-          reject(new Error(`Failed to parse moov box for asset ${assetId}`));
-        }
-      } catch (err) {
-        if (!resolved) reject(err);
-      }
+      // Feed only the bytes mp4box needs to parse the moov. appendBuffer returns
+      // the next file offset it wants, which lets it seek past a leading mdat to
+      // reach a trailing moov (and, for a faststart file, stop as soon as the
+      // front moov is parsed) — so we never load mdat into memory here.
+      void this.feedUntilReady(mp4file, byteSource, () => settled).then(
+        () => { if (!settled) finish(new Error(`Failed to parse moov box for asset ${assetId}`)); },
+        (err) => finish(err instanceof Error ? err : new Error(String(err))),
+      );
     });
   }
 
-  private async feedUntilReady(mp4file: MP4File, byteSource: ByteSource): Promise<void> {
+  private async feedUntilReady(
+    mp4file: MP4File,
+    byteSource: ByteSource,
+    isDone: () => boolean,
+  ): Promise<void> {
     const totalSize = byteSource.totalSize;
-    const attempts = [
-      { headSize: 524288, tailSize: 524288 },
-      { headSize: 2097152, tailSize: 2097152 },
-      { headSize: Math.min(totalSize, 8388608), tailSize: Math.min(totalSize, 8388608) },
-    ];
+    const CHUNK = 1 << 20; // 1 MiB
+    let fileStart = 0;
+    let guard = 0;
 
-    let offset = 0;
-
-    for (const attempt of attempts) {
-      if ((mp4file as any).moovStartFound) break;
-
-      const headEnd = Math.min(attempt.headSize, totalSize);
-      if (offset < headEnd) {
-        const buf = await byteSource.read(offset, headEnd);
-        const mp4buf = buf as MP4ArrayBuffer;
-        mp4buf.fileStart = offset;
-        offset = mp4file.appendBuffer(mp4buf);
-      }
-
-      if ((mp4file as any).moovStartFound) break;
-
-      if (totalSize > attempt.headSize) {
-        const tailStart = Math.max(headEnd, totalSize - attempt.tailSize);
-        if (tailStart < totalSize) {
-          const tailBuf = await byteSource.read(tailStart, totalSize);
-          const mp4tailBuf = tailBuf as MP4ArrayBuffer;
-          mp4tailBuf.fileStart = tailStart;
-          mp4file.appendBuffer(mp4tailBuf);
-        }
-      }
-
-      if ((mp4file as any).moovStartFound) break;
+    while (!isDone() && fileStart < totalSize) {
+      if (++guard > 8192) throw new Error('moov scan exceeded read budget');
+      const end = Math.min(fileStart + CHUNK, totalSize);
+      const buf = await byteSource.read(fileStart, end);
+      if (isDone()) return;
+      const mp4buf = buf as MP4ArrayBuffer;
+      mp4buf.fileStart = fileStart;
+      const next = mp4file.appendBuffer(mp4buf);
+      if (isDone()) return;
+      // Follow mp4box's requested next offset; if it doesn't advance past what
+      // we fed, continue sequentially.
+      fileStart = typeof next === 'number' && next > fileStart ? next : end;
     }
+
+    // Reached EOF without onReady: flush so mp4box finalizes a moov sitting at
+    // the very end of the file. If that still doesn't yield onReady, the caller
+    // rejects.
+    if (!isDone()) mp4file.flush();
   }
 
   private extractCodecConfig(videoTrack: any, trak: any): VideoDecoderConfig {
@@ -276,19 +276,19 @@ class StreamingDemuxer {
       const entry = trak.mdia?.minf?.stbl?.stsd?.entries?.[0];
       if (entry) {
         if (entry.avcC) {
-          const stream = new DataStream(undefined, 0, DataStream.BIG_ENDIAN);
+          const stream = new DataStream(undefined, 0, Endianness.BIG_ENDIAN);
           entry.avcC.write(stream);
           config.description = new Uint8Array(stream.buffer, 8);
         } else if (entry.hvcC) {
-          const stream = new DataStream(undefined, 0, DataStream.BIG_ENDIAN);
+          const stream = new DataStream(undefined, 0, Endianness.BIG_ENDIAN);
           entry.hvcC.write(stream);
           config.description = new Uint8Array(stream.buffer, 8);
         } else if (entry.vpcC) {
-          const stream = new DataStream(undefined, 0, DataStream.BIG_ENDIAN);
+          const stream = new DataStream(undefined, 0, Endianness.BIG_ENDIAN);
           entry.vpcC.write(stream);
           config.description = new Uint8Array(stream.buffer, 8);
         } else if (entry.av1C) {
-          const stream = new DataStream(undefined, 0, DataStream.BIG_ENDIAN);
+          const stream = new DataStream(undefined, 0, Endianness.BIG_ENDIAN);
           entry.av1C.write(stream);
           config.description = new Uint8Array(stream.buffer, 8);
         }
@@ -426,6 +426,8 @@ interface PendingDecode {
   cancelled: boolean;
   /** True once resolved/rejected — guards double-settle and skips redundant passes. */
   settled: boolean;
+  /** True once this frame's chunk has been fed to the decoder (awaiting output). */
+  fed: boolean;
 }
 
 class VideoDecoderController {
@@ -439,13 +441,32 @@ class VideoDecoderController {
    */
   private pendingDecodes = new Map<number, PendingDecode>();
   private nextRequestId = 1;
-  /**
-   * Serializes decode passes. A VideoDecoder is a single pipeline: concurrent
-   * passes would interleave flush()/reset() and the shared feed position, so one
-   * pass could reset the decoder while another was mid-feed.
-   */
-  private decodeChain: Promise<void> = Promise.resolve();
   private configured = false;
+
+  // ── Forward-streaming session ──────────────────────────────────────────────
+  // The decoder is kept ALIVE across requests. During sequential/forward playback
+  // we keep feeding the next contiguous chunks without flushing, so a GOP is
+  // decoded once, not re-decoded from its keyframe on every frame. We only
+  // reset() to a keyframe on a backward/distant seek, and only flush() to drain
+  // the tail once decoding has caught up with demand (i.e. when it's not the
+  // bottleneck). This mirrors how mediabunny/CapCut drive WebCodecs playback.
+  /** decoder has been fed since the last flush/reset and can take a delta chunk. */
+  private sessionOpen = false;
+  /** highest sample index fed since the last flush/reset (-1 = none). */
+  private fedThrough = -1;
+  /** true while runLoop() is draining the pending queue. */
+  private looping = false;
+  /** Idle-drain timer: flushes the reorder tail shortly after feeding stops. */
+  private drainTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** Max samples fed in a single pass (bounds byte reads + input-queue depth). */
+  private static readonly MAX_FORWARD_SPAN = 120;
+  /** Backpressure cap: keep the decoder busy but don't overrun its input queue. */
+  private static readonly DECODE_QUEUE_CAP = 24;
+  /** Idle window before flushing the reorder tail (≈2 frames @ 30fps). */
+  private static readonly DRAIN_IDLE_MS = 64;
+  /** Watchdog: max wait for a flush() to drain before forcing a decoder rebuild. */
+  private static readonly FLUSH_TIMEOUT_MS = 2000;
 
   constructor(demuxer: StreamingDemuxer, assetId: string) {
     this.demuxer = demuxer;
@@ -468,6 +489,8 @@ class VideoDecoderController {
 
     this.decoder.configure(config);
     this.configured = true;
+    this.sessionOpen = false;
+    this.fedThrough = -1;
   }
 
   /** Resolve/reject a pending exactly once and drop it from the map. */
@@ -487,134 +510,314 @@ class VideoDecoderController {
       reject = rej;
     });
 
-    const pending: PendingDecode = {
+    this.pendingDecodes.set(requestId, {
       requestId,
       frameIndex,
       resolve,
       reject,
       cancelled: false,
       settled: false,
-    };
-    // Register before queuing so cancelFrame() can mark a request that hasn't
-    // started its pass yet.
-    this.pendingDecodes.set(requestId, pending);
+      fed: false,
+    });
 
-    // Queue the pass behind any in-flight one. The .catch keeps the chain alive:
-    // a rejected link would otherwise skip every subsequent pass.
-    this.decodeChain = this.decodeChain.then(() => this.runDecodePass(pending)).catch(() => {});
+    this.kick();
     return promise;
   }
 
-  /**
-   * Extend a pass to cover every queued request sharing this GOP. flush() forces
-   * a keyframe restart, so decoding one frame per pass would re-decode the GOP
-   * from its keyframe every time. Feeding through to the furthest pending frame
-   * lets a single pass emit them all (onFrame resolves each), and those queued
-   * passes then short-circuit on `settled`.
-   */
-  private maxPendingInGop(frameIndex: number, nearestKf: number): number {
-    let feedEnd = frameIndex;
-    for (const p of this.pendingDecodes.values()) {
-      if (p.settled || p.cancelled || p.frameIndex <= feedEnd) continue;
-      if (this.demuxer.getNearestKeyframeBefore(this.assetId, p.frameIndex) !== nearestKf) continue;
-      feedEnd = p.frameIndex;
+  /** Start the drain loop if it isn't already running. */
+  private kick(): void {
+    if (this.looping) return;
+    // A fresh feed is about to happen; cancel any pending idle-drain — the
+    // continuation feed will push the buffered tail out without a flush.
+    if (this.drainTimer !== null) {
+      clearTimeout(this.drainTimer);
+      this.drainTimer = null;
     }
-    return feedEnd;
+    this.looping = true;
+    void this.runLoop().finally(() => {
+      this.looping = false;
+      // A request that arrived during the final await gets its own loop.
+      if (this.pickTarget()) {
+        this.kick();
+        return;
+      }
+      // Feeding is done but the decoder may still hold reorder-buffered frames.
+      // Don't flush now: if playback continues, the next feed drains them for
+      // free (streaming). Only flush if no feed arrives within an idle window.
+      if (this.sessionOpen && this.hasBufferedFrames()) this.scheduleDrain();
+    });
   }
 
-  private async runDecodePass(pending: PendingDecode): Promise<void> {
-    // An earlier pass in this burst may have already emitted this frame.
-    if (pending.settled) return;
-    if (pending.cancelled) {
-      this.settle(pending, () => pending.reject(new Error('Decode cancelled')));
+  private scheduleDrain(): void {
+    if (this.drainTimer !== null) return;
+    this.drainTimer = setTimeout(() => {
+      this.drainTimer = null;
+      void this.maybeDrain();
+    }, VideoDecoderController.DRAIN_IDLE_MS);
+  }
+
+  /** Flush the reorder tail once feeding has gone idle, so stragglers resolve. */
+  private async maybeDrain(): Promise<void> {
+    if (this.looping) return;
+    if (!this.sessionOpen || !this.hasBufferedFrames() || this.pickTarget()) return;
+    this.looping = true; // lock out the main loop while we flush
+    try {
+      await this.flushSession();
+    } finally {
+      this.looping = false;
+      if (this.pickTarget()) this.kick();
+    }
+  }
+
+  /** Lowest-frame pending that still needs feeding (unsettled, uncancelled, unfed). */
+  private pickTarget(): PendingDecode | null {
+    let best: PendingDecode | null = null;
+    for (const p of this.pendingDecodes.values()) {
+      if (p.settled || p.cancelled || p.fed) continue;
+      if (!best || p.frameIndex < best.frameIndex) best = p;
+    }
+    return best;
+  }
+
+  /** Any fed-but-not-yet-emitted frame still sitting in the decoder pipeline. */
+  private hasBufferedFrames(): boolean {
+    for (const p of this.pendingDecodes.values()) {
+      if (!p.settled && !p.cancelled && p.fed) return true;
+    }
+    return false;
+  }
+
+  private reapCancelled(): void {
+    for (const p of [...this.pendingDecodes.values()]) {
+      if (p.cancelled && !p.settled) {
+        this.settle(p, () => p.reject(new Error('Decode cancelled')));
+      }
+    }
+  }
+
+  private async runLoop(): Promise<void> {
+    try {
+      while (true) {
+        this.reapCancelled();
+        const target = this.pickTarget();
+        if (!target) break;
+        await this.feedTowards(target);
+        // Buffered frames from this pass are left in the decoder; the NEXT pass's
+        // continuation feed drains them without a flush. Draining is handled by
+        // the idle timer (kick's finally) when feeding stops.
+      }
+    } catch (err) {
+      // Fatal: fail every outstanding request so nothing hangs, and drop the
+      // session so the next request reconfigures from scratch.
+      const e = err instanceof Error ? err : new Error(String(err));
+      for (const p of [...this.pendingDecodes.values()]) {
+        if (!p.settled) this.settle(p, () => p.reject(e));
+      }
+      this.sessionOpen = false;
+      this.fedThrough = -1;
+    }
+  }
+
+  /**
+   * Feed the decoder up to (at least) `target`, extending forward to cover other
+   * pending frames in the same run. Continues the open stream when the target is
+   * just ahead; otherwise reseeks to the target's keyframe. Never flushes here —
+   * frames emit via onFrame as the stream advances; runLoop() drains the tail.
+   */
+  private async feedTowards(target: PendingDecode): Promise<void> {
+    if (!this.decoder || !this.configured) {
+      await this.configure();
+    }
+    const decoder = this.decoder;
+    if (!decoder) throw new Error('Decoder unavailable');
+
+    const t = target.frameIndex;
+    const kf = this.demuxer.getNearestKeyframeBefore(this.assetId, t);
+
+    // Continue the open stream only when the target is forward AND reachable
+    // without skipping its keyframe (same GOP or the immediately next one). A
+    // backward jump or a far-ahead seek restarts at the keyframe instead — which
+    // is cheaper than replaying a long delta run and avoids decoding frames the
+    // caller doesn't want.
+    let feedStart: number;
+    if (this.sessionOpen && this.fedThrough >= 0 && t > this.fedThrough && kf <= this.fedThrough + 1) {
+      feedStart = this.fedThrough + 1;
+    } else {
+      // Reseek. flush() (not reset()) drains any frames still buffered from the
+      // previous run so THEIR promises resolve instead of being orphaned by a
+      // discard, and it arms [[key chunk required]] so the keyframe start below
+      // is valid. flush is also cheaper than reset()+reconfigure().
+      if (this.sessionOpen) {
+        await this.flushSession();
+        if (this.decoder !== decoder || decoder.state === 'closed') return;
+      }
+      feedStart = kf;
+    }
+
+    // Extend the run to cover contiguous pending frames, capped.
+    const cap = feedStart + VideoDecoderController.MAX_FORWARD_SPAN;
+    let feedEnd = Math.min(Math.max(t, feedStart), cap);
+    for (const p of this.pendingDecodes.values()) {
+      if (p.settled || p.cancelled || p.fed) continue;
+      if (p.frameIndex > feedEnd && p.frameIndex <= cap) feedEnd = p.frameIndex;
+    }
+
+    const samples = this.demuxer.getSamplesInRange(this.assetId, feedStart, feedEnd);
+    if (samples.length === 0) {
+      this.settle(target, () => target.reject(new Error(`No samples found for frame ${t}`)));
       return;
     }
 
-    try {
-      if (!this.decoder || !this.configured) {
-        await this.configure();
+    const dataBuffers = await this.demuxer.fetchSampleData(this.assetId, samples);
+    if (this.decoder !== decoder) return; // reset/closed during the byte fetch
+    const timescale = this.demuxer.getTimescale(this.assetId);
+
+    for (let i = 0; i < samples.length; i++) {
+      // Backpressure: keep the decoder busy without overrunning its input queue.
+      if (decoder.decodeQueueSize > VideoDecoderController.DECODE_QUEUE_CAP) {
+        await this.waitForDequeue(decoder);
+        if (this.decoder !== decoder || decoder.state === 'closed') return;
       }
-      const decoder = this.decoder;
-      if (!decoder) throw new Error('Decoder unavailable');
-
-      const frameIndex = pending.frameIndex;
-      const nearestKf = this.demuxer.getNearestKeyframeBefore(this.assetId, frameIndex);
-      const feedEnd = this.maxPendingInGop(frameIndex, nearestKf);
-
-      // ALWAYS feed from the nearest keyframe. Every pass ends with flush() to
-      // force the target frame out of the pipeline, and per the WebCodecs spec
-      // flush() sets [[key chunk required]] — so resuming mid-GOP with a delta
-      // chunk throws DataError. (The old code did exactly that, which meant only
-      // keyframes ever decoded.)
-      const samples = this.demuxer.getSamplesInRange(this.assetId, nearestKf, feedEnd);
-      if (samples.length === 0) {
-        this.settle(pending, () => pending.reject(new Error(`No samples found for frame ${frameIndex}`)));
-        return;
-      }
-
-      const dataBuffers = await this.demuxer.fetchSampleData(this.assetId, samples);
-      const timescale = this.demuxer.getTimescale(this.assetId);
-
-      for (let i = 0; i < samples.length; i++) {
-        if (pending.cancelled) {
-          this.settle(pending, () => pending.reject(new Error('Decode cancelled')));
-          return;
-        }
-
-        const sample = samples[i];
-        const chunk = new EncodedVideoChunk({
-          type: sample.is_sync ? 'key' : 'delta',
-          timestamp: Math.round((sample.cts / timescale) * 1_000_000),
-          duration: Math.round((sample.duration / timescale) * 1_000_000),
-          data: dataBuffers[i],
-        });
-        decoder.decode(chunk);
-      }
-
-      // Drain the pipeline: emits every frame fed above. onFrame resolves this
-      // pass's pending plus any other queued pendings in the same range.
-      await decoder.flush();
-
-      if (!pending.settled) {
-        this.settle(pending, () => pending.reject(new Error(`Frame ${frameIndex} not emitted by decoder`)));
-      }
-    } catch (err) {
-      this.settle(pending, () => pending.reject(err instanceof Error ? err : new Error(String(err))));
+      const s = samples[i];
+      decoder.decode(new EncodedVideoChunk({
+        type: s.is_sync ? 'key' : 'delta',
+        timestamp: Math.round((s.cts / timescale) * 1_000_000),
+        duration: Math.round((s.duration / timescale) * 1_000_000),
+        data: dataBuffers[i],
+      }));
+      const fedIndex = feedStart + i;
+      this.fedThrough = fedIndex;
+      this.markFed(fedIndex);
     }
+    this.sessionOpen = true;
+
+    // Let queued output callbacks run so emitted frames settle their pendings
+    // before the loop decides what to feed next.
+    await this.microYield();
+  }
+
+  private markFed(frameIndex: number): void {
+    for (const p of this.pendingDecodes.values()) {
+      if (!p.settled && !p.cancelled && p.frameIndex === frameIndex) p.fed = true;
+    }
+  }
+
+  /** Force out buffered frames; flush() sets [[key chunk required]] so the next pass reseeks. */
+  private async flushSession(): Promise<void> {
+    const decoder = this.decoder;
+    if (!decoder || decoder.state === 'closed') {
+      this.sessionOpen = false;
+      this.fedThrough = -1;
+      return;
+    }
+    try {
+      // Watchdog: flush() resolves only once every output is emitted, which can
+      // stall indefinitely if the hardware output pool is exhausted (downstream
+      // holding frames open). Bound it so the controller can never lock up — the
+      // 'dequeue' wait is bounded for the same reason.
+      await Promise.race([
+        decoder.flush(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('flush timeout')), VideoDecoderController.FLUSH_TIMEOUT_MS)),
+      ]);
+    } catch {
+      // Stalled or errored: fail any still-buffered pendings so nothing hangs,
+      // and drop the decoder so the next feed rebuilds it from a keyframe.
+      for (const p of [...this.pendingDecodes.values()]) {
+        if (!p.settled && p.fed) this.settle(p, () => p.reject(new Error('Decoder flush stalled')));
+      }
+      try {
+        decoder.close();
+      } catch { /* already closed by an error callback during the await */ }
+      if (this.decoder === decoder) {
+        this.decoder = null;
+        this.configured = false;
+      }
+    }
+    this.sessionOpen = false;
+    this.fedThrough = -1;
+  }
+
+  private waitForDequeue(decoder: VideoDecoder): Promise<void> {
+    return new Promise((resolve) => {
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        decoder.removeEventListener('dequeue', finish);
+        resolve();
+      };
+      decoder.addEventListener('dequeue', finish);
+      // Safety valve: never block the loop forever if the decoder stalls (e.g.
+      // its output pool is full because downstream is holding frames open).
+      setTimeout(finish, 250);
+    });
+  }
+
+  private microYield(): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, 0));
   }
 
   private onFrame(frame: VideoFrame): void {
     const timescale = this.demuxer.getTimescale(this.assetId);
     const frameTimestamp = frame.timestamp;
 
-    let matched: PendingDecode | null = null;
+    // Collect EVERY unsettled pending whose sample shares this frame's cts. There
+    // is normally exactly one (the scheduler dedupes per asset+frame), but if two
+    // requests target the same frame, resolving only one would strand the other.
+    const matches: PendingDecode[] = [];
     for (const pending of this.pendingDecodes.values()) {
       if (pending.settled) continue;
       const sample = this.demuxer.getSampleForFrame(this.assetId, pending.frameIndex);
       if (!sample) continue;
       const sampleTimestamp = Math.round((sample.cts / timescale) * 1_000_000);
       if (Math.abs(frameTimestamp - sampleTimestamp) < 1000) {
-        matched = pending;
-        break;
+        matches.push(pending);
       }
     }
 
-    if (!matched) {
+    if (matches.length === 0) {
+      // Intermediate/discarded frame (decoded to reach a target, or for an
+      // already-settled pending). Nothing owns it — reclaim immediately.
       frame.close();
       return;
     }
-    if (matched.cancelled) {
-      const m = matched;
-      this.settle(m, () => m.reject(new Error('Decode cancelled')));
+
+    // The last live match takes ownership of `frame`; earlier ones get clones.
+    // Cancelled matches are rejected and take no frame.
+    const owners = matches.filter((m) => !m.cancelled);
+    for (const m of matches) {
+      if (m.cancelled) this.settle(m, () => m.reject(new Error('Decode cancelled')));
+    }
+    if (owners.length === 0) {
       frame.close();
       return;
     }
-    const m = matched;
-    this.settle(m, () => m.resolve(frame));
+    for (let i = 0; i < owners.length; i++) {
+      const m = owners[i];
+      if (i === owners.length - 1) {
+        this.settle(m, () => m.resolve(frame));
+      } else {
+        // clone() is valid here: `frame` isn't transferred until the resolved
+        // promise is delivered to handleDecodeFrame in a later microtask.
+        try {
+          const clone = frame.clone();
+          this.settle(m, () => m.resolve(clone));
+        } catch {
+          this.settle(m, () => m.reject(new Error('Duplicate-frame clone failed')));
+        }
+      }
+    }
   }
 
   private onError(err: DOMException): void {
     this.configured = false;
+    this.sessionOpen = false;
+    this.fedThrough = -1;
+    if (this.drainTimer !== null) {
+      clearTimeout(this.drainTimer);
+      this.drainTimer = null;
+    }
     for (const pending of [...this.pendingDecodes.values()]) {
       this.settle(pending, () => pending.reject(new Error(`Decoder error: ${err.message}`)));
     }
@@ -629,10 +832,20 @@ class VideoDecoderController {
         found = true;
       }
     }
+    // Route the cancellation through the loop so it is actually reaped (rejected).
+    // Without this, cancelling the last request while its frame sits in the
+    // reorder tail would strand it: maybeDrain skips (no live target), no frame
+    // emits, and the promise never settles. kick() runs reapCancelled; if a loop
+    // is already active it reaps on its next turn.
+    if (found) this.kick();
     return found;
   }
 
   async reset(): Promise<void> {
+    if (this.drainTimer !== null) {
+      clearTimeout(this.drainTimer);
+      this.drainTimer = null;
+    }
     for (const pending of [...this.pendingDecodes.values()]) {
       this.settle(pending, () => pending.reject(new Error('Decoder reset')));
     }
@@ -647,6 +860,8 @@ class VideoDecoderController {
 
     this.decoder = null;
     this.configured = false;
+    this.sessionOpen = false;
+    this.fedThrough = -1;
   }
 
   async destroy(): Promise<void> {
@@ -714,8 +929,14 @@ async function handleDecodeFrame(msg: Extract<WorkerInboundMessage, { type: 'DEC
     if (scale < 1) {
       const w = Math.round(frame.displayWidth * scale);
       const h = Math.round(frame.displayHeight * scale);
-      const bitmap = await createImageBitmap(frame, { resizeWidth: w, resizeHeight: h });
-      frame.close();
+      let bitmap: ImageBitmap;
+      try {
+        bitmap = await createImageBitmap(frame, { resizeWidth: w, resizeHeight: h });
+      } finally {
+        // Close the source frame even if createImageBitmap rejects, or it leaks
+        // and eventually stalls the hardware decoder's output pool.
+        frame.close();
+      }
       send(
         {
           type: 'FRAME_READY',

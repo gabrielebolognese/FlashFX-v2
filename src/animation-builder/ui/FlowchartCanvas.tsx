@@ -68,7 +68,6 @@ function getBlockTitle(block: Block): string {
     case 'condition': return block.conditionExpression;
     case 'random': return `Random`;
     case 'macro': return 'Macro';
-    default: return block.type;
   }
 }
 

@@ -51,7 +51,6 @@ import {
   Undo2,
   Zap,
 } from 'lucide-react';
-import { DragInput } from '../components/DragInput';
 import { StaggerPanel } from './StaggerPanel';
 
 type ArrangeTab = 'align' | 'distribute' | 'size' | 'transform' | 'spacing' | 'arrange' | 'canvas' | 'stagger';

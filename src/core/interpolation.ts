@@ -18,15 +18,13 @@ import type {
   TextLayer,
   VideoLayer,
   ImageLayer,
-  ParticleLayer,
-  AnimationItemLayer,
   LottieIconLayer,
   Mask,
   MotionPath,
   LayoutObjectLayer,
   LayoutContainerLayer,
 } from './types';
-import type { ResolvedMotionBlur, ResolvedShadow, ResolvedBlur, LayerShadow, LayerGlow, LayerBlur, ResolvedGlow, ResolvedParticle, ResolvedProceduralLoop } from './types';
+import type { ResolvedMotionBlur, ResolvedShadow, ResolvedBlur, LayerShadow, LayerGlow, LayerBlur, ResolvedGlow } from './types';
 import { measureText } from '../engine/textAtlas';
 import { evaluateMotionPathAtFrame } from './motionPath';
 import { computeInstanceTransforms, selectClonerRenderPath, buildDataBoundSources } from '../cloner';
@@ -45,7 +43,7 @@ import { computeLayout, computeGridLayout } from '../layout/engine';
 import type { ChildMeasurement } from '../layout/engine';
 import { computeContainerLayout } from '../layout/containerEngine';
 import { expressionManager } from '../expressions/manager';
-import type { ExpressionContext, KeyframeData, ExpressionValue } from '../expressions/types';
+import type { ExpressionContext, KeyframeData } from '../expressions/types';
 
 // ---------------------------------------------------------------------------
 // Expression resolution context. Set before resolving each layer so that
@@ -1007,26 +1005,26 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
                 },
                 layerType: 'shape',
               });
-            } else if (el.kind === 'text' && el.content) {
-              const span = el.content.spans[0]?.style;
-              const bb = el.layoutConfig.boundingBox;
-              const textObj = {
-                content: el.content.spans.map(s => s.text).join(''),
-                mode: bb.type === 'auto' ? 'point' as const : 'box' as const,
-                boxWidth: bb.type === 'fixed' ? bb.width : bb.type === 'fixedWidth' ? bb.width : 300,
-                boxHeight: bb.type === 'fixed' ? bb.height : 200,
-                fontFamily: span?.fontFamily ?? 'Inter',
-                fontWeight: span?.fontWeight ?? 400,
-                fontStyle: span?.fontStyle ?? 'normal' as const,
-                fontSize: evaluateNumber(el.animOverrides.fontSize, frame),
-                lineHeight: evaluateNumber(el.animOverrides.lineHeight, frame),
-                letterSpacing: evaluateNumber(el.animOverrides.letterSpacing, frame),
-                fillColor: span?.color ?? [1, 1, 1, 1] as Vec4,
-                strokeColor: span?.strokeColor ?? [0, 0, 0, 0] as Vec4,
-                strokeWidth: evaluateNumber(el.animOverrides.strokeWidth, frame),
-                textAlign: el.layoutConfig.horizontalAlign,
-                underline: span?.underline ?? false,
-                strikethrough: span?.strikethrough ?? false,
+            } else if (el.kind === 'text' && el.text) {
+              // Animation-item labels are plain single-run strings (no rich-text
+              // spans / bounding box), so they resolve as auto-sized point text.
+              const textObj: ResolvedText = {
+                content: el.text.content,
+                mode: 'point',
+                boxWidth: 300,
+                boxHeight: 200,
+                fontFamily: el.text.fontFamily,
+                fontWeight: el.text.fontWeight,
+                fontStyle: 'normal',
+                fontSize: el.text.fontSize,
+                lineHeight: 1.2,
+                letterSpacing: 0,
+                fillColor: el.text.fillColor,
+                strokeColor: [0, 0, 0, 0],
+                strokeWidth: 0,
+                textAlign: el.text.align,
+                underline: false,
+                strikethrough: false,
                 measuredWidth: 0,
                 measuredHeight: 0,
               };
@@ -1037,7 +1035,14 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
                 id: `${layer.id}_el${ei}`,
                 visible: true,
                 blendMode: layer.blendMode,
-                transform: elTransform,
+                // elTransform anchors off el.shape, which text elements lack;
+                // scale the element's anchor fraction by the measured text box
+                // so a 0.5/0.5 label centres on its transform.
+                transform: {
+                  ...elTransform,
+                  anchorX: el.transform.anchorX * measured.width,
+                  anchorY: el.transform.anchorY * measured.height,
+                },
                 text: textObj,
                 layerType: 'text',
               });
@@ -1078,8 +1083,8 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
             localFrame: scaledFrame,
             color: lottieLayer.lottieIcon.color,
           },
-          mask: resolveMask((layer as any).masks, frame),
-          masks: resolveMasks((layer as any).masks, frame),
+          mask: resolveMask(layer.masks, frame),
+          masks: resolveMasks(layer.masks, frame),
           motionBlur,
           shadow,
           glow,
@@ -1298,10 +1303,11 @@ export function buildPhysicsEvaluator(composition: Composition): (layerId: strin
           if (verts.length > 0) {
             let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
             for (const v of verts) {
-              if (v.x < minX) minX = v.x;
-              if (v.x > maxX) maxX = v.x;
-              if (v.y < minY) minY = v.y;
-              if (v.y > maxY) maxY = v.y;
+              const [x, y] = v.position;
+              if (x < minX) minX = x;
+              if (x > maxX) maxX = x;
+              if (y < minY) minY = y;
+              if (y > maxY) maxY = y;
             }
             width = maxX - minX;
             height = maxY - minY;

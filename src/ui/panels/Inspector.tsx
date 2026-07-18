@@ -4,7 +4,7 @@ import { useTimelineStore } from '../../store/timeline';
 import { useMotionPathStore } from '../../store/motionPath';
 import { useMaskStore } from '../../store/mask';
 import { BrandColorPicker } from '../components/BrandColorPicker';
-import type { ShapeLayer, TextLayer, VideoLayer, ImageLayer, AudioLayer, ParticleLayer, AnimationItemLayer, LottieIconLayer, AnimatableProperty, Vec2, RectangleShape, CircleShape, StarShape, PolygonShape, MotionPathAnchor, MotionPathLoop, ShapeMaterialConfig, ShapePatternConfig, Mask, MaskType, Layer, LayerShadow, LayerGlow, LayerBlur, BlurType, GlowMode, LayoutObjectLayer, LayoutContainerLayer } from '../../core/types';
+import type { ShapeLayer, TextLayer, VideoLayer, ImageLayer, AudioLayer, ParticleLayer, AnimationItemLayer, LottieIconLayer, AnimatableProperty, Vec2, RectangleShape, CircleShape, StarShape, PolygonShape, MotionPathAnchor, MotionPathLoop, Mask, MaskType, Layer, LayerShadow, LayerGlow, LayerBlur, BlurType, GlowMode, LayoutObjectLayer, LayoutContainerLayer } from '../../core/types';
 import { evaluateProperty } from '../../core/interpolation';
 import { getMotionBlur } from '../../core/layerSwitches';
 import { Diamond, Route, Trash2, Wand2, Sliders, Sparkles, Square, Circle, Star, Hexagon, Zap, Scissors, Moon, Layers, Type, Frame, Copy, ChevronUp, ChevronDown, Eye, EyeOff, Plus, Repeat, Link2, Atom, Grid3x3, Aperture, Code2, SlidersHorizontal, Palette, Loader2 } from 'lucide-react';
@@ -19,15 +19,14 @@ import { PhysicsPanel } from './PhysicsPanel';
 import { StaggerPanel } from './StaggerPanel';
 import { FieldSamplingPanel } from './FieldSamplingPanel';
 import { AnimatePanel } from './AnimatePanel';
-import { ShapeMaterialPanel, MaterialSection } from './ShapeMaterialPanel';
-import { ShapePatternFillPanel, PatternEditor } from './ShapePatternFillPanel';
+import { ShapeMaterialPanel } from './ShapeMaterialPanel';
+import { ShapePatternFillPanel } from './ShapePatternFillPanel';
 import { LayoutParamsPanel, ChildLayoutOverridePanel } from './LayoutPanel';
 import { LayoutContainerPanel } from './LayoutContainerPanel';
 import { MultiSelectInspector } from './MultiSelectInspector';
 import { CodeTab } from './expressions/CodeTab';
 import { ImageFiltersPanel } from './filters';
 import { ColorCorrectionPanel } from './color-correction';
-import { createDefaultMaterial, createDefaultPattern } from '../../core/material';
 import { smoothEntirePath } from '../../core/motionPath';
 import { mediaAssetManager } from '../../engine/media/assetManager';
 import { useProjectStore } from '../../project-system/hooks/useProjectStore';
@@ -76,7 +75,10 @@ export function Inspector() {
   const isVideo = layer.type === 'video';
   const isImage = layer.type === 'image';
 
-  const hasAdvanced = isShape || isText;
+  // Advanced = Material + Pattern, which only ShapeLayer carries. TextLayer has no
+  // material/pattern in the data model or renderer, so text used to get an Advanced
+  // tab containing two permanently-empty sections.
+  const hasAdvanced = isShape;
   const hasEffects = isText || isShape || isVideo || isImage;
 
   const tabs: { id: InspectorTab; label: string; icon: React.ReactNode; show: boolean }[] = [
@@ -234,18 +236,6 @@ function InspectorTabContent({ tab, layer }: { tab: InspectorTab; layer: Layer }
         </>
       );
     }
-    if (isText) {
-      return (
-        <>
-          <Section title="Text Material">
-            <TextMaterialSection layer={layer as TextLayer} />
-          </Section>
-          <Section title="Text Pattern">
-            <TextPatternSection layer={layer as TextLayer} />
-          </Section>
-        </>
-      );
-    }
     return null;
   }
 
@@ -339,7 +329,6 @@ function InspectorTabContent({ tab, layer }: { tab: InspectorTab; layer: Layer }
       {isImage && (
         <ImageProperties
           layer={layer as ImageLayer}
-          updateLayerProperty={updateLayerProperty}
         />
       )}
 
@@ -1022,10 +1011,9 @@ function VideoProperties({
 }
 
 function ImageProperties({
-  layer, updateLayerProperty,
+  layer,
 }: {
   layer: ImageLayer;
-  updateLayerProperty: (id: string, path: string, value: unknown) => void;
 }) {
   const { image } = layer;
 
@@ -2252,10 +2240,3 @@ function MotionPathSection({ layerId }: { layerId: string }) {
   );
 }
 
-function TextMaterialSection({ layer: _layer }: { layer: TextLayer }) {
-  return null;
-}
-
-function TextPatternSection({ layer: _layer }: { layer: TextLayer }) {
-  return null;
-}

@@ -5,7 +5,7 @@ import { getPropertyDefaultMap } from './propertyDiscovery';
 import { useEditorStore } from '../store/editor';
 import { uid } from '../core/factory';
 import { createKeyframe } from '../core/factory';
-import type { Layer, AnimatableProperty } from '../core/types';
+import type { AnimatableProperty } from '../core/types';
 
 interface AnimationBuilderState {
   flowCharts: FlowChart[];
@@ -46,10 +46,6 @@ interface AnimationBuilderState {
   collapseToMacro: (chartId: string, blockIds: string[], name: string) => string;
 
   setExecutionHighlight: (blockId: string | null) => void;
-}
-
-function getChart(state: AnimationBuilderState, chartId: string): FlowChart | undefined {
-  return state.flowCharts.find((c) => c.id === chartId);
 }
 
 function updateChart(charts: FlowChart[], chartId: string, updater: (chart: FlowChart) => FlowChart): FlowChart[] {

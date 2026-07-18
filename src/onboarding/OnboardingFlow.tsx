@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useOnboardingStore, type ShapeCreationMode, type ContentType } from './store';
+import { useOnboardingStore } from './store';
 import { Monitor, Smartphone, MousePointer2, Square, Upload, Check, ArrowRight, MousePointerClick } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { ShaderAnimation } from '../ui/components/ShaderAnimation';

@@ -1,4 +1,4 @@
-import type { Layer, AnimatableProperty } from '../core/types';
+import type { Layer } from '../core/types';
 import type { PropertyDescriptor } from './types';
 
 export function discoverProperties(layer: Layer): PropertyDescriptor[] {

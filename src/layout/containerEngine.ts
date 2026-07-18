@@ -15,10 +15,6 @@ interface PathPoint {
   angle: number;
 }
 
-function lerp(a: number, b: number, t: number): number {
-  return a + (b - a) * t;
-}
-
 function cubicBezierPoint(p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2, t: number): Vec2 {
   const mt = 1 - t;
   const mt2 = mt * mt;
@@ -131,8 +127,6 @@ function circleToVertices(radius: number, segments = 32): PathVertex[] {
   const k = (4 / 3) * Math.tan(Math.PI / (2 * segments));
   for (let i = 0; i < segments; i++) {
     const a = (2 * Math.PI * i) / segments;
-    const aNext = (2 * Math.PI * (i + 1)) / segments;
-    const aPrev = (2 * Math.PI * (i - 1)) / segments;
     const x = Math.cos(a) * radius;
     const y = Math.sin(a) * radius;
     const dx = -Math.sin(a) * radius * k;
@@ -162,7 +156,10 @@ function getShapeVertices(shape: ContainerShapeConfig): { vertices: PathVertex[]
 
 function distributeBorder(
   childCount: number,
-  spacing: number,
+  // Border distribution spreads children evenly around the perimeter, so the gap
+  // is derived from the available length rather than set by the caller. Kept for
+  // signature parity with the other distribute* modes.
+  _spacing: number,
   padding: number,
   totalLength: number,
 ): number[] {

@@ -3,12 +3,13 @@ import {
   Clipboard, Copy, Scissors, Trash2, Pencil, MoveVertical, ArrowUp, ArrowDown,
   ChevronsUp, ChevronsDown, RotateCcw, Sparkles, Layers, Film, Image, Music,
   Volume2, VolumeX, Upload, FolderPlus, LayoutGrid, List, Clock, SortAsc,
-  RefreshCcw, Play, Pause, SkipForward, SkipBack, Star, Hexagon, Repeat,
+  RefreshCcw, Play, Pause, SkipForward, SkipBack, Star, Hexagon,
   Eye, EyeOff, Move, Maximize2, Minimize2, Crosshair, Ruler, AlignCenter,
   FastForward, Rewind, Tag, Palette, Settings, Wand2, ScanLine, AudioLines,
-  Waves, Activity, Gauge, Sliders, Ungroup, Group, MousePointer, Columns3, Rows3,
-  Zap, ArrowLeftToLine, ArrowRightToLine, ArrowUpDown, Container,
+  Waves, Activity, Gauge, Ungroup, Group, MousePointer, Columns3, Rows3,
+  Zap, ArrowLeftToLine, ArrowRightToLine, Container,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import type { MenuEntry } from './types';
 import { useEditorStore } from '../../store/editor';
 import { useTimelineStore } from '../../store/timeline';
@@ -16,11 +17,11 @@ import { useGridStore } from '../../store/grid';
 import { useViewportNavStore } from '../../store/viewportNav';
 
 // Helper: creates a disabled placeholder item
-function disabled(id: string, label: string, icon?: any, shortcut?: string): MenuEntry {
+function disabled(id: string, label: string, icon?: LucideIcon, shortcut?: string): MenuEntry {
   return { type: 'item', id, label, icon, shortcut, enabled: false };
 }
 
-function item(id: string, label: string, action: () => void, icon?: any, shortcut?: string): MenuEntry {
+function item(id: string, label: string, action: () => void, icon?: LucideIcon, shortcut?: string): MenuEntry {
   return { type: 'item', id, label, icon, shortcut, enabled: true, action };
 }
 
@@ -52,16 +53,16 @@ export function buildCanvasMenu(): MenuEntry[] {
         {
           type: 'item', id: 'toggle-grid', label: 'Show Grid',
           icon: Grid3x3,
-          checked: grid.gridVisible,
-          action: () => grid.setGridVisible(!grid.gridVisible),
+          checked: grid.grid.visible,
+          action: () => grid.setGridVisible(!grid.grid.visible),
           enabled: true,
         },
         disabled('snap-grid', 'Snap to Grid', Magnet),
         {
           type: 'item', id: 'toggle-guides', label: 'Show Guides',
           icon: Ruler,
-          checked: grid.guidesVisible,
-          action: () => grid.setGuidesVisible(!grid.guidesVisible),
+          checked: grid.guides.visible,
+          action: () => grid.setGuidesVisible(!grid.guides.visible),
           enabled: true,
         },
         disabled('snap-guides', 'Snap to Guides', Magnet),
@@ -183,7 +184,6 @@ export function buildTimelineEmptyMenu(): MenuEntry[] {
 
 export function buildClipMenu(layerId: string): MenuEntry[] {
   const editor = useEditorStore.getState();
-  const timeline = useTimelineStore.getState();
   const layer = editor.composition.layers.find((l) => l.id === layerId);
   const isAudio = layer?.type === 'audio';
   const isVideo = layer?.type === 'video';
@@ -205,9 +205,9 @@ export function buildClipMenu(layerId: string): MenuEntry[] {
       type: 'group',
       label: 'Clip Operations',
       items: [
-        item('clip-split', 'Split at Playhead', () => editor.trimSplit(layerId, timeline.currentFrame), Scissors, 'Ctrl+Shift+S'),
-        item('clip-trim-left', 'Trim Start to Playhead', () => editor.trimLeft(layerId, timeline.currentFrame), SkipForward),
-        item('clip-trim-right', 'Trim End to Playhead', () => editor.trimRight(layerId, timeline.currentFrame), SkipBack),
+        item('clip-split', 'Split at Playhead', () => editor.trimSplit(layerId), Scissors, 'Ctrl+Shift+S'),
+        item('clip-trim-left', 'Trim Start to Playhead', () => editor.trimLeft(layerId), SkipForward),
+        item('clip-trim-right', 'Trim End to Playhead', () => editor.trimRight(layerId), SkipBack),
         disabled('clip-freeze', 'Freeze Frame', Film),
         disabled('clip-reverse', 'Reverse', Rewind),
         disabled('clip-speed', 'Speed / Duration', FastForward),

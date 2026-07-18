@@ -16,8 +16,7 @@ import {
 import type { ProjectScene, ProjectPreview } from '../types';
 import { serializeDocument, deserializeDocument } from './serialization';
 import type { SceneDocument } from '../../core/types';
-import { createComposition, createDefaultBackground } from '../../core/factory';
-import type { Composition } from '../../core/types';
+import { createComposition } from '../../core/factory';
 import { videoAssetStore } from '../../engine/video/videoAssetStore';
 
 function generateId(): string {

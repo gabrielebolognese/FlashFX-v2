@@ -1,7 +1,7 @@
 import { useRef, useEffect, useMemo, memo, useCallback } from 'react';
 import { useEditorStore } from '../../../store/editor';
 import { useTimelineStore } from '../../../store/timeline';
-import type { Layer, AnimatableProperty } from '../../../core/types';
+import type { Layer, AnimatableProperty, ShapeGeometry } from '../../../core/types';
 
 interface KeyframeEntry {
   frame: number;
@@ -20,19 +20,39 @@ const LAYER_COLORS: Record<string, string> = {
 };
 
 function collectKeyframes(property: AnimatableProperty, layerName: string, propName: string, color: string): KeyframeEntry[] {
-  const entries: KeyframeEntry[] = [];
-  if (property.type === 'animated') {
-    for (const kf of property.keyframes) {
-      entries.push({ frame: kf.frame, layerName, propertyName: propName, color });
-    }
-  } else if (property.type === 'multi-animated') {
-    for (const dim of property.dimensions) {
-      for (const kf of dim.keyframes) {
-        entries.push({ frame: kf.frame, layerName, propertyName: propName, color });
-      }
-    }
+  return property.keyframes.map((kf) => ({
+    frame: kf.frame,
+    layerName,
+    propertyName: propName,
+    color,
+  }));
+}
+
+// The animatable sub-properties of each shape variant, keyed for display.
+function shapeProperties(shape: ShapeGeometry): [string, AnimatableProperty][] {
+  switch (shape.type) {
+    case 'rectangle':
+      return [
+        ['width', shape.width],
+        ['height', shape.height],
+        ['borderRadius', shape.borderRadius],
+        ['strokeWidth', shape.strokeWidth],
+      ];
+    case 'circle':
+      return [
+        ['radius', shape.radius],
+        ['strokeWidth', shape.strokeWidth],
+      ];
+    case 'star':
+      return [
+        ['points', shape.points],
+        ['outerRadius', shape.outerRadius],
+        ['innerRadius', shape.innerRadius],
+        ['strokeWidth', shape.strokeWidth],
+      ];
+    case 'polygon':
+      return [['strokeWidth', shape.strokeWidth]];
   }
-  return entries;
 }
 
 function extractAllKeyframes(layers: Layer[]): Map<string, KeyframeEntry[]> {
@@ -51,32 +71,24 @@ function extractAllKeyframes(layers: Layer[]): Map<string, KeyframeEntry[]> {
 
     // Shape properties
     if (layer.type === 'shape') {
-      const shape = layer.shape as Record<string, unknown>;
-      for (const key of ['width', 'height', 'radius', 'outerRadius', 'innerRadius', 'points', 'strokeWidth', 'borderRadius']) {
-        const prop = shape[key];
-        if (prop && typeof prop === 'object' && 'type' in (prop as object)) {
-          entries.push(...collectKeyframes(prop as AnimatableProperty, layer.name, key, color));
-        }
+      for (const [key, prop] of shapeProperties(layer.shape)) {
+        entries.push(...collectKeyframes(prop, layer.name, key, color));
       }
     }
 
     // Text properties
     if (layer.type === 'text') {
-      const style = (layer as any).text?.style;
-      if (style) {
-        for (const key of ['fontSize', 'lineHeight', 'letterSpacing', 'strokeWidth']) {
-          const prop = style[key];
-          if (prop && typeof prop === 'object' && 'type' in prop) {
-            entries.push(...collectKeyframes(prop as AnimatableProperty, layer.name, key, color));
-          }
-        }
-      }
+      const overrides = layer.animOverrides;
+      entries.push(...collectKeyframes(overrides.fontSize, layer.name, 'fontSize', color));
+      entries.push(...collectKeyframes(overrides.lineHeight, layer.name, 'lineHeight', color));
+      entries.push(...collectKeyframes(overrides.letterSpacing, layer.name, 'letterSpacing', color));
+      entries.push(...collectKeyframes(overrides.strokeWidth, layer.name, 'strokeWidth', color));
     }
 
     // Audio properties
     if (layer.type === 'audio') {
-      entries.push(...collectKeyframes((layer as any).audio.volume, layer.name, 'Volume', color));
-      entries.push(...collectKeyframes((layer as any).audio.pitch, layer.name, 'Pitch', color));
+      entries.push(...collectKeyframes(layer.audio.volume, layer.name, 'Volume', color));
+      entries.push(...collectKeyframes(layer.audio.pitch, layer.name, 'Pitch', color));
     }
 
     if (entries.length > 0) {
@@ -86,10 +98,6 @@ function extractAllKeyframes(layers: Layer[]): Map<string, KeyframeEntry[]> {
 
   return byLayer;
 }
-
-const ROW_HEIGHT = 20;
-const HEADER_HEIGHT = 22;
-const RULER_HEIGHT = 20;
 
 const LayerKeyframeRow = memo(function LayerKeyframeRow({
   layer,

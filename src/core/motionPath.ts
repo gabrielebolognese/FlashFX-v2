@@ -1,10 +1,6 @@
 import type { MotionPath, MotionPathNode, Vec2 } from './types';
 import { evaluateNumber } from './interpolation';
 
-function lerp(a: number, b: number, t: number): number {
-  return a + (b - a) * t;
-}
-
 function cubicBezierPoint(p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2, t: number): Vec2 {
   const u = 1 - t;
   const uu = u * u;

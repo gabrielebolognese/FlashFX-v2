@@ -375,14 +375,14 @@ function ChildrenList({ layer }: { layer: LayoutObjectLayer }) {
 
   return (
     <div className="rounded border border-[#1c3155] bg-[#0d1f38] overflow-hidden max-h-[200px] overflow-y-auto">
-      {layer.children.map((childId, idx) => {
+      {layer.children.map((childId) => {
         const child = composition.layers.find((l) => l.id === childId);
         if (!child) return null;
         return (
           <div
             key={childId}
             className="flex items-center gap-1.5 px-2 py-1.5 border-b border-[#1c3155] last:border-b-0 hover:bg-[#162a4a] cursor-pointer transition-colors"
-            onClick={() => selectLayer(childId, false, 'inspector')}
+            onClick={() => selectLayer(childId, false, 'canvas')}
           >
             <GripVertical size={9} className="text-slate-600" />
             <span className="flex-1 text-[10px] text-slate-300 truncate">{child.name}</span>

@@ -2410,9 +2410,6 @@ fn fs_kawase(in: VO) -> @location(0) vec4f {
 }
 `;
 
-const BLUR_FX_UNIFORM_SIZE = 32; // 2 + 4 + 2 + 2 = 10 floats = 40 bytes → align to 48 → use 32*N...
-// Actually: vec2f(8) + vec4f(16) + vec2f(8) + vec2f(8) = 40 bytes. Round up to 48 for alignment.
-
 // Final copy of the composited scene texture to the swapchain. Both store
 // premultiplied alpha, so the sample is written through unchanged.
 const BLIT_SHADER = /* wgsl */ `

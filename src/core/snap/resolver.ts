@@ -26,7 +26,6 @@ export function snap(ctx: SnapContext): SnapOutput {
   let bestDx = 0;
   let bestDistX = Infinity;
   let bestTargetX: SnapTarget | null = null;
-  let bestAnchorX = 0;
 
   for (const target of targets) {
     if (target.axis !== 'x') continue;
@@ -36,7 +35,6 @@ export function snap(ctx: SnapContext): SnapOutput {
         bestDistX = dist;
         bestDx = target.value - ax;
         bestTargetX = target;
-        bestAnchorX = ax + (target.value - ax);
       }
     }
   }
@@ -44,7 +42,6 @@ export function snap(ctx: SnapContext): SnapOutput {
   let bestDy = 0;
   let bestDistY = Infinity;
   let bestTargetY: SnapTarget | null = null;
-  let bestAnchorY = 0;
 
   for (const target of targets) {
     if (target.axis !== 'y') continue;
@@ -54,7 +51,6 @@ export function snap(ctx: SnapContext): SnapOutput {
         bestDistY = dist;
         bestDy = target.value - ay;
         bestTargetY = target;
-        bestAnchorY = ay + (target.value - ay);
       }
     }
   }

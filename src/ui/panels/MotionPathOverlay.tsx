@@ -49,15 +49,6 @@ export function MotionPathOverlay({ style }: MotionPathOverlayProps) {
 
   const { width: compW, height: compH } = composition.settings;
 
-  const toScreen = useCallback((pos: Vec2): Vec2 => {
-    if (!svgRef.current) return [0, 0];
-    const rect = svgRef.current.getBoundingClientRect();
-    return [
-      (pos[0] / compW) * rect.width,
-      (pos[1] / compH) * rect.height,
-    ];
-  }, [compW, compH]);
-
   const toComp = useCallback((screenX: number, screenY: number): Vec2 => {
     if (!svgRef.current) return [0, 0];
     const rect = svgRef.current.getBoundingClientRect();

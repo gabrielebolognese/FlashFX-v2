@@ -2,7 +2,6 @@ import { useRef, useCallback, useEffect, useState, useMemo } from 'react';
 import type { Layer, Track, ShapeLayer, AudioLayer, VideoLayer, AnimatableProperty } from '../../../core/types';
 import { useTimelineStore } from '../../../store/timeline';
 import { useEditorStore } from '../../../store/editor';
-import { useClipContextMenu } from '../../../store/clipContextMenu';
 import { useSilenceStore } from '../../../store/silenceStripper';
 import { useContextMenu } from '../../context-menu';
 import { buildClipMenu, buildMultiClipMenu } from '../../context-menu/menuDefinitions';
@@ -196,7 +195,6 @@ export function TrackArea({ layers, tracks, selectedIds, rulerOnly, ghostRowCoun
   const commitClipMove = useEditorStore((s) => s.commitClipMove);
   const canPlaceOnTrack = useEditorStore((s) => s.canPlaceOnTrack);
   const resizeClips = useEditorStore((s) => s.resizeClips);
-  const showClipMenu = useClipContextMenu((s) => s.show);
   const { show: showCtxMenu } = useContextMenu();
   // Tag unused legacy actions so TS does not complain after the canonical migration.
   void moveClipInTime; void moveClipToTrack; void reorderClipToTrackPosition;
@@ -1516,7 +1514,11 @@ function VideoThumbnailStrip({
   );
 }
 
-function VideoThumb({ assetId, sourceFrame, width, height }: {
+// NOTE: stub — renders a correctly-sized but EMPTY canvas. Decoding `assetId` at
+// `sourceFrame` and painting it here is not implemented yet (no frame-extraction
+// API exists on mediaAssetManager), so the timeline thumbnail strip is blank.
+// The props are kept because they are the intended contract for that work.
+function VideoThumb({ assetId: _assetId, sourceFrame: _sourceFrame, width, height }: {
   assetId: string;
   sourceFrame: number;
   width: number;

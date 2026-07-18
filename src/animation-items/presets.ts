@@ -1,12 +1,6 @@
 import type {
   AnimationItemConfig,
   DataSourceConfig,
-  ProgressBarConfig,
-  StopwatchConfig,
-  CounterConfig,
-  RatingStarsConfig,
-  LoadingSpinnerConfig,
-  GaugeConfig,
 } from './types';
 
 export interface AnimationItemPreset {

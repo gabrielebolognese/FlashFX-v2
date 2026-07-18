@@ -1,9 +1,8 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
-import { Search, Upload, Trash2, Image, Music, Loader2, Bookmark, GripVertical } from 'lucide-react';
+import { Search, Upload, Trash2, Music, Loader2, Bookmark } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useEditorStore } from '../../store/editor';
 import { useProjectStore } from '../../project-system/hooks/useProjectStore';
-import { mediaAssetManager } from '../../engine/media/assetManager';
 
 interface SavedAsset {
   id: string;

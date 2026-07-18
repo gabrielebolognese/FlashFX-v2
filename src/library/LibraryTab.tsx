@@ -30,18 +30,12 @@ interface BreadcrumbItem {
   name: string;
 }
 
-const MEDIA_MIME_PREFIXES = ['video/', 'image/', 'audio/'];
-
 function getFileIcon(item: DriveItem) {
   if (item.isFolder) return <Folder size={18} className="text-[#f7b500]" />;
   if (item.mimeType.startsWith('video/')) return <Film size={18} className="text-blue-400" />;
   if (item.mimeType.startsWith('image/')) return <Image size={18} className="text-emerald-400" />;
   if (item.mimeType.startsWith('audio/')) return <Music size={18} className="text-amber-400" />;
   return <FileText size={18} className="text-slate-500" />;
-}
-
-function isMediaFile(item: DriveItem): boolean {
-  return MEDIA_MIME_PREFIXES.some((p) => item.mimeType.startsWith(p));
 }
 
 function formatSize(bytes: number | null): string {
@@ -79,7 +73,6 @@ function AudioCard({
   const [audioError, setAudioError] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const animFrameRef = useRef(0);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const loadAudio = useCallback(async () => {
     if (audioRef.current) return;
@@ -281,7 +274,6 @@ export function LibraryTab() {
   const [searchLoading, setSearchLoading] = useState(false);
   const [isSearchMode, setIsSearchMode] = useState(false);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const searchAbortRef = useRef<AbortController | null>(null);
 
   // Editor integration
   const addImage = useEditorStore((s) => s.addImage);
@@ -325,19 +317,28 @@ export function LibraryTab() {
     setIsSearchMode(true);
     setSearchLoading(true);
 
+    // A superseded run must not write state: the debounce only clears a *pending*
+    // timer, so a request already in flight for an older query could otherwise
+    // resolve last and overwrite the current query's results.
+    let cancelled = false;
+
     searchTimerRef.current = setTimeout(async () => {
       try {
         const result = await searchDriveAssets(searchQuery.trim());
+        if (cancelled) return;
         setSearchResults(result.items);
       } catch (err: any) {
+        if (cancelled) return;
         setSearchResults([]);
         setError(err.message || 'Search failed');
       } finally {
-        setSearchLoading(false);
+        // Leave the spinner up if a newer query is already loading.
+        if (!cancelled) setSearchLoading(false);
       }
     }, 350);
 
     return () => {
+      cancelled = true;
       if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
     };
   }, [searchQuery]);

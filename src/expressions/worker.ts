@@ -67,7 +67,7 @@ function _wiggleImpl(time: number, frequency: number, amplitude: number, seed: n
 }
 
 // Keyframe interpolation helper for loopIn/loopOut
-function _interpolateKeyframes(keyframes: KeyframeData[], frame: number, fps: number): number | number[] {
+function _interpolateKeyframes(keyframes: KeyframeData[], frame: number): number | number[] {
   if (keyframes.length === 0) return 0;
   if (keyframes.length === 1) {
     const v = keyframes[0].value;
@@ -136,7 +136,7 @@ function buildScope(context: ExpressionContext) {
       const mappedFrame = isReverse
         ? lastFrame - frac * rangeFrames
         : firstKf.frame + frac * rangeFrames;
-      return _interpolateKeyframes(keyframes, mappedFrame, fps);
+      return _interpolateKeyframes(keyframes, mappedFrame);
     }
 
     if (type === 'continue') {
@@ -158,7 +158,7 @@ function buildScope(context: ExpressionContext) {
     // cycle (default)
     const frac = (elapsed % rangeFrames) / rangeFrames;
     const mappedFrame = firstKf.frame + frac * rangeFrames;
-    return _interpolateKeyframes(keyframes, mappedFrame, fps);
+    return _interpolateKeyframes(keyframes, mappedFrame);
   }
 
   function loopIn(type: string = 'cycle'): number | number[] {
@@ -184,7 +184,7 @@ function buildScope(context: ExpressionContext) {
       const mappedFrame = isReverse
         ? firstFrame + frac * rangeFrames
         : lastKf.frame - frac * rangeFrames;
-      return _interpolateKeyframes(keyframes, mappedFrame, fps);
+      return _interpolateKeyframes(keyframes, mappedFrame);
     }
 
     if (type === 'continue') {
@@ -206,7 +206,7 @@ function buildScope(context: ExpressionContext) {
     // cycle (default)
     const frac = (elapsed % rangeFrames) / rangeFrames;
     const mappedFrame = lastKf.frame - frac * rangeFrames;
-    return _interpolateKeyframes(keyframes, mappedFrame, fps);
+    return _interpolateKeyframes(keyframes, mappedFrame);
   }
 
   function linear(t: number, a: number, b: number, c?: number, d?: number): number {

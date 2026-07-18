@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Sparkles, Clock, PlayCircle } from 'lucide-react';
+import { Clock, PlayCircle } from 'lucide-react';
 import { useEditorStore } from '../../store/editor';
 import { useTimelineStore } from '../../store/timeline';
 import { getPresetsByCategory, PRESET_CATEGORIES } from '../../core/animationPresets';
