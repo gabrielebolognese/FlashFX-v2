@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Composition, SceneDocument, Layer, AnimatableProperty, Keyframe, Vec2, BackgroundLayer, Track, TrackType, VideoPlaybackMode, PathVertex, VertexType, Mask, MaskType, AnchorEdge, PhysicsBindingDef, PhysicsWorldDef, StaggerBindingDef, LayoutObjectLayer, LayoutContainerLayer, ContainerShapeType } from '../core/types';
+import type { Composition, SceneDocument, Layer, AnimatableProperty, Keyframe, Vec2, InterpolationType, BackgroundLayer, Track, TrackType, VideoPlaybackMode, PathVertex, VertexType, Mask, MaskType, AnchorEdge, PhysicsBindingDef, PhysicsWorldDef, StaggerBindingDef, LayoutObjectLayer, LayoutContainerLayer, ContainerShapeType } from '../core/types';
 import { createComposition, createRectangleLayer, createCircleLayer, createStarLayer, createPolygonLayer, createDefaultPolygonVertices, createTextLayer, createVideoLayer, createImageLayer, createAudioLayer, createGroupLayer, createKeyframe, createBackgroundLayer, createMask, createParticleLayer, createAnimationItemLayer, createFieldSampledLayer, createLottieIconLayer, createLayoutObjectLayer, createLayoutContainerLayer, createDefaultChildOverride, uid } from '../core/factory';
 import { evaluateVec2, evaluateNumber, buildPhysicsEvaluator } from '../core/interpolation';
 import { generatePresetKeyframes, getPresetById, type PresetContext } from '../core/animationPresets';
@@ -27,6 +27,23 @@ import type { SpeechSegment } from '../core/silenceCutPlan';
 import { persistExplodeGroup } from '../engine/textExplodePersistence';
 import { useProjectStore } from '../project-system/hooks/useProjectStore';
 import { useShapeDefaultsStore } from './shapeDefaults';
+
+/** A selected keyframe resolved to its owning property path + frame (see KeyframeTimeline). */
+export interface KeyframeTarget {
+  propertyPath: string;
+  frame: number;
+}
+
+/** Group keyframe targets by property path → set of frames, for batched keyframe edits. */
+function groupTargetFrames(targets: KeyframeTarget[]): Map<string, Set<number>> {
+  const byPath = new Map<string, Set<number>>();
+  for (const t of targets) {
+    let set = byPath.get(t.propertyPath);
+    if (!set) { set = new Set(); byPath.set(t.propertyPath, set); }
+    set.add(t.frame);
+  }
+  return byPath;
+}
 
 interface SelectionState {
   selectedIds: string[];
@@ -181,6 +198,10 @@ interface EditorState {
   removeLayerEffect: (layerId: string, type: number) => void;
   setLayerParent: (childId: string, parentId: string | null) => void;
   addKeyframe: (layerId: string, propertyPath: string, frame: number, value: number | [number, number]) => void;
+  /** Delete the keyframes at the given (propertyPath, frame) targets (undoable, batched). */
+  deleteKeyframes: (layerId: string, targets: KeyframeTarget[]) => void;
+  /** Set interpolation (and optional bezier handles) on the given keyframe targets (undoable, batched). */
+  setKeyframeInterpolation: (layerId: string, targets: KeyframeTarget[], interpolation: InterpolationType, handleIn?: Vec2, handleOut?: Vec2) => void;
   applyAnimationPreset: (layerId: string, presetId: string) => void;
   applyAnimationPresetBatch: (layerIds: string[], presetId: string, durationSeconds: number, atStart: boolean) => void;
   setCompositionSetting: (key: string, value: number) => void;
@@ -2184,6 +2205,56 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
     exec({
       label: 'Add Keyframe',
+      execute: () => { set({ composition: newComp }); },
+      undo: () => { set({ composition: oldComp }); },
+    });
+  },
+
+  deleteKeyframes: (layerId, targets) => {
+    if (targets.length === 0) return;
+    const framesByPath = groupTargetFrames(targets);
+    const { composition } = get();
+    const oldComp = composition;
+    const newLayers = composition.layers.map((layer) => {
+      if (layer.id !== layerId) return layer;
+      let updated = layer;
+      for (const [path, frames] of framesByPath) {
+        const prop = deepGet(updated, path) as AnimatableProperty | undefined;
+        if (!prop || !prop.keyframes) continue;
+        const kept = prop.keyframes.filter((k: Keyframe) => !frames.has(k.frame));
+        updated = deepSet(updated, `${path}.keyframes`, kept) as Layer;
+      }
+      return updated;
+    });
+    const newComp = { ...composition, layers: newLayers };
+    exec({
+      label: 'Delete Keyframes',
+      execute: () => { set({ composition: newComp }); },
+      undo: () => { set({ composition: oldComp }); },
+    });
+  },
+
+  setKeyframeInterpolation: (layerId, targets, interpolation, handleIn, handleOut) => {
+    if (targets.length === 0) return;
+    const framesByPath = groupTargetFrames(targets);
+    const { composition } = get();
+    const oldComp = composition;
+    const newLayers = composition.layers.map((layer) => {
+      if (layer.id !== layerId) return layer;
+      let updated = layer;
+      for (const [path, frames] of framesByPath) {
+        const prop = deepGet(updated, path) as AnimatableProperty | undefined;
+        if (!prop || !prop.keyframes) continue;
+        const newKfs = prop.keyframes.map((k: Keyframe) => frames.has(k.frame)
+          ? { ...k, interpolation, handleIn: handleIn ?? k.handleIn, handleOut: handleOut ?? k.handleOut }
+          : k);
+        updated = deepSet(updated, `${path}.keyframes`, newKfs) as Layer;
+      }
+      return updated;
+    });
+    const newComp = { ...composition, layers: newLayers };
+    exec({
+      label: 'Set Keyframe Interpolation',
       execute: () => { set({ composition: newComp }); },
       undo: () => { set({ composition: oldComp }); },
     });

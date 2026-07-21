@@ -11,10 +11,17 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { MenuEntry } from './types';
-import { useEditorStore } from '../../store/editor';
+import type { Vec2, InterpolationType } from '../../core/types';
+import { useEditorStore, DEFAULT_PROXY_SCALE, type KeyframeTarget } from '../../store/editor';
 import { useTimelineStore } from '../../store/timeline';
 import { useGridStore } from '../../store/grid';
 import { useViewportNavStore } from '../../store/viewportNav';
+import { usePreviewStore } from '../../store/preview';
+import { useMediaPoolStore } from '../../store/mediaPool';
+import { useSettingsStore } from '../../settings/store';
+import { useCaptionStore } from '../../store/captions';
+import { useSilenceStore } from '../../store/silenceStripper';
+import { videoDecoderPool } from '../../engine/video/videoDecoderPool';
 
 // Helper: creates a disabled placeholder item
 function disabled(id: string, label: string, icon?: LucideIcon, shortcut?: string): MenuEntry {
@@ -25,12 +32,32 @@ function item(id: string, label: string, action: () => void, icon?: LucideIcon, 
   return { type: 'item', id, label, icon, shortcut, enabled: true, action };
 }
 
+// Checkable (radio/toggle) item — shows a ✓ when `checked`.
+function check(id: string, label: string, checked: boolean, action: () => void, icon?: LucideIcon, shortcut?: string): MenuEntry {
+  return { type: 'item', id, label, icon, shortcut, enabled: true, checked, action };
+}
+
+// Selected keyframes resolved to (layer, property path, frame) — supplied by
+// KeyframeTimeline so the keyframe menu can act on the real selection.
+export interface KeyframeMenuContext {
+  layerId: string;
+  targets: KeyframeTarget[];
+}
+
+// Bezier handles for the easing presets ([handleIn, handleOut]); mirrors
+// core/animationPresets.EASING so the menu produces the same curves as the graph.
+const EASE_IN: [Vec2, Vec2] = [[1, 1], [0.42, 0.001]];
+const EASE_OUT: [Vec2, Vec2] = [[0.58, 1], [0.001, 0.001]];
+const EASE_IO: [Vec2, Vec2] = [[0.58, 1], [0.42, 0.001]];
+
 // ─── CANVAS CONTEXT MENU ────────────────────────────────────────────────────
 
 export function buildCanvasMenu(): MenuEntry[] {
   const nav = useViewportNavStore.getState();
   const grid = useGridStore.getState();
   const editor = useEditorStore.getState();
+  const preview = usePreviewStore.getState();
+  const { width: compW, height: compH } = editor.composition.settings;
 
   return [
     {
@@ -66,8 +93,8 @@ export function buildCanvasMenu(): MenuEntry[] {
           enabled: true,
         },
         disabled('snap-guides', 'Snap to Guides', Magnet),
-        disabled('add-h-guide', 'Add Horizontal Guide', Ruler),
-        disabled('add-v-guide', 'Add Vertical Guide', Ruler),
+        item('add-h-guide', 'Add Horizontal Guide', () => grid.addGuideline('horizontal', Math.round(compH / 2)), Ruler),
+        item('add-v-guide', 'Add Vertical Guide', () => grid.addGuideline('vertical', Math.round(compW / 2)), Ruler),
         item('clear-guides', 'Clear Guides', () => grid.clearGuidelines(), Trash2),
       ],
     },
@@ -84,7 +111,7 @@ export function buildCanvasMenu(): MenuEntry[] {
         item('new-vbox', 'New VBox Layout', () => editor.addLayoutObject('vbox'), Rows3),
         item('new-grid', 'New Grid Layout', () => editor.addLayoutObject('grid'), LayoutGrid),
         item('new-container', 'New Layout Container', () => editor.addLayoutContainer(), Container),
-        disabled('new-group', 'New Group', Folder),
+        item('new-group', 'New Group', () => editor.createGroup(), Folder),
         disabled('new-compound', 'New Compound Animation', Sparkles),
       ],
     },
@@ -118,9 +145,9 @@ export function buildCanvasMenu(): MenuEntry[] {
         {
           type: 'submenu', id: 'preview-quality', label: 'Preview Quality', icon: ScanLine,
           items: [
-            disabled('quality-full', 'Full'),
-            disabled('quality-half', 'Half'),
-            disabled('quality-quarter', 'Quarter'),
+            check('quality-full', 'Full', preview.quality === 'full', () => preview.setQuality('full')),
+            check('quality-half', 'Half', preview.quality === 'half', () => preview.setQuality('half')),
+            check('quality-quarter', 'Quarter', preview.quality === 'quarter', () => preview.setQuality('quarter')),
           ],
         },
         disabled('gpu-rendering', 'GPU Rendering', Activity),
@@ -171,8 +198,16 @@ export function buildTimelineEmptyMenu(): MenuEntry[] {
       type: 'group',
       label: 'View',
       items: [
-        disabled('compact-tracks', 'Compact Tracks', Minimize2),
-        disabled('expanded-tracks', 'Expanded Tracks', Maximize2),
+        item('compact-tracks', 'Compact Tracks', () => {
+          const s = useSettingsStore.getState();
+          s.setValue('timeline.trackHeight', 16);
+          s.setValue('timeline.videoTrackHeight', 28);
+        }, Minimize2),
+        item('expanded-tracks', 'Expanded Tracks', () => {
+          const s = useSettingsStore.getState();
+          s.setValue('timeline.trackHeight', 40);
+          s.setValue('timeline.videoTrackHeight', 64);
+        }, Maximize2),
         disabled('show-waveforms', 'Show Waveforms', Waves),
         disabled('show-thumbnails', 'Show Thumbnails', Image),
       ],
@@ -217,10 +252,20 @@ export function buildClipMenu(layerId: string): MenuEntry[] {
       type: 'group',
       label: 'Layering',
       items: [
-        disabled('bring-forward', 'Bring Forward', ArrowUp, 'Ctrl+]'),
-        disabled('send-backward', 'Send Backward', ArrowDown, 'Ctrl+['),
-        disabled('bring-front', 'Bring to Front', ChevronsUp, 'Ctrl+Shift+]'),
-        disabled('send-back', 'Send to Back', ChevronsDown, 'Ctrl+Shift+['),
+        // Layer array index 0 = front (matches Toolbar arrange handlers). The +2
+        // on send-backward accounts for reorderLayers removing the source first.
+        item('bring-forward', 'Bring Forward', () => {
+          const ed = useEditorStore.getState();
+          const idx = ed.composition.layers.findIndex((l) => l.id === layerId);
+          if (idx > 0) ed.reorderLayers([layerId], idx - 1);
+        }, ArrowUp, 'Ctrl+]'),
+        item('send-backward', 'Send Backward', () => {
+          const ed = useEditorStore.getState();
+          const idx = ed.composition.layers.findIndex((l) => l.id === layerId);
+          if (idx < ed.composition.layers.length - 1) ed.reorderLayers([layerId], idx + 2);
+        }, ArrowDown, 'Ctrl+['),
+        item('bring-front', 'Bring to Front', () => editor.reorderLayers([layerId], 0), ChevronsUp, 'Ctrl+Shift+]'),
+        item('send-back', 'Send to Back', () => editor.reorderLayers([layerId], useEditorStore.getState().composition.layers.length), ChevronsDown, 'Ctrl+Shift+['),
       ],
     },
     {
@@ -258,7 +303,7 @@ export function buildClipMenu(layerId: string): MenuEntry[] {
       ],
     },
     ...(isAudio ? buildAudioClipSection(layerId) : []),
-    ...(isVideo ? buildVideoClipSection() : []),
+    ...(isVideo ? buildVideoClipSection(layerId, (layer as { video: { assetId: string } }).video.assetId) : []),
     {
       type: 'submenu',
       id: 'label-colors',
@@ -274,7 +319,7 @@ export function buildClipMenu(layerId: string): MenuEntry[] {
     {
       type: 'group',
       items: [
-        disabled('open-props', 'Properties', Settings),
+        item('open-props', 'Properties', () => editor.selectLayer(layerId), Settings),
       ],
     },
   ];
@@ -366,7 +411,8 @@ function buildAudioClipSection(_layerId: string): MenuEntry[] {
   ];
 }
 
-function buildVideoClipSection(): MenuEntry[] {
+function buildVideoClipSection(layerId: string, assetId: string): MenuEntry[] {
+  const ed = useEditorStore.getState();
   return [
     {
       type: 'submenu',
@@ -374,8 +420,12 @@ function buildVideoClipSection(): MenuEntry[] {
       label: 'Video',
       icon: Film,
       items: [
-        disabled('create-proxy', 'Create Proxy', Film),
-        disabled('extract-audio', 'Extract Audio', Music),
+        item('create-proxy', 'Create Proxy', () => {
+          ed.updateLayerProperty(layerId, 'video.playbackMode', 'proxy');
+          videoDecoderPool.setProxyMode(assetId, DEFAULT_PROXY_SCALE);
+        }, Film),
+        // Build an audio layer from the video's already-extracted audio buffer.
+        item('extract-audio', 'Extract Audio', () => ed.addAudioFromAsset(assetId), Music),
         disabled('freeze-frame-vid', 'Create Freeze Frame', Image),
       ],
     },
@@ -385,6 +435,7 @@ function buildVideoClipSection(): MenuEntry[] {
 // ─── MEDIA POOL EMPTY SPACE CONTEXT MENU ────────────────────────────────────
 
 export function buildMediaPoolEmptyMenu(): MenuEntry[] {
+  const pool = useMediaPoolStore.getState();
   return [
     {
       type: 'group',
@@ -420,10 +471,10 @@ export function buildMediaPoolEmptyMenu(): MenuEntry[] {
       label: 'Sort By',
       icon: SortAsc,
       items: [
-        disabled('sort-name', 'Name', SortAsc),
-        disabled('sort-date', 'Date', Clock),
-        disabled('sort-duration', 'Duration', Clock),
-        disabled('sort-type', 'Type', Layers),
+        check('sort-name', 'Name', pool.sortMode === 'name', () => pool.setSortMode('name'), SortAsc),
+        check('sort-date', 'Date', pool.sortMode === 'date', () => pool.setSortMode('date'), Clock),
+        check('sort-duration', 'Duration', pool.sortMode === 'duration', () => pool.setSortMode('duration'), Clock),
+        check('sort-type', 'Type', pool.sortMode === 'type', () => pool.setSortMode('type'), Layers),
       ],
     },
     {
@@ -439,14 +490,23 @@ export function buildMediaPoolEmptyMenu(): MenuEntry[] {
 
 // ─── MEDIA ASSET CONTEXT MENUS ──────────────────────────────────────────────
 
-export function buildMediaAssetMenu(assetType: 'image' | 'video' | 'audio'): MenuEntry[] {
+export function buildMediaAssetMenu(assetType: 'image' | 'video' | 'audio', assetId: string): MenuEntry[] {
+  const ed = useEditorStore.getState();
+  const cx = Math.round(ed.composition.settings.width / 2);
+  const cy = Math.round(ed.composition.settings.height / 2);
+  const addToTimeline = () => {
+    if (assetType === 'image') ed.addImageFromAsset(assetId, cx, cy);
+    else if (assetType === 'video') ed.addVideoFromAsset(assetId, cx, cy);
+    else ed.addAudioFromAsset(assetId);
+  };
+
   const base: MenuEntry[] = [
     {
       type: 'group',
       label: 'Basic',
       items: [
-        disabled('add-timeline', 'Add to Timeline', Plus),
-        disabled('add-new-layer', 'Add to New Layer', Layers),
+        item('add-timeline', 'Add to Timeline', addToTimeline, Plus),
+        item('add-new-layer', 'Add to New Layer', addToTimeline, Layers),
         disabled('preview-asset', 'Preview', Play),
         disabled('rename-asset', 'Rename', Pencil),
         disabled('duplicate-asset', 'Duplicate', Copy),
@@ -503,9 +563,9 @@ export function buildMediaAssetMenu(assetType: 'image' | 'video' | 'audio'): Men
       type: 'group',
       label: 'Video',
       items: [
-        disabled('vid-proxy', 'Create Proxy', Film),
+        item('vid-proxy', 'Create Proxy', () => videoDecoderPool.setProxyMode(assetId, DEFAULT_PROXY_SCALE), Film),
         disabled('vid-thumb-sheet', 'Generate Thumbnail Sheet', LayoutGrid),
-        disabled('vid-extract-audio', 'Extract Audio', Music),
+        item('vid-extract-audio', 'Extract Audio', () => ed.addAudioFromAsset(assetId), Music),
         disabled('vid-freeze', 'Create Freeze Frame', Image),
       ],
     });
@@ -516,7 +576,16 @@ export function buildMediaAssetMenu(assetType: 'image' | 'video' | 'audio'): Men
       icon: Wand2,
       items: [
         disabled('scene-detect', 'Scene Detection', ScanLine),
-        disabled('auto-captions', 'Auto Captions', Type),
+        // Add the video to the timeline, then open the (fully-built) caption engine on it.
+        item('auto-captions', 'Auto Captions', () => {
+          ed.addVideoFromAsset(assetId, cx, cy);
+          const st = useEditorStore.getState();
+          const lid = st.selection.activeId;
+          const layer = lid ? st.composition.layers.find((l) => l.id === lid) : null;
+          if (lid && layer) {
+            useCaptionStore.getState().open({ layerId: lid, assetId, clipStartFrame: layer.inPoint, name: layer.name });
+          }
+        }, Type),
         disabled('motion-track', 'Motion Tracking', Crosshair),
       ],
     });
@@ -530,7 +599,12 @@ export function buildMediaAssetMenu(assetType: 'image' | 'video' | 'audio'): Men
         disabled('audio-normalize', 'Normalize', AudioLines),
         disabled('audio-amplify', 'Amplify', Volume2),
         disabled('audio-noise', 'Reduce Noise', Waves),
-        disabled('audio-silence', 'Remove Silence', VolumeX),
+        // Add the audio to the timeline, then open the (fully-built) silence stripper on it.
+        item('audio-silence', 'Remove Silence', () => {
+          ed.addAudioFromAsset(assetId);
+          const lid = useEditorStore.getState().selection.activeId;
+          if (lid) useSilenceStore.getState().open(lid);
+        }, VolumeX),
       ],
     });
     base.push({
@@ -558,7 +632,19 @@ export function buildMediaAssetMenu(assetType: 'image' | 'video' | 'audio'): Men
 
 // ─── KEYFRAME CONTEXT MENU ──────────────────────────────────────────────────
 
-export function buildKeyframeMenu(isSingle: boolean): MenuEntry[] {
+export function buildKeyframeMenu(isSingle: boolean, ctx?: KeyframeMenuContext): MenuEntry[] {
+  const ed = useEditorStore.getState();
+  const layerId = ctx?.layerId ?? null;
+  const targets = ctx?.targets ?? [];
+  const active = layerId !== null && targets.length > 0;
+
+  // Enabled item only when there's a resolved keyframe selection; otherwise grey.
+  const kf = (id: string, label: string, action: () => void, icon?: LucideIcon, shortcut?: string): MenuEntry =>
+    active ? item(id, label, action, icon, shortcut) : disabled(id, label, icon, shortcut);
+  const setInterp = (interpolation: InterpolationType, handleIn?: Vec2, handleOut?: Vec2) => () => {
+    if (layerId) ed.setKeyframeInterpolation(layerId, targets, interpolation, handleIn, handleOut);
+  };
+
   const base: MenuEntry[] = [
     {
       type: 'group',
@@ -567,7 +653,7 @@ export function buildKeyframeMenu(isSingle: boolean): MenuEntry[] {
         disabled('kf-copy', 'Copy', Copy, 'Ctrl+C'),
         disabled('kf-paste', 'Paste', Clipboard, 'Ctrl+V'),
         disabled('kf-duplicate', 'Duplicate', Copy, 'Ctrl+D'),
-        disabled('kf-delete', 'Delete', Trash2, 'Del'),
+        kf('kf-delete', 'Delete', () => { if (layerId) ed.deleteKeyframes(layerId, targets); }, Trash2, 'Del'),
       ],
     },
     {
@@ -583,18 +669,18 @@ export function buildKeyframeMenu(isSingle: boolean): MenuEntry[] {
       type: 'group',
       label: 'Interpolation',
       items: [
-        disabled('interp-linear', 'Linear', MoveVertical),
-        disabled('interp-ease-in', 'Ease In', Sparkles),
-        disabled('interp-ease-out', 'Ease Out', Sparkles),
-        disabled('interp-ease-io', 'Ease In Out', Sparkles),
-        disabled('interp-hold', 'Hold', Pause),
+        kf('interp-linear', 'Linear', setInterp('linear'), MoveVertical),
+        kf('interp-ease-in', 'Ease In', setInterp('bezier', EASE_IN[0], EASE_IN[1]), Sparkles),
+        kf('interp-ease-out', 'Ease Out', setInterp('bezier', EASE_OUT[0], EASE_OUT[1]), Sparkles),
+        kf('interp-ease-io', 'Ease In Out', setInterp('bezier', EASE_IO[0], EASE_IO[1]), Sparkles),
+        kf('interp-hold', 'Hold', setInterp('hold'), Pause),
       ],
     },
     {
       type: 'group',
       label: 'Bezier',
       items: [
-        disabled('bez-bezier', 'Bezier', Activity),
+        kf('bez-bezier', 'Bezier', setInterp('bezier'), Activity),
         disabled('bez-auto', 'Auto Bezier', Activity),
         disabled('bez-continuous', 'Continuous', Activity),
         disabled('bez-broken', 'Broken Tangents', Activity),
@@ -625,8 +711,8 @@ export function buildKeyframeMenu(isSingle: boolean): MenuEntry[] {
       type: 'group',
       label: 'Multi-Keyframe',
       items: [
-        disabled('kf-ease-all', 'Ease All', Sparkles),
-        disabled('kf-linearize', 'Linearize All', MoveVertical),
+        kf('kf-ease-all', 'Ease All', setInterp('bezier', EASE_IO[0], EASE_IO[1]), Sparkles),
+        kf('kf-linearize', 'Linearize All', setInterp('linear'), MoveVertical),
         disabled('kf-smooth', 'Smooth All', Waves),
         disabled('kf-reverse-time', 'Reverse Timing', Rewind),
         disabled('kf-scale-time', 'Scale Timing', FastForward),

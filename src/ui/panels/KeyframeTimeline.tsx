@@ -1,11 +1,11 @@
 import { useRef, useCallback, useEffect, useState, useMemo } from 'react';
-import { useEditorStore } from '../../store/editor';
+import { useEditorStore, type KeyframeTarget } from '../../store/editor';
 import { useTimelineStore } from '../../store/timeline';
 import { ChevronDown, ChevronRight, Plus, Diamond, Magnet } from 'lucide-react';
 import type { Layer, AnimatableProperty, ShapeLayer, TextLayer, AudioLayer } from '../../core/types';
 import { findNearestKeyframeFrame } from '../../core/timelineSnap';
 import { useContextMenu } from '../context-menu';
-import { buildKeyframeMenu } from '../context-menu/menuDefinitions';
+import { buildKeyframeMenu, type KeyframeMenuContext } from '../context-menu/menuDefinitions';
 import {
   frameToPixel,
   pixelToFrame,
@@ -114,6 +114,28 @@ function extractAnimatableProperties(layer: Layer): PropertyGroup[] {
   }
 
   return groups;
+}
+
+// Resolve the current keyframe selection (ids of the form `${trackId}_${frame}`)
+// into (layerId, propertyPath, frame) targets for the keyframe context menu.
+// Reads the store fresh (pointerdown selects before contextmenu fires).
+function resolveKeyframeContext(): KeyframeMenuContext | undefined {
+  const ed = useEditorStore.getState();
+  const layer = ed.composition.layers.find((l) => l.id === ed.selection.activeId);
+  if (!layer) return undefined;
+  const idToPath = new Map<string, string>();
+  for (const g of extractAnimatableProperties(layer)) {
+    for (const t of g.tracks) idToPath.set(t.id, t.propertyPath);
+  }
+  const targets: KeyframeTarget[] = [];
+  for (const keyId of ed.selection.selectedKeyframes) {
+    const us = keyId.lastIndexOf('_'); // trackId may contain '_', frame is the numeric suffix
+    if (us < 0) continue;
+    const path = idToPath.get(keyId.slice(0, us));
+    const frame = Number(keyId.slice(us + 1));
+    if (path && Number.isFinite(frame)) targets.push({ propertyPath: path, frame });
+  }
+  return { layerId: layer.id, targets };
 }
 
 export function KeyframeTimeline() {
@@ -546,11 +568,15 @@ export function KeyframeTimeline() {
                         onContextMenu={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
-                          const isSingle = selection.selectedKeyframes.length <= 1;
-                          showContextMenu(e.clientX, e.clientY, buildKeyframeMenu(isSingle));
+                          const ctx = resolveKeyframeContext();
+                          const isSingle = (ctx?.targets.length ?? 0) <= 1;
+                          showContextMenu(e.clientX, e.clientY, buildKeyframeMenu(isSingle, ctx));
                         }}
                         onPointerDown={(e) => {
                           e.stopPropagation();
+                          // Right-clicking an already-selected keyframe keeps the
+                          // multi-selection (so the multi-keyframe menu is reachable).
+                          if (e.button === 2 && useEditorStore.getState().selection.selectedKeyframes.includes(keyId)) return;
                           const additive = e.shiftKey || e.ctrlKey || e.metaKey;
                           handleKeyframeSelect(keyId, additive);
                         }}

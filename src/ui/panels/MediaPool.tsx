@@ -9,18 +9,15 @@ import { SvgIcon } from '../../components/icons/SvgIcon';
 import { rasterizeIconToFile } from '../../components/icons/rasterizeIcon';
 import type { IconData } from '../../components/icons/types';
 import { usePanelStore } from '../../store/panels';
+import { useMediaPoolStore, type MediaSortMode } from '../../store/mediaPool';
 import { useContextMenu } from '../context-menu';
-// buildMediaAssetMenu is deliberately NOT wired: every one of its 20 items is a
-// disabled placeholder, so right-clicking an asset would pop an all-grey menu —
-// worse than no menu. Wire it once those actions exist.
-import { buildMediaPoolEmptyMenu } from '../context-menu/menuDefinitions';
+import { buildMediaPoolEmptyMenu, buildMediaAssetMenu } from '../context-menu/menuDefinitions';
 import { BrandsTab } from './BrandsTab';
 import { SavedAssetsTab } from './SavedAssetsTab';
 import { LibraryTab } from '../../library/LibraryTab';
 import { FolderBrowser } from '../../library/FolderBrowser';
 
 type PoolTab = 'images' | 'videos' | 'audio' | 'icons' | 'brands' | 'saved' | 'library';
-type SortMode = 'name' | 'date' | 'resolution';
 
 interface PoolAsset {
   id: string;
@@ -65,7 +62,8 @@ export function MediaPool() {
 
   const [tab, setTab] = useState<PoolTab>('images');
   const [searchQuery, setSearchQuery] = useState('');
-  const [sortMode, setSortMode] = useState<SortMode>('date');
+  const sortMode = useMediaPoolStore((s) => s.sortMode);
+  const setSortMode = useMediaPoolStore((s) => s.setSortMode);
   const [assets, setAssets] = useState<PoolAsset[]>([]);
   const [importing, setImporting] = useState(false);
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
@@ -118,6 +116,8 @@ export function MediaPool() {
       switch (sortMode) {
         case 'name': return a.name.localeCompare(b.name);
         case 'resolution': return (b.width * b.height) - (a.width * a.height);
+        case 'duration': return (b.duration ?? 0) - (a.duration ?? 0);
+        case 'type': return a.type.localeCompare(b.type) || a.name.localeCompare(b.name);
         case 'date':
         default: return b.importedAt - a.importedAt;
       }
@@ -168,6 +168,13 @@ export function MediaPool() {
   const handleDragEnd = useCallback(() => {
     setDragAssetId(null);
   }, []);
+
+  const handleAssetContextMenu = useCallback((e: React.MouseEvent, asset: PoolAsset) => {
+    e.preventDefault();
+    e.stopPropagation(); // don't also pop the pool's empty-space menu
+    setSelectedAssetId(asset.id);
+    showContextMenu(e.clientX, e.clientY, buildMediaAssetMenu(asset.type, asset.id));
+  }, [showContextMenu]);
 
   const handleFileDragOver = useCallback((e: React.DragEvent) => {
     if (e.dataTransfer.types.includes('Files')) {
@@ -270,6 +277,7 @@ export function MediaPool() {
             dragAssetId={dragAssetId}
             handleDragStart={handleDragStart}
             handleDragEnd={handleDragEnd}
+            onAssetContextMenu={handleAssetContextMenu}
             handleImportClick={handleImportClick}
             importing={importing}
             fileInputRef={fileInputRef}
@@ -306,14 +314,15 @@ interface MediaTabContentProps {
   category: AssetCategory;
   searchQuery: string;
   setSearchQuery: (q: string) => void;
-  sortMode: SortMode;
-  setSortMode: (m: SortMode) => void;
+  sortMode: MediaSortMode;
+  setSortMode: (m: MediaSortMode) => void;
   filteredAssets: PoolAsset[];
   selectedAssetId: string | null;
   setSelectedAssetId: (id: string | null) => void;
   dragAssetId: string | null;
   handleDragStart: (e: React.DragEvent, asset: PoolAsset) => void;
   handleDragEnd: () => void;
+  onAssetContextMenu: (e: React.MouseEvent, asset: PoolAsset) => void;
   handleImportClick: () => void;
   importing: boolean;
   fileInputRef: React.RefObject<HTMLInputElement>;
@@ -335,6 +344,7 @@ function MediaTabContent({
   dragAssetId,
   handleDragStart,
   handleDragEnd,
+  onAssetContextMenu,
   handleImportClick,
   importing,
   fileInputRef,
@@ -361,12 +371,14 @@ function MediaTabContent({
         </div>
         <select
           value={sortMode}
-          onChange={(e) => setSortMode(e.target.value as SortMode)}
+          onChange={(e) => setSortMode(e.target.value as MediaSortMode)}
           className="bg-[#16294a] border border-[#1c3155] rounded px-1 py-0.5 text-[8px] text-slate-500 outline-none"
         >
           <option value="date">Recent</option>
           <option value="name">Name</option>
           <option value="resolution">Size</option>
+          <option value="duration">Duration</option>
+          <option value="type">Type</option>
         </select>
       </div>
 
@@ -423,6 +435,7 @@ function MediaTabContent({
                 onClick={() => setSelectedAssetId(asset.id)}
                 onDragStart={(e) => handleDragStart(e, asset)}
                 onDragEnd={handleDragEnd}
+                onContextMenu={(e) => onAssetContextMenu(e, asset)}
               />
             ))}
           </div>
@@ -651,15 +664,17 @@ interface AssetCardProps {
   onClick: () => void;
   onDragStart: (e: React.DragEvent) => void;
   onDragEnd: () => void;
+  onContextMenu: (e: React.MouseEvent) => void;
 }
 
-function AssetCard({ asset, isSelected, isDragging, onClick, onDragStart, onDragEnd }: AssetCardProps) {
+function AssetCard({ asset, isSelected, isDragging, onClick, onDragStart, onDragEnd, onContextMenu }: AssetCardProps) {
   return (
     <div
       draggable
       onClick={onClick}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
+      onContextMenu={onContextMenu}
       className={`group rounded overflow-hidden border transition-all cursor-grab active:cursor-grabbing ${
         isSelected
           ? 'border-[#f7b500]/50 bg-[#f7b500]/5'
