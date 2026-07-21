@@ -486,11 +486,16 @@ function resolveTextLayer(layer: TextLayer, frame: number): ResolvedText {
 
 function resolveVideoLayer(layer: VideoLayer, frame: number, compositionFrameRate: number): ResolvedVideo | null {
   const v = layer.video;
-  const localFrame = frame - layer.inPoint + v.startOffset;
+  const totalSourceFrames = Math.round(v.sourceDuration * v.sourceFrameRate);
+  // Reverse plays the clip's comp range back-to-front by reflecting the query
+  // frame within [inPoint, outPoint] before the normal source-frame mapping.
+  const effFrame = v.reversed ? layer.inPoint + layer.outPoint - frame : frame;
+  const localFrame = effFrame - layer.inPoint + v.startOffset;
   const timeInSeconds = localFrame / compositionFrameRate;
   const sourceFrame = Math.floor(timeInSeconds * v.sourceFrameRate * v.playbackRate);
-  const totalSourceFrames = Math.round(v.sourceDuration * v.sourceFrameRate);
-  const clampedFrame = Math.max(0, Math.min(sourceFrame, totalSourceFrames - 1));
+  // Freeze pins the whole clip to one source frame (captured at the playhead).
+  const chosen = v.freezeSourceFrame != null ? Math.floor(v.freezeSourceFrame) : sourceFrame;
+  const clampedFrame = Math.max(0, Math.min(chosen, totalSourceFrames - 1));
 
   return {
     assetId: v.assetId,

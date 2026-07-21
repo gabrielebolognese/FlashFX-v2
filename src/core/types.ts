@@ -15,6 +15,8 @@ export interface Keyframe {
   interpolation: InterpolationType;
   handleIn: Vec2;
   handleOut: Vec2;
+  /** Bezier tangent mode for the graph editor: 'continuous' keeps handles collinear, 'broken' independent. */
+  tangentMode?: 'continuous' | 'broken';
 }
 
 export interface AnimatableProperty {
@@ -417,6 +419,10 @@ export interface VideoLayer {
     muted: boolean;
     playbackMode: VideoPlaybackMode;
     proxyScale: number;
+    /** When set, the clip is frozen on this source frame for its whole duration. */
+    freezeSourceFrame?: number;
+    /** When true, the clip plays its frames in reverse over its comp range. */
+    reversed?: boolean;
   };
   inPoint: number;
   outPoint: number;
@@ -804,7 +810,16 @@ export interface PrecompLayer {
   timeRemap?: PrecompTimeRemap;
 }
 
-export type Layer = ShapeLayer | TextLayer | GroupLayer | VideoLayer | ImageLayer | AudioLayer | ParticleLayer | AnimationItemLayer | FieldSampledLayer | LottieIconLayer | LayoutObjectLayer | LayoutContainerLayer | ClonerLayer | PrecompLayer;
+// Editor-only decorations common to every layer type. Kept as a shared
+// intersection (rather than copied into all 14 interfaces) so a new field lands
+// once; the distribution `X & (A | B)` = `(X & A) | (X & B)` preserves the
+// discriminated-union narrowing on `type`.
+export interface LayerDecorations {
+  /** Optional timeline label tint (hex). Overrides the type color on clips. */
+  labelColor?: string;
+}
+
+export type Layer = (ShapeLayer | TextLayer | GroupLayer | VideoLayer | ImageLayer | AudioLayer | ParticleLayer | AnimationItemLayer | FieldSampledLayer | LottieIconLayer | LayoutObjectLayer | LayoutContainerLayer | ClonerLayer | PrecompLayer) & LayerDecorations;
 
 // Track system
 export type TrackType = 'video' | 'image' | 'text' | 'shape' | 'group' | 'audio' | 'particle' | 'animationItem' | 'fieldSampled' | 'lottieIcon' | 'hbox' | 'vbox' | 'grid' | 'layoutContainer' | 'cloner' | 'precomp' | 'mixed';
@@ -821,6 +836,9 @@ export interface Track {
   // order (CapCut-style). Absolute positions become derived from clip order
   // and duration. Undefined falls back to the type default (video → on).
   compressed?: boolean;
+  // User-created tracks set this so the empty-track pruner keeps them even
+  // with no clips (a manually-added track shouldn't vanish on the next edit).
+  keepIfEmpty?: boolean;
 }
 
 // Motion Path types
@@ -918,6 +936,20 @@ export interface AnchorTemporalGate {
   delayFrames?: number;
 }
 
+/**
+ * A timeline marker. A point marker (no `endFrame`) flags a single frame;
+ * a section marker (`endFrame` set) spans a range. Rendered on the timeline
+ * ruler; purely an editing aid (never affects render output).
+ */
+export interface Marker {
+  id: string;
+  frame: number;
+  endFrame?: number;
+  name?: string;
+  /** Hex tint (e.g. '#f7b500'); falls back to a default when absent. */
+  color?: string;
+}
+
 export interface Composition {
   id: string;
   name: string;
@@ -926,6 +958,7 @@ export interface Composition {
   tracks: Track[];
   background: Background;
   motionPaths: MotionPath[];
+  markers?: Marker[];
   proceduralBindings?: ProceduralBinding[];
   anchorEdges?: AnchorEdge[];
   physicsBindings?: PhysicsBindingDef[];

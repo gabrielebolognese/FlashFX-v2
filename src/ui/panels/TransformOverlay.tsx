@@ -3,6 +3,7 @@ import { useEditorStore } from '../../store/editor';
 import { useTimelineStore } from '../../store/timeline';
 import { useHistoryStore } from '../../store/history';
 import { useGridStore, generateGridLines } from '../../store/grid';
+import { useViewportNavStore } from '../../store/viewportNav';
 import type { ShapeLayer, TextLayer, GroupLayer, VideoLayer, ImageLayer, Layer, Vec2, ShapeGeometry, LayoutObjectLayer, LayoutContainerLayer } from '../../core/types';
 import { evaluateProperty, evaluateNumber, evaluateVec2 } from '../../core/interpolation';
 import { measureText } from '../../engine/textAtlas';
@@ -10,6 +11,18 @@ import { computeGroupBounds } from '../../core/sceneGraph';
 import { snap, buildTargets, getSelectionRect, getOtherRects, type Rect, type SnapLine, type SnapTarget } from '../../core/snap';
 import { CanvasSnapGuides } from './SnapGuides';
 import { sampleBakedFrame } from '../../physics/bake';
+import { getSettingValue } from '../../settings/store';
+
+/** Current snap toggles (read imperatively when a drag begins). */
+function readSnapFlags() {
+  const enabled = getSettingValue<boolean>('editor.snapEnabled') ?? true;
+  return {
+    enabled,
+    grid: enabled && (getSettingValue<boolean>('editor.snapToGrid') ?? true),
+    guides: enabled && (getSettingValue<boolean>('editor.snapToGuides') ?? true),
+    layers: enabled && (getSettingValue<boolean>('editor.snapToLayers') ?? true),
+  };
+}
 
 function getShapeDimensions(shape: ShapeGeometry, frame: number): { w: number; h: number } {
   switch (shape.type) {
@@ -159,6 +172,7 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
 
   const gridSettings = useGridStore((s) => s.grid);
   const guideSettings = useGridStore((s) => s.guides);
+  const showLayerControls = useViewportNavStore((s) => s.showLayerControls);
 
   const overlayRef = useRef<HTMLDivElement>(null);
   const overlaySize = useElementSize(overlayRef);
@@ -355,11 +369,12 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
         const selectedIds = selection.selectedIds;
         const excludeIds = new Set(selectedIds);
         const initialRect = getSelectionRect(selectedIds, composition.layers, currentFrame);
-        const otherRects = getOtherRects(excludeIds, composition.layers, currentFrame);
-        const { vertical, horizontal } = gridSettings.visible
+        const snapFlags = readSnapFlags();
+        const otherRects = snapFlags.layers ? getOtherRects(excludeIds, composition.layers, currentFrame) : [];
+        const { vertical, horizontal } = snapFlags.grid && gridSettings.visible
           ? generateGridLines(compW, compH, gridSettings.columns, gridSettings.rows, gridSettings.subdivisions)
           : { vertical: [], horizontal: [] };
-        const targets = buildTargets(otherRects, compW, compH, vertical, horizontal, guideSettings.visible ? guideSettings.guidelines : []);
+        const targets = buildTargets(otherRects, compW, compH, vertical, horizontal, snapFlags.guides && guideSettings.visible ? guideSettings.guidelines : []);
         snapDataRef.current = initialRect ? { initialRect, targets } : null;
 
         e.preventDefault();
@@ -489,11 +504,12 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
       const selectedIds = selection.selectedIds.length > 0 ? selection.selectedIds : [activeLayer.id];
       const excludeIds = new Set(selectedIds);
       const initialRect = getSelectionRect(selectedIds, composition.layers, currentFrame);
-      const otherRects = getOtherRects(excludeIds, composition.layers, currentFrame);
-      const { vertical, horizontal } = gridSettings.visible
+      const snapFlags = readSnapFlags();
+      const otherRects = snapFlags.layers ? getOtherRects(excludeIds, composition.layers, currentFrame) : [];
+      const { vertical, horizontal } = snapFlags.grid && gridSettings.visible
         ? generateGridLines(compW, compH, gridSettings.columns, gridSettings.rows, gridSettings.subdivisions)
         : { vertical: [], horizontal: [] };
-      const targets = buildTargets(otherRects, compW, compH, vertical, horizontal, guideSettings.visible ? guideSettings.guidelines : []);
+      const targets = buildTargets(otherRects, compW, compH, vertical, horizontal, snapFlags.guides && guideSettings.visible ? guideSettings.guidelines : []);
       snapDataRef.current = initialRect ? { initialRect, targets } : null;
     } else {
       snapDataRef.current = null;
@@ -813,20 +829,23 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
       onPointerUp={handleOverlayPointerUp}
       onPointerLeave={handlePointerLeave}
     >
-      <HoverAndSelectionOutlines
-        layers={composition.layers}
-        selection={selection}
-        hoveredLayerId={hoveredLayerId}
-        currentFrame={currentFrame}
-        sX={sX}
-        sY={sY}
-        activeId={activeLayer.id}
-        compW={compW}
-        compH={compH}
-      />
+      {showLayerControls && (
+        <HoverAndSelectionOutlines
+          layers={composition.layers}
+          selection={selection}
+          hoveredLayerId={hoveredLayerId}
+          currentFrame={currentFrame}
+          sX={sX}
+          sY={sY}
+          activeId={activeLayer.id}
+          compW={compW}
+          compH={compH}
+        />
+      )}
       <CanvasSnapGuides lines={snapLines} scaleX={sX} scaleY={sY} />
 
 
+      {showLayerControls && (
       <div
         className="absolute"
         style={{ left: centerSX, top: centerSY, width: 0, height: 0 }}
@@ -945,6 +964,7 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
           )}
         </div>
       </div>
+      )}
       {marquee && <MarqueeRect rect={marquee} sX={sX} sY={sY} />}
     </div>
   );

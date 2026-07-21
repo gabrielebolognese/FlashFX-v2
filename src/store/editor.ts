@@ -1,7 +1,12 @@
 import { create } from 'zustand';
-import type { Composition, SceneDocument, Layer, AnimatableProperty, Keyframe, Vec2, InterpolationType, BackgroundLayer, Track, TrackType, VideoPlaybackMode, PathVertex, VertexType, Mask, MaskType, AnchorEdge, PhysicsBindingDef, PhysicsWorldDef, StaggerBindingDef, LayoutObjectLayer, LayoutContainerLayer, ContainerShapeType } from '../core/types';
+import type { Composition, SceneDocument, Layer, AnimatableProperty, Keyframe, Vec2, InterpolationType, BackgroundLayer, Track, TrackType, VideoPlaybackMode, PathVertex, VertexType, Mask, MaskType, AnchorEdge, PhysicsBindingDef, PhysicsWorldDef, StaggerBindingDef, LayoutObjectLayer, LayoutContainerLayer, ContainerShapeType, Marker } from '../core/types';
 import { createComposition, createRectangleLayer, createCircleLayer, createStarLayer, createPolygonLayer, createDefaultPolygonVertices, createTextLayer, createVideoLayer, createImageLayer, createAudioLayer, createGroupLayer, createKeyframe, createBackgroundLayer, createMask, createParticleLayer, createAnimationItemLayer, createFieldSampledLayer, createLottieIconLayer, createLayoutObjectLayer, createLayoutContainerLayer, createDefaultChildOverride, uid } from '../core/factory';
 import { evaluateVec2, evaluateNumber, buildPhysicsEvaluator } from '../core/interpolation';
+import {
+  remapSelectedFrames, reverseSelectedValues, distributeSelectedEven, alignSelected,
+  bakeSelected, setSelectedTangentMode, duplicateSelected, extractForClipboard, insertClipboard,
+  type TangentMode,
+} from '../core/keyframeOps';
 import { generatePresetKeyframes, getPresetById, type PresetContext } from '../core/animationPresets';
 import { getDescendants } from '../core/sceneGraph';
 import { buildPrecompose } from '../core/precompose';
@@ -43,6 +48,34 @@ function groupTargetFrames(targets: KeyframeTarget[]): Map<string, Set<number>> 
     set.add(t.frame);
   }
   return byPath;
+}
+
+/** Session keyframe clipboard: per-property lists with frames rebased so the earliest is 0. */
+let keyframeClipboard: { propertyPath: string; keyframes: Keyframe[] }[] = [];
+
+/**
+ * Apply a per-property transform to the selected keyframes of one layer, returning
+ * a new Composition. `fn` receives the full AnimatableProperty (so it can evaluate,
+ * e.g. for baking) plus the set of selected frames, and returns the new keyframes.
+ */
+function mapKeyframesByPath(
+  composition: Composition,
+  layerId: string,
+  targets: KeyframeTarget[],
+  fn: (prop: AnimatableProperty, selected: Set<number>) => Keyframe[],
+): Composition {
+  const byPath = groupTargetFrames(targets);
+  const layers = composition.layers.map((layer) => {
+    if (layer.id !== layerId) return layer;
+    let updated = layer;
+    for (const [path, frames] of byPath) {
+      const prop = deepGet(updated, path) as AnimatableProperty | undefined;
+      if (!prop || !Array.isArray(prop.keyframes)) continue;
+      updated = deepSet(updated, `${path}.keyframes`, fn(prop, frames)) as Layer;
+    }
+    return updated;
+  });
+  return { ...composition, layers };
 }
 
 interface SelectionState {
@@ -185,6 +218,10 @@ interface EditorState {
   addAudioFromAsset: (assetId: string) => void;
   addImageFromAsset: (assetId: string, x: number, y: number) => void;
   addVideoFromAsset: (assetId: string, x: number, y: number, playbackMode?: VideoPlaybackMode) => void;
+  // Add an image as a full-canvas, locked background layer (cover-scaled, sent to back).
+  addImageAsBackground: (assetId: string) => void;
+  // Add an image scaled to fit the canvas (contain), centered.
+  addImageFitCanvas: (assetId: string) => void;
   addCaptionClips: (segments: CaptionSegment[], options: CaptionOptions, clipStartFrame: number) => void;
   stripSilence: (layerId: string, segments: SpeechSegment[]) => string[];
   explodeTextLayer: (layerId: string, splitMode: SplitMode, staggerFrames: number) => void;
@@ -202,6 +239,43 @@ interface EditorState {
   deleteKeyframes: (layerId: string, targets: KeyframeTarget[]) => void;
   /** Set interpolation (and optional bezier handles) on the given keyframe targets (undoable, batched). */
   setKeyframeInterpolation: (layerId: string, targets: KeyframeTarget[], interpolation: InterpolationType, handleIn?: Vec2, handleOut?: Vec2) => void;
+  // ── Keyframe transforms (Batch 3) — all undoable, batched, operate on the targets ──
+  copyKeyframes: (layerId: string, targets: KeyframeTarget[]) => void;
+  pasteKeyframes: (layerId: string, atFrame: number) => void;
+  duplicateKeyframes: (layerId: string, targets: KeyframeTarget[]) => void;
+  offsetKeyframeTime: (layerId: string, targets: KeyframeTarget[], deltaFrames: number) => void;
+  scaleKeyframeTime: (layerId: string, targets: KeyframeTarget[], factor: number) => void;
+  moveKeyframesToFrame: (layerId: string, targets: KeyframeTarget[], frame: number) => void;
+  alignKeyframes: (layerId: string, targets: KeyframeTarget[], dir: 'prev' | 'next') => void;
+  reverseKeyframeValues: (layerId: string, targets: KeyframeTarget[]) => void;
+  mirrorKeyframeTime: (layerId: string, targets: KeyframeTarget[], pivotFrame?: number) => void;
+  bakeKeyframes: (layerId: string, targets: KeyframeTarget[]) => void;
+  distributeKeyframes: (layerId: string, targets: KeyframeTarget[]) => void;
+  setKeyframeTangentMode: (layerId: string, targets: KeyframeTarget[], mode: TangentMode) => void;
+  // ── Fades & audio (Batch 5) ──
+  /** Add a fade in/out on a property (opacity, volume) via two keyframes (0 ↔ current value). */
+  addFade: (layerId: string, propertyPath: string, kind: 'in' | 'out', durationFrames?: number) => void;
+  /** Multiply an audio layer's volume by a dB amount (clamped 0–2). */
+  adjustAudioVolumeDb: (layerId: string, dB: number) => void;
+  /** Set an audio layer's volume so its peak hits 0 dBFS (from the cached waveform). */
+  normalizeAudioVolume: (layerId: string) => void;
+  // Timeline markers (editing aids on the ruler).
+  addMarker: (frame: number, opts?: { name?: string; color?: string; endFrame?: number }) => void;
+  updateMarker: (id: string, patch: Partial<Omit<Marker, 'id'>>) => void;
+  removeMarker: (id: string) => void;
+  clearMarkers: () => void;
+  // Per-layer timeline label tint. `color === null` clears it.
+  setLayerLabelColor: (layerIds: string[], color: string | null) => void;
+  // Add an empty, user-created track (persists even while empty).
+  addTrack: (type: TrackType, name?: string) => void;
+  // Freeze a video clip on the frame under the playhead (toggles off if frozen).
+  freezeVideoOnPlayhead: (layerId: string) => void;
+  // Reverse a video clip's playback over its comp range (toggle).
+  reverseVideoClip: (layerId: string) => void;
+  // Time-scale a non-video clip's animation by `factor` (>1 faster), adjusting its outPoint.
+  setNonVideoClipSpeed: (layerId: string, factor: number) => void;
+  // Bake a layer's transform animation to one linear keyframe per frame.
+  bakeLayerAnimation: (layerId: string) => void;
   applyAnimationPreset: (layerId: string, presetId: string) => void;
   applyAnimationPresetBatch: (layerIds: string[], presetId: string, durationSeconds: number, atStart: boolean) => void;
   setCompositionSetting: (key: string, value: number) => void;
@@ -210,7 +284,7 @@ interface EditorState {
 
   // Clipboard (copy / paste / duplicate)
   copySelection: () => void;
-  pasteClipboard: () => void;
+  pasteClipboard: (inPlace?: boolean) => void;
   duplicateSelection: () => void;
   toggleRandomizeColors: () => void;
 
@@ -507,7 +581,9 @@ function findFirstFit(
 // audio tracks (audio is always rendered last / lowest, i.e. highest order).
 function pruneEmptyTracks(composition: Composition): Composition {
   const usedIds = new Set(composition.layers.map((l) => l.trackId).filter(Boolean) as string[]);
-  const survivors = composition.tracks.filter((t) => usedIds.has(t.id));
+  // Keep tracks that host a clip OR were explicitly created by the user
+  // (keepIfEmpty) — an empty manually-added track must not be auto-removed.
+  const survivors = composition.tracks.filter((t) => usedIds.has(t.id) || t.keepIfEmpty);
 
   const visual = survivors
     .filter((t) => t.type !== 'audio')
@@ -724,7 +800,7 @@ function offsetLayerPosition(layer: Layer, dx: number, dy: number): void {
 // optional randomized fill.
 function instantiatePastedLayer(
   source: Layer,
-  opts: { bakeFrame: number | null; randomize: boolean },
+  opts: { bakeFrame: number | null; randomize: boolean; offset?: number },
 ): Layer {
   const clone = JSON.parse(JSON.stringify(source)) as Layer;
   clone.id = uid();
@@ -732,7 +808,8 @@ function instantiatePastedLayer(
   clone.trackId = null;
   clone.name = `${clone.name} copy`;
   processAnimatables(clone, opts.bakeFrame);
-  offsetLayerPosition(clone, 20, 20);
+  const off = opts.offset ?? 20;
+  if (off !== 0) offsetLayerPosition(clone, off, off);
   if (opts.randomize) applyRandomFill(clone);
   return clone;
 }
@@ -1916,6 +1993,50 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     });
   },
 
+  addImageAsBackground: (assetId) => {
+    const { composition, selection } = get();
+    const oldComp = composition;
+    const oldSel = selection;
+    const meta = mediaAssetManager.getImageMetadata(assetId);
+    if (!meta) return;
+    const asset = mediaAssetManager.getAsset(assetId);
+    const name = asset?.name?.replace(/\.[^.]+$/, '') || 'Background';
+    const { width: cw, height: ch } = composition.settings;
+    const layer = createImageLayer(name, cw / 2, ch / 2, assetId, meta.width, meta.height, meta.format, meta.fileSize, defaultClipFrames(composition));
+    const cover = Math.max(cw / meta.width, ch / meta.height);
+    layer.transform.scale.defaultValue = [cover, cover];
+    layer.locked = true;
+    // Index order = paint order with 0 on top, so appending puts it at the back.
+    const newComp = settleComposition(ensureLayerHasTrack({ ...composition, layers: [...composition.layers, layer] }, layer));
+    const newSel: SelectionState = sel([layer.id], layer.id);
+    exec({
+      label: 'Set as Background',
+      execute: () => { set({ composition: newComp, selection: newSel }); },
+      undo: () => { set({ composition: oldComp, selection: oldSel }); },
+    });
+  },
+
+  addImageFitCanvas: (assetId) => {
+    const { composition, selection } = get();
+    const oldComp = composition;
+    const oldSel = selection;
+    const meta = mediaAssetManager.getImageMetadata(assetId);
+    if (!meta) return;
+    const asset = mediaAssetManager.getAsset(assetId);
+    const name = asset?.name?.replace(/\.[^.]+$/, '') || 'Image';
+    const { width: cw, height: ch } = composition.settings;
+    const layer = createImageLayer(name, cw / 2, ch / 2, assetId, meta.width, meta.height, meta.format, meta.fileSize, defaultClipFrames(composition));
+    const contain = Math.min(cw / meta.width, ch / meta.height);
+    layer.transform.scale.defaultValue = [contain, contain];
+    const newComp = settleComposition(ensureLayerHasTrack({ ...composition, layers: [...composition.layers, layer] }, layer));
+    const newSel: SelectionState = sel([layer.id], layer.id);
+    exec({
+      label: 'Fit to Canvas',
+      execute: () => { set({ composition: newComp, selection: newSel }); },
+      undo: () => { set({ composition: oldComp, selection: oldSel }); },
+    });
+  },
+
   addVideoFromAsset: (assetId, x, y, playbackMode: VideoPlaybackMode = 'wait') => {
     const { composition, selection } = get();
     const oldComp = composition;
@@ -2260,6 +2381,343 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     });
   },
 
+  copyKeyframes: (layerId, targets) => {
+    const { composition } = get();
+    const layer = composition.layers.find((l) => l.id === layerId);
+    if (!layer) return;
+    const clip: { propertyPath: string; keyframes: Keyframe[] }[] = [];
+    for (const [path, frames] of groupTargetFrames(targets)) {
+      const prop = deepGet(layer, path) as AnimatableProperty | undefined;
+      if (!prop) continue;
+      const kfs = extractForClipboard(prop, frames);
+      if (kfs.length) clip.push({ propertyPath: path, keyframes: kfs });
+    }
+    keyframeClipboard = clip;
+  },
+
+  pasteKeyframes: (layerId, atFrame) => {
+    if (keyframeClipboard.length === 0) return;
+    const { composition } = get();
+    const oldComp = composition;
+    const layers = composition.layers.map((layer) => {
+      if (layer.id !== layerId) return layer;
+      let updated = layer;
+      for (const g of keyframeClipboard) {
+        const prop = deepGet(updated, g.propertyPath) as AnimatableProperty | undefined;
+        if (!prop || !Array.isArray(prop.keyframes)) continue;
+        updated = deepSet(updated, `${g.propertyPath}.keyframes`, insertClipboard(prop.keyframes as Keyframe[], g.keyframes, Math.round(atFrame))) as Layer;
+      }
+      return updated;
+    });
+    const newComp = { ...composition, layers };
+    exec({ label: 'Paste Keyframes', execute: () => set({ composition: newComp }), undo: () => set({ composition: oldComp }) });
+  },
+
+  duplicateKeyframes: (layerId, targets) => {
+    if (targets.length === 0) return;
+    const { composition } = get();
+    const oldComp = composition;
+    const newComp = mapKeyframesByPath(composition, layerId, targets, (prop, sel) => duplicateSelected(prop.keyframes, sel));
+    exec({ label: 'Duplicate Keyframes', execute: () => set({ composition: newComp }), undo: () => set({ composition: oldComp }) });
+  },
+
+  offsetKeyframeTime: (layerId, targets, deltaFrames) => {
+    if (targets.length === 0 || deltaFrames === 0) return;
+    const { composition } = get();
+    const oldComp = composition;
+    const newComp = mapKeyframesByPath(composition, layerId, targets, (prop, sel) => remapSelectedFrames(prop.keyframes, sel, (f) => f + deltaFrames));
+    exec({ label: 'Offset Keyframe Timing', execute: () => set({ composition: newComp }), undo: () => set({ composition: oldComp }) });
+  },
+
+  scaleKeyframeTime: (layerId, targets, factor) => {
+    if (targets.length === 0 || factor <= 0) return;
+    const frames = targets.map((t) => t.frame);
+    const center = (Math.min(...frames) + Math.max(...frames)) / 2;
+    const { composition } = get();
+    const oldComp = composition;
+    const newComp = mapKeyframesByPath(composition, layerId, targets, (prop, sel) => remapSelectedFrames(prop.keyframes, sel, (f) => center + (f - center) * factor));
+    exec({ label: 'Scale Keyframe Timing', execute: () => set({ composition: newComp }), undo: () => set({ composition: oldComp }) });
+  },
+
+  moveKeyframesToFrame: (layerId, targets, frame) => {
+    if (targets.length === 0) return;
+    const delta = Math.round(frame) - Math.min(...targets.map((t) => t.frame));
+    if (delta === 0) return;
+    const { composition } = get();
+    const oldComp = composition;
+    const newComp = mapKeyframesByPath(composition, layerId, targets, (prop, sel) => remapSelectedFrames(prop.keyframes, sel, (f) => f + delta));
+    exec({ label: 'Move Keyframes to Playhead', execute: () => set({ composition: newComp }), undo: () => set({ composition: oldComp }) });
+  },
+
+  alignKeyframes: (layerId, targets, dir) => {
+    if (targets.length === 0) return;
+    const { composition } = get();
+    const oldComp = composition;
+    const newComp = mapKeyframesByPath(composition, layerId, targets, (prop, sel) => alignSelected(prop.keyframes, sel, dir));
+    exec({ label: 'Align Keyframes', execute: () => set({ composition: newComp }), undo: () => set({ composition: oldComp }) });
+  },
+
+  reverseKeyframeValues: (layerId, targets) => {
+    if (targets.length === 0) return;
+    const { composition } = get();
+    const oldComp = composition;
+    const newComp = mapKeyframesByPath(composition, layerId, targets, (prop, sel) => reverseSelectedValues(prop.keyframes, sel));
+    exec({ label: 'Reverse Keyframes', execute: () => set({ composition: newComp }), undo: () => set({ composition: oldComp }) });
+  },
+
+  mirrorKeyframeTime: (layerId, targets, pivotFrame) => {
+    if (targets.length === 0) return;
+    const frames = targets.map((t) => t.frame);
+    const pivot = pivotFrame ?? (Math.min(...frames) + Math.max(...frames)) / 2;
+    const { composition } = get();
+    const oldComp = composition;
+    const newComp = mapKeyframesByPath(composition, layerId, targets, (prop, sel) => remapSelectedFrames(prop.keyframes, sel, (f) => 2 * pivot - f));
+    exec({ label: 'Mirror Keyframe Timing', execute: () => set({ composition: newComp }), undo: () => set({ composition: oldComp }) });
+  },
+
+  bakeKeyframes: (layerId, targets) => {
+    if (targets.length === 0) return;
+    const { composition } = get();
+    const oldComp = composition;
+    const newComp = mapKeyframesByPath(composition, layerId, targets, (prop, sel) => bakeSelected(prop, sel));
+    exec({ label: 'Bake Keyframes', execute: () => set({ composition: newComp }), undo: () => set({ composition: oldComp }) });
+  },
+
+  distributeKeyframes: (layerId, targets) => {
+    if (targets.length === 0) return;
+    const { composition } = get();
+    const oldComp = composition;
+    const newComp = mapKeyframesByPath(composition, layerId, targets, (prop, sel) => distributeSelectedEven(prop.keyframes, sel));
+    exec({ label: 'Distribute Keyframes', execute: () => set({ composition: newComp }), undo: () => set({ composition: oldComp }) });
+  },
+
+  setKeyframeTangentMode: (layerId, targets, mode) => {
+    if (targets.length === 0) return;
+    const { composition } = get();
+    const oldComp = composition;
+    const newComp = mapKeyframesByPath(composition, layerId, targets, (prop, sel) => setSelectedTangentMode(prop.keyframes, sel, mode));
+    exec({ label: 'Set Tangent Mode', execute: () => set({ composition: newComp }), undo: () => set({ composition: oldComp }) });
+  },
+
+  addFade: (layerId, propertyPath, kind, durationFrames = 15) => {
+    const { composition } = get();
+    const oldComp = composition;
+    let changed = false;
+    const newLayers = composition.layers.map((layer) => {
+      if (layer.id !== layerId) return layer;
+      const prop = deepGet(layer, propertyPath) as AnimatableProperty | undefined;
+      if (!prop || !Array.isArray(prop.keyframes)) return layer;
+      const full = typeof prop.defaultValue === 'number' ? prop.defaultValue : 1;
+      const dur = Math.max(1, Math.min(durationFrames, Math.floor((layer.outPoint - layer.inPoint) / 2)));
+      let kfs = [...(prop.keyframes as Keyframe[])];
+      const put = (frame: number, value: number) => {
+        kfs = kfs.filter((k) => k.frame !== frame);
+        kfs.push(createKeyframe(frame, value));
+      };
+      if (kind === 'in') { put(layer.inPoint, 0); put(layer.inPoint + dur, full); }
+      else { put(layer.outPoint - dur, full); put(layer.outPoint, 0); }
+      kfs.sort((a, b) => a.frame - b.frame);
+      changed = true;
+      return deepSet(layer, `${propertyPath}.keyframes`, kfs) as Layer;
+    });
+    if (!changed) return;
+    const newComp = { ...composition, layers: newLayers };
+    exec({ label: kind === 'in' ? 'Add Fade In' : 'Add Fade Out', execute: () => set({ composition: newComp }), undo: () => set({ composition: oldComp }) });
+  },
+
+  adjustAudioVolumeDb: (layerId, dB) => {
+    const layer = get().composition.layers.find((l) => l.id === layerId);
+    if (!layer || layer.type !== 'audio') return;
+    const cur = typeof layer.audio.volume.defaultValue === 'number' ? layer.audio.volume.defaultValue : 1;
+    const next = Math.max(0, Math.min(2, cur * Math.pow(10, dB / 20)));
+    get().updateLayerProperty(layerId, 'audio.volume.defaultValue', next);
+  },
+
+  normalizeAudioVolume: (layerId) => {
+    const layer = get().composition.layers.find((l) => l.id === layerId);
+    if (!layer || layer.type !== 'audio') return;
+    const wf = mediaAssetManager.getWaveform(layer.audio.assetId);
+    if (!wf || !wf.peaks || wf.peaks.length === 0) return;
+    let peak = 0;
+    for (let i = 0; i < wf.peaks.length; i++) {
+      const a = Math.abs(wf.peaks[i]);
+      if (a > peak) peak = a;
+    }
+    if (peak <= 0) return;
+    get().updateLayerProperty(layerId, 'audio.volume.defaultValue', Math.max(0, Math.min(2, 1 / peak)));
+  },
+
+  addMarker: (frame, opts) => {
+    const { composition } = get();
+    const oldComp = composition;
+    const f = Math.max(0, Math.round(frame));
+    const marker: Marker = {
+      id: uid(),
+      frame: f,
+      ...(opts?.endFrame != null ? { endFrame: Math.max(f, Math.round(opts.endFrame)) } : {}),
+      ...(opts?.name ? { name: opts.name } : {}),
+      ...(opts?.color ? { color: opts.color } : {}),
+    };
+    const markers = [...(composition.markers ?? []), marker].sort((a, b) => a.frame - b.frame);
+    const newComp = { ...composition, markers };
+    exec({
+      label: opts?.endFrame != null ? 'Add Section Marker' : 'Add Marker',
+      execute: () => set({ composition: newComp }),
+      undo: () => set({ composition: oldComp }),
+    });
+  },
+
+  updateMarker: (id, patch) => {
+    const { composition } = get();
+    const oldComp = composition;
+    const list = composition.markers ?? [];
+    if (!list.some((m) => m.id === id)) return;
+    const markers = list.map((m) => (m.id === id ? { ...m, ...patch } : m)).sort((a, b) => a.frame - b.frame);
+    const newComp = { ...composition, markers };
+    exec({ label: 'Update Marker', execute: () => set({ composition: newComp }), undo: () => set({ composition: oldComp }) });
+  },
+
+  removeMarker: (id) => {
+    const { composition } = get();
+    const oldComp = composition;
+    const list = composition.markers ?? [];
+    if (!list.some((m) => m.id === id)) return;
+    const newComp = { ...composition, markers: list.filter((m) => m.id !== id) };
+    exec({ label: 'Remove Marker', execute: () => set({ composition: newComp }), undo: () => set({ composition: oldComp }) });
+  },
+
+  clearMarkers: () => {
+    const { composition } = get();
+    const oldComp = composition;
+    if (!composition.markers || composition.markers.length === 0) return;
+    const newComp = { ...composition, markers: [] };
+    exec({ label: 'Clear Markers', execute: () => set({ composition: newComp }), undo: () => set({ composition: oldComp }) });
+  },
+
+  setLayerLabelColor: (layerIds, color) => {
+    const { composition } = get();
+    const oldComp = composition;
+    const idSet = new Set(layerIds);
+    let changed = false;
+    const newLayers = composition.layers.map((l) => {
+      if (!idSet.has(l.id)) return l;
+      if (color === null) {
+        if (l.labelColor === undefined) return l;
+        const copy = { ...l };
+        delete copy.labelColor;
+        changed = true;
+        return copy;
+      }
+      if (l.labelColor === color) return l;
+      changed = true;
+      return { ...l, labelColor: color };
+    });
+    if (!changed) return;
+    const newComp = { ...composition, layers: newLayers };
+    exec({
+      label: color === null ? 'Clear Label Color' : 'Set Label Color',
+      execute: () => set({ composition: newComp }),
+      undo: () => set({ composition: oldComp }),
+    });
+  },
+
+  addTrack: (type, name) => {
+    const { composition } = get();
+    const oldComp = composition;
+    // Audio tracks sit below all visual tracks; a new visual track goes on top.
+    let order: number;
+    if (type === 'audio') {
+      order = composition.tracks.reduce((m, t) => Math.max(m, t.order), -1) + 1;
+    } else {
+      order = composition.tracks.filter((t) => t.type !== 'audio').reduce((m, t) => Math.min(m, t.order), 0) - 1;
+    }
+    const track: Track = { ...createTrack(name ?? `${type} track`, type, order), keepIfEmpty: true };
+    const newComp = { ...composition, tracks: [...composition.tracks, track] };
+    exec({ label: 'Add Track', execute: () => set({ composition: newComp }), undo: () => set({ composition: oldComp }) });
+  },
+
+  freezeVideoOnPlayhead: (layerId) => {
+    const { composition } = get();
+    const oldComp = composition;
+    const layer = composition.layers.find((l) => l.id === layerId);
+    if (!layer || layer.type !== 'video') return;
+    const v = layer.video;
+    let newVideo: typeof v;
+    let label: string;
+    if (v.freezeSourceFrame != null) {
+      const copy = { ...v };
+      delete copy.freezeSourceFrame;
+      newVideo = copy;
+      label = 'Unfreeze Frame';
+    } else {
+      const playhead = useTimelineStore.getState().currentFrame;
+      const localFrame = playhead - layer.inPoint + v.startOffset;
+      const src = Math.floor((localFrame / composition.settings.frameRate) * v.sourceFrameRate * v.playbackRate);
+      const total = Math.round(v.sourceDuration * v.sourceFrameRate);
+      newVideo = { ...v, freezeSourceFrame: Math.max(0, Math.min(src, total - 1)) };
+      label = 'Freeze Frame';
+    }
+    const newLayers = composition.layers.map((l) => (l.id === layerId ? { ...l, video: newVideo } : l));
+    const newComp = { ...composition, layers: newLayers };
+    exec({ label, execute: () => set({ composition: newComp }), undo: () => set({ composition: oldComp }) });
+  },
+
+  reverseVideoClip: (layerId) => {
+    const { composition } = get();
+    const oldComp = composition;
+    const layer = composition.layers.find((l) => l.id === layerId);
+    if (!layer || layer.type !== 'video') return;
+    const v = layer.video;
+    let newVideo: typeof v;
+    if (v.reversed) {
+      const copy = { ...v };
+      delete copy.reversed;
+      newVideo = copy;
+    } else {
+      newVideo = { ...v, reversed: true };
+    }
+    const newLayers = composition.layers.map((l) => (l.id === layerId ? { ...l, video: newVideo } : l));
+    const newComp = { ...composition, layers: newLayers };
+    exec({ label: 'Reverse Clip', execute: () => set({ composition: newComp }), undo: () => set({ composition: oldComp }) });
+  },
+
+  setNonVideoClipSpeed: (layerId, factor) => {
+    if (!(factor > 0) || factor === 1) return;
+    const { composition } = get();
+    const oldComp = composition;
+    const layer = composition.layers.find((l) => l.id === layerId);
+    if (!layer) return;
+    const inP = layer.inPoint;
+    const paths = ['transform.position', 'transform.rotation', 'transform.scale', 'transform.anchorPoint', 'transform.opacity'];
+    let updated: Layer = layer;
+    for (const p of paths) {
+      const prop = deepGet(updated, p) as AnimatableProperty | undefined;
+      if (!prop || !Array.isArray(prop.keyframes) || prop.keyframes.length === 0) continue;
+      const remapped = (prop.keyframes as Keyframe[]).map((k) => ({ ...k, frame: Math.round(inP + (k.frame - inP) / factor) }));
+      updated = deepSet(updated, `${p}.keyframes`, remapped) as Layer;
+    }
+    const newOut = Math.max(inP + 1, Math.round(inP + (layer.outPoint - inP) / factor));
+    updated = { ...updated, outPoint: newOut };
+    if (updated === layer) return;
+    const newComp = settleComposition({ ...composition, layers: composition.layers.map((l) => (l.id === layerId ? updated : l)) });
+    exec({ label: 'Set Clip Speed', execute: () => set({ composition: newComp }), undo: () => set({ composition: oldComp }) });
+  },
+
+  bakeLayerAnimation: (layerId) => {
+    const layer = get().composition.layers.find((l) => l.id === layerId);
+    if (!layer || !('transform' in layer) || !layer.transform) return;
+    const paths = ['transform.position', 'transform.rotation', 'transform.scale', 'transform.anchorPoint', 'transform.opacity'];
+    const targets: KeyframeTarget[] = [];
+    for (const p of paths) {
+      const prop = deepGet(layer, p) as AnimatableProperty | undefined;
+      if (prop && Array.isArray(prop.keyframes) && prop.keyframes.length >= 2) {
+        for (const kf of prop.keyframes as Keyframe[]) targets.push({ propertyPath: p, frame: kf.frame });
+      }
+    }
+    if (targets.length === 0) return;
+    get().bakeKeyframes(layerId, targets);
+  },
+
   applyAnimationPreset: (layerId, presetId) => {
     const preset = getPresetById(presetId);
     if (!preset) return;
@@ -2497,7 +2955,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     set({ clipboard: { layers, withKeyframes, physicsBindings: bindings.length > 0 ? JSON.parse(JSON.stringify(bindings)) : undefined } });
   },
 
-  pasteClipboard: () => {
+  pasteClipboard: (inPlace = false) => {
     const { clipboard, composition, selection, randomizeColors } = get();
     if (!clipboard || clipboard.layers.length === 0) return;
     const oldComp = composition;
@@ -2506,7 +2964,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const newIds: string[] = [];
     const idMap = new Map<string, string>();
     for (const source of clipboard.layers) {
-      const clone = instantiatePastedLayer(source, { bakeFrame: null, randomize: randomizeColors });
+      const clone = instantiatePastedLayer(source, { bakeFrame: null, randomize: randomizeColors, offset: inPlace ? 0 : 20 });
       idMap.set(source.id, clone.id);
       working = ensureLayerHasTrack({ ...working, layers: [...working.layers, clone] }, clone);
       newIds.push(clone.id);

@@ -10,6 +10,7 @@ import { rasterizeIconToFile } from '../../components/icons/rasterizeIcon';
 import type { IconData } from '../../components/icons/types';
 import { usePanelStore } from '../../store/panels';
 import { useMediaPoolStore, type MediaSortMode } from '../../store/mediaPool';
+import { AssetPreviewModal } from './AssetPreviewModal';
 import { useContextMenu } from '../context-menu';
 import { buildMediaPoolEmptyMenu, buildMediaAssetMenu } from '../context-menu/menuDefinitions';
 import { BrandsTab } from './BrandsTab';
@@ -202,6 +203,23 @@ export function MediaPool() {
     return unsubscribe;
   }, [refreshAssets, activeProjectId]);
 
+  // Expose import/refresh to the (pure) media-pool context menus.
+  useEffect(() => {
+    useMediaPoolStore.getState().setHandlers({
+      onImport: (opts) => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.multiple = true;
+        if (opts?.accept) input.accept = opts.accept;
+        if (opts?.directory) input.setAttribute('webkitdirectory', '');
+        input.onchange = () => handleImport(input.files);
+        input.click();
+      },
+      onRefresh: refreshAssets,
+    });
+    return () => useMediaPoolStore.getState().setHandlers({ onImport: null, onRefresh: null });
+  }, [handleImport, refreshAssets]);
+
   const handleFolderChange = useCallback((folderId: string | null) => {
     setCurrentFolderId(folderId);
   }, []);
@@ -220,6 +238,7 @@ export function MediaPool() {
       onDragLeave={handleFileDragLeave}
       onDrop={handleFileDrop}
     >
+      <AssetPreviewModal />
       {fileDragOver && (
         <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none bg-[#0a1628]/80 backdrop-blur-sm border-2 border-dashed border-emerald-400 rounded-lg m-2">
           <div className="flex flex-col items-center gap-3">
@@ -354,7 +373,11 @@ function MediaTabContent({
   onFilterByFolder,
 }: MediaTabContentProps) {
   const workspace = usePanelStore((s) => s.editorWorkspace);
-  const gridColsClass = workspace === 'design' ? 'grid-cols-3' : 'grid-cols-2';
+  const thumbSize = useMediaPoolStore((s) => s.thumbSize);
+  const viewMode = useMediaPoolStore((s) => s.viewMode);
+  const baseCols = workspace === 'design' ? 3 : 2;
+  const cols = thumbSize === 'large' ? Math.max(1, baseCols - 1) : baseCols;
+  const gridColsClass = cols === 1 ? 'grid-cols-1' : cols === 2 ? 'grid-cols-2' : 'grid-cols-3';
   return (
     <>
       {/* Search + sort */}
@@ -423,6 +446,21 @@ function MediaTabContent({
             <span className="text-[9px] text-slate-700 mt-1">
               {currentFolderId ? 'Drag assets here to organize' : 'Click Import Media to add files'}
             </span>
+          </div>
+        ) : viewMode === 'list' ? (
+          <div className="flex flex-col gap-0.5">
+            {filteredAssets.map((asset) => (
+              <AssetListRow
+                key={asset.id}
+                asset={asset}
+                isSelected={selectedAssetId === asset.id}
+                isDragging={dragAssetId === asset.id}
+                onClick={() => setSelectedAssetId(asset.id)}
+                onDragStart={(e) => handleDragStart(e, asset)}
+                onDragEnd={handleDragEnd}
+                onContextMenu={(e) => onAssetContextMenu(e, asset)}
+              />
+            ))}
           </div>
         ) : (
           <div className={`grid ${gridColsClass} gap-1.5`}>
@@ -716,6 +754,41 @@ function AssetCard({ asset, isSelected, isDragging, onClick, onDragStart, onDrag
         <div className="text-[8px] text-slate-600">
           {asset.type === 'audio' ? `${asset.duration?.toFixed(1) ?? '\u2014'}s` : `${asset.width}x${asset.height}`}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// Compact single-line variant used when the pool view mode is "list".
+function AssetListRow({ asset, isSelected, isDragging, onClick, onDragStart, onDragEnd, onContextMenu }: AssetCardProps) {
+  return (
+    <div
+      draggable
+      onClick={onClick}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      onContextMenu={onContextMenu}
+      className={`group flex items-center gap-2 px-1.5 py-1 rounded border transition-all cursor-grab active:cursor-grabbing ${
+        isSelected ? 'border-[#f7b500]/50 bg-[#f7b500]/5' : 'border-transparent hover:bg-[#16294a]'
+      } ${isDragging ? 'opacity-50' : ''}`}
+    >
+      <div className="w-9 h-9 flex-shrink-0 rounded overflow-hidden bg-[#0a1628] flex items-center justify-center">
+        {asset.type === 'image' ? (
+          <img src={asset.thumbnailUrl} alt={asset.name} className="w-full h-full object-cover" loading="lazy" />
+        ) : asset.type === 'video' ? (
+          <video src={asset.objectUrl} className="w-full h-full object-cover" muted preload="metadata" />
+        ) : (
+          <Music size={14} className="text-amber-500/60" />
+        )}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="text-[10px] text-slate-200 truncate">{asset.name}</div>
+        <div className="text-[8px] text-slate-600">
+          {asset.type === 'audio' ? `${asset.duration?.toFixed(1) ?? '\u2014'}s` : `${asset.width}x${asset.height}`}
+        </div>
+      </div>
+      <div className="text-[7px] text-slate-500 uppercase flex-shrink-0">
+        {asset.type === 'video' ? 'VID' : asset.type === 'audio' ? 'AUD' : 'IMG'}
       </div>
     </div>
   );

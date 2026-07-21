@@ -25,6 +25,8 @@ interface PreviewState {
   pixelPreview: boolean;
   regionOfInterest: boolean;
   fastDraft: boolean;
+  /** Skip layer effects (shadow/glow/blur) in the interactive preview only. */
+  disableEffects: boolean;
 
   setQuality: (q: PreviewQuality) => void;
   toggleTransparencyGrid: () => void;
@@ -32,6 +34,7 @@ interface PreviewState {
   togglePixelPreview: () => void;
   toggleRegionOfInterest: () => void;
   toggleFastDraft: () => void;
+  toggleDisableEffects: () => void;
 }
 
 export const usePreviewStore = create<PreviewState>((set) => ({
@@ -41,6 +44,7 @@ export const usePreviewStore = create<PreviewState>((set) => ({
   pixelPreview: false,
   regionOfInterest: false,
   fastDraft: false,
+  disableEffects: false,
 
   setQuality: (quality) => set({ quality }),
   toggleTransparencyGrid: () => set((s) => ({ transparencyGrid: !s.transparencyGrid })),
@@ -48,6 +52,7 @@ export const usePreviewStore = create<PreviewState>((set) => ({
   togglePixelPreview: () => set((s) => ({ pixelPreview: !s.pixelPreview })),
   toggleRegionOfInterest: () => set((s) => ({ regionOfInterest: !s.regionOfInterest })),
   toggleFastDraft: () => set((s) => ({ fastDraft: !s.fastDraft })),
+  toggleDisableEffects: () => set((s) => ({ disableEffects: !s.disableEffects })),
 }));
 
 export function getQualityScale(quality: PreviewQuality): number {

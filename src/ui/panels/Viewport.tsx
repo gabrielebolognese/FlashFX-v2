@@ -14,6 +14,9 @@ import { MaskOverlay } from './MaskOverlay';
 import { GridOverlay } from './GridOverlay';
 import { ShapeCreationOverlay } from './ShapeCreationOverlay';
 import { PenToolOverlay } from './PenToolOverlay';
+import { BoundingBoxesOverlay } from './BoundingBoxesOverlay';
+import { SafeAreasOverlay } from './SafeAreasOverlay';
+import { AnimatedPathsOverlay } from './AnimatedPathsOverlay';
 import { MultiFieldWarning } from './MultiFieldWarning';
 import { useShapeToolStore, isShapeTool } from '../../store/shapeTool';
 import { useRecoveryStore } from '../../store/recovery';
@@ -58,6 +61,7 @@ export function Viewport() {
   const transparencyGrid = usePreviewStore((s) => s.transparencyGrid);
   const pixelPreview = usePreviewStore((s) => s.pixelPreview);
   const globalMotionBlur = usePreviewStore((s) => s.globalMotionBlur);
+  const disableEffects = usePreviewStore((s) => s.disableEffects);
   const qualityScale = getQualityScale(previewQuality);
 
   const rendererEpoch = useRecoveryStore((s) => s.rendererEpoch);
@@ -74,6 +78,8 @@ export function Viewport() {
     const update = () => {
       const { width, height } = container.getBoundingClientRect();
       setContainerSize({ width, height });
+      // Publish to the store so menu-driven Fill/Frame actions know the viewport size.
+      useViewportNavStore.getState().setContainerSize(width, height);
     };
     update();
     const observer = new ResizeObserver(update);
@@ -159,8 +165,9 @@ export function Viewport() {
     const renderer = rendererRef.current;
     if (!renderer) return;
     renderer.setMotionBlurSamples(globalMotionBlur ? getMotionBlurSamples(previewQuality) : 1);
+    renderer.setEffectsPreviewDisabled(disableEffects);
     playbackController.renderCurrentFrame();
-  }, [globalMotionBlur, previewQuality, rendererEpoch]);
+  }, [globalMotionBlur, previewQuality, disableEffects, rendererEpoch]);
 
   // Wheel zoom - cursor-centered (native listener for passive:false)
   useEffect(() => {
@@ -326,6 +333,9 @@ export function Viewport() {
       />
       <ShapeCreationOverlay compW={compW} compH={compH} style={overlayStyle} />
       <PenToolOverlay compW={compW} compH={compH} style={overlayStyle} />
+      <BoundingBoxesOverlay compW={compW} compH={compH} style={overlayStyle} />
+      <AnimatedPathsOverlay compW={compW} compH={compH} style={overlayStyle} />
+      <SafeAreasOverlay style={overlayStyle} />
 
       {/* Field overlap warning */}
       <div className="absolute top-2 left-2 right-2 z-10 pointer-events-auto">

@@ -2561,9 +2561,17 @@ export class WebGPURenderer {
   // Directional samples taken along the velocity vector in the blur shader.
   // Driven by the quality/export settings (4 = draft, 8 = preview, 16 = high).
   private motionBlurSamples = 16;
+  // Preview-only: when set, per-layer effects (shadow/glow/blur/motion-blur) are
+  // skipped for speed. An INSTANCE flag (not global) so the export renderer — a
+  // separate WebGPURenderer — always renders effects regardless of this preview toggle.
+  private effectsPreviewDisabled = false;
 
   setMotionBlurSamples(n: number): void {
     this.motionBlurSamples = Math.max(2, Math.round(n));
+  }
+
+  setEffectsPreviewDisabled(disabled: boolean): void {
+    this.effectsPreviewDisabled = disabled;
   }
 
   async initialize(canvas: HTMLCanvasElement): Promise<boolean> {
@@ -3708,10 +3716,11 @@ export class WebGPURenderer {
       // than frame.layers. Bounding by frame.layers.length would silently drop
       // every expanded copy past the original layer count (incl. looped video).
       for (let i = 0; i < expandedLayers.length; i++) {
-        const blur = expandedLayers[i].motionBlur;
-        const shadow = expandedLayers[i].shadow;
-        const glow = expandedLayers[i].glow;
-        const blurFx = expandedLayers[i].blur;
+        const fx = !this.effectsPreviewDisabled;
+        const blur = fx ? expandedLayers[i].motionBlur : undefined;
+        const shadow = fx ? expandedLayers[i].shadow : undefined;
+        const glow = fx ? expandedLayers[i].glow : undefined;
+        const blurFx = fx ? expandedLayers[i].blur : undefined;
         if (shapeIdx < shapeLayers.length && shapeLayers[shapeIdx].index === i) {
           const slot = shapeIdx;
           draws.push({ blur, shadow, glow, blurFx, fn: (p) => {

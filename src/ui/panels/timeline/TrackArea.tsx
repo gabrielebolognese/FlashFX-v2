@@ -9,6 +9,7 @@ import type { CommitClipMoveIntent } from '../../../store/editor';
 import { isTrackCompressed } from '../../../core/trackCompression';
 import { clampGroupResizeDelta, applyResizeDelta } from '../../../core/clipResize';
 import { mediaAssetManager } from '../../../engine/media/assetManager';
+import { videoDecoderPool } from '../../../engine/video/videoDecoderPool';
 import { getSettingValue } from '../../../settings/store';
 import {
   buildClipSnapSources,
@@ -50,6 +51,7 @@ const SCRUB_MAX_SPEED = 18; // px per rAF tick at maximum proximity
 
 // Fixed type-based color registry
 function getClipColor(layer: Layer): string {
+  if (layer.labelColor) return layer.labelColor;
   switch (layer.type) {
     case 'video': return '#22c55e';
     case 'text': return '#3b82f6';
@@ -184,11 +186,15 @@ export function TrackArea({ layers, tracks, selectedIds, rulerOnly, ghostRowCoun
   const scrollY = useTimelineStore((s) => s.scrollY);
   const isPlaying = useTimelineStore((s) => s.isPlaying);
   const followPlayhead = useTimelineStore((s) => s.followPlayhead);
+  const showWaveforms = useTimelineStore((s) => s.showWaveforms);
+  const showThumbnails = useTimelineStore((s) => s.showThumbnails);
   const setScrollX = useTimelineStore((s) => s.setScrollX);
   const setScrollY = useTimelineStore((s) => s.setScrollY);
   const zoomAtCursor = useTimelineStore((s) => s.zoomAtCursor);
   const durationFrames = useEditorStore((s) => s.composition.settings.durationFrames);
   const frameRate = useEditorStore((s) => s.composition.settings.frameRate);
+  const markers = useEditorStore((s) => s.composition.markers);
+  const removeMarker = useEditorStore((s) => s.removeMarker);
   const moveClipInTime = useEditorStore((s) => s.moveClipInTime);
   const moveClipToTrack = useEditorStore((s) => s.moveClipToTrack);
   const reorderClipToTrackPosition = useEditorStore((s) => s.reorderClipToTrackPosition);
@@ -208,7 +214,10 @@ export function TrackArea({ layers, tracks, selectedIds, rulerOnly, ghostRowCoun
     const el = containerRef.current;
     if (!el) return;
     const observer = new ResizeObserver((entries) => {
-      setContainerWidth(entries[0].contentRect.width);
+      const w = entries[0].contentRect.width;
+      setContainerWidth(w);
+      // Publish to the store so menu-driven fit/jump actions know the viewport width.
+      useTimelineStore.getState().setContainerWidth(w);
     });
     observer.observe(el);
     return () => observer.disconnect();
@@ -871,6 +880,36 @@ export function TrackArea({ layers, tracks, selectedIds, rulerOnly, ghostRowCoun
           );
         })}
 
+        {markers && markers.map((m) => {
+          const mx = frameToPixel(m.frame, zoomLevel, scrollX);
+          const color = m.color || '#38bdf8';
+          const bandRight = m.endFrame != null ? frameToPixel(m.endFrame, zoomLevel, scrollX) : mx;
+          if (bandRight < -20 || mx > containerWidth + 20) return null;
+          return (
+            <div key={m.id} className="absolute top-0 h-full z-10">
+              {m.endFrame != null && (
+                <div
+                  className="absolute top-0 h-full pointer-events-none"
+                  style={{ left: mx, width: Math.max(1, bandRight - mx), backgroundColor: color, opacity: 0.12 }}
+                />
+              )}
+              <div
+                className="absolute top-0 w-px h-full pointer-events-none"
+                style={{ left: mx, backgroundColor: color, opacity: 0.7 }}
+              />
+              <div
+                className="absolute top-0 cursor-pointer"
+                style={{ left: mx, transform: 'translateX(-1px)' }}
+                title={`${m.name || (m.endFrame != null ? 'Section' : 'Marker')} @ ${m.frame}${m.endFrame != null ? `–${m.endFrame}` : ''} · right-click to remove`}
+                onMouseDown={(e) => e.stopPropagation()}
+                onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); removeMarker(m.id); }}
+              >
+                <div className="w-0 h-0 border-l-[4px] border-t-[6px] border-l-transparent" style={{ borderTopColor: color }} />
+              </div>
+            </div>
+          );
+        })}
+
         {playheadX >= -5 && playheadX <= containerWidth + 5 && (
           <div
             className="absolute bottom-0 z-20 pointer-events-none"
@@ -1039,7 +1078,7 @@ export function TrackArea({ layers, tracks, selectedIds, rulerOnly, ghostRowCoun
                     />
 
                     {/* Video thumbnail strip */}
-                    {layer.type === 'video' && track.type === 'video' && barWidth > 40 && (
+                    {showThumbnails && layer.type === 'video' && track.type === 'video' && barWidth > 40 && (
                       <VideoThumbnailStrip
                         assetId={layer.video.assetId}
                         sourceFrameRate={layer.video.sourceFrameRate}
@@ -1053,7 +1092,7 @@ export function TrackArea({ layers, tracks, selectedIds, rulerOnly, ghostRowCoun
                     )}
 
                     {/* Video audio waveform overlay */}
-                    {layer.type === 'video' && barWidth > 20 && !layer.video.muted && (
+                    {showWaveforms && layer.type === 'video' && barWidth > 20 && !layer.video.muted && (
                       <VideoAudioWaveformStrip
                         layer={layer as VideoLayer}
                         clipWidth={barWidth}
@@ -1063,7 +1102,7 @@ export function TrackArea({ layers, tracks, selectedIds, rulerOnly, ghostRowCoun
                     )}
 
                     {/* Audio waveform */}
-                    {layer.type === 'audio' && barWidth > 20 && (
+                    {showWaveforms && layer.type === 'audio' && barWidth > 20 && (
                       <AudioWaveformStrip
                         layer={layer as AudioLayer}
                         clipWidth={barWidth}
@@ -1514,20 +1553,82 @@ function VideoThumbnailStrip({
   );
 }
 
-// NOTE: stub — renders a correctly-sized but EMPTY canvas. Decoding `assetId` at
-// `sourceFrame` and painting it here is not implemented yet (no frame-extraction
-// API exists on mediaAssetManager), so the timeline thumbnail strip is blank.
-// The props are kept because they are the intended contract for that work.
-function VideoThumb({ assetId: _assetId, sourceFrame: _sourceFrame, width, height }: {
+// Bounded cache of decoded thumbnail bitmaps, keyed by asset+frame. Decoding a
+// VideoFrame is expensive and the strip re-renders often (scroll/zoom), so we
+// decode once, convert to an ImageBitmap, and reuse it. Capped to bound memory.
+const THUMB_CACHE = new Map<string, ImageBitmap>();
+const THUMB_CACHE_MAX = 240;
+const THUMB_PENDING = new Set<string>();
+
+function cacheThumb(key: string, bmp: ImageBitmap): void {
+  if (THUMB_CACHE.size >= THUMB_CACHE_MAX) {
+    const oldest = THUMB_CACHE.keys().next().value;
+    if (oldest !== undefined) {
+      THUMB_CACHE.get(oldest)?.close();
+      THUMB_CACHE.delete(oldest);
+    }
+  }
+  THUMB_CACHE.set(key, bmp);
+}
+
+// Decodes one source frame via the shared video decoder pool and paints it,
+// object-fit: cover. Best-effort: if the asset has no active decoder (not yet
+// loaded) or decode fails, the canvas stays blank. Gated behind the timeline
+// "Show Thumbnails" toggle so this decode traffic is opt-in.
+function VideoThumb({ assetId, sourceFrame, width, height }: {
   assetId: string;
   sourceFrame: number;
   width: number;
   height: number;
 }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const cw = Math.max(1, Math.ceil(width));
+  const ch = Math.max(1, Math.ceil(height));
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const frameIdx = Math.max(0, sourceFrame);
+    const key = `${assetId}:${frameIdx}`;
+    let cancelled = false;
+
+    const paint = (bmp: ImageBitmap) => {
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      // object-fit: cover
+      const scale = Math.max(cw / bmp.width, ch / bmp.height);
+      const dw = bmp.width * scale;
+      const dh = bmp.height * scale;
+      ctx.clearRect(0, 0, cw, ch);
+      ctx.drawImage(bmp, (cw - dw) / 2, (ch - dh) / 2, dw, dh);
+    };
+
+    const cached = THUMB_CACHE.get(key);
+    if (cached) { paint(cached); return; }
+    if (THUMB_PENDING.has(key)) return;
+
+    THUMB_PENDING.add(key);
+    videoDecoderPool.decodeFrame(assetId, frameIdx)
+      .then(async (frame) => {
+        try {
+          const bmp = await createImageBitmap(frame);
+          cacheThumb(key, bmp);
+          if (!cancelled) paint(bmp);
+        } finally {
+          frame.close();
+        }
+      })
+      .catch(() => { /* asset not decodable right now — leave blank */ })
+      .finally(() => { THUMB_PENDING.delete(key); });
+
+    return () => { cancelled = true; };
+  }, [assetId, sourceFrame, cw, ch]);
+
   return (
     <canvas
-      width={Math.ceil(width)}
-      height={Math.ceil(height)}
+      ref={canvasRef}
+      width={cw}
+      height={ch}
       className="flex-shrink-0"
       style={{ width, height }}
     />

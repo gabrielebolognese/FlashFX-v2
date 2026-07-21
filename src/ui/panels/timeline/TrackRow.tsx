@@ -15,6 +15,7 @@ interface TrackRowProps {
 }
 
 function clipColor(layer: Layer): string {
+  if (layer.labelColor) return layer.labelColor;
   switch (layer.type) {
     case 'video': return '#22c55e';
     case 'text': return '#3b82f6';

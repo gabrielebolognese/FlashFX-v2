@@ -735,6 +735,19 @@ class MediaAssetManager {
     return Array.from(this.assets.values()).filter((a) => a.status === 'missing');
   }
 
+  /**
+   * Rename an asset's display name (in-memory; affects the Media Pool label).
+   * Notifies subscribers so the pool re-renders.
+   */
+  renameAsset(assetId: string, name: string): void {
+    const asset = this.assets.get(assetId);
+    if (!asset) return;
+    const trimmed = name.trim();
+    if (!trimmed || asset.name === trimmed) return;
+    asset.name = trimmed;
+    this.notify();
+  }
+
   async removeAsset(assetId: string): Promise<void> {
     const asset = this.assets.get(assetId);
     if (asset) {

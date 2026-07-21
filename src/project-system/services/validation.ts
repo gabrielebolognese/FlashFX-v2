@@ -265,6 +265,7 @@ function validateLayer(raw: unknown): Layer | null {
     masks: ensureMasks(r.masks),
     inPoint: typeof r.inPoint === 'number' ? r.inPoint : 0,
     outPoint: typeof r.outPoint === 'number' ? r.outPoint : 150,
+    ...(typeof r.labelColor === 'string' ? { labelColor: r.labelColor } : {}),
   };
 
   switch (r.type) {
@@ -342,6 +343,8 @@ function validateLayer(raw: unknown): Layer | null {
           startOffset: typeof v.startOffset === 'number' ? v.startOffset : 0,
           playbackRate: typeof v.playbackRate === 'number' ? v.playbackRate : 1,
           muted: typeof v.muted === 'boolean' ? v.muted : false,
+          ...(typeof v.freezeSourceFrame === 'number' ? { freezeSourceFrame: v.freezeSourceFrame } : {}),
+          ...(v.reversed === true ? { reversed: true } : {}),
         },
       } as VideoLayer;
     }
@@ -511,7 +514,14 @@ export function validateComposition(raw: unknown): Composition {
     tracks,
     background: ensureBackground(r.background),
     motionPaths: Array.isArray(r.motionPaths) ? r.motionPaths : [],
+    ...(Array.isArray(r.markers) ? { markers: (r.markers as unknown[]).filter(isValidMarker) as Composition['markers'] } : {}),
   };
+}
+
+function isValidMarker(val: unknown): boolean {
+  if (!isObject(val)) return false;
+  const m = val as Record<string, unknown>;
+  return typeof m.id === 'string' && typeof m.frame === 'number';
 }
 
 function isValidTrack(val: unknown): boolean {

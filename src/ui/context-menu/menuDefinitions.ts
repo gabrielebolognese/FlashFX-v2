@@ -7,7 +7,7 @@ import {
   Eye, EyeOff, Move, Maximize2, Minimize2, Crosshair, Ruler, AlignCenter,
   FastForward, Rewind, Tag, Palette, Settings, Wand2, ScanLine, AudioLines,
   Waves, Activity, Gauge, Ungroup, Group, MousePointer, Columns3, Rows3,
-  Zap, ArrowLeftToLine, ArrowRightToLine, Container,
+  Zap, ArrowLeftToLine, ArrowRightToLine, Container, Download,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { MenuEntry } from './types';
@@ -18,10 +18,14 @@ import { useGridStore } from '../../store/grid';
 import { useViewportNavStore } from '../../store/viewportNav';
 import { usePreviewStore } from '../../store/preview';
 import { useMediaPoolStore } from '../../store/mediaPool';
-import { useSettingsStore } from '../../settings/store';
+import { useSettingsStore, getSettingValue } from '../../settings/store';
 import { useCaptionStore } from '../../store/captions';
 import { useSilenceStore } from '../../store/silenceStripper';
 import { videoDecoderPool } from '../../engine/video/videoDecoderPool';
+import { generateThumbnailSheet } from '../../engine/video/thumbnailSheet';
+import { getSelectionRect } from '../../core/snap/bbox';
+import { mediaAssetManager } from '../../engine/media/assetManager';
+import { useProjectStore } from '../../project-system/hooks/useProjectStore';
 
 // Helper: creates a disabled placeholder item
 function disabled(id: string, label: string, icon?: LucideIcon, shortcut?: string): MenuEntry {
@@ -50,6 +54,20 @@ const EASE_IN: [Vec2, Vec2] = [[1, 1], [0.42, 0.001]];
 const EASE_OUT: [Vec2, Vec2] = [[0.58, 1], [0.001, 0.001]];
 const EASE_IO: [Vec2, Vec2] = [[0.58, 1], [0.42, 0.001]];
 
+// Relink/replace: pick a file and re-import it under the same asset id (layers that
+// reference the asset auto-repair, since they key off assetId).
+function pickReplacement(assetId: string): void {
+  const pid = useProjectStore.getState().activeProjectId;
+  if (!pid) return;
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.onchange = () => {
+    const f = input.files?.[0];
+    if (f) void mediaAssetManager.reimportMissingAsset(assetId, f, pid);
+  };
+  input.click();
+}
+
 // ─── CANVAS CONTEXT MENU ────────────────────────────────────────────────────
 
 export function buildCanvasMenu(): MenuEntry[] {
@@ -68,9 +86,13 @@ export function buildCanvasMenu(): MenuEntry[] {
         item('zoom-out', 'Zoom Out', () => nav.setZoom(nav.zoom * 0.8), ZoomOut, '-'),
         item('zoom-100', 'Zoom to 100%', () => nav.setZoom(1), Maximize2, 'Ctrl+0'),
         item('fit-canvas', 'Fit Canvas', () => nav.fitToCanvas(), Maximize, 'Ctrl+1'),
-        disabled('fill-viewport', 'Fill Viewport', Maximize2),
+        item('fill-viewport', 'Fill Viewport', () => nav.fillViewport(compW, compH), Maximize2),
         item('reset-view', 'Reset View', () => nav.resetView(), Crosshair),
-        disabled('frame-selected', 'Frame Selected Layer', MousePointer),
+        item('frame-selected', 'Frame Selected Layer', () => {
+          const frame = useTimelineStore.getState().currentFrame;
+          const rect = getSelectionRect(editor.selection.selectedIds, editor.composition.layers, frame);
+          if (rect) nav.frameRect(rect.x, rect.y, rect.w, rect.h, compW, compH);
+        }, MousePointer),
       ],
     },
     {
@@ -84,7 +106,8 @@ export function buildCanvasMenu(): MenuEntry[] {
           action: () => grid.setGridVisible(!grid.grid.visible),
           enabled: true,
         },
-        disabled('snap-grid', 'Snap to Grid', Magnet),
+        check('snap-grid', 'Snap to Grid', getSettingValue<boolean>('editor.snapToGrid') ?? true,
+          () => useSettingsStore.getState().setValue('editor.snapToGrid', !(getSettingValue<boolean>('editor.snapToGrid') ?? true)), Magnet),
         {
           type: 'item', id: 'toggle-guides', label: 'Show Guides',
           icon: Ruler,
@@ -92,7 +115,8 @@ export function buildCanvasMenu(): MenuEntry[] {
           action: () => grid.setGuidesVisible(!grid.guides.visible),
           enabled: true,
         },
-        disabled('snap-guides', 'Snap to Guides', Magnet),
+        check('snap-guides', 'Snap to Guides', getSettingValue<boolean>('editor.snapToGuides') ?? true,
+          () => useSettingsStore.getState().setValue('editor.snapToGuides', !(getSettingValue<boolean>('editor.snapToGuides') ?? true)), Magnet),
         item('add-h-guide', 'Add Horizontal Guide', () => grid.addGuideline('horizontal', Math.round(compH / 2)), Ruler),
         item('add-v-guide', 'Add Vertical Guide', () => grid.addGuideline('vertical', Math.round(compW / 2)), Ruler),
         item('clear-guides', 'Clear Guides', () => grid.clearGuidelines(), Trash2),
@@ -120,7 +144,7 @@ export function buildCanvasMenu(): MenuEntry[] {
       label: 'Clipboard',
       items: [
         item('paste', 'Paste', () => editor.pasteClipboard(), Clipboard, 'Ctrl+V'),
-        disabled('paste-place', 'Paste in Place', Clipboard, 'Ctrl+Shift+V'),
+        item('paste-place', 'Paste in Place', () => editor.pasteClipboard(true), Clipboard, 'Ctrl+Shift+V'),
         item('duplicate', 'Duplicate Selection', () => editor.duplicateSelection(), Copy, 'Ctrl+D'),
       ],
     },
@@ -130,10 +154,10 @@ export function buildCanvasMenu(): MenuEntry[] {
       label: 'View',
       icon: Eye,
       items: [
-        disabled('safe-areas', 'Show Safe Areas', Eye),
-        disabled('bounding-boxes', 'Show Bounding Boxes', Square),
-        disabled('layer-controls', 'Show Layer Controls', Layers),
-        disabled('motion-paths', 'Show Motion Paths', Move),
+        check('safe-areas', 'Show Safe Areas', nav.showSafeAreas, () => nav.toggleSafeAreas(), Eye),
+        check('bounding-boxes', 'Show Bounding Boxes', nav.showBoundingBoxes, () => nav.toggleBoundingBoxes(), Square),
+        check('layer-controls', 'Show Layer Controls', nav.showLayerControls, () => nav.toggleLayerControls(), Layers),
+        check('motion-paths', 'Show Motion Paths', nav.showMotionPaths, () => nav.toggleMotionPaths(), Move),
       ],
     },
     {
@@ -150,8 +174,8 @@ export function buildCanvasMenu(): MenuEntry[] {
             check('quality-quarter', 'Quarter', preview.quality === 'quarter', () => preview.setQuality('quarter')),
           ],
         },
-        disabled('gpu-rendering', 'GPU Rendering', Activity),
-        disabled('disable-effects', 'Disable Effects Preview', EyeOff),
+        item('gpu-rendering', 'GPU Rendering: On', () => window.alert('Rendering runs entirely on the GPU (WebGPU). There is no CPU fallback to toggle.'), Activity),
+        check('disable-effects', 'Disable Effects Preview', preview.disableEffects, () => preview.toggleDisableEffects(), EyeOff),
       ],
     },
   ];
@@ -170,8 +194,8 @@ export function buildTimelineEmptyMenu(): MenuEntry[] {
       items: [
         item('new-shape-layer', 'New Shape Layer', () => editor.addRectangle(), Square),
         item('new-text-layer', 'New Text Layer', () => editor.addText(), Type),
-        disabled('new-audio-track', 'New Audio Track', Music),
-        disabled('new-group-track', 'New Group Track', Folder),
+        item('new-audio-track', 'New Audio Track', () => editor.addTrack('audio'), Music),
+        item('new-group-track', 'New Group Track', () => editor.addTrack('group'), Folder),
       ],
     },
     {
@@ -180,18 +204,21 @@ export function buildTimelineEmptyMenu(): MenuEntry[] {
       items: [
         item('tl-zoom-in', 'Zoom In', () => timeline.zoomAtCursor(300, 1.3), ZoomIn),
         item('tl-zoom-out', 'Zoom Out', () => timeline.zoomAtCursor(300, 0.7), ZoomOut),
-        disabled('tl-zoom-fit', 'Zoom to Fit', Maximize),
-        disabled('tl-show-all', 'Show Entire Timeline', Maximize2),
-        disabled('tl-jump-playhead', 'Jump to Playhead', Crosshair),
+        item('tl-zoom-fit', 'Zoom to Fit', () => timeline.fitTimeline(editor.composition.settings.durationFrames), Maximize),
+        item('tl-show-all', 'Show Entire Timeline', () => timeline.fitTimeline(editor.composition.settings.durationFrames), Maximize2),
+        item('tl-jump-playhead', 'Jump to Playhead', () => timeline.jumpToPlayhead(), Crosshair),
       ],
     },
     {
       type: 'group',
       label: 'Markers',
       items: [
-        disabled('add-marker', 'Add Marker', Tag),
-        disabled('add-section', 'Add Section Marker', Tag),
-        disabled('clear-markers', 'Clear Markers', Trash2),
+        item('add-marker', 'Add Marker', () => editor.addMarker(timeline.currentFrame), Tag),
+        item('add-section', 'Add Section Marker', () => editor.addMarker(timeline.currentFrame, {
+          endFrame: timeline.currentFrame + Math.round(editor.composition.settings.frameRate),
+          name: 'Section',
+        }), Tag),
+        item('clear-markers', 'Clear Markers', () => editor.clearMarkers(), Trash2),
       ],
     },
     {
@@ -208,8 +235,8 @@ export function buildTimelineEmptyMenu(): MenuEntry[] {
           s.setValue('timeline.trackHeight', 40);
           s.setValue('timeline.videoTrackHeight', 64);
         }, Maximize2),
-        disabled('show-waveforms', 'Show Waveforms', Waves),
-        disabled('show-thumbnails', 'Show Thumbnails', Image),
+        check('show-waveforms', 'Show Waveforms', timeline.showWaveforms, () => timeline.toggleWaveforms(), Waves),
+        check('show-thumbnails', 'Show Thumbnails', timeline.showThumbnails, () => timeline.toggleThumbnails(), Image),
       ],
     },
   ];
@@ -224,6 +251,14 @@ export function buildClipMenu(layerId: string): MenuEntry[] {
   const isVideo = layer?.type === 'video';
   const isPrecomp = layer?.type === 'precomp';
   const precompId = isPrecomp ? (layer as { compositionId?: string }).compositionId : undefined;
+
+  // Label color applies to the whole selection when the clicked clip is part
+  // of it, otherwise just to this clip.
+  const applyLabel = (color: string | null) => {
+    const ed = useEditorStore.getState();
+    const sel = ed.selection.selectedIds;
+    ed.setLayerLabelColor(sel.includes(layerId) ? sel : [layerId], color);
+  };
 
   return [
     {
@@ -243,9 +278,23 @@ export function buildClipMenu(layerId: string): MenuEntry[] {
         item('clip-split', 'Split at Playhead', () => editor.trimSplit(layerId), Scissors, 'Ctrl+Shift+S'),
         item('clip-trim-left', 'Trim Start to Playhead', () => editor.trimLeft(layerId), SkipForward),
         item('clip-trim-right', 'Trim End to Playhead', () => editor.trimRight(layerId), SkipBack),
-        disabled('clip-freeze', 'Freeze Frame', Film),
-        disabled('clip-reverse', 'Reverse', Rewind),
-        disabled('clip-speed', 'Speed / Duration', FastForward),
+        ...(isVideo
+          ? [
+              item('clip-freeze', 'Freeze Frame', () => editor.freezeVideoOnPlayhead(layerId), Film),
+              item('clip-reverse', 'Reverse', () => editor.reverseVideoClip(layerId), Rewind),
+            ]
+          : []),
+        isVideo
+          ? item('clip-speed', 'Speed / Duration…', () => {
+              const s = window.prompt('Playback speed (1 = normal, 2 = faster, 0.5 = slower):', '1');
+              const f = s ? parseFloat(s) : NaN;
+              if (Number.isFinite(f) && f > 0) editor.updateLayerProperty(layerId, 'video.playbackRate', f);
+            }, FastForward)
+          : item('clip-speed', 'Speed / Duration…', () => {
+              const s = window.prompt('Animation speed (1 = normal, 2 = faster, 0.5 = slower):', '1');
+              const f = s ? parseFloat(s) : NaN;
+              if (Number.isFinite(f) && f > 0) editor.setNonVideoClipSpeed(layerId, f);
+            }, FastForward),
       ],
     },
     {
@@ -284,10 +333,9 @@ export function buildClipMenu(layerId: string): MenuEntry[] {
       label: 'Animation',
       icon: Sparkles,
       items: [
-        disabled('add-fade-in', 'Add Fade In', Sparkles),
-        disabled('add-fade-out', 'Add Fade Out', Sparkles),
-        disabled('add-compound', 'Add Compound Animation', Layers),
-        disabled('bake-anim', 'Bake Animation', Activity),
+        item('add-fade-in', 'Add Fade In', () => editor.addFade(layerId, 'transform.opacity', 'in'), Sparkles),
+        item('add-fade-out', 'Add Fade Out', () => editor.addFade(layerId, 'transform.opacity', 'out'), Sparkles),
+        item('bake-anim', 'Bake Animation', () => editor.bakeLayerAnimation(layerId), Activity),
       ],
     },
     {
@@ -310,10 +358,11 @@ export function buildClipMenu(layerId: string): MenuEntry[] {
       label: 'Label Color',
       icon: Palette,
       items: [
-        disabled('label-red', 'Red', Palette),
-        disabled('label-blue', 'Blue', Palette),
-        disabled('label-green', 'Green', Palette),
-        disabled('label-yellow', 'Yellow', Palette),
+        item('label-red', 'Red', () => applyLabel('#ef4444'), Palette),
+        item('label-blue', 'Blue', () => applyLabel('#3b82f6'), Palette),
+        item('label-green', 'Green', () => applyLabel('#22c55e'), Palette),
+        item('label-yellow', 'Yellow', () => applyLabel('#eab308'), Palette),
+        item('label-none', 'None', () => applyLabel(null), Palette),
       ],
     },
     {
@@ -386,25 +435,26 @@ export function buildMultiClipMenu(): MenuEntry[] {
   ];
 }
 
-function buildAudioClipSection(_layerId: string): MenuEntry[] {
+function buildAudioClipSection(layerId: string): MenuEntry[] {
+  const ed = useEditorStore.getState();
   return [
     {
       type: 'group',
       label: 'Audio',
       items: [
-        disabled('vol-up-1', 'Volume +1 dB', Volume2),
-        disabled('vol-up-3', 'Volume +3 dB', Volume2),
-        disabled('vol-down-1', 'Volume -1 dB', VolumeX),
-        disabled('vol-down-3', 'Volume -3 dB', VolumeX),
-        disabled('normalize', 'Normalize', AudioLines),
+        item('vol-up-1', 'Volume +1 dB', () => ed.adjustAudioVolumeDb(layerId, 1), Volume2),
+        item('vol-up-3', 'Volume +3 dB', () => ed.adjustAudioVolumeDb(layerId, 3), Volume2),
+        item('vol-down-1', 'Volume -1 dB', () => ed.adjustAudioVolumeDb(layerId, -1), VolumeX),
+        item('vol-down-3', 'Volume -3 dB', () => ed.adjustAudioVolumeDb(layerId, -3), VolumeX),
+        item('normalize', 'Normalize', () => ed.normalizeAudioVolume(layerId), AudioLines),
       ],
     },
     {
       type: 'group',
       label: 'Fades',
       items: [
-        disabled('audio-fade-in', 'Add Fade In', Sparkles),
-        disabled('audio-fade-out', 'Add Fade Out', Sparkles),
+        item('audio-fade-in', 'Add Fade In', () => ed.addFade(layerId, 'audio.volume', 'in'), Sparkles),
+        item('audio-fade-out', 'Add Fade Out', () => ed.addFade(layerId, 'audio.volume', 'out'), Sparkles),
         disabled('audio-crossfade', 'Crossfade', Waves),
       ],
     },
@@ -426,7 +476,7 @@ function buildVideoClipSection(layerId: string, assetId: string): MenuEntry[] {
         }, Film),
         // Build an audio layer from the video's already-extracted audio buffer.
         item('extract-audio', 'Extract Audio', () => ed.addAudioFromAsset(assetId), Music),
-        disabled('freeze-frame-vid', 'Create Freeze Frame', Image),
+        item('freeze-frame-vid', 'Freeze on Playhead', () => ed.freezeVideoOnPlayhead(layerId), Image),
       ],
     },
   ];
@@ -441,9 +491,9 @@ export function buildMediaPoolEmptyMenu(): MenuEntry[] {
       type: 'group',
       label: 'Import',
       items: [
-        disabled('import-media', 'Import Media', Upload, 'Ctrl+I'),
-        disabled('import-folder', 'Import Folder', FolderPlus),
-        disabled('import-audio', 'Import Audio', Music),
+        item('import-media', 'Import Media', () => pool.onImport?.(), Upload, 'Ctrl+I'),
+        item('import-folder', 'Import Folder', () => pool.onImport?.({ directory: true }), FolderPlus),
+        item('import-audio', 'Import Audio', () => pool.onImport?.({ accept: 'audio/*' }), Music),
         disabled('import-sequence', 'Import Image Sequence', Image),
       ],
     },
@@ -459,10 +509,10 @@ export function buildMediaPoolEmptyMenu(): MenuEntry[] {
       type: 'group',
       label: 'View',
       items: [
-        disabled('view-grid', 'Grid View', LayoutGrid),
-        disabled('view-list', 'List View', List),
-        disabled('large-thumbs', 'Large Thumbnails', Maximize2),
-        disabled('small-thumbs', 'Small Thumbnails', Minimize2),
+        check('view-grid', 'Grid View', pool.viewMode === 'grid', () => pool.setViewMode('grid'), LayoutGrid),
+        check('view-list', 'List View', pool.viewMode === 'list', () => pool.setViewMode('list'), List),
+        check('large-thumbs', 'Large Thumbnails', pool.thumbSize === 'large', () => pool.setThumbSize('large'), Maximize2),
+        check('small-thumbs', 'Small Thumbnails', pool.thumbSize === 'small', () => pool.setThumbSize('small'), Minimize2),
       ],
     },
     {
@@ -481,8 +531,20 @@ export function buildMediaPoolEmptyMenu(): MenuEntry[] {
       type: 'group',
       label: 'Maintenance',
       items: [
-        disabled('remove-unused', 'Remove Unused Media', Trash2),
-        disabled('refresh-media', 'Refresh Media', RefreshCcw),
+        item('remove-unused', 'Remove Unused Media', () => {
+          const ed = useEditorStore.getState();
+          const used = new Set<string>();
+          for (const l of ed.composition.layers) {
+            const a = l as { video?: { assetId?: string }; image?: { assetId?: string }; audio?: { assetId?: string } };
+            const id = a.video?.assetId ?? a.image?.assetId ?? a.audio?.assetId;
+            if (id) used.add(id);
+          }
+          const unused = mediaAssetManager.getAllAssets().filter((asset) => !used.has(asset.id));
+          if (unused.length === 0) { window.alert('No unused media to remove.'); return; }
+          if (!window.confirm(`Remove ${unused.length} unused asset(s) from this project?`)) return;
+          for (const asset of unused) void mediaAssetManager.removeAsset(asset.id);
+        }, Trash2),
+        item('refresh-media', 'Refresh Media', () => pool.onRefresh?.(), RefreshCcw),
       ],
     },
   ];
@@ -492,6 +554,7 @@ export function buildMediaPoolEmptyMenu(): MenuEntry[] {
 
 export function buildMediaAssetMenu(assetType: 'image' | 'video' | 'audio', assetId: string): MenuEntry[] {
   const ed = useEditorStore.getState();
+  const pool = useMediaPoolStore.getState();
   const cx = Math.round(ed.composition.settings.width / 2);
   const cy = Math.round(ed.composition.settings.height / 2);
   const addToTimeline = () => {
@@ -507,8 +570,12 @@ export function buildMediaAssetMenu(assetType: 'image' | 'video' | 'audio', asse
       items: [
         item('add-timeline', 'Add to Timeline', addToTimeline, Plus),
         item('add-new-layer', 'Add to New Layer', addToTimeline, Layers),
-        disabled('preview-asset', 'Preview', Play),
-        disabled('rename-asset', 'Rename', Pencil),
+        item('preview-asset', 'Preview', () => pool.setPreviewAsset(assetId), Play),
+        item('rename-asset', 'Rename', () => {
+          const cur = mediaAssetManager.getAsset(assetId)?.name ?? '';
+          const n = window.prompt('Rename asset:', cur);
+          if (n && n.trim()) { mediaAssetManager.renameAsset(assetId, n.trim()); pool.onRefresh?.(); }
+        }, Pencil),
         disabled('duplicate-asset', 'Duplicate', Copy),
       ],
     },
@@ -526,10 +593,32 @@ export function buildMediaAssetMenu(assetType: 'image' | 'video' | 'audio', asse
       type: 'group',
       label: 'Technical',
       items: [
-        disabled('show-metadata', 'Show Metadata', Settings),
-        disabled('reveal-file', 'Reveal File', FolderPlus),
-        disabled('relink-file', 'Relink File', RefreshCcw),
-        disabled('replace-media', 'Replace Media', Upload),
+        item('show-metadata', 'Show Metadata', () => {
+          const lines: string[] = [`Type: ${assetType}`];
+          if (assetType === 'video') {
+            const m = mediaAssetManager.getMetadata(assetId);
+            if (m) lines.push(`Resolution: ${m.width}×${m.height}`, `Duration: ${m.duration.toFixed(2)}s`, `Frame rate: ${m.frameRate.toFixed(2)} fps`, `Codec: ${m.codec}`, `Audio: ${m.hasAudio ? 'yes' : 'no'}`);
+          } else if (assetType === 'image') {
+            const m = mediaAssetManager.getImageMetadata(assetId);
+            if (m) lines.push(`Resolution: ${m.width}×${m.height}`, `Format: ${m.format}`);
+          } else {
+            const m = mediaAssetManager.getAudioMetadata(assetId);
+            if (m) lines.push(`Duration: ${m.duration.toFixed(2)}s`, `Sample rate: ${m.sampleRate} Hz`, `Channels: ${m.channels}`);
+          }
+          window.alert(lines.join('\n'));
+        }, Settings),
+        item('reveal-file', 'Download Original', () => {
+          const url = mediaAssetManager.getObjectUrl(assetId);
+          if (!url) return;
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = mediaAssetManager.getAsset(assetId)?.name ?? 'asset';
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+        }, Download),
+        item('relink-file', 'Relink File', () => pickReplacement(assetId), RefreshCcw),
+        item('replace-media', 'Replace Media', () => pickReplacement(assetId), Upload),
       ],
     },
   ];
@@ -539,10 +628,10 @@ export function buildMediaAssetMenu(assetType: 'image' | 'video' | 'audio', asse
       type: 'group',
       label: 'Image',
       items: [
-        disabled('set-bg', 'Set as Background', Image),
+        item('set-bg', 'Set as Background', () => ed.addImageAsBackground(assetId), Image),
         disabled('convert-shape', 'Convert to Shape', Square),
         disabled('crop-img', 'Crop', Scissors),
-        disabled('auto-fit', 'Auto Fit Canvas', Maximize),
+        item('auto-fit', 'Auto Fit Canvas', () => ed.addImageFitCanvas(assetId), Maximize),
       ],
     });
     base.push({
@@ -564,9 +653,10 @@ export function buildMediaAssetMenu(assetType: 'image' | 'video' | 'audio', asse
       label: 'Video',
       items: [
         item('vid-proxy', 'Create Proxy', () => videoDecoderPool.setProxyMode(assetId, DEFAULT_PROXY_SCALE), Film),
-        disabled('vid-thumb-sheet', 'Generate Thumbnail Sheet', LayoutGrid),
+        item('vid-thumb-sheet', 'Generate Thumbnail Sheet', () => {
+          generateThumbnailSheet(assetId).catch(() => window.alert('Could not generate a thumbnail sheet. Add the clip to the timeline first so its decoder is active.'));
+        }, LayoutGrid),
         item('vid-extract-audio', 'Extract Audio', () => ed.addAudioFromAsset(assetId), Music),
-        disabled('vid-freeze', 'Create Freeze Frame', Image),
       ],
     });
     base.push({
@@ -614,7 +704,15 @@ export function buildMediaAssetMenu(assetType: 'image' | 'video' | 'audio', asse
         disabled('detect-bpm', 'Detect BPM', Activity),
         disabled('detect-beats', 'Detect Beats', AudioLines),
         disabled('detect-key', 'Detect Key', Music),
-        disabled('detect-loudness', 'Detect Loudness', Gauge),
+        item('detect-loudness', 'Detect Loudness', () => {
+          const wf = mediaAssetManager.getWaveform(assetId);
+          if (!wf || !wf.peaks || wf.peaks.length === 0) { window.alert('No waveform available for this asset.'); return; }
+          let sumSq = 0;
+          for (let i = 0; i < wf.peaks.length; i++) sumSq += wf.peaks[i] * wf.peaks[i];
+          const rms = Math.sqrt(sumSq / wf.peaks.length);
+          const dbfs = rms > 0 ? 20 * Math.log10(rms) : -Infinity;
+          window.alert(`Approx. loudness: ${dbfs.toFixed(1)} dBFS (RMS)`);
+        }, Gauge),
       ],
     });
     base.push({
@@ -634,6 +732,7 @@ export function buildMediaAssetMenu(assetType: 'image' | 'video' | 'audio', asse
 
 export function buildKeyframeMenu(isSingle: boolean, ctx?: KeyframeMenuContext): MenuEntry[] {
   const ed = useEditorStore.getState();
+  const currentFrame = useTimelineStore.getState().currentFrame;
   const layerId = ctx?.layerId ?? null;
   const targets = ctx?.targets ?? [];
   const active = layerId !== null && targets.length > 0;
@@ -644,25 +743,26 @@ export function buildKeyframeMenu(isSingle: boolean, ctx?: KeyframeMenuContext):
   const setInterp = (interpolation: InterpolationType, handleIn?: Vec2, handleOut?: Vec2) => () => {
     if (layerId) ed.setKeyframeInterpolation(layerId, targets, interpolation, handleIn, handleOut);
   };
+  const L = layerId ?? ''; // safe to capture; kf() gates every action on `active`
 
   const base: MenuEntry[] = [
     {
       type: 'group',
       label: 'Edit',
       items: [
-        disabled('kf-copy', 'Copy', Copy, 'Ctrl+C'),
-        disabled('kf-paste', 'Paste', Clipboard, 'Ctrl+V'),
-        disabled('kf-duplicate', 'Duplicate', Copy, 'Ctrl+D'),
-        kf('kf-delete', 'Delete', () => { if (layerId) ed.deleteKeyframes(layerId, targets); }, Trash2, 'Del'),
+        kf('kf-copy', 'Copy', () => ed.copyKeyframes(L, targets), Copy, 'Ctrl+C'),
+        kf('kf-paste', 'Paste', () => ed.pasteKeyframes(L, currentFrame), Clipboard, 'Ctrl+V'),
+        kf('kf-duplicate', 'Duplicate', () => ed.duplicateKeyframes(L, targets), Copy, 'Ctrl+D'),
+        kf('kf-delete', 'Delete', () => ed.deleteKeyframes(L, targets), Trash2, 'Del'),
       ],
     },
     {
       type: 'group',
       label: 'Timing',
       items: [
-        disabled('kf-move-playhead', 'Move to Playhead', Crosshair),
-        disabled('kf-align-prev', 'Align to Previous', AlignCenter),
-        disabled('kf-align-next', 'Align to Next', AlignCenter),
+        kf('kf-move-playhead', 'Move to Playhead', () => ed.moveKeyframesToFrame(L, targets, currentFrame), Crosshair),
+        kf('kf-align-prev', 'Align to Previous', () => ed.alignKeyframes(L, targets, 'prev'), AlignCenter),
+        kf('kf-align-next', 'Align to Next', () => ed.alignKeyframes(L, targets, 'next'), AlignCenter),
       ],
     },
     {
@@ -681,18 +781,18 @@ export function buildKeyframeMenu(isSingle: boolean, ctx?: KeyframeMenuContext):
       label: 'Bezier',
       items: [
         kf('bez-bezier', 'Bezier', setInterp('bezier'), Activity),
-        disabled('bez-auto', 'Auto Bezier', Activity),
-        disabled('bez-continuous', 'Continuous', Activity),
-        disabled('bez-broken', 'Broken Tangents', Activity),
+        kf('bez-auto', 'Auto Bezier', setInterp('bezier', EASE_IO[0], EASE_IO[1]), Activity),
+        kf('bez-continuous', 'Continuous', () => ed.setKeyframeTangentMode(L, targets, 'continuous'), Activity),
+        kf('bez-broken', 'Broken Tangents', () => ed.setKeyframeTangentMode(L, targets, 'broken'), Activity),
       ],
     },
     {
       type: 'group',
       label: 'Utilities',
       items: [
-        disabled('kf-reverse', 'Reverse Keyframes', Rewind),
-        disabled('kf-mirror', 'Mirror Keyframes', Copy),
-        disabled('kf-bake', 'Bake Keyframes', Activity),
+        kf('kf-reverse', 'Reverse Keyframes', () => ed.reverseKeyframeValues(L, targets), Rewind),
+        kf('kf-mirror', 'Mirror Keyframes', () => ed.mirrorKeyframeTime(L, targets), Copy),
+        kf('kf-bake', 'Bake Keyframes', () => ed.bakeKeyframes(L, targets), Activity),
       ],
     },
   ];
@@ -702,9 +802,9 @@ export function buildKeyframeMenu(isSingle: boolean, ctx?: KeyframeMenuContext):
       type: 'group',
       label: 'Distribution',
       items: [
-        disabled('kf-even-space', 'Evenly Space', AlignCenter),
-        disabled('kf-compress', 'Compress', Minimize2),
-        disabled('kf-expand', 'Expand', Maximize2),
+        kf('kf-even-space', 'Evenly Space', () => ed.distributeKeyframes(L, targets), AlignCenter),
+        kf('kf-compress', 'Compress', () => ed.scaleKeyframeTime(L, targets, 0.5), Minimize2),
+        kf('kf-expand', 'Expand', () => ed.scaleKeyframeTime(L, targets, 2), Maximize2),
       ],
     });
     base.push({
@@ -713,10 +813,19 @@ export function buildKeyframeMenu(isSingle: boolean, ctx?: KeyframeMenuContext):
       items: [
         kf('kf-ease-all', 'Ease All', setInterp('bezier', EASE_IO[0], EASE_IO[1]), Sparkles),
         kf('kf-linearize', 'Linearize All', setInterp('linear'), MoveVertical),
-        disabled('kf-smooth', 'Smooth All', Waves),
-        disabled('kf-reverse-time', 'Reverse Timing', Rewind),
-        disabled('kf-scale-time', 'Scale Timing', FastForward),
-        disabled('kf-offset-time', 'Offset Timing', Clock),
+        kf('kf-smooth', 'Smooth All', setInterp('bezier', EASE_IO[0], EASE_IO[1]), Waves),
+        // Reverse-time mirrors about the PLAYHEAD (distinct from Mirror, which uses the span center).
+        kf('kf-reverse-time', 'Reverse Timing', () => ed.mirrorKeyframeTime(L, targets, currentFrame), Rewind),
+        kf('kf-scale-time', 'Scale Timing…', () => {
+          const s = window.prompt('Scale factor (2 = slower, 0.5 = faster):', '2');
+          const f = s ? parseFloat(s) : NaN;
+          if (Number.isFinite(f) && f > 0) ed.scaleKeyframeTime(L, targets, f);
+        }, FastForward),
+        kf('kf-offset-time', 'Offset Timing…', () => {
+          const s = window.prompt('Offset in frames (+ later, − earlier):', '10');
+          const d = s ? parseInt(s, 10) : NaN;
+          if (Number.isFinite(d)) ed.offsetKeyframeTime(L, targets, d);
+        }, Clock),
       ],
     });
   }
