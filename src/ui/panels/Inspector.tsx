@@ -1,4 +1,6 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
+import { useInspectorStore, type InspectorTab } from '../../store/inspector';
+import { DEFAULT_SHADOW, DEFAULT_GLOW, DEFAULT_BLUR } from '../../core/effectDefaults';
 import { useEditorStore } from '../../store/editor';
 import { useTimelineStore } from '../../store/timeline';
 import { useMotionPathStore } from '../../store/motionPath';
@@ -39,28 +41,22 @@ const FONT_OPTIONS = [
   'Bebas Neue', 'DM Sans', 'Space Grotesk', 'Manrope', 'Plus Jakarta Sans',
 ];
 
-type InspectorTab =
-  | 'properties'
-  | 'advanced'
-  | 'motionPath'
-  | 'effects'
-  | 'filters'
-  | 'colorCorrection'
-  | 'motionControl'
-  | 'masks'
-  | 'loop'
-  | 'anchor'
-  | 'physics'
-  | 'stagger'
-  | 'fieldSampling'
-  | 'animate'
-  | 'code';
-
 export function Inspector() {
   const composition = useEditorStore((s) => s.composition);
   const selection = useEditorStore((s) => s.selection);
   const layer = composition.layers.find((l) => l.id === selection.activeId);
   const [tab, setTab] = useState<InspectorTab>('properties');
+
+  // Honor an externally requested tab (e.g. from the top-bar Effects menu),
+  // then clear it. Placed before the early returns to satisfy rules-of-hooks.
+  const requestedTab = useInspectorStore((s) => s.requestedTab);
+  const clearRequestedTab = useInspectorStore((s) => s.clearRequestedTab);
+  useEffect(() => {
+    if (requestedTab) {
+      setTab(requestedTab);
+      clearRequestedTab();
+    }
+  }, [requestedTab, clearRequestedTab]);
 
   if (selection.selectedIds.length >= 2) {
     return <MultiSelectInspector />;
@@ -578,42 +574,11 @@ function shutterHint(angle: number): string {
   return 'Extreme';
 }
 
-const DEFAULT_SHADOW: LayerShadow = {
-  enabled: true,
-  onlyShadow: false,
-  color: [0, 0, 0, 0.55],
-  lightAngle: 90,
-  lightDistance: 40,
-  shadowScale: 1,
-  blurRadius: 8,
-};
-
-const DEFAULT_GLOW: LayerGlow = {
-  enabled: true,
-  mode: 'image',
-  onlyGlow: false,
-  color: [1, 1, 1, 1],
-  intensity: 1,
-  radius: 12,
-  threshold: 0.6,
-};
-
 const GLOW_MODES: { value: GlowMode; label: string }[] = [
   { value: 'image', label: 'Bloom' },
   { value: 'outer', label: 'Outer' },
   { value: 'inner', label: 'Inner' },
 ];
-
-const DEFAULT_BLUR: LayerBlur = {
-  enabled: true,
-  type: 'gaussian',
-  radius: 10,
-  angle: 0,
-  centerX: 0.5,
-  centerY: 0.5,
-  strength: 20,
-  passes: 4,
-};
 
 const BLUR_TYPES: { value: BlurType; label: string }[] = [
   { value: 'gaussian', label: 'Gaussian' },

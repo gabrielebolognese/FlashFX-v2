@@ -12,10 +12,11 @@ import { ExportModal } from './ExportModal';
 import { GridSettingsPanel } from './GridSettingsPanel';
 import { BackgroundRemovalPanel } from './background-removal';
 import {
-  FilePlus, FolderOpen, Save, Download, Upload, Link2,
+  FilePlus, FolderOpen, Save, Download, Upload,
   Cog, MonitorPlay, FileCode, SlidersHorizontal,
   Square, Paintbrush, Grid3x3, Sparkles, Shuffle, Settings2, Scissors,
 } from 'lucide-react';
+import { useInspectorStore, type InspectorTab } from '../../store/inspector';
 import { IconLibraryModal } from '../../components/icons/IconLibraryModal';
 import { rasterizeIconToFile } from '../../components/icons/rasterizeIcon';
 import type { IconData } from '../../components/icons/types';
@@ -53,6 +54,7 @@ export function Toolbar() {
   const clipboard = useEditorStore((s) => s.clipboard);
   const randomizeColors = useEditorStore((s) => s.randomizeColors);
   const toggleRandomizeColors = useEditorStore((s) => s.toggleRandomizeColors);
+  const enableLayerEffect = useEditorStore((s) => s.enableLayerEffect);
 
   const undo = useHistoryStore((s) => s.undo);
   const redo = useHistoryStore((s) => s.redo);
@@ -62,6 +64,7 @@ export function Toolbar() {
 
   const panels = usePanelStore((s) => s.panels);
   const toggleVisible = usePanelStore((s) => s.toggleVisible);
+  const setVisible = usePanelStore((s) => s.setVisible);
 
   const saveCurrentProject = useProjectStore((s) => s.saveCurrentProject);
   const closeProject = useProjectStore((s) => s.closeProject);
@@ -87,6 +90,30 @@ export function Toolbar() {
 
   const hasSelection = selection.selectedIds.length > 0;
   const hasMultiSelection = selection.selectedIds.length > 1;
+  const activeLayer = composition.layers.find((l) => l.id === selection.activeId);
+  const isImageSel = activeLayer?.type === 'image';
+
+  // Cut = copy then delete the selection.
+  const handleCut = useCallback(() => {
+    if (selection.selectedIds.length === 0) return;
+    copySelection();
+    removeLayers(selection.selectedIds);
+  }, [selection.selectedIds, copySelection, removeLayers]);
+
+  // Reveal the Inspector on a given tab (used by the Effects menu). Ensures the
+  // Properties panel is visible, then asks the Inspector to switch tabs.
+  const revealInspectorTab = useCallback((tab: InspectorTab) => {
+    setVisible('properties', true);
+    useInspectorStore.getState().requestTab(tab);
+  }, [setVisible]);
+
+  // Enable a layer effect on the active selection and reveal the Effects tab.
+  const applyEffect = useCallback((kind: 'shadow' | 'glow' | 'blur') => {
+    const id = selection.activeId ?? selection.selectedIds[0];
+    if (!id) return;
+    enableLayerEffect(id, kind);
+    revealInspectorTab('effects');
+  }, [selection.activeId, selection.selectedIds, enableLayerEffect, revealInspectorTab]);
 
   const handleSave = useCallback(() => {
     if (currentProjectId) {
@@ -220,7 +247,7 @@ export function Toolbar() {
         { label: 'Undo', shortcut: 'Ctrl+Z', action: undo },
         { label: 'Redo', shortcut: 'Ctrl+Shift+Z', action: redo },
         { label: '', divider: true },
-        { label: 'Cut', shortcut: 'Ctrl+X', disabled: true },
+        { label: 'Cut', shortcut: 'Ctrl+X', action: handleCut, disabled: !hasSelection },
         { label: 'Copy', shortcut: 'Ctrl+C', action: copySelection, disabled: !hasSelection },
         { label: 'Paste', shortcut: 'Ctrl+V', action: pasteClipboard, disabled: !clipboard },
         { label: 'Duplicate', shortcut: 'Ctrl+D', action: handleDuplicate, disabled: !hasSelection },
@@ -229,7 +256,7 @@ export function Toolbar() {
         { label: 'Select All', shortcut: 'Ctrl+A', action: handleSelectAll },
         { label: 'Deselect All', shortcut: 'Ctrl+Shift+A', action: deselectAll },
         { label: '', divider: true },
-        { label: 'Preferences...', disabled: true },
+        { label: 'Preferences...', action: () => useSettingsStore.getState().openSettings() },
       ],
     },
     {
@@ -297,26 +324,26 @@ export function Toolbar() {
       items: [
         { label: 'Remove Background...', action: () => setShowBgRemoval(true) },
         { label: '', divider: true },
-        { label: 'Blur...', disabled: true },
-        { label: 'Shadow...', disabled: true },
-        { label: 'Glow...', disabled: true },
+        { label: 'Blur...', action: () => applyEffect('blur'), disabled: !hasSelection },
+        { label: 'Shadow...', action: () => applyEffect('shadow'), disabled: !hasSelection },
+        { label: 'Glow...', action: () => applyEffect('glow'), disabled: !hasSelection },
         { label: '', divider: true },
-        { label: 'Color Correction...', disabled: true },
+        { label: 'Color Correction...', action: () => revealInspectorTab('colorCorrection'), disabled: !isImageSel },
         { label: 'Distort...', disabled: true },
         { label: '', divider: true },
-        { label: 'Add Expression...', disabled: true },
+        { label: 'Add Expression...', action: () => revealInspectorTab('code'), disabled: !hasSelection },
         { label: 'Manage Effects...', disabled: true },
       ],
     },
     {
       label: 'Help',
       items: [
-        { label: 'Documentation', shortcut: 'F1', disabled: true },
+        { label: 'Documentation', shortcut: 'F1', action: () => alert('In-app documentation is coming soon. For now, see Help → Keyboard Shortcuts for the controls reference.') },
         { label: 'Keyboard Shortcuts...', action: () => setShowShortcuts(true) },
         { label: '', divider: true },
         { label: 'Reset Editor...', action: openResetDialog },
         { label: '', divider: true },
-        { label: 'Check for Updates...', disabled: true },
+        { label: 'Check for Updates...', action: () => alert('FlashFX runs in your browser and is always up to date — there is nothing to install or update.') },
         { label: 'About FlashFX', action: () => alert('FlashFX - Motion Graphics Editor\nVersion 1.0.0') },
       ],
     },
@@ -347,10 +374,9 @@ export function Toolbar() {
         <ToolbarSep />
         <ToolbarButton icon={Upload} label="Import" onClick={() => ffxInputRef.current?.click()} />
         <ToolbarButton icon={Download} label="Download" onClick={handleDownloadProject} />
-        <ToolbarButton icon={Link2} label="Link" />
         <ToolbarSep />
         <ToolbarButton icon={Cog} label="Render" onClick={() => setShowExport(true)} />
-        <ToolbarButton icon={MonitorPlay} label="Preview" />
+        <ToolbarButton icon={MonitorPlay} label="Preview" onClick={() => { const t = useTimelineStore.getState(); if (t.isPlaying) t.pause(); else t.play(); }} />
         <ToolbarButton icon={FileCode} label="Export" onClick={() => setShowExport(true)} />
         <ToolbarSep />
         <ToolbarButton icon={SlidersHorizontal} label="Settings" onClick={() => setShowSettings(!showSettings)} />

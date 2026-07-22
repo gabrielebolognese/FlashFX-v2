@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { Composition, SceneDocument, Layer, AnimatableProperty, Keyframe, Vec2, InterpolationType, BackgroundLayer, Track, TrackType, VideoPlaybackMode, PathVertex, VertexType, Mask, MaskType, AnchorEdge, PhysicsBindingDef, PhysicsWorldDef, StaggerBindingDef, LayoutObjectLayer, LayoutContainerLayer, ContainerShapeType, Marker } from '../core/types';
 import { createComposition, createRectangleLayer, createCircleLayer, createStarLayer, createPolygonLayer, createDefaultPolygonVertices, createTextLayer, createVideoLayer, createImageLayer, createAudioLayer, createGroupLayer, createKeyframe, createBackgroundLayer, createMask, createParticleLayer, createAnimationItemLayer, createFieldSampledLayer, createLottieIconLayer, createLayoutObjectLayer, createLayoutContainerLayer, createDefaultChildOverride, uid } from '../core/factory';
+import { DEFAULT_SHADOW, DEFAULT_GLOW, DEFAULT_BLUR } from '../core/effectDefaults';
 import { evaluateVec2, evaluateNumber, buildPhysicsEvaluator } from '../core/interpolation';
 import {
   remapSelectedFrames, reverseSelectedValues, distributeSelectedEven, alignSelected,
@@ -222,6 +223,8 @@ interface EditorState {
   addImageAsBackground: (assetId: string) => void;
   // Add an image scaled to fit the canvas (contain), centered.
   addImageFitCanvas: (assetId: string) => void;
+  // Enable a layer effect (shadow/glow/blur) with default params if not already on.
+  enableLayerEffect: (layerId: string, kind: 'shadow' | 'glow' | 'blur') => void;
   addCaptionClips: (segments: CaptionSegment[], options: CaptionOptions, clipStartFrame: number) => void;
   stripSilence: (layerId: string, segments: SpeechSegment[]) => string[];
   explodeTextLayer: (layerId: string, splitMode: SplitMode, staggerFrames: number) => void;
@@ -2035,6 +2038,16 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       execute: () => { set({ composition: newComp, selection: newSel }); },
       undo: () => { set({ composition: oldComp, selection: oldSel }); },
     });
+  },
+
+  enableLayerEffect: (layerId, kind) => {
+    const layer = get().composition.layers.find((l) => l.id === layerId);
+    if (!layer) return;
+    const current = (layer as unknown as Record<'shadow' | 'glow' | 'blur', { enabled?: boolean } | undefined>)[kind];
+    if (current?.enabled) return; // already on — keep the user's existing params
+    const def = kind === 'shadow' ? DEFAULT_SHADOW : kind === 'glow' ? DEFAULT_GLOW : DEFAULT_BLUR;
+    // updateLayerProperty is itself undoable.
+    get().updateLayerProperty(layerId, kind, current ? { ...current, enabled: true } : def);
   },
 
   addVideoFromAsset: (assetId, x, y, playbackMode: VideoPlaybackMode = 'wait') => {
