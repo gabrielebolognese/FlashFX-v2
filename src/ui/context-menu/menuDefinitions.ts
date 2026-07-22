@@ -23,6 +23,7 @@ import { useCaptionStore } from '../../store/captions';
 import { useSilenceStore } from '../../store/silenceStripper';
 import { videoDecoderPool } from '../../engine/video/videoDecoderPool';
 import { generateThumbnailSheet } from '../../engine/video/thumbnailSheet';
+import { useAiImageStore } from '../../store/aiImage';
 import { getSelectionRect } from '../../core/snap/bbox';
 import { mediaAssetManager } from '../../engine/media/assetManager';
 import { useProjectStore } from '../../project-system/hooks/useProjectStore';
@@ -640,8 +641,8 @@ export function buildMediaAssetMenu(assetType: 'image' | 'video' | 'audio', asse
       label: 'AI',
       icon: Wand2,
       items: [
-        disabled('remove-bg', 'Remove Background', Wand2),
-        disabled('upscale', 'Upscale', ZoomIn),
+        item('remove-bg', 'Remove Background', () => useAiImageStore.getState().open(assetId, 'remove-bg'), Wand2),
+        item('upscale', 'Upscale (2×)', () => useAiImageStore.getState().open(assetId, 'upscale'), ZoomIn),
         disabled('gen-variations', 'Generate Variations', Sparkles),
       ],
     });
