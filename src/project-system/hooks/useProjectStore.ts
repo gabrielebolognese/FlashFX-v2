@@ -38,6 +38,8 @@ interface ProjectState {
   deleteProject: (id: string) => Promise<void>;
   renameProject: (id: string, name: string) => Promise<void>;
   duplicateProject: (id: string) => Promise<void>;
+  // Save the current project's state as a NEW project under `name`, then switch to it.
+  saveProjectAs: (name: string) => Promise<void>;
   saveCurrentProject: () => Promise<void>;
   savePreview: (blob: Blob) => Promise<void>;
   exportProject: (id: string, composition?: Composition) => Promise<void>;
@@ -129,6 +131,22 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       const { projects } = get();
       set({ projects: [...projects, { metadata, previewUrl }] });
     }
+  },
+
+  saveProjectAs: async (name) => {
+    const { activeProjectId } = get();
+    if (!activeProjectId) return;
+    // Flush the current in-memory scene to the active project, then duplicate it
+    // (a copy of the just-saved state) and switch to the copy.
+    await get().saveCurrentProject();
+    const metadata = await duplicateProject(activeProjectId);
+    if (!metadata) return;
+    const trimmed = name.trim();
+    if (trimmed) await renameProject(metadata.id, trimmed);
+    const previewUrl = await getProjectPreviewUrl(metadata.id);
+    const finalMeta = trimmed ? { ...metadata, name: trimmed } : metadata;
+    set((s) => ({ projects: [...s.projects, { metadata: finalMeta, previewUrl }] }));
+    await get().openProject(metadata.id);
   },
 
   saveCurrentProject: async () => {

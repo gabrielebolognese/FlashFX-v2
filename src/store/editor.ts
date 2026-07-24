@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { Composition, SceneDocument, Layer, AnimatableProperty, Keyframe, Vec2, InterpolationType, BackgroundLayer, Track, TrackType, VideoPlaybackMode, PathVertex, VertexType, Mask, MaskType, AnchorEdge, PhysicsBindingDef, PhysicsWorldDef, StaggerBindingDef, LayoutObjectLayer, LayoutContainerLayer, ContainerShapeType, Marker } from '../core/types';
 import { createComposition, createRectangleLayer, createCircleLayer, createStarLayer, createPolygonLayer, createDefaultPolygonVertices, createTextLayer, createVideoLayer, createImageLayer, createAudioLayer, createGroupLayer, createKeyframe, createBackgroundLayer, createMask, createParticleLayer, createAnimationItemLayer, createFieldSampledLayer, createLottieIconLayer, createLayoutObjectLayer, createLayoutContainerLayer, createDefaultChildOverride, uid } from '../core/factory';
 import { DEFAULT_SHADOW, DEFAULT_GLOW, DEFAULT_BLUR } from '../core/effectDefaults';
+import type { AlignResult } from '../core/align';
 import { evaluateVec2, evaluateNumber, buildPhysicsEvaluator } from '../core/interpolation';
 import {
   remapSelectedFrames, reverseSelectedValues, distributeSelectedEven, alignSelected,
@@ -225,6 +226,10 @@ interface EditorState {
   addImageFitCanvas: (assetId: string) => void;
   // Enable a layer effect (shadow/glow/blur) with default params if not already on.
   enableLayerEffect: (layerId: string, kind: 'shadow' | 'glow' | 'blur') => void;
+  // Add a trimmed video clip covering source seconds [startSec, endSec] as a new layer.
+  addVideoSubclip: (assetId: string, startSec: number, endSec: number) => void;
+  // Apply computed align/distribute results (from core/align) to layer positions. Undoable.
+  applyAlignResults: (results: AlignResult[], label: string) => void;
   addCaptionClips: (segments: CaptionSegment[], options: CaptionOptions, clipStartFrame: number) => void;
   stripSilence: (layerId: string, segments: SpeechSegment[]) => string[];
   explodeTextLayer: (layerId: string, splitMode: SplitMode, staggerFrames: number) => void;
@@ -2050,6 +2055,36 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     get().updateLayerProperty(layerId, kind, current ? { ...current, enabled: true } : def);
   },
 
+  applyAlignResults: (results, label) => {
+    if (results.length === 0) return;
+    const { composition } = get();
+    const oldComp = composition;
+    const frame = useTimelineStore.getState().currentFrame;
+    const byId = new Map(results.map((r) => [r.layerId, r.newPosition]));
+    // Matches MultiSelectInspector's apply: set the base position, and if the
+    // layer is animated, retarget the keyframe at the current frame too.
+    const newLayers = composition.layers.map((l) => {
+      const np = byId.get(l.id);
+      if (!np || !('transform' in l) || !l.transform) return l;
+      const pos = l.transform.position;
+      return {
+        ...l,
+        transform: {
+          ...l.transform,
+          position: {
+            ...pos,
+            defaultValue: np,
+            keyframes: pos.keyframes.length > 0
+              ? pos.keyframes.map((kf) => (kf.frame === frame ? { ...kf, value: np } : kf))
+              : [],
+          },
+        },
+      } as Layer;
+    });
+    const newComp = { ...composition, layers: newLayers };
+    exec({ label, execute: () => set({ composition: newComp }), undo: () => set({ composition: oldComp }) });
+  },
+
   addVideoFromAsset: (assetId, x, y, playbackMode: VideoPlaybackMode = 'wait') => {
     const { composition, selection } = get();
     const oldComp = composition;
@@ -2084,6 +2119,35 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       undo: () => { set({ composition: oldComp, selection: oldSel }); },
     });
 
+  },
+
+  addVideoSubclip: (assetId, startSec, endSec) => {
+    const { composition, selection } = get();
+    const oldComp = composition;
+    const oldSel = selection;
+    const meta = mediaAssetManager.getMetadata(assetId);
+    if (!meta) return;
+    const fps = composition.settings.frameRate;
+    const s = Math.max(0, Math.min(startSec, meta.duration));
+    const e = Math.max(s, Math.min(endSec, meta.duration));
+    const subFrames = Math.max(1, Math.round((e - s) * fps));
+    const asset = mediaAssetManager.getAsset(assetId);
+    const name = `${asset?.name?.replace(/\.[^.]+$/, '') || 'Video'} (subclip)`;
+    const cx = Math.round(composition.settings.width / 2);
+    const cy = Math.round(composition.settings.height / 2);
+    const layer = createVideoLayer(name, cx, cy, assetId, meta.width, meta.height, meta.duration, meta.frameRate, subFrames, 'wait', DEFAULT_PROXY_SCALE);
+    // startOffset is in COMP frames (resolver: localFrame = frame - inPoint + startOffset,
+    // then sourceFrame = localFrame/compFps * sourceFps), so start = startSec * compFps.
+    layer.inPoint = 0;
+    layer.outPoint = subFrames;
+    layer.video.startOffset = Math.round(s * fps);
+    const newComp = settleComposition(ensureLayerHasTrack({ ...composition, layers: [...composition.layers, layer] }, layer));
+    const newSel: SelectionState = sel([layer.id], layer.id);
+    exec({
+      label: 'Create Subclip',
+      execute: () => { set({ composition: newComp, selection: newSel }); },
+      undo: () => { set({ composition: oldComp, selection: oldSel }); },
+    });
   },
 
   addAudio: async (file: File, projectId: string) => {

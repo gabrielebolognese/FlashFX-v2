@@ -11,6 +11,8 @@ import { useShapeDefaultsStore } from '../../store/shapeDefaults';
 import { ExportModal } from './ExportModal';
 import { GridSettingsPanel } from './GridSettingsPanel';
 import { BackgroundRemovalPanel } from './background-removal';
+import { AlignPanel } from './AlignPanel';
+import { TransformDialog } from './TransformDialog';
 import {
   FilePlus, FolderOpen, Save, Download, Upload,
   Cog, MonitorPlay, FileCode, SlidersHorizontal,
@@ -29,6 +31,7 @@ interface MenuItem {
   action?: () => void;
   disabled?: boolean;
   checked?: boolean;
+  submenu?: MenuItem[];
 }
 
 interface MenuGroup {
@@ -72,6 +75,9 @@ export function Toolbar() {
   const exportProject = useProjectStore((s) => s.exportProject);
   const importProject = useProjectStore((s) => s.importProject);
   const openProject = useProjectStore((s) => s.openProject);
+  const saveProjectAs = useProjectStore((s) => s.saveProjectAs);
+  const projects = useProjectStore((s) => s.projects);
+  const loadProjects = useProjectStore((s) => s.loadProjects);
 
   const openResetDialog = useRecoveryStore((s) => s.openResetDialog);
 
@@ -81,7 +87,12 @@ export function Toolbar() {
   const [showGrid, setShowGrid] = useState(false);
   const [showIconLibrary, setShowIconLibrary] = useState(false);
   const [showBgRemoval, setShowBgRemoval] = useState(false);
+  const [showAlign, setShowAlign] = useState(false);
+  const [showTransform, setShowTransform] = useState(false);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
+
+  // Populate the recent-projects list for File → Open Recent.
+  useEffect(() => { loadProjects(); }, [loadProjects]);
 
   const gridVisible = useGridStore((s) => s.grid.visible);
   const setGridVisible = useGridStore((s) => s.setGridVisible);
@@ -120,6 +131,19 @@ export function Toolbar() {
       saveCurrentProject();
     }
   }, [currentProjectId, saveCurrentProject]);
+
+  const handleSaveAs = useCallback(() => {
+    if (!currentProjectId) return;
+    const name = window.prompt('Save project as:', '');
+    if (name && name.trim()) saveProjectAs(name.trim());
+  }, [currentProjectId, saveProjectAs]);
+
+  // Recent projects (most-recently-modified first, excluding the current one).
+  const recentItems: MenuItem[] = [...projects]
+    .filter((p) => p.metadata.id !== currentProjectId)
+    .sort((a, b) => (b.metadata.modifiedAt ?? 0) - (a.metadata.modifiedAt ?? 0))
+    .slice(0, 10)
+    .map((p) => ({ label: p.metadata.name, action: () => { openProject(p.metadata.id); } }));
 
   const ffxInputRef = useRef<HTMLInputElement>(null);
 
@@ -228,10 +252,10 @@ export function Toolbar() {
       items: [
         { label: 'New Project', shortcut: 'Ctrl+N', action: handleNewProject },
         { label: 'Open...', shortcut: 'Ctrl+O', action: handleNewProject },
-        { label: 'Open Recent', disabled: true },
+        { label: 'Open Recent', submenu: recentItems },
         { label: '', divider: true },
         { label: 'Save', shortcut: 'Ctrl+S', action: handleSave, disabled: !currentProjectId },
-        { label: 'Save As...', shortcut: 'Ctrl+Shift+S', disabled: true },
+        { label: 'Save As...', shortcut: 'Ctrl+Shift+S', action: handleSaveAs, disabled: !currentProjectId },
         { label: '', divider: true },
         { label: 'Import Project (.ffx)', shortcut: 'Ctrl+I', action: () => ffxInputRef.current?.click() },
         { label: 'Download Project (.ffx)', action: handleDownloadProject, disabled: !currentProjectId },
@@ -289,8 +313,8 @@ export function Toolbar() {
         { label: 'Send Backward', shortcut: 'Ctrl+[', action: handleSendBackward, disabled: !hasSelection },
         { label: 'Send to Back', shortcut: 'Ctrl+Shift+[', action: handleSendToBack, disabled: !hasSelection },
         { label: '', divider: true },
-        { label: 'Transform...', disabled: true },
-        { label: 'Align...', disabled: true },
+        { label: 'Transform...', action: () => setShowTransform(true), disabled: !hasSelection },
+        { label: 'Align...', action: () => setShowAlign(true), disabled: !hasSelection },
       ],
     },
     {
@@ -439,6 +463,8 @@ export function Toolbar() {
       {showExport && <ExportModal onClose={() => setShowExport(false)} />}
       {showGrid && <GridSettingsPanel onClose={() => setShowGrid(false)} />}
       {showBgRemoval && <BackgroundRemovalPanel onClose={() => setShowBgRemoval(false)} />}
+      {showAlign && <AlignPanel onClose={() => setShowAlign(false)} />}
+      {showTransform && <TransformDialog onClose={() => setShowTransform(false)} />}
       <IconLibraryModal
         isOpen={showIconLibrary}
         onClose={() => setShowIconLibrary(false)}
@@ -466,9 +492,10 @@ function MenuDropdown({
   onHover: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const [openSub, setOpenSub] = useState<number | null>(null);
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) { setOpenSub(null); return; }
     const handler = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) onClose();
     };
@@ -489,10 +516,35 @@ function MenuDropdown({
       </button>
       {isOpen && (
         <div className="absolute top-full left-0 mt-0.5 z-50 bg-[#0e1c32] border border-[#1a2a42] rounded-md shadow-2xl shadow-black/50 py-1 min-w-[200px]">
-          {items.map((item, i) =>
-            item.divider ? (
-              <div key={i} className="h-px bg-[#1a2a42] my-1 mx-2" />
-            ) : (
+          {items.map((item, i) => {
+            if (item.divider) return <div key={i} className="h-px bg-[#1a2a42] my-1 mx-2" />;
+            if (item.submenu) {
+              return (
+                <div key={i} className="relative" onMouseEnter={() => setOpenSub(i)} onMouseLeave={() => setOpenSub(null)}>
+                  <button className="w-full flex items-center gap-3 px-3 py-1 text-[11px] text-slate-300 hover:bg-white/[0.05] hover:text-slate-100 cursor-pointer">
+                    <span className="flex-1 text-left">{item.label}</span>
+                    <span className="text-slate-600">›</span>
+                  </button>
+                  {openSub === i && (
+                    <div className="absolute left-full top-0 -mt-1 ml-0.5 z-50 bg-[#0e1c32] border border-[#1a2a42] rounded-md shadow-2xl py-1 min-w-[200px] max-h-[340px] overflow-y-auto">
+                      {item.submenu.length === 0 ? (
+                        <div className="px-3 py-1 text-[11px] text-slate-600">No recent projects</div>
+                      ) : item.submenu.map((sub, j) => (
+                        <button
+                          key={j}
+                          onClick={() => { if (sub.disabled) return; sub.action?.(); onClose(); }}
+                          disabled={sub.disabled}
+                          className={`w-full text-left px-3 py-1 text-[11px] truncate ${sub.disabled ? 'text-slate-600 cursor-default' : 'text-slate-300 hover:bg-white/[0.05] hover:text-slate-100 cursor-pointer'}`}
+                        >
+                          {sub.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+            return (
               <button
                 key={i}
                 onClick={() => {
@@ -514,8 +566,8 @@ function MenuDropdown({
                   </span>
                 )}
               </button>
-            )
-          )}
+            );
+          })}
         </div>
       )}
     </div>

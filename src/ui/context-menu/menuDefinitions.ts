@@ -24,6 +24,7 @@ import { useSilenceStore } from '../../store/silenceStripper';
 import { videoDecoderPool } from '../../engine/video/videoDecoderPool';
 import { generateThumbnailSheet } from '../../engine/video/thumbnailSheet';
 import { useAiImageStore } from '../../store/aiImage';
+import { processAudioAsset, toMono, toStereo, normalize, amplifyBy } from '../../engine/audio/audioProcessing';
 import { getSelectionRect } from '../../core/snap/bbox';
 import { mediaAssetManager } from '../../engine/media/assetManager';
 import { useProjectStore } from '../../project-system/hooks/useProjectStore';
@@ -564,6 +565,34 @@ export function buildMediaAssetMenu(assetType: 'image' | 'video' | 'audio', asse
     else ed.addAudioFromAsset(assetId);
   };
 
+  // Run an in-browser audio transform → new WAV asset in the pool.
+  const runAudioOp = (transform: Parameters<typeof processAudioAsset>[2], suffix: string) => {
+    const pid = useProjectStore.getState().activeProjectId;
+    if (!pid) return;
+    processAudioAsset(assetId, pid, transform, suffix)
+      .then((id) => { if (id) pool.onRefresh?.(); else window.alert('No decoded audio available for this asset.'); })
+      .catch(() => window.alert('Audio processing failed.'));
+  };
+
+  // Re-register this asset's underlying blob as a brand-new pool asset.
+  const duplicateAsset = () => {
+    const pid = useProjectStore.getState().activeProjectId;
+    const url = mediaAssetManager.getObjectUrl(assetId);
+    const asset = mediaAssetManager.getAsset(assetId);
+    if (!pid || !url || !asset) return;
+    fetch(url)
+      .then((r) => r.blob())
+      .then(async (blob) => {
+        const copyName = asset.name.replace(/(\.[^.]+)?$/, ' copy$1');
+        const file = new File([blob], copyName, { type: blob.type || asset.mimeType });
+        if (assetType === 'image') await mediaAssetManager.importImage(file, pid);
+        else if (assetType === 'video') await mediaAssetManager.importVideo(file, pid);
+        else await mediaAssetManager.importAudio(file, pid);
+        pool.onRefresh?.();
+      })
+      .catch(() => window.alert('Could not duplicate this asset.'));
+  };
+
   const base: MenuEntry[] = [
     {
       type: 'group',
@@ -577,7 +606,7 @@ export function buildMediaAssetMenu(assetType: 'image' | 'video' | 'audio', asse
           const n = window.prompt('Rename asset:', cur);
           if (n && n.trim()) { mediaAssetManager.renameAsset(assetId, n.trim()); pool.onRefresh?.(); }
         }, Pencil),
-        disabled('duplicate-asset', 'Duplicate', Copy),
+        item('duplicate-asset', 'Duplicate', duplicateAsset, Copy),
       ],
     },
     {
@@ -585,7 +614,21 @@ export function buildMediaAssetMenu(assetType: 'image' | 'video' | 'audio', asse
       label: 'Organization',
       items: [
         disabled('move-folder', 'Move to Folder', FolderPlus),
-        disabled('create-subclip', 'Create Subclip', Scissors),
+        ...(assetType === 'video'
+          ? [item('create-subclip', 'Create Subclip…', () => {
+              const meta = mediaAssetManager.getMetadata(assetId);
+              const dur = meta ? meta.duration.toFixed(2) : '?';
+              const startStr = window.prompt(`Subclip start (seconds, 0–${dur}):`, '0');
+              if (startStr === null) return;
+              const endStr = window.prompt(`Subclip end (seconds, 0–${dur}):`, dur);
+              if (endStr === null) return;
+              const start = parseFloat(startStr);
+              const end = parseFloat(endStr);
+              if (Number.isFinite(start) && Number.isFinite(end) && end > start) {
+                ed.addVideoSubclip(assetId, start, end);
+              }
+            }, Scissors)]
+          : [disabled('create-subclip', 'Create Subclip', Scissors)]),
         disabled('add-tag', 'Add Tag', Tag),
         disabled('add-fav', 'Add Favorite', Star),
       ],
@@ -687,8 +730,13 @@ export function buildMediaAssetMenu(assetType: 'image' | 'video' | 'audio', asse
       type: 'group',
       label: 'Processing',
       items: [
-        disabled('audio-normalize', 'Normalize', AudioLines),
-        disabled('audio-amplify', 'Amplify', Volume2),
+        item('audio-normalize', 'Normalize', () => runAudioOp(normalize, 'normalized'), AudioLines),
+        item('audio-amplify', 'Amplify…', () => {
+          const s = window.prompt('Amplify by (dB — positive louder, negative quieter):', '6');
+          const db = s ? parseFloat(s) : NaN;
+          if (!Number.isFinite(db)) return;
+          runAudioOp(amplifyBy(Math.pow(10, db / 20)), 'amplified');
+        }, Volume2),
         disabled('audio-noise', 'Reduce Noise', Waves),
         // Add the audio to the timeline, then open the (fully-built) silence stripper on it.
         item('audio-silence', 'Remove Silence', () => {
@@ -720,8 +768,8 @@ export function buildMediaAssetMenu(assetType: 'image' | 'video' | 'audio', asse
       type: 'group',
       label: 'Conversion',
       items: [
-        disabled('to-mono', 'Convert to Mono', AudioLines),
-        disabled('to-stereo', 'Convert to Stereo', Waves),
+        item('to-mono', 'Convert to Mono', () => runAudioOp(toMono, 'mono'), AudioLines),
+        item('to-stereo', 'Convert to Stereo', () => runAudioOp(toStereo, 'stereo'), Waves),
       ],
     });
   }
