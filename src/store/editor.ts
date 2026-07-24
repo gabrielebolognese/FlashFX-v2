@@ -1,8 +1,9 @@
 import { create } from 'zustand';
-import type { Composition, SceneDocument, Layer, AnimatableProperty, Keyframe, Vec2, InterpolationType, BackgroundLayer, Track, TrackType, VideoPlaybackMode, PathVertex, VertexType, Mask, MaskType, AnchorEdge, PhysicsBindingDef, PhysicsWorldDef, StaggerBindingDef, LayoutObjectLayer, LayoutContainerLayer, ContainerShapeType, Marker } from '../core/types';
+import type { Composition, SceneDocument, Layer, AnimatableProperty, Keyframe, Vec2, InterpolationType, BackgroundLayer, Track, TrackType, VideoPlaybackMode, PathVertex, VertexType, Mask, MaskType, AnchorEdge, PhysicsBindingDef, PhysicsWorldDef, StaggerBindingDef, LayoutObjectLayer, LayoutContainerLayer, ContainerShapeType, Marker, ShapeLayer, PolygonShape } from '../core/types';
 import { createComposition, createRectangleLayer, createCircleLayer, createStarLayer, createPolygonLayer, createDefaultPolygonVertices, createTextLayer, createVideoLayer, createImageLayer, createAudioLayer, createGroupLayer, createKeyframe, createBackgroundLayer, createMask, createParticleLayer, createAnimationItemLayer, createFieldSampledLayer, createLottieIconLayer, createLayoutObjectLayer, createLayoutContainerLayer, createDefaultChildOverride, uid } from '../core/factory';
 import { DEFAULT_SHADOW, DEFAULT_GLOW, DEFAULT_BLUR } from '../core/effectDefaults';
 import type { AlignResult } from '../core/align';
+import { shapeToPathVertices, reversePathVertices, simplifyPathVertices, booleanLayers, type BooleanOp } from '../core/pathOps';
 import { evaluateVec2, evaluateNumber, buildPhysicsEvaluator } from '../core/interpolation';
 import {
   remapSelectedFrames, reverseSelectedValues, distributeSelectedEven, alignSelected,
@@ -230,6 +231,11 @@ interface EditorState {
   addVideoSubclip: (assetId: string, startSec: number, endSec: number) => void;
   // Apply computed align/distribute results (from core/align) to layer positions. Undoable.
   applyAlignResults: (results: AlignResult[], label: string) => void;
+  // Path ops (Object menu → Path). All undoable.
+  convertShapeToPath: (layerId: string) => void;
+  reverseShapePath: (layerId: string) => void;
+  simplifyShapePath: (layerId: string, tolerance: number) => void;
+  booleanSelectedShapes: (op: BooleanOp) => void;
   addCaptionClips: (segments: CaptionSegment[], options: CaptionOptions, clipStartFrame: number) => void;
   stripSilence: (layerId: string, segments: SpeechSegment[]) => string[];
   explodeTextLayer: (layerId: string, splitMode: SplitMode, staggerFrames: number) => void;
@@ -2083,6 +2089,75 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     });
     const newComp = { ...composition, layers: newLayers };
     exec({ label, execute: () => set({ composition: newComp }), undo: () => set({ composition: oldComp }) });
+  },
+
+  convertShapeToPath: (layerId) => {
+    const { composition } = get();
+    const oldComp = composition;
+    const layer = composition.layers.find((l) => l.id === layerId);
+    if (!layer || layer.type !== 'shape' || layer.shape.type === 'polygon') return;
+    const shape = layer.shape;
+    const frame = useTimelineStore.getState().currentFrame;
+    const vertices = shapeToPathVertices(shape, frame);
+    if (vertices.length < 3) return;
+    const poly: PolygonShape = {
+      type: 'polygon',
+      vertices,
+      closed: true,
+      fillColor: shape.fillColor,
+      strokeColor: shape.strokeColor,
+      strokeWidth: shape.strokeWidth,
+    };
+    const newLayers = composition.layers.map((l) => (l.id === layerId ? { ...l, shape: poly } : l));
+    const newComp = { ...composition, layers: newLayers };
+    exec({ label: 'Object to Path', execute: () => set({ composition: newComp }), undo: () => set({ composition: oldComp }) });
+  },
+
+  reverseShapePath: (layerId) => {
+    const { composition } = get();
+    const oldComp = composition;
+    const layer = composition.layers.find((l) => l.id === layerId);
+    if (!layer || layer.type !== 'shape' || layer.shape.type !== 'polygon') return;
+    const newShape = { ...layer.shape, vertices: reversePathVertices(layer.shape.vertices) };
+    const newLayers = composition.layers.map((l) => (l.id === layerId ? { ...l, shape: newShape } : l));
+    exec({ label: 'Reverse Path', execute: () => set({ composition: { ...composition, layers: newLayers } }), undo: () => set({ composition: oldComp }) });
+  },
+
+  simplifyShapePath: (layerId, tolerance) => {
+    const { composition } = get();
+    const oldComp = composition;
+    const layer = composition.layers.find((l) => l.id === layerId);
+    if (!layer || layer.type !== 'shape' || layer.shape.type !== 'polygon') return;
+    const simplified = simplifyPathVertices(layer.shape.vertices, tolerance);
+    if (simplified.length === layer.shape.vertices.length) return;
+    const newShape = { ...layer.shape, vertices: simplified };
+    const newLayers = composition.layers.map((l) => (l.id === layerId ? { ...l, shape: newShape } : l));
+    exec({ label: 'Simplify Path', execute: () => set({ composition: { ...composition, layers: newLayers } }), undo: () => set({ composition: oldComp }) });
+  },
+
+  booleanSelectedShapes: (op) => {
+    const { composition, selection } = get();
+    const oldComp = composition;
+    const oldSel = selection;
+    const ids = selection.selectedIds.filter((id) => composition.layers.find((l) => l.id === id)?.type === 'shape');
+    if (ids.length < 2) return;
+    const frame = useTimelineStore.getState().currentFrame;
+    const results = booleanLayers(op, composition.layers, ids, frame);
+    if (results.length === 0) return;
+    const firstShape = (composition.layers.find((l) => l.id === ids[0]) as ShapeLayer).shape;
+    const labels: Record<BooleanOp, string> = { union: 'Union', intersection: 'Intersection', difference: 'Difference', xor: 'Exclusion' };
+    const newLayers = results.map((res, i) => {
+      const nl = createPolygonLayer(`${labels[op]} ${i + 1}`, res.position[0], res.position[1], res.vertices, true, firstShape.fillColor, defaultClipFrames(composition));
+      if (nl.type === 'shape' && nl.shape.type === 'polygon') nl.shape.strokeColor = firstShape.strokeColor;
+      return nl;
+    });
+    // Boolean ops REPLACE their inputs (Pathfinder-style).
+    const remaining = composition.layers.filter((l) => !ids.includes(l.id));
+    let comp: Composition = { ...composition, layers: [...remaining, ...newLayers] };
+    for (const nl of newLayers) comp = ensureLayerHasTrack(comp, nl);
+    comp = settleComposition(comp);
+    const newSel: SelectionState = sel(newLayers.map((l) => l.id), newLayers[0].id);
+    exec({ label: labels[op], execute: () => set({ composition: comp, selection: newSel }), undo: () => set({ composition: oldComp, selection: oldSel }) });
   },
 
   addVideoFromAsset: (assetId, x, y, playbackMode: VideoPlaybackMode = 'wait') => {

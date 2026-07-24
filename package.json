@@ -14,6 +14,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.app.json",
     "verify:cloner": "node scripts/verify-cloner.mjs",
     "verify:precomp": "node scripts/verify-precomp.mjs",
+    "verify:pathops": "node scripts/verify-pathops.mjs",
     "preinstall": "echo ignore-scripts=true > .npmrc || true"
   },
   "dependencies": {
@@ -26,6 +27,7 @@
     "lucide-react": "^0.344.0",
     "mp4-muxer": "^5.2.2",
     "mp4box": "^2.3.0",
+    "polygon-clipping": "^0.15.7",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "zustand": "^5.0.14"

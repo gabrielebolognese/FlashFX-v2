@@ -58,6 +58,10 @@ export function Toolbar() {
   const randomizeColors = useEditorStore((s) => s.randomizeColors);
   const toggleRandomizeColors = useEditorStore((s) => s.toggleRandomizeColors);
   const enableLayerEffect = useEditorStore((s) => s.enableLayerEffect);
+  const convertShapeToPath = useEditorStore((s) => s.convertShapeToPath);
+  const reverseShapePath = useEditorStore((s) => s.reverseShapePath);
+  const simplifyShapePath = useEditorStore((s) => s.simplifyShapePath);
+  const booleanSelectedShapes = useEditorStore((s) => s.booleanSelectedShapes);
 
   const undo = useHistoryStore((s) => s.undo);
   const redo = useHistoryStore((s) => s.redo);
@@ -103,6 +107,10 @@ export function Toolbar() {
   const hasMultiSelection = selection.selectedIds.length > 1;
   const activeLayer = composition.layers.find((l) => l.id === selection.activeId);
   const isImageSel = activeLayer?.type === 'image';
+  const isShapeSel = activeLayer?.type === 'shape';
+  const isPolygonSel = activeLayer?.type === 'shape' && activeLayer.shape.type === 'polygon';
+  const selectedShapeCount = composition.layers.filter((l) => selection.selectedIds.includes(l.id) && l.type === 'shape').length;
+  const canBoolean = selectedShapeCount >= 2;
 
   // Cut = copy then delete the selection.
   const handleCut = useCallback(() => {
@@ -320,16 +328,22 @@ export function Toolbar() {
     {
       label: 'Path',
       items: [
-        { label: 'Object to Path', shortcut: 'Ctrl+Shift+C', disabled: true },
+        { label: 'Object to Path', shortcut: 'Ctrl+Shift+C', action: () => { const id = selection.activeId; if (id) convertShapeToPath(id); }, disabled: !isShapeSel },
         { label: 'Stroke to Path', shortcut: 'Ctrl+Alt+C', disabled: true },
         { label: '', divider: true },
-        { label: 'Union', shortcut: 'Ctrl+Shift+U', disabled: true },
-        { label: 'Intersection', disabled: true },
-        { label: 'Difference', disabled: true },
-        { label: 'Exclusion', disabled: true },
+        { label: 'Union', shortcut: 'Ctrl+Shift+U', action: () => booleanSelectedShapes('union'), disabled: !canBoolean },
+        { label: 'Intersection', action: () => booleanSelectedShapes('intersection'), disabled: !canBoolean },
+        { label: 'Difference', action: () => booleanSelectedShapes('difference'), disabled: !canBoolean },
+        { label: 'Exclusion', action: () => booleanSelectedShapes('xor'), disabled: !canBoolean },
         { label: '', divider: true },
-        { label: 'Simplify', shortcut: 'Ctrl+L', disabled: true },
-        { label: 'Reverse', disabled: true },
+        { label: 'Simplify', shortcut: 'Ctrl+L', action: () => {
+            const id = selection.activeId;
+            if (!id) return;
+            const s = window.prompt('Simplify tolerance (px — higher removes more points):', '2');
+            const t = s ? parseFloat(s) : NaN;
+            if (Number.isFinite(t) && t > 0) simplifyShapePath(id, t);
+          }, disabled: !isPolygonSel },
+        { label: 'Reverse', action: () => { const id = selection.activeId; if (id) reverseShapePath(id); }, disabled: !isPolygonSel },
       ],
     },
     {

@@ -20,7 +20,7 @@ export function getWorldPosition(layer: Layer, layers: Layer[], frame: number): 
   ];
 }
 
-function getWorldScale(layer: Layer, layers: Layer[], frame: number): Vec2 {
+export function getWorldScale(layer: Layer, layers: Layer[], frame: number): Vec2 {
   const s = evaluateVec2(layer.transform.scale, frame);
   if (!layer.parentId) return s;
   const parent = layers.find((l) => l.id === layer.parentId);
@@ -29,7 +29,7 @@ function getWorldScale(layer: Layer, layers: Layer[], frame: number): Vec2 {
   return [s[0] * ps[0], s[1] * ps[1]];
 }
 
-function getWorldRotation(layer: Layer, layers: Layer[], frame: number): number {
+export function getWorldRotation(layer: Layer, layers: Layer[], frame: number): number {
   const r = evaluateNumber(layer.transform.rotation, frame);
   if (!layer.parentId) return r;
   const parent = layers.find((l) => l.id === layer.parentId);
