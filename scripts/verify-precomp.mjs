@@ -243,6 +243,26 @@ try {
     assert.equal(round.compositions[root.id].layers[0].type, 'precomp');
   });
 
+  check('scenes: legacy doc (no scenes) migrates to a single scene = the root', () => {
+    const comp = createComposition('legacy', { ...SETTINGS });
+    const doc = deserializeDocument(JSON.stringify(comp));
+    assert.deepEqual(doc.scenes, [comp.id]);
+  });
+  check('scenes: a multi-scene document round-trips its scene list', () => {
+    const a = createComposition('sceneA', { ...SETTINGS });
+    const b = createComposition('sceneB', { ...SETTINGS });
+    const pre = createComposition('precomp', { ...SETTINGS });
+    const doc = { version: 2, rootCompositionId: a.id, scenes: [a.id, b.id], compositions: { [a.id]: a, [b.id]: b, [pre.id]: pre } };
+    const round = deserializeDocument(serializeDocument(doc));
+    assert.deepEqual(round.scenes, [a.id, b.id], 'scene order preserved; precomp not listed as a scene');
+  });
+  check('scenes: invalid/dangling scene ids are dropped, falling back to the root', () => {
+    const a = createComposition('sceneA', { ...SETTINGS });
+    const doc = { version: 2, rootCompositionId: a.id, scenes: ['ghost-id'], compositions: { [a.id]: a } };
+    const round = deserializeDocument(serializeDocument(doc));
+    assert.deepEqual(round.scenes, [a.id]);
+  });
+
   console.log(`\n✓ all ${passed} checks passed`);
 } catch (err) {
   console.error(`\n✗ FAILED after ${passed} checks:\n`, err);

@@ -975,6 +975,9 @@ export interface Composition {
 export interface SceneDocument {
   version: number;
   rootCompositionId: string;
+  /** Ordered ids of the top-level scenes the user switches between. Optional for
+   *  legacy documents (migrated to `[rootCompositionId]` on load). */
+  scenes?: string[];
   compositions: Record<string, Composition>;
 }
 

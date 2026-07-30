@@ -29,7 +29,7 @@ export function deserializeDocument(data: string): SceneDocument {
   // Legacy: a bare Composition (has `layers`, no `compositions` registry).
   if (raw && Array.isArray(raw.layers) && !raw.compositions) {
     const comp = validateComposition(raw);
-    return { version: SCENE_DOCUMENT_VERSION, rootCompositionId: comp.id, compositions: { [comp.id]: comp } };
+    return { version: SCENE_DOCUMENT_VERSION, rootCompositionId: comp.id, scenes: [comp.id], compositions: { [comp.id]: comp } };
   }
 
   const compositions: Record<string, Composition> = {};
@@ -40,5 +40,9 @@ export function deserializeDocument(data: string): SceneDocument {
   const ids = Object.keys(compositions);
   const rootCompositionId =
     raw && raw.rootCompositionId && compositions[raw.rootCompositionId] ? raw.rootCompositionId : ids[0];
-  return { version: SCENE_DOCUMENT_VERSION, rootCompositionId, compositions };
+  // Keep the scene list if present (valid ids only); legacy docs migrate to a
+  // single scene (the root). The store guarantees the root is always a scene.
+  const rawScenes = Array.isArray(raw?.scenes) ? (raw.scenes as unknown[]).filter((id): id is string => typeof id === 'string' && !!compositions[id]) : [];
+  const scenes = rawScenes.length > 0 ? rawScenes : [rootCompositionId];
+  return { version: SCENE_DOCUMENT_VERSION, rootCompositionId, scenes, compositions };
 }

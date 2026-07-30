@@ -137,6 +137,10 @@ interface EditorState {
   activeCompositionId: string;
   /** Breadcrumb of composition ids from root to the active one (precomp navigation). */
   navStack: string[];
+  /** Ordered ids of the top-level SCENES the user can switch between (distinct from
+   *  precomps, which live in `compositions` but aren't listed here). The current
+   *  scene is always `navStack[0]`. */
+  scenes: string[];
   currentFrame: number;
   isPlaying: boolean;
   selection: SelectionState;
@@ -185,6 +189,12 @@ interface EditorState {
   getDocument: () => SceneDocument;
   /** Replace the whole document (multi-composition load); resets navigation to root. */
   loadDocument: (doc: SceneDocument) => void;
+  // Scenes (top-level compositions). Switching/creating/deleting are navigation-like
+  // (not undoable); they clear the undo history to avoid cross-scene command bleed.
+  createScene: (name?: string) => void;
+  duplicateScene: (id: string) => void;
+  deleteScene: (id: string) => void;
+  switchScene: (id: string) => void;
 
   // Undoable actions
   addRectangle: () => void;
@@ -848,6 +858,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   rootCompositionId: _initialRoot.id,
   activeCompositionId: _initialRoot.id,
   navStack: [_initialRoot.id],
+  scenes: [_initialRoot.id],
   currentFrame: 0,
   isPlaying: false,
   selection: { selectedIds: [], activeId: null, selectedKeyframes: [], selectedCurvePoints: [] },
@@ -1014,6 +1025,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       rootCompositionId: migrated.id,
       activeCompositionId: migrated.id,
       navStack: [migrated.id],
+      scenes: [migrated.id],
       currentFrame: 0,
       isPlaying: false,
       selection: { selectedIds: [], activeId: null, selectedKeyframes: [], selectedCurvePoints: [] },
@@ -1105,10 +1117,98 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     });
   },
 
+  createScene: (name) => {
+    const { composition, compositions, activeCompositionId, scenes } = get();
+    const newComp = createComposition(name || `Scene ${scenes.length + 1}`, { ...composition.settings });
+    useHistoryStore.getState().clear();
+    set({
+      compositions: { ...compositions, [activeCompositionId]: composition, [newComp.id]: newComp },
+      scenes: [...scenes, newComp.id],
+      composition: newComp,
+      activeCompositionId: newComp.id,
+      navStack: [newComp.id],
+      currentFrame: 0,
+      isPlaying: false,
+      selection: { selectedIds: [], activeId: null, selectedKeyframes: [], selectedCurvePoints: [] },
+    });
+  },
+
+  duplicateScene: (id) => {
+    const { composition, compositions, activeCompositionId, scenes } = get();
+    if (!scenes.includes(id)) return;
+    const source = id === activeCompositionId ? composition : compositions[id];
+    if (!source) return;
+    // Deep clone with a fresh composition id. Layer ids are kept — they're scoped
+    // per composition, so duplicates across scenes never collide. Referenced
+    // precomps are intentionally SHARED (not cloned).
+    const clone: Composition = { ...(JSON.parse(JSON.stringify(source)) as Composition), id: uid(), name: `${source.name} copy` };
+    const insertAt = scenes.indexOf(id) + 1;
+    useHistoryStore.getState().clear();
+    set({
+      compositions: { ...compositions, [activeCompositionId]: composition, [clone.id]: clone },
+      scenes: [...scenes.slice(0, insertAt), clone.id, ...scenes.slice(insertAt)],
+      composition: clone,
+      activeCompositionId: clone.id,
+      navStack: [clone.id],
+      currentFrame: 0,
+      isPlaying: false,
+      selection: { selectedIds: [], activeId: null, selectedKeyframes: [], selectedCurvePoints: [] },
+    });
+  },
+
+  switchScene: (id) => {
+    const { composition, compositions, activeCompositionId, scenes, navStack } = get();
+    if (!scenes.includes(id)) return;
+    if (id === navStack[0] && navStack.length === 1) return; // already viewing this scene
+    const folded = { ...compositions, [activeCompositionId]: composition };
+    const target = folded[id];
+    if (!target) return;
+    useHistoryStore.getState().clear();
+    set({
+      compositions: folded,
+      composition: target,
+      activeCompositionId: id,
+      navStack: [id],
+      currentFrame: 0,
+      isPlaying: false,
+      selection: { selectedIds: [], activeId: null, selectedKeyframes: [], selectedCurvePoints: [] },
+    });
+  },
+
+  deleteScene: (id) => {
+    const { composition, compositions, activeCompositionId, scenes, navStack, rootCompositionId } = get();
+    if (!scenes.includes(id) || scenes.length <= 1) return; // always keep at least one scene
+    const idx = scenes.indexOf(id);
+    const remainingScenes = scenes.filter((s) => s !== id);
+    // Fold the live comp in, then drop the deleted scene's entry. Precomps stay
+    // (they may be shared by other scenes).
+    const folded = { ...compositions, [activeCompositionId]: composition };
+    delete folded[id];
+    const newRoot = rootCompositionId === id ? remainingScenes[0] : rootCompositionId;
+    useHistoryStore.getState().clear();
+    if (navStack[0] === id) {
+      // Deleting the scene currently being viewed — switch to a neighbor.
+      const nextId = remainingScenes[Math.min(idx, remainingScenes.length - 1)];
+      set({
+        compositions: folded,
+        scenes: remainingScenes,
+        rootCompositionId: newRoot,
+        composition: folded[nextId],
+        activeCompositionId: nextId,
+        navStack: [nextId],
+        currentFrame: 0,
+        isPlaying: false,
+        selection: { selectedIds: [], activeId: null, selectedKeyframes: [], selectedCurvePoints: [] },
+      });
+    } else {
+      set({ compositions: folded, scenes: remainingScenes, rootCompositionId: newRoot });
+    }
+  },
+
   getDocument: () => {
-    const { compositions, activeCompositionId, composition, rootCompositionId } = get();
+    const { compositions, activeCompositionId, composition, rootCompositionId, scenes } = get();
     // Fold the live active comp into the registry so the document is complete.
-    return { version: 2, rootCompositionId, compositions: { ...compositions, [activeCompositionId]: composition } };
+    return { version: 2, rootCompositionId, scenes, compositions: { ...compositions, [activeCompositionId]: composition } };
   },
 
   loadDocument: (doc) => {
@@ -1122,12 +1222,19 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const ids = Object.keys(compositions);
     if (ids.length === 0) return;
     const rootId = doc.rootCompositionId && compositions[doc.rootCompositionId] ? doc.rootCompositionId : ids[0];
+    // Scenes: keep valid ids from the document; migrate legacy docs (no scenes) to
+    // a single scene (the root). The root is always guaranteed to be a scene.
+    const rawScenes = Array.isArray(doc.scenes) ? doc.scenes.filter((id) => compositions[id]) : [];
+    const scenes = rawScenes.length > 0
+      ? (rawScenes.includes(rootId) ? rawScenes : [rootId, ...rawScenes])
+      : [rootId];
     set({
       compositions,
       composition: compositions[rootId],
       rootCompositionId: rootId,
       activeCompositionId: rootId,
       navStack: [rootId],
+      scenes,
       currentFrame: 0,
       isPlaying: false,
       selection: { selectedIds: [], activeId: null, selectedKeyframes: [], selectedCurvePoints: [] },

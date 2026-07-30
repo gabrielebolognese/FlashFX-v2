@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef, lazy, Suspense } from 'react';
 import { Toolbar } from './ui/panels/Toolbar';
+import { SceneSwitcher } from './ui/panels/SceneSwitcher';
 import { PanelLayout } from './ui/layout/PanelLayout';
 import { BuilderLayout } from './ui/layout/BuilderLayout';
 import { useEditorStore } from './store/editor';
@@ -169,6 +170,7 @@ function Editor() {
         <div className="flex-1 min-w-0">
           <Toolbar />
         </div>
+        {workspace === 'editor' && <SceneSwitcher />}
         {/* Animation Builder Mode Toggle */}
         <button
           onClick={() => setWorkspace(workspace === 'editor' ? 'builder' : 'editor')}

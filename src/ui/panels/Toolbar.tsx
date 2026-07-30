@@ -62,6 +62,12 @@ export function Toolbar() {
   const reverseShapePath = useEditorStore((s) => s.reverseShapePath);
   const simplifyShapePath = useEditorStore((s) => s.simplifyShapePath);
   const booleanSelectedShapes = useEditorStore((s) => s.booleanSelectedShapes);
+  const scenes = useEditorStore((s) => s.scenes);
+  const navStack = useEditorStore((s) => s.navStack);
+  const createScene = useEditorStore((s) => s.createScene);
+  const duplicateScene = useEditorStore((s) => s.duplicateScene);
+  const deleteScene = useEditorStore((s) => s.deleteScene);
+  const renameComposition = useEditorStore((s) => s.renameComposition);
 
   const undo = useHistoryStore((s) => s.undo);
   const redo = useHistoryStore((s) => s.redo);
@@ -349,11 +355,19 @@ export function Toolbar() {
     {
       label: 'Scene',
       items: [
-        { label: 'New Scene', disabled: true },
-        { label: 'Duplicate Scene', disabled: true },
-        { label: 'Delete Scene', disabled: true },
+        { label: 'New Scene', action: () => createScene() },
+        { label: 'Duplicate Scene', action: () => duplicateScene(navStack[0]) },
+        { label: 'Delete Scene', action: () => {
+            if (scenes.length <= 1) return;
+            if (window.confirm('Delete this scene? This cannot be undone.')) deleteScene(navStack[0]);
+          }, disabled: scenes.length <= 1 },
         { label: '', divider: true },
-        { label: 'Scene Settings...', disabled: true },
+        { label: 'Scene Settings...', action: () => {
+            const sceneId = navStack[0];
+            const cur = useEditorStore.getState().getComposition(sceneId)?.name ?? 'Scene';
+            const n = window.prompt('Scene name:', cur);
+            if (n && n.trim()) renameComposition(sceneId, n.trim());
+          } },
         { label: 'Composition Settings...', shortcut: 'Ctrl+K', action: () => setShowSettings(true) },
       ],
     },
