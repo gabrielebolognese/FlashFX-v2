@@ -34,7 +34,7 @@ interface ProjectState {
   loadProjects: () => Promise<void>;
   createAndOpenProject: (options: CreateProjectOptions) => Promise<void>;
   openProject: (id: string) => Promise<SceneDocument | null>;
-  closeProject: () => void;
+  closeProject: () => Promise<void>;
   deleteProject: (id: string) => Promise<void>;
   renameProject: (id: string, name: string) => Promise<void>;
   duplicateProject: (id: string) => Promise<void>;
@@ -91,9 +91,12 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     return doc;
   },
 
-  closeProject: () => {
+  closeProject: async () => {
     const { activeProjectId, projects } = get();
     if (activeProjectId) {
+      // Persist before leaving — New / Open / Close and the "Projects" back button
+      // all funnel through here; without this they silently discarded unsaved work.
+      try { await get().saveCurrentProject(); } catch (err) { console.error('Save on close failed:', err); }
       // Revoke any existing preview URL for this project
       const card = projects.find((p) => p.metadata.id === activeProjectId);
       if (card?.previewUrl) {

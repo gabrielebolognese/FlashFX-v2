@@ -26,6 +26,12 @@ import type {
   MaskType,
   LottieIconLayer,
   PrecompLayer,
+  LayerShadow,
+  LayerGlow,
+  LayerBlur,
+  LayerEffect,
+  ShapeMaterialConfig,
+  ShapePatternConfig,
 } from '../../core/types';
 
 function isObject(v: unknown): v is Record<string, unknown> {
@@ -266,13 +272,27 @@ function validateLayer(raw: unknown): Layer | null {
     inPoint: typeof r.inPoint === 'number' ? r.inPoint : 0,
     outPoint: typeof r.outPoint === 'number' ? r.outPoint : 150,
     ...(typeof r.labelColor === 'string' ? { labelColor: r.labelColor } : {}),
+    // Per-layer effects are app-generated structured blobs — preserve them
+    // through the round-trip rather than dropping them (was a data-loss bug).
+    ...(isObject(r.shadow) ? { shadow: r.shadow as unknown as LayerShadow } : {}),
+    ...(isObject(r.glow) ? { glow: r.glow as unknown as LayerGlow } : {}),
+    ...(isObject(r.blur) ? { blur: r.blur as unknown as LayerBlur } : {}),
+    ...(Array.isArray(r.effects) ? { effects: r.effects as LayerEffect[] } : {}),
   };
 
   switch (r.type) {
     case 'shape': {
       const shape = ensureShapeGeometry(r.shape);
       if (!shape) return null;
-      return { ...baseFields, type: 'shape', shape } as ShapeLayer;
+      return {
+        ...baseFields,
+        type: 'shape',
+        shape,
+        // Preserve shape material / pattern fill (were dropped on load).
+        ...(isObject(r.materialConfig) ? { materialConfig: r.materialConfig as unknown as ShapeMaterialConfig } : {}),
+        ...(isObject(r.strokeMaterialConfig) ? { strokeMaterialConfig: r.strokeMaterialConfig as unknown as ShapeMaterialConfig } : {}),
+        ...(isObject(r.patternFill) ? { patternFill: r.patternFill as unknown as ShapePatternConfig } : {}),
+      } as ShapeLayer;
     }
     case 'text': {
       // Support loading old format (text.content/text.style) and new format (content/layoutConfig/animOverrides)
@@ -431,6 +451,46 @@ function validateLayer(raw: unknown): Layer | null {
         dataBinding: isObject(r.dataBinding) ? r.dataBinding : undefined,
       } as unknown as Layer;
     }
+    // The following layer types carry app-generated structured payloads. Pass them
+    // through (like cloner) so they SURVIVE load instead of hitting the default and
+    // being silently deleted (was a data-loss bug).
+    case 'particle': {
+      if (!isObject(r.particle)) return null;
+      return { ...baseFields, type: 'particle', particle: r.particle } as unknown as Layer;
+    }
+    case 'animationItem': {
+      if (!isObject(r.animationItem)) return null;
+      return { ...baseFields, type: 'animationItem', animationItem: r.animationItem } as unknown as Layer;
+    }
+    case 'fieldSampled': {
+      if (!isObject(r.fieldSampled)) return null;
+      return { ...baseFields, type: 'fieldSampled', fieldSampled: r.fieldSampled } as unknown as Layer;
+    }
+    case 'hbox':
+    case 'vbox':
+    case 'grid': {
+      return {
+        ...baseFields,
+        type: r.type,
+        children: Array.isArray(r.children) ? r.children : [],
+        layoutParams: r.layoutParams,
+        childOverrides: isObject(r.childOverrides) ? r.childOverrides : {},
+        computedLayout: isObject(r.computedLayout) ? r.computedLayout : null,
+      } as unknown as Layer;
+    }
+    case 'layoutContainer': {
+      return {
+        ...baseFields,
+        type: 'layoutContainer',
+        containerShape: r.containerShape,
+        distributionMode: r.distributionMode,
+        spacing: typeof r.spacing === 'number' ? r.spacing : 0,
+        padding: typeof r.padding === 'number' ? r.padding : 0,
+        rotationOffset: typeof r.rotationOffset === 'number' ? r.rotationOffset : 0,
+        children: Array.isArray(r.children) ? r.children : [],
+        computedData: isObject(r.computedData) ? r.computedData : null,
+      } as unknown as Layer;
+    }
     default:
       return null;
   }
@@ -515,6 +575,14 @@ export function validateComposition(raw: unknown): Composition {
     background: ensureBackground(r.background),
     motionPaths: Array.isArray(r.motionPaths) ? r.motionPaths : [],
     ...(Array.isArray(r.markers) ? { markers: (r.markers as unknown[]).filter(isValidMarker) as Composition['markers'] } : {}),
+    // Composition-level bindings are app-generated structured data; preserve them
+    // through the round-trip (were silently dropped on load → physics/procedural/
+    // anchor/stagger setups vanished on reopen).
+    ...(Array.isArray(r.proceduralBindings) ? { proceduralBindings: r.proceduralBindings as Composition['proceduralBindings'] } : {}),
+    ...(Array.isArray(r.anchorEdges) ? { anchorEdges: r.anchorEdges as Composition['anchorEdges'] } : {}),
+    ...(Array.isArray(r.physicsBindings) ? { physicsBindings: r.physicsBindings as Composition['physicsBindings'] } : {}),
+    ...(isObject(r.physicsWorld) ? { physicsWorld: r.physicsWorld as unknown as Composition['physicsWorld'] } : {}),
+    ...(Array.isArray(r.staggerBindings) ? { staggerBindings: r.staggerBindings as Composition['staggerBindings'] } : {}),
   };
 }
 

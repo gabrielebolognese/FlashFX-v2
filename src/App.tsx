@@ -49,6 +49,15 @@ function Editor() {
         target.isContentEditable ||
         (target.tagName === 'INPUT' && (!target.getAttribute('type') || ['text', 'search', 'url', 'email', 'password', 'number', 'tel'].includes(target.getAttribute('type')!)));
 
+      // Ctrl/Cmd+S → save (works from anywhere, incl. text inputs). Without this,
+      // the reflex to save opens the browser's Save-Page dialog and persists nothing.
+      if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S') && !e.shiftKey) {
+        e.preventDefault();
+        const { activeProjectId, saveCurrentProject } = useProjectStore.getState();
+        if (activeProjectId) saveCurrentProject().catch((err) => console.error('Save failed:', err));
+        return;
+      }
+
       if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
         e.preventDefault();
         undo();

@@ -732,6 +732,8 @@ fn fs(in: VertexOutput) -> @location(0) vec4f {
 
 const UNIFORM_ALIGN = 512;
 const MAX_LAYERS = 512;
+// One-shot warn when procedural expansion is clamped to the uniform-buffer cap.
+let proceduralClampWarned = false;
 // The shape (rect/circle/star) uniform carries per-shape gradient fill + stroke
 // data plus a pattern block, so it has its own larger stride, independent of the
 // other pipelines. Layout (bytes): base 80 + masks 384 + fill/stroke arrays 3136
@@ -3297,9 +3299,15 @@ export class WebGPURenderer {
     const imageLayers: { index: number; layer: ResolvedLayer }[] = [];
     const pathLayers: { index: number; layer: ResolvedLayer }[] = [];
 
-    // Expand procedural grid/tile layers into multiple instances
+    // Expand procedural grid/tile layers into multiple instances. Each per-layer
+    // uniform buffer holds MAX_LAYERS slots, and buckets partition expandedLayers,
+    // so the total is HARD-CAPPED at MAX_LAYERS — without this a dense tile pattern
+    // (a 10px tile on 1080p = >21,000 instances) overflows writeBuffer/setBindGroup
+    // and drops the whole layer to black with a WebGPU validation-error flood.
     const expandedLayers: ResolvedLayer[] = [];
+    let clamped = false;
     for (const layer of frame.layers) {
+      if (expandedLayers.length >= MAX_LAYERS) { clamped = true; break; }
       if (layer.proceduralLoop?.kind === 'gridArray' && layer.proceduralLoop.grid) {
         const grid = layer.proceduralLoop.grid;
         const totalWidth = grid.gridCols * grid.cellWidth;
@@ -3307,6 +3315,7 @@ export class WebGPURenderer {
         const baseX = layer.transform.positionX - totalWidth / 2;
         const baseY = layer.transform.positionY - totalHeight / 2;
         for (const inst of grid.instances) {
+          if (expandedLayers.length >= MAX_LAYERS) { clamped = true; break; }
           expandedLayers.push({
             ...layer,
             proceduralLoop: undefined,
@@ -3329,8 +3338,10 @@ export class WebGPURenderer {
         const rows = Math.ceil(frame.height / th) + 2;
         const offsetPx = tile.offsetU * tw;
         const offsetPy = tile.offsetV * th;
+        tileLoop:
         for (let r = -1; r < rows; r++) {
           for (let c = -1; c < cols; c++) {
+            if (expandedLayers.length >= MAX_LAYERS) { clamped = true; break tileLoop; }
             expandedLayers.push({
               ...layer,
               proceduralLoop: undefined,
@@ -3345,6 +3356,10 @@ export class WebGPURenderer {
       } else {
         expandedLayers.push(layer);
       }
+    }
+    if (clamped && !proceduralClampWarned) {
+      proceduralClampWarned = true;
+      console.warn(`[renderer] Layer/procedural-instance count exceeded ${MAX_LAYERS} and was clamped. Reduce tile/grid density or split across layers.`);
     }
 
     for (let i = 0; i < expandedLayers.length; i++) {

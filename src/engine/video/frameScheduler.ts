@@ -173,6 +173,46 @@ class FrameScheduler {
     const byteSize = this.estimateFrameSize(frame);
     buffer.set(frameIndex, { frame, byteSize });
     this.totalMemoryUsage += byteSize;
+    // injectFrame's sole caller is the export loop, which is forward-linear and
+    // never revisits earlier frames. Bound memory by evicting the oldest buffered
+    // frames (lowest index) when over budget — WITHOUT this, a long export retains
+    // thousands of ~8MB frames (multi-GB) → decoder output-pool stall / tab OOM.
+    if (this.totalMemoryUsage > MEMORY_BUDGET_BYTES) {
+      this.evictOldestForExport(assetId, frameIndex);
+    }
+  }
+
+  private evictOldestForExport(keepAssetId: string, keepFrameIndex: number): void {
+    const entries: { assetId: string; frameIndex: number; data: FrameEntryData }[] = [];
+    for (const [assetId, buffer] of this.buffers) {
+      for (const [idx, entry] of buffer) {
+        if (entry === 'in-flight') continue;
+        if (assetId === keepAssetId && idx === keepFrameIndex) continue; // never evict what we just injected
+        entries.push({ assetId, frameIndex: idx, data: entry });
+      }
+    }
+    entries.sort((a, b) => a.frameIndex - b.frameIndex); // oldest (lowest index) first
+    for (const e of entries) {
+      if (this.totalMemoryUsage <= MEMORY_BUDGET_BYTES) break;
+      const buffer = this.buffers.get(e.assetId);
+      if (!buffer) continue;
+      buffer.delete(e.frameIndex);
+      this.totalMemoryUsage -= e.data.byteSize;
+      e.data.frame.close();
+    }
+  }
+
+  /** Close and drop every buffered frame (keeps registrations/workers). The export
+   *  cleanup path calls this so injected export frames don't linger in the shared
+   *  singleton after a render; playback re-prefetches on demand. */
+  releaseBufferedFrames(): void {
+    for (const buffer of this.buffers.values()) {
+      for (const entry of buffer.values()) {
+        if (entry !== 'in-flight') entry.frame.close();
+      }
+    }
+    this.buffers.clear();
+    this.totalMemoryUsage = 0;
   }
 
   private activateProxyForLargeAssets(): void {

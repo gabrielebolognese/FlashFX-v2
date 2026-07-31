@@ -59,7 +59,9 @@ export function compositionHasAudio(composition: Composition): boolean {
     if (layer.trackId && muted.has(layer.trackId)) return false;
     if (layer.type === 'audio') return !layer.audio.muted;
     if (layer.type === 'video') {
-      return !layer.video.muted && !!mediaAssetManager.getAudioBuffer(layer.video.assetId);
+      // Video PCM isn't retained (decoded on demand for the mix); use the metadata
+      // audio flag set during import/load instead of the resident buffer.
+      return !layer.video.muted && !!mediaAssetManager.getMetadata(layer.video.assetId)?.hasAudio;
     }
     return false;
   });
@@ -70,7 +72,7 @@ export function compositionHasAudio(composition: Composition): boolean {
  * layers with no decoded buffer, no audible range, or an offset past the buffer.
  * Mirrors the filters in audioPlayback.evaluateAndSchedule.
  */
-function collectSources(composition: Composition, frameRate: number): AudibleSource[] {
+async function collectSources(composition: Composition, frameRate: number): Promise<AudibleSource[]> {
   const muted = mutedTrackSet(composition);
   const sources: AudibleSource[] = [];
 
@@ -83,7 +85,7 @@ function collectSources(composition: Composition, frameRate: number): AudibleSou
     const when = layer.inPoint / frameRate;
 
     if (layer.type === 'audio' && !layer.audio.muted) {
-      const buffer = mediaAssetManager.getAudioBuffer(layer.audio.assetId);
+      const buffer = await mediaAssetManager.ensureAudioBuffer(layer.audio.assetId);
       if (!buffer) continue;
       const bufferOffset = Math.max(0, (layer.audio.startOffset ?? 0) / frameRate);
       if (bufferOffset >= buffer.duration) continue;
@@ -101,7 +103,7 @@ function collectSources(composition: Composition, frameRate: number): AudibleSou
         outPoint: layer.outPoint,
       });
     } else if (layer.type === 'video' && !layer.video.muted) {
-      const buffer = mediaAssetManager.getAudioBuffer(layer.video.assetId);
+      const buffer = await mediaAssetManager.ensureAudioBuffer(layer.video.assetId);
       if (!buffer) continue;
       // Video source offset is expressed against the source's own frame rate.
       const bufferOffset = Math.max(0, (layer.video.startOffset ?? 0) / layer.video.sourceFrameRate);
@@ -157,7 +159,7 @@ export async function exportCompositionAudio(
   const durationSec = durationFrames / frameRate;
   if (durationSec <= 0) return null;
 
-  const sources = collectSources(composition, frameRate);
+  const sources = await collectSources(composition, frameRate);
   if (sources.length === 0) return null;
 
   if (signal?.aborted) throw new Error('Export cancelled');

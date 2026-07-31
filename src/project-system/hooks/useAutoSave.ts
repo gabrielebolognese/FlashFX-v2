@@ -10,11 +10,13 @@ export function useAutoSave() {
   useEffect(() => {
     if (!activeProjectId || !composition) return;
     if (timerRef.current) clearTimeout(timerRef.current);
+    // Debounced: persist the FULL document (all scenes/precomps, via getDocument)
+    // to IndexedDB a couple seconds after the last edit. Previously this wrote a
+    // localStorage key that nothing ever read — a silent no-op that lost work.
     timerRef.current = setTimeout(() => {
-      try {
-        const key = `ffx-project-${activeProjectId}`;
-        localStorage.setItem(key, JSON.stringify(composition));
-      } catch { /* quota exceeded or serialization failure */ }
+      useProjectStore.getState().saveCurrentProject().catch((err) => {
+        console.error('Autosave failed:', err);
+      });
     }, 2000);
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);

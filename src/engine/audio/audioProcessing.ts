@@ -26,7 +26,7 @@ export async function processAudioAsset(
   transform: AudioTransform,
   suffix: string,
 ): Promise<string | null> {
-  const buffer = mediaAssetManager.getAudioBuffer(assetId);
+  const buffer = await mediaAssetManager.ensureAudioBuffer(assetId);
   if (!buffer) return null;
   const out = transform(bufferChannels(buffer), buffer.sampleRate);
   const blob = encodeWav(out, buffer.sampleRate);

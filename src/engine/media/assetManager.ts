@@ -376,7 +376,10 @@ class MediaAssetManager {
       if (!asset) return;
 
       const waveform = this.generateWaveform(audioBuffer);
-      asset.audioBuffer = audioBuffer;
+      // Keep the small waveform + metadata, but do NOT retain the full decoded PCM
+      // for VIDEO assets — playback uses the hidden <video>, so this multi-GB buffer
+      // was pure retention. Consumers that need the full buffer (export mix, silence,
+      // captions, audio processing) re-decode on demand via ensureAudioBuffer().
       asset.waveform = waveform;
       asset.audioMetadata = {
         assetId,
@@ -443,7 +446,7 @@ class MediaAssetManager {
     const uniqueIds = [...new Set(videoAssetIds)];
     if (uniqueIds.length === 0) return;
 
-    const restorations = uniqueIds.map(async (assetId) => {
+    const restoreOne = async (assetId: string) => {
       // Try the dedicated video store first
       const blob = await videoAssetStore.getAsset(projectId, assetId);
       const meta = await videoAssetStore.getAssetMeta(projectId, assetId);
@@ -491,9 +494,14 @@ class MediaAssetManager {
           console.warn(`[MediaAssetManager] Asset ${assetId} missing. Browser may have evicted storage.`);
         }
       }
-    });
+    };
 
-    await Promise.all(restorations);
+    // Sequential (not Promise.all): each restore decodes the video's audio to build
+    // its waveform — running them in parallel spikes memory by N× the transient
+    // decode. One at a time keeps the peak bounded when opening a video-heavy project.
+    for (const assetId of uniqueIds) {
+      await restoreOne(assetId);
+    }
     this.notify();
   }
 
@@ -717,6 +725,40 @@ class MediaAssetManager {
 
   getAudioBuffer(assetId: string): AudioBuffer | null {
     return this.assets.get(assetId)?.audioBuffer ?? null;
+  }
+
+  /**
+   * Return the full decoded AudioBuffer, decoding on demand from the source blob
+   * if it isn't resident (video assets don't retain their PCM — see
+   * extractVideoAudio). Caches the result on the asset. Async callers that need
+   * the whole buffer (export mix, silence, captions, audio processing) use this;
+   * `getAudioBuffer` stays a synchronous cache read.
+   */
+  private inflightAudioDecodes = new Map<string, Promise<AudioBuffer | null>>();
+  async ensureAudioBuffer(assetId: string): Promise<AudioBuffer | null> {
+    const asset = this.assets.get(assetId);
+    if (!asset) return null;
+    if (asset.audioBuffer) return asset.audioBuffer;
+    const existing = this.inflightAudioDecodes.get(assetId);
+    if (existing) return existing;
+    const url = this.getObjectUrl(assetId);
+    if (!url) return null;
+    const decodePromise = (async () => {
+      try {
+        const resp = await fetch(url);
+        const arr = await resp.arrayBuffer();
+        const buffer = await this.getAudioContext().decodeAudioData(arr);
+        const a = this.assets.get(assetId);
+        if (a) a.audioBuffer = buffer;
+        return buffer;
+      } catch {
+        return null;
+      } finally {
+        this.inflightAudioDecodes.delete(assetId);
+      }
+    })();
+    this.inflightAudioDecodes.set(assetId, decodePromise);
+    return decodePromise;
   }
 
   getImageBitmap(assetId: string): ImageBitmap | null {

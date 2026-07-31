@@ -60,7 +60,7 @@ export function ExportModal({ onClose }: ExportModalProps) {
     };
 
     try {
-      const blob = await exportToMp4(composition, settings, setProgress, controller.signal);
+      const blob = await exportToMp4(composition, settings, setProgress, controller.signal, useEditorStore.getState().getComposition);
       setExportedBlob(blob);
     } catch (e) {
       if ((e as Error).message !== 'Export cancelled') {

@@ -59,5 +59,10 @@ export function getDriveStreamUrl(fileId: string): string {
   const url = new URL(FUNCTION_URL);
   url.searchParams.set('action', 'stream');
   url.searchParams.set('fileId', fileId);
+  // The other actions authenticate via the Authorization header, but this URL is
+  // used directly as a media src (new Audio(url)) where headers can't be set, so
+  // the Supabase functions gateway 401s every stream. Pass the anon key as the
+  // `apikey` query param (which the gateway accepts) so imports/previews work.
+  url.searchParams.set('apikey', SUPABASE_ANON_KEY);
   return url.toString();
 }

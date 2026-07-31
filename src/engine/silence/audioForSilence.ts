@@ -32,39 +32,10 @@ function downmixToMono(buffer: AudioBuffer): Float32Array {
   return mono;
 }
 
-// Wait up to `timeoutMs` for the audio buffer to become available through the
-// asset manager (background extraction from video). Polls via the subscribe
-// mechanism rather than busy-wait.
-function waitForAudioBuffer(assetId: string, timeoutMs: number): Promise<AudioBuffer | null> {
-  return new Promise((resolve) => {
-    const existing = mediaAssetManager.getAudioBuffer(assetId);
-    if (existing) { resolve(existing); return; }
-
-    const timer = setTimeout(() => {
-      unsub();
-      resolve(null);
-    }, timeoutMs);
-
-    const unsub = mediaAssetManager.subscribe(() => {
-      const buf = mediaAssetManager.getAudioBuffer(assetId);
-      if (buf) {
-        clearTimeout(timer);
-        unsub();
-        resolve(buf);
-      }
-    });
-  });
-}
 
 export async function extractMonoAudio(assetId: string): Promise<MonoAudio> {
-  // First check if buffer is already available
-  let buffer = mediaAssetManager.getAudioBuffer(assetId);
-
-  // If not available, wait briefly for background extraction to complete
-  if (!buffer) {
-    buffer = await waitForAudioBuffer(assetId, 5000);
-  }
-
+  // Cached buffer, or decode on demand (video PCM is no longer retained eagerly).
+  const buffer = await mediaAssetManager.ensureAudioBuffer(assetId);
   if (buffer) {
     return { samples: downmixToMono(buffer), sampleRate: buffer.sampleRate };
   }

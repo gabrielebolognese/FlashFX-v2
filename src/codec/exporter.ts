@@ -27,7 +27,10 @@ export async function exportToMp4(
   composition: Composition,
   settings: Partial<ExportSettings> = {},
   onProgress?: (progress: ExportProgress) => void,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  // Registry lookup so precomp layers resolve their sub-compositions during export.
+  // Without it, resolveFrame gets no ResolveContext and every precomp renders blank.
+  getComposition?: (id: string) => Composition | undefined,
 ): Promise<Blob> {
   const width = settings.width ?? composition.settings.width;
   const height = settings.height ?? composition.settings.height;
@@ -113,15 +116,17 @@ export async function exportToMp4(
     if (signal?.aborted) {
       encoder.close();
       renderer.destroy();
+      frameScheduler.releaseBufferedFrames();
       throw new Error('Export cancelled');
     }
     if (encodeError) {
       encoder.close();
       renderer.destroy();
+      frameScheduler.releaseBufferedFrames();
       throw encodeError;
     }
 
-    const renderData = resolveFrame(composition, frame);
+    const renderData = resolveFrame(composition, frame, { getComposition, depth: 0, visited: new Set() });
 
     // Pre-decode video frames at full resolution for this composition frame
     const videoDecodePromises: Promise<void>[] = [];
@@ -176,6 +181,7 @@ export async function exportToMp4(
     await encoder.flush();
   } catch (e) {
     renderer.destroy();
+    frameScheduler.releaseBufferedFrames();
     throw e;
   }
   encoder.close();
@@ -200,6 +206,7 @@ export async function exportToMp4(
 
   muxer.finalize();
   renderer.destroy();
+  frameScheduler.releaseBufferedFrames();
 
   const blob = new Blob([target.buffer], { type: 'video/mp4' });
 
