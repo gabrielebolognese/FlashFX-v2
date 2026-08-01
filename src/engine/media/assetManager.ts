@@ -1,6 +1,7 @@
 import type { VideoAssetMetadata, AudioAssetMetadata, WaveformData } from '../../project-system/types';
 import { putAsset, getAssetsByProject, deleteAsset } from '../../project-system/storage/db';
 import type { ProjectAsset } from '../../project-system/types';
+import { computeWaveformPeaks } from '../../core/waveform';
 import { videoDecoderPool } from '../video/videoDecoderPool';
 import { frameScheduler } from '../video/frameScheduler';
 import { videoAudioPlayer } from '../video/videoAudioPlayer';
@@ -343,26 +344,9 @@ class MediaAssetManager {
   }
 
   private generateWaveform(buffer: AudioBuffer): WaveformData {
-    const targetPeaks = 2048;
-    const channelData = buffer.getChannelData(0);
-    const samplesPerPeak = Math.max(1, Math.floor(channelData.length / targetPeaks));
-    const peakCount = Math.ceil(channelData.length / samplesPerPeak);
-    const peaks = new Float32Array(peakCount * 2);
-
-    for (let i = 0; i < peakCount; i++) {
-      let min = 1;
-      let max = -1;
-      const start = i * samplesPerPeak;
-      const end = Math.min(start + samplesPerPeak, channelData.length);
-      for (let j = start; j < end; j++) {
-        const v = channelData[j];
-        if (v < min) min = v;
-        if (v > max) max = v;
-      }
-      peaks[i * 2] = min;
-      peaks[i * 2 + 1] = max;
-    }
-
+    // Strided peak reduction (see core/waveform) — keeps a long-clip import from
+    // freezing the main thread while producing a visually identical envelope.
+    const { peaks, samplesPerPeak } = computeWaveformPeaks(buffer.getChannelData(0), 2048);
     return { peaks, samplesPerPeak, channels: buffer.numberOfChannels, duration: buffer.duration };
   }
 
@@ -421,7 +405,11 @@ class MediaAssetManager {
 
       frameScheduler.registerAsset(assetId, assetId, workerMeta.frameRate, workerMeta.frameCount);
       videoAudioPlayer.initAudio(assetId, file);
-      this.extractVideoAudio(blob, assetId);
+      // Await the audio extraction (restore path only) so the caller can bound how
+      // many full-PCM decodes run at once — parallel restore otherwise spikes memory
+      // to N× a full decode. extractVideoAudio swallows its own errors (audio-less
+      // files are expected), so this never fails the video init.
+      await this.extractVideoAudio(blob, assetId);
       this.notify();
     } catch (err) {
       const asset = this.assets.get(assetId);
@@ -671,33 +659,42 @@ class MediaAssetManager {
       }
     }
 
-    // Restore video assets in parallel
+    // Restore video assets SEQUENTIALLY. Each one transiently decodes its whole
+    // audio track to build the waveform (initVideoAssetFromBlob → the now-awaited
+    // extractVideoAudio), so restoring in parallel would spike memory to N× a full
+    // decode — an open-time OOM on video-heavy projects. One at a time bounds the peak.
     if (videoAssetsToRestore.length > 0) {
       added = true;
-      await Promise.all(
-        videoAssetsToRestore.map(async (va) => {
-          const objectUrl = URL.createObjectURL(va.blob);
-          this.assets.set(va.id, {
-            id: va.id,
-            name: va.name,
-            mimeType: va.mimeType,
-            objectUrl,
-            createdAt: va.createdAt,
-            metadata: null,
-            imageMetadata: null,
-            audioMetadata: null,
-            imageBitmap: null,
-            waveform: null,
-            audioBuffer: null,
-            status: 'loading',
-          });
-          this.objectUrls.set(va.id, objectUrl);
-          await this.initVideoAssetFromBlob(va.id, va.blob, va.name);
-
-          // Also persist to dedicated video store if not already there
-          videoAssetStore.saveAsset(projectId, va.id, va.blob, va.name).catch(() => {});
-        })
+      // Which videos are already in the dedicated store (written at import) — so we
+      // only backfill the legacy/failed-write case instead of re-writing every blob
+      // (up to GBs) on every open. Cheap metadata-only query, no blob reads.
+      const persisted = new Set(
+        (await videoAssetStore.listProjectAssets(projectId)).map((m) => m.assetId),
       );
+      for (const va of videoAssetsToRestore) {
+        const objectUrl = URL.createObjectURL(va.blob);
+        this.assets.set(va.id, {
+          id: va.id,
+          name: va.name,
+          mimeType: va.mimeType,
+          objectUrl,
+          createdAt: va.createdAt,
+          metadata: null,
+          imageMetadata: null,
+          audioMetadata: null,
+          imageBitmap: null,
+          waveform: null,
+          audioBuffer: null,
+          status: 'loading',
+        });
+        this.objectUrls.set(va.id, objectUrl);
+        await this.initVideoAssetFromBlob(va.id, va.blob, va.name);
+
+        // Backfill the dedicated store only when the blob isn't already there.
+        if (!persisted.has(va.id)) {
+          videoAssetStore.saveAsset(projectId, va.id, va.blob, va.name).catch(() => {});
+        }
+      }
     }
 
     if (added) this.notify();

@@ -384,7 +384,7 @@ export function Toolbar() {
         { label: 'Distort...', disabled: true },
         { label: '', divider: true },
         { label: 'Add Expression...', action: () => revealInspectorTab('code'), disabled: !hasSelection },
-        { label: 'Manage Effects...', disabled: true },
+        { label: 'Manage Effects...', action: () => revealInspectorTab('filters'), disabled: !isImageSel },
       ],
     },
     {

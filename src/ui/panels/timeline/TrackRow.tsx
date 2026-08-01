@@ -1,4 +1,4 @@
-import { Type, Film, Image, Music, Folder, Square, Volume2, VolumeX, Eye, EyeOff, AlignHorizontalJustifyStart } from 'lucide-react';
+import { Type, Film, Image, Music, Folder, Square, Volume2, VolumeX, Eye, EyeOff, AlignHorizontalJustifyStart, Circle } from 'lucide-react';
 import type { Layer, Track, ShapeLayer } from '../../../core/types';
 import { useEditorStore } from '../../../store/editor';
 import { isTrackCompressed } from '../../../core/trackCompression';
@@ -69,6 +69,7 @@ export function TrackRow({
   const toggleTrackCompression = useEditorStore((s) => s.toggleTrackCompression);
   const toggleTrackVisibility = useEditorStore((s) => s.toggleTrackVisibility);
   const toggleTrackMute = useEditorStore((s) => s.toggleTrackMute);
+  const toggleTrackSolo = useEditorStore((s) => s.toggleTrackSolo);
 
   const compressed = isTrackCompressed(track);
 
@@ -111,6 +112,13 @@ export function TrackRow({
           title={track.muted ? 'Unmute track' : 'Mute track'}
         >
           {track.muted ? <VolumeX size={10} /> : <Volume2 size={10} />}
+        </button>
+        <button
+          onClick={() => toggleTrackSolo(track.id)}
+          className={`p-0.5 rounded transition-colors hover:bg-[#1a2a42] ${track.solo ? 'text-fuchsia-400' : 'text-slate-600'}`}
+          title={track.solo ? 'Unsolo track' : 'Solo track (hide all others)'}
+        >
+          <Circle size={10} fill={track.solo ? 'currentColor' : 'none'} />
         </button>
         <button
           onClick={() => toggleTrackCompression(track.id)}

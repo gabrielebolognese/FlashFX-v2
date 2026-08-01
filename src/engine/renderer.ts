@@ -1266,6 +1266,15 @@ fn applyColorEffect(color: vec4f, a: vec4f, b: vec4f, uv: vec2f, time: f32) -> v
     case ${EFFECT_TYPE.lumaKey}: {
       alpha = alpha * smoothstep(p0 - 0.05, p0 + 0.05, luma);
     }
+    case ${EFFECT_TYPE.chromaKey}: {
+      // params: [tolerance, keyR, keyG, keyB, softness]. Key out pixels within
+      // the tolerance RGB distance of the key color (default green), soft-edged.
+      let key = vec3f(a.z, a.w, b.x);
+      let tol = a.y;
+      let soft = max(b.y, 0.001);
+      let d = distance(c, key);
+      alpha = alpha * smoothstep(tol, tol + soft, d);
+    }
     case ${EFFECT_TYPE.spillSuppression}: {
       let m = max(c.r, c.b);
       c.g = mix(c.g, min(c.g, m), p0 * step(m, c.g));

@@ -234,7 +234,7 @@ export const FILTER_CATEGORIES: FilterCategory[] = [
     filters: [
       { id: 'opacity', label: 'Opacity', type: 'slider', min: 0, max: 1, step: 0.01, defaultValue: 1 },
       { id: 'alphaThreshold', label: 'Alpha Threshold', type: 'slider', min: 0, max: 1, step: 0.01, defaultValue: 0 },
-      { id: 'chromaKey', label: 'Chroma Key', type: 'slider', min: 0, max: 1, step: 0.01, defaultValue: 0 },
+      { id: 'chromaKey', label: 'Chroma Key (Green)', type: 'slider', min: 0, max: 1, step: 0.01, defaultValue: 0 },
       { id: 'lumaKey', label: 'Luma Key', type: 'slider', min: 0, max: 1, step: 0.01, defaultValue: 0 },
       { id: 'spillSuppression', label: 'Spill Suppression', type: 'slider', min: 0, max: 1, step: 0.01, defaultValue: 0 },
       { id: 'matteExpansion', label: 'Matte Expansion', type: 'slider', min: -20, max: 20, step: 0.5, defaultValue: 0 },

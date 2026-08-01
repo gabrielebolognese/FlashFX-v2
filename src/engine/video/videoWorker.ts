@@ -459,6 +459,17 @@ class VideoDecoderController {
   /** Idle-drain timer: flushes the reorder tail shortly after feeding stops. */
   private drainTimer: ReturnType<typeof setTimeout> | null = null;
 
+  // ── Decoded-frame LRU ──────────────────────────────────────────────────────
+  // Frames decoded while reaching a target were previously closed and thrown away,
+  // so a backward/random scrub reseeked to the keyframe and re-decoded the whole GOP
+  // per step (O(GOP²)). Cache them (keyed by EXACT frame.timestamp — the value the
+  // worker stamps on each chunk and WebCodecs preserves, so a stale/mismatched key
+  // simply misses, never returns a wrong frame) so a hit resolves without decoding.
+  // Bounded by bytes (not count) so the cap holds regardless of resolution.
+  private decodedCache = new Map<number, VideoFrame>();
+  private decodedCacheBytes = 0;
+  private static readonly DECODED_CACHE_BYTES = 128 * 1024 * 1024;
+
   /** Max samples fed in a single pass (bounds byte reads + input-queue depth). */
   private static readonly MAX_FORWARD_SPAN = 120;
   /** Backpressure cap: keep the decoder busy but don't overrun its input queue. */
@@ -501,7 +512,69 @@ class VideoDecoderController {
     action();
   }
 
+  /** Rough byte cost of a decoded frame (YUV 4:2:0 over-estimate) for the LRU budget. */
+  private frameBytes(frame: VideoFrame): number {
+    return Math.max(1, frame.displayWidth * frame.displayHeight * 2);
+  }
+
+  /**
+   * Store a decoded frame in the LRU (taking ownership — it will be closed on
+   * eviction). Only ever given intermediates (no owner) or CLONES of delivered
+   * frames, so this never closes a frame handed to a caller.
+   */
+  private cacheFrame(ts: number, frame: VideoFrame): void {
+    const existing = this.decodedCache.get(ts);
+    if (existing) {
+      this.decodedCacheBytes -= this.frameBytes(existing);
+      try { existing.close(); } catch { /* already closed */ }
+      this.decodedCache.delete(ts);
+    }
+    this.decodedCache.set(ts, frame);
+    this.decodedCacheBytes += this.frameBytes(frame);
+    while (this.decodedCacheBytes > VideoDecoderController.DECODED_CACHE_BYTES && this.decodedCache.size > 1) {
+      const oldest = this.decodedCache.keys().next().value as number;
+      const old = this.decodedCache.get(oldest);
+      this.decodedCache.delete(oldest);
+      if (old) {
+        this.decodedCacheBytes -= this.frameBytes(old);
+        try { old.close(); } catch { /* already closed */ }
+      }
+    }
+  }
+
+  /** Close every cached frame — call on reset/error so decoded frames never leak. */
+  private closeCache(): void {
+    for (const f of this.decodedCache.values()) {
+      try { f.close(); } catch { /* already closed */ }
+    }
+    this.decodedCache.clear();
+    this.decodedCacheBytes = 0;
+  }
+
   decodeFrame(frameIndex: number): Promise<VideoFrame> {
+    // Fast path: the target frame is still cached from a recent decode pass — clone
+    // it out without touching the decoder. This is what collapses backward/random
+    // scrub from O(GOP²) to a cache hit. Exact-timestamp key ⇒ any mismatch misses.
+    const sample = this.demuxer.getSampleForFrame(this.assetId, frameIndex);
+    if (sample) {
+      const ts = Math.round((sample.cts / this.demuxer.getTimescale(this.assetId)) * 1_000_000);
+      const cached = this.decodedCache.get(ts);
+      if (cached) {
+        try {
+          const clone = cached.clone();
+          // LRU touch: move to most-recently-used.
+          this.decodedCache.delete(ts);
+          this.decodedCache.set(ts, cached);
+          return Promise.resolve(clone);
+        } catch {
+          // Clone failed (frame closed under us) — drop it and decode normally.
+          this.decodedCacheBytes -= this.frameBytes(cached);
+          this.decodedCache.delete(ts);
+          try { cached.close(); } catch { /* already closed */ }
+        }
+      }
+    }
+
     const requestId = this.nextRequestId++;
     let resolve!: (frame: VideoFrame) => void;
     let reject!: (err: Error) => void;
@@ -777,9 +850,10 @@ class VideoDecoderController {
     }
 
     if (matches.length === 0) {
-      // Intermediate/discarded frame (decoded to reach a target, or for an
-      // already-settled pending). Nothing owns it — reclaim immediately.
-      frame.close();
+      // Intermediate frame (decoded to reach a target, or for an already-settled
+      // pending). Cache it so a backward scrub can reuse it instead of re-decoding;
+      // the LRU owns and closes it on eviction.
+      this.cacheFrame(frameTimestamp, frame);
       return;
     }
 
@@ -790,7 +864,8 @@ class VideoDecoderController {
       if (m.cancelled) this.settle(m, () => m.reject(new Error('Decode cancelled')));
     }
     if (owners.length === 0) {
-      frame.close();
+      // All matches were cancelled — no caller, but keep it cached for re-scrub.
+      this.cacheFrame(frameTimestamp, frame);
       return;
     }
     for (let i = 0; i < owners.length; i++) {
@@ -808,6 +883,14 @@ class VideoDecoderController {
         }
       }
     }
+    // Keep an independent copy of the delivered frame so scrubbing back to it hits
+    // the cache. The last owner got the original (to be transferred); this clones
+    // before that transfer (valid — see above).
+    try {
+      this.cacheFrame(frameTimestamp, frame.clone());
+    } catch {
+      // clone failed — skip caching this one.
+    }
   }
 
   private onError(err: DOMException): void {
@@ -822,6 +905,7 @@ class VideoDecoderController {
       this.settle(pending, () => pending.reject(new Error(`Decoder error: ${err.message}`)));
     }
     this.pendingDecodes.clear();
+    this.closeCache();
   }
 
   cancelFrame(frameIndex: number): boolean {
@@ -850,6 +934,7 @@ class VideoDecoderController {
       this.settle(pending, () => pending.reject(new Error('Decoder reset')));
     }
     this.pendingDecodes.clear();
+    this.closeCache();
 
     if (this.decoder && this.decoder.state !== 'closed') {
       try {

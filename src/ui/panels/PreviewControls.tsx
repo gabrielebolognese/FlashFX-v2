@@ -7,8 +7,6 @@ import {
   Boxes,
   Grid3x3,
   Sun,
-  Layers,
-  EyeOff,
   Circle,
   LayoutDashboard,
   Scissors,
@@ -22,6 +20,7 @@ import {
   type PreviewQuality,
 } from '../../store/preview';
 import { usePanelStore, type EditorWorkspace } from '../../store/panels';
+import { useEditorStore } from '../../store/editor';
 
 export function PreviewControls() {
   const quality = usePreviewStore((s) => s.quality);
@@ -36,6 +35,33 @@ export function PreviewControls() {
   const toggleRegionOfInterest = usePreviewStore((s) => s.toggleRegionOfInterest);
   const fastDraft = usePreviewStore((s) => s.fastDraft);
   const toggleFastDraft = usePreviewStore((s) => s.toggleFastDraft);
+
+  // Solo: per-track solo lives on the timeline TrackRow buttons; this toolbar
+  // toggle acts on the selected layer's track (or clears solo when nothing is
+  // selected but soloing is active).
+  const anySolo = useEditorStore((s) => s.composition.tracks.some((t) => t.solo));
+  const activeTrackId = useEditorStore((s) => {
+    const id = s.selection.activeId;
+    if (!id) return null;
+    return s.composition.layers.find((l) => l.id === id)?.trackId ?? null;
+  });
+  const activeTrackSoloed = useEditorStore((s) =>
+    !!activeTrackId && s.composition.tracks.some((t) => t.id === activeTrackId && t.solo)
+  );
+  const toggleTrackSolo = useEditorStore((s) => s.toggleTrackSolo);
+  const clearTrackSolo = useEditorStore((s) => s.clearTrackSolo);
+
+  const handleSolo = () => {
+    if (activeTrackId) toggleTrackSolo(activeTrackId);
+    else if (anySolo) clearTrackSolo();
+  };
+  const soloTitle = activeTrackId
+    ? activeTrackSoloed
+      ? 'Unsolo selected track'
+      : "Solo selected layer's track"
+    : anySolo
+      ? 'Clear solo'
+      : 'Solo (select a layer first)';
 
   return (
     <div className="h-[28px] min-h-[28px] flex items-center gap-1 px-2 bg-[#081220] border-t border-[#1a2a42] select-none">
@@ -105,33 +131,13 @@ export function PreviewControls() {
 
       <Divider />
 
-      {/* Frame Blending placeholder */}
+      {/* Solo — acts on the selected layer's track; per-track solo lives on the timeline rows */}
       <ToggleButton
-        icon={<Layers size={12} />}
-        active={false}
-        onClick={() => {}}
-        title="Frame Blending (not implemented)"
-        disabled
-        activeColor="text-[#f7b500]"
-      />
-
-      {/* Shy layers placeholder */}
-      <ToggleButton
-        icon={<EyeOff size={12} />}
-        active={false}
-        onClick={() => {}}
-        title="Shy Layers (not implemented)"
-        disabled
-        activeColor="text-orange-400"
-      />
-
-      {/* Solo placeholder */}
-      <ToggleButton
-        icon={<Circle size={12} />}
-        active={false}
-        onClick={() => {}}
-        title="Solo (not implemented)"
-        disabled
+        icon={<Circle size={12} fill={anySolo ? 'currentColor' : 'none'} />}
+        active={anySolo}
+        onClick={handleSolo}
+        title={soloTitle}
+        disabled={!activeTrackId && !anySolo}
         activeColor="text-fuchsia-400"
       />
 

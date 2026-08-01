@@ -18,6 +18,9 @@ interface WorkerState {
   inFlight: Map<string, InFlightRequest>;
   healthy: boolean;
   consecutiveErrors: number;
+  // Current scrub decode scale (1 = full, 0.5 = proxy). Tracked so export can
+  // force full-res for a decode and then restore the scrub proxy afterward.
+  proxyScale: number;
 }
 
 const MAX_CONSECUTIVE_ERRORS = 3;
@@ -56,6 +59,7 @@ class VideoDecoderPool {
       inFlight: new Map(),
       healthy: true,
       consecutiveErrors: 0,
+      proxyScale: 1,
     };
 
     worker.onmessage = (e: MessageEvent<WorkerOutboundMessage>) => {
@@ -110,9 +114,15 @@ class VideoDecoderPool {
       return Promise.reject(new Error(`No worker for asset ${assetId}`));
     }
 
-    this.setProxyMode(assetId, 1);
+    // Force full res for this decode without clobbering the asset's scrub proxy
+    // state; restore it afterward so scrubbing doesn't stay full-res for the rest
+    // of the session once an export has run. (No-op when proxy is already off.)
+    const prevScale = state.proxyScale;
+    if (prevScale !== 1) {
+      state.worker.postMessage({ type: 'SET_PROXY', assetId, proxyScale: 1 });
+    }
 
-    return new Promise<VideoFrame>((resolve, reject) => {
+    const done = new Promise<VideoFrame>((resolve, reject) => {
       const requestId = nextRequestId();
       state.inFlight.set(requestId, { resolve, reject });
 
@@ -124,6 +134,14 @@ class VideoDecoderPool {
       };
       state.worker.postMessage(msg);
     });
+
+    try {
+      return await done;
+    } finally {
+      if (prevScale !== 1) {
+        state.worker.postMessage({ type: 'SET_PROXY', assetId, proxyScale: prevScale });
+      }
+    }
   }
 
   /** Cancel an in-flight decode request. */
@@ -178,6 +196,7 @@ class VideoDecoderPool {
   setProxyMode(assetId: string, scale: number): void {
     const state = this.workers.get(assetId);
     if (!state) return;
+    state.proxyScale = scale;
     state.worker.postMessage({ type: 'SET_PROXY', assetId, proxyScale: scale });
   }
 
@@ -259,6 +278,12 @@ class VideoDecoderPool {
 
     state.worker = worker;
     state.consecutiveErrors = 0;
+    // Reject requests that were in flight on the dead worker so their awaiters
+    // fail fast (and can retry) instead of hanging forever — the cause of
+    // permanent black frames after an error burst.
+    for (const req of state.inFlight.values()) {
+      req.reject(new Error('Decoder worker respawned; request cancelled.'));
+    }
     state.inFlight.clear();
 
     worker.onmessage = (e: MessageEvent<WorkerOutboundMessage>) => {

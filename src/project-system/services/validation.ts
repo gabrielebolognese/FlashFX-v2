@@ -487,6 +487,7 @@ function validateLayer(raw: unknown): Layer | null {
         spacing: typeof r.spacing === 'number' ? r.spacing : 0,
         padding: typeof r.padding === 'number' ? r.padding : 0,
         rotationOffset: typeof r.rotationOffset === 'number' ? r.rotationOffset : 0,
+        ...(r.followPathRotation === true ? { followPathRotation: true } : {}),
         children: Array.isArray(r.children) ? r.children : [],
         computedData: isObject(r.computedData) ? r.computedData : null,
       } as unknown as Layer;

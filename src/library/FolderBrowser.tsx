@@ -18,6 +18,7 @@ import {
   getFolderItems,
 } from './folderService';
 import type { AssetFolder } from './types';
+import { useMediaPoolStore } from '../store/mediaPool';
 
 interface FolderBrowserProps {
   folderType: 'images' | 'videos' | 'audio';
@@ -36,11 +37,20 @@ export function FolderBrowser({ folderType, currentFolderId, onFolderChange, onF
 
   const loadFolders = useCallback(async () => {
     const result = await fetchFolders(folderType);
+    // Publish the full (tab-scoped) list so the asset context menu can build its
+    // "Move to Folder" picker without its own async fetch.
+    useMediaPoolStore.getState().setFolders(result);
     setFolders(result.filter((f) => f.parent_id === (currentFolderId || null)));
   }, [folderType, currentFolderId]);
 
   useEffect(() => {
     loadFolders();
+  }, [loadFolders]);
+
+  // Let menu-driven folder mutations (add-fav / move-folder) refresh this browser.
+  useEffect(() => {
+    useMediaPoolStore.getState().setHandlers({ onFolderRefresh: loadFolders });
+    return () => useMediaPoolStore.getState().setHandlers({ onFolderRefresh: null });
   }, [loadFolders]);
 
   useEffect(() => {

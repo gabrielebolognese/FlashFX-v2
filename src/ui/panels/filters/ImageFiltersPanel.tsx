@@ -1,10 +1,22 @@
 import { useState, useCallback } from 'react';
-import { ChevronRight, Search, RotateCcw, Upload } from 'lucide-react';
+import { ChevronRight, Search, RotateCcw, Upload, ChevronUp, ChevronDown, X, Eye, EyeOff, Layers, Lock } from 'lucide-react';
 import { FILTER_CATEGORIES, type FilterDef, type FilterCategory } from './filterDefinitions';
 import type { ImageLayer } from '../../../core/types';
 import { useEditorStore } from '../../../store/editor';
-import { getEffectDef, isLegacyFilter } from '../../../core/effects/effectRegistry';
+import { getEffectDef, getEffectDefByType, isLegacyFilter } from '../../../core/effects/effectRegistry';
 import { isWireFilter, buildWire, readWireValue } from '../../../core/effects/wireEffects';
+
+// Flat filter-id → display label, so the applied-effects list can name a stacked
+// effect from its frozen numeric type (type → registry def id → label).
+const EFFECT_ID_TO_LABEL: Record<string, string> = {};
+for (const cat of FILTER_CATEGORIES) for (const f of cat.filters) EFFECT_ID_TO_LABEL[f.id] = f.label;
+
+// A filter actually renders iff it routes to the legacy uniforms, a blur/glow wire
+// effect, or the effect stack. Anything else is not yet wired to the renderer — we
+// lock it honestly rather than showing a slider that does nothing.
+function isFilterReal(id: string): boolean {
+  return isLegacyFilter(id) || isWireFilter(id) || !!getEffectDef(id);
+}
 
 interface FilterValues {
   [filterId: string]: number | string;
@@ -14,6 +26,8 @@ export function ImageFiltersPanel({ layer }: { layer: ImageLayer }) {
   const updateLayerProperty = useEditorStore((s) => s.updateLayerProperty);
   const setLayerEffectParam = useEditorStore((s) => s.setLayerEffectParam);
   const removeLayerEffect = useEditorStore((s) => s.removeLayerEffect);
+  const reorderLayerEffect = useEditorStore((s) => s.reorderLayerEffect);
+  const toggleLayerEffect = useEditorStore((s) => s.toggleLayerEffect);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set(['essentials']));
   const [searchQuery, setSearchQuery] = useState('');
   // Local state is only used for filters that are not yet implemented (no
@@ -134,6 +148,12 @@ export function ImageFiltersPanel({ layer }: { layer: ImageLayer }) {
 
       {/* Category list */}
       <div className="flex-1 overflow-y-auto min-h-0 px-1.5 pb-3">
+        <AppliedEffects
+          layer={layer}
+          onReorder={reorderLayerEffect}
+          onToggle={toggleLayerEffect}
+          onRemove={removeLayerEffect}
+        />
         {filteredCategories.map((category) => (
           <FilterCategoryAccordion
             key={category.id}
@@ -152,6 +172,78 @@ export function ImageFiltersPanel({ layer }: { layer: ImageLayer }) {
             <span className="text-[10px]">No filters match "{searchQuery}"</span>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// The "Manage Effects" surface: the layer's ordered effect stack with per-effect
+// enable/reorder/remove. Only stack effects (not the 5 legacy filters or the
+// blur/glow wire effects) live in layer.effects, so this lists exactly them.
+function AppliedEffects({
+  layer,
+  onReorder,
+  onToggle,
+  onRemove,
+}: {
+  layer: ImageLayer;
+  onReorder: (layerId: string, type: number, direction: 'up' | 'down') => void;
+  onToggle: (layerId: string, type: number) => void;
+  onRemove: (layerId: string, type: number) => void;
+}) {
+  const effects = layer.effects ?? [];
+  if (effects.length === 0) return null;
+
+  return (
+    <div className="mb-2 mx-1 rounded-md border border-[#1a2a42] bg-[#0a1524] overflow-hidden">
+      <div className="flex items-center gap-1.5 px-2.5 py-1.5 border-b border-[#1a2a42]">
+        <Layers size={11} className="text-[#f7b500]" />
+        <span className="text-[10px] font-semibold text-slate-300 uppercase tracking-wider flex-1">Applied Effects</span>
+        <span className="text-[9px] text-slate-600">{effects.length} · render order</span>
+      </div>
+      <div className="py-0.5">
+        {effects.map((e, i) => {
+          const def = getEffectDefByType(e.type);
+          const label = def ? (EFFECT_ID_TO_LABEL[def.id] ?? def.id) : `Effect #${e.type}`;
+          const enabled = e.enabled !== false;
+          return (
+            <div key={e.type} className="flex items-center gap-1 px-2 py-[3px] hover:bg-white/[0.02] group/eff">
+              <button
+                onClick={() => onToggle(layer.id, e.type)}
+                className={`flex-shrink-0 transition-colors ${enabled ? 'text-[#f7b500] hover:text-[#ffc83d]' : 'text-slate-600 hover:text-slate-400'}`}
+                title={enabled ? 'Disable effect' : 'Enable effect'}
+              >
+                {enabled ? <Eye size={11} /> : <EyeOff size={11} />}
+              </button>
+              <span className={`text-[10px] flex-1 truncate ${enabled ? 'text-slate-300' : 'text-slate-600 line-through'}`} title={label}>
+                {label}
+              </span>
+              <button
+                onClick={() => onReorder(layer.id, e.type, 'up')}
+                disabled={i === 0}
+                className="flex-shrink-0 text-slate-600 hover:text-slate-300 disabled:opacity-20 disabled:hover:text-slate-600"
+                title="Move up (renders earlier)"
+              >
+                <ChevronUp size={11} />
+              </button>
+              <button
+                onClick={() => onReorder(layer.id, e.type, 'down')}
+                disabled={i === effects.length - 1}
+                className="flex-shrink-0 text-slate-600 hover:text-slate-300 disabled:opacity-20 disabled:hover:text-slate-600"
+                title="Move down (renders later)"
+              >
+                <ChevronDown size={11} />
+              </button>
+              <button
+                onClick={() => onRemove(layer.id, e.type)}
+                className="flex-shrink-0 text-slate-600 hover:text-red-400 opacity-0 group-hover/eff:opacity-100 transition-opacity"
+                title="Remove effect"
+              >
+                <X size={11} />
+              </button>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -203,6 +295,7 @@ function FilterCategoryAccordion({
               key={filter.id}
               filter={filter}
               value={getFilterValue(filter)}
+              implemented={isFilterReal(filter.id)}
               onChange={(v) => onFilterChange(filter.id, v)}
               onReset={() => onResetFilter(filter)}
             />
@@ -216,14 +309,29 @@ function FilterCategoryAccordion({
 function FilterControl({
   filter,
   value,
+  implemented = true,
   onChange,
   onReset,
 }: {
   filter: FilterDef;
   value: number;
+  implemented?: boolean;
   onChange: (v: number) => void;
   onReset: () => void;
 }) {
+  // Not yet wired to the renderer — show it locked instead of a dead slider.
+  if (!implemented) {
+    return (
+      <div
+        className="flex items-center gap-1.5 py-[3px] px-2 rounded opacity-40 cursor-not-allowed"
+        title={`${filter.label} — not yet available`}
+      >
+        <label className="text-[10px] text-slate-500 flex-1 truncate">{filter.label}</label>
+        <Lock size={9} className="text-slate-600 flex-shrink-0" />
+      </div>
+    );
+  }
+
   const isActive = value !== (filter.defaultValue ?? 0);
   const isToggle = filter.type === 'toggle';
   const isFile = filter.type === 'file';

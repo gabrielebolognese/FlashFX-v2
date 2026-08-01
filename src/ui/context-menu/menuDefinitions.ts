@@ -23,8 +23,13 @@ import { useCaptionStore } from '../../store/captions';
 import { useSilenceStore } from '../../store/silenceStripper';
 import { videoDecoderPool } from '../../engine/video/videoDecoderPool';
 import { generateThumbnailSheet } from '../../engine/video/thumbnailSheet';
+import { detectSceneCuts } from '../../engine/video/sceneDetect';
 import { useAiImageStore } from '../../store/aiImage';
+import { useInspectorStore } from '../../store/inspector';
+import { addAssetToFavorites, addAssetToFolder } from '../../library/folderService';
 import { processAudioAsset, toMono, toStereo, normalize, amplifyBy } from '../../engine/audio/audioProcessing';
+import { extractMonoAudio } from '../../engine/silence/audioForSilence';
+import { detectBeats } from '../../core/beatDetection';
 import { getSelectionRect } from '../../core/snap/bbox';
 import { mediaAssetManager } from '../../engine/media/assetManager';
 import { useProjectStore } from '../../project-system/hooks/useProjectStore';
@@ -138,7 +143,6 @@ export function buildCanvasMenu(): MenuEntry[] {
         item('new-grid', 'New Grid Layout', () => editor.addLayoutObject('grid'), LayoutGrid),
         item('new-container', 'New Layout Container', () => editor.addLayoutContainer(), Container),
         item('new-group', 'New Group', () => editor.createGroup(), Folder),
-        disabled('new-compound', 'New Compound Animation', Sparkles),
       ],
     },
     {
@@ -457,7 +461,11 @@ function buildAudioClipSection(layerId: string): MenuEntry[] {
       items: [
         item('audio-fade-in', 'Add Fade In', () => ed.addFade(layerId, 'audio.volume', 'in'), Sparkles),
         item('audio-fade-out', 'Add Fade Out', () => ed.addFade(layerId, 'audio.volume', 'out'), Sparkles),
-        disabled('audio-crossfade', 'Crossfade', Waves),
+        item('audio-crossfade', 'Crossfade', () => {
+          if (!useEditorStore.getState().crossfadeAudioClip(layerId)) {
+            window.alert('Crossfade needs a second audio clip overlapping this one. Drag two audio clips so they overlap, then try again.');
+          }
+        }, Waves),
       ],
     },
   ];
@@ -574,6 +582,26 @@ export function buildMediaAssetMenu(assetType: 'image' | 'video' | 'audio', asse
       .catch(() => window.alert('Audio processing failed.'));
   };
 
+  // Client-side onset/tempo analysis → BPM readout or beat markers on the ruler.
+  const runBeatDetect = (mode: 'beats' | 'bpm') => {
+    extractMonoAudio(assetId)
+      .then(({ samples, sampleRate }) => {
+        const { beats, bpm } = detectBeats(samples, sampleRate);
+        if (mode === 'bpm') {
+          window.alert(bpm > 0
+            ? `Estimated tempo: ~${bpm} BPM (${beats.length} onsets detected).`
+            : 'Could not determine a tempo for this clip.');
+        } else if (beats.length === 0) {
+          window.alert('No beats detected in this clip.');
+        } else {
+          const st = useEditorStore.getState();
+          const fps = st.composition.settings.frameRate;
+          st.addMarkersAtFrames(beats.map((t) => t * fps), { namePrefix: 'Beat', color: '#f59e0b' });
+        }
+      })
+      .catch(() => window.alert('Beat analysis failed. The clip may have no audio.'));
+  };
+
   // Re-register this asset's underlying blob as a brand-new pool asset.
   const duplicateAsset = () => {
     const pid = useProjectStore.getState().activeProjectId;
@@ -613,7 +641,22 @@ export function buildMediaAssetMenu(assetType: 'image' | 'video' | 'audio', asse
       type: 'group',
       label: 'Organization',
       items: [
-        disabled('move-folder', 'Move to Folder', FolderPlus),
+        pool.folders.length > 0
+          ? {
+              type: 'submenu' as const,
+              id: 'move-folder',
+              label: 'Move to Folder',
+              icon: FolderPlus,
+              items: pool.folders.map((f) =>
+                item(`mv-${f.id}`, f.name, () => {
+                  void addAssetToFolder(f.id, assetId).then((ok) => {
+                    if (ok) pool.onFolderRefresh?.();
+                    else window.alert('Could not move to folder. Folders require a cloud connection.');
+                  });
+                }, FolderPlus)
+              ),
+            }
+          : disabled('move-folder', 'Move to Folder (no folders)', FolderPlus),
         ...(assetType === 'video'
           ? [item('create-subclip', 'Create Subclip…', () => {
               const meta = mediaAssetManager.getMetadata(assetId);
@@ -628,9 +671,14 @@ export function buildMediaAssetMenu(assetType: 'image' | 'video' | 'audio', asse
                 ed.addVideoSubclip(assetId, start, end);
               }
             }, Scissors)]
-          : [disabled('create-subclip', 'Create Subclip', Scissors)]),
+          : []),
         disabled('add-tag', 'Add Tag', Tag),
-        disabled('add-fav', 'Add Favorite', Star),
+        item('add-fav', 'Add Favorite', () => {
+          void addAssetToFavorites(assetId).then((ok) => {
+            if (ok) pool.onFolderRefresh?.();
+            else window.alert('Favorites require a cloud connection.');
+          });
+        }, Star),
       ],
     },
     {
@@ -674,7 +722,7 @@ export function buildMediaAssetMenu(assetType: 'image' | 'video' | 'audio', asse
       items: [
         item('set-bg', 'Set as Background', () => ed.addImageAsBackground(assetId), Image),
         disabled('convert-shape', 'Convert to Shape', Square),
-        disabled('crop-img', 'Crop', Scissors),
+        item('crop-img', 'Crop', () => { ed.cropImageAsset(assetId); useInspectorStore.getState().requestTab('masks'); }, Scissors),
         item('auto-fit', 'Auto Fit Canvas', () => ed.addImageFitCanvas(assetId), Maximize),
       ],
     });
@@ -709,7 +757,16 @@ export function buildMediaAssetMenu(assetType: 'image' | 'video' | 'audio', asse
       label: 'AI',
       icon: Wand2,
       items: [
-        disabled('scene-detect', 'Scene Detection', ScanLine),
+        item('scene-detect', 'Scene Detection', () => {
+          detectSceneCuts(assetId)
+            .then((cutSecs) => {
+              if (cutSecs.length === 0) { window.alert('No scene cuts detected.'); return; }
+              const st = useEditorStore.getState();
+              const fps = st.composition.settings.frameRate;
+              st.addMarkersAtFrames(cutSecs.map((s) => s * fps), { namePrefix: 'Cut', color: '#38bdf8' });
+            })
+            .catch(() => window.alert('Scene detection failed. Add the clip to the timeline first so its decoder is active.'));
+        }, ScanLine),
         // Add the video to the timeline, then open the (fully-built) caption engine on it.
         item('auto-captions', 'Auto Captions', () => {
           ed.addVideoFromAsset(assetId, cx, cy);
@@ -750,8 +807,8 @@ export function buildMediaAssetMenu(assetType: 'image' | 'video' | 'audio', asse
       type: 'group',
       label: 'Analysis',
       items: [
-        disabled('detect-bpm', 'Detect BPM', Activity),
-        disabled('detect-beats', 'Detect Beats', AudioLines),
+        item('detect-bpm', 'Detect BPM', () => runBeatDetect('bpm'), Activity),
+        item('detect-beats', 'Detect Beats', () => runBeatDetect('beats'), AudioLines),
         disabled('detect-key', 'Detect Key', Music),
         item('detect-loudness', 'Detect Loudness', () => {
           const wf = mediaAssetManager.getWaveform(assetId);

@@ -764,6 +764,9 @@ export interface LayoutContainerLayer {
   spacing: number;
   padding: number;
   rotationOffset: number;
+  // When true, children distributed along the container's path/edge are
+  // rotated to follow the local tangent (path-tangent orientation).
+  followPathRotation?: boolean;
   children: ContainerChildEntry[];
   computedData: ContainerComputedData | null;
   inPoint: number;
@@ -832,6 +835,10 @@ export interface Track {
   locked: boolean;
   visible: boolean;
   muted?: boolean;
+  // Solo: when ANY track in the composition is soloed, only soloed tracks
+  // render (and are audible). Mirrors AE/Premiere solo. Transient-ish view
+  // state, but persisted alongside visible/muted for consistency.
+  solo?: boolean;
   // When enabled, clips on this track are laid out gaplessly in timeline
   // order (CapCut-style). Absolute positions become derived from clip order
   // and duration. Undefined falls back to the type default (video → on).

@@ -44,7 +44,15 @@ function clampRate(r: number): number {
 
 function mutedTrackSet(composition: Composition): Set<string> {
   const tracks = composition.tracks || [];
-  return new Set(tracks.filter((t) => t.muted || !t.visible).map((t) => t.id));
+  const muted = new Set(tracks.filter((t) => t.muted || !t.visible).map((t) => t.id));
+  // Solo parity with the visual resolver: if any track is soloed, treat every
+  // non-soloed track as muted so preview/export audio matches what renders.
+  const soloIds = tracks.filter((t) => t.solo).map((t) => t.id);
+  if (soloIds.length > 0) {
+    const soloed = new Set(soloIds);
+    for (const t of tracks) if (!soloed.has(t.id)) muted.add(t.id);
+  }
+  return muted;
 }
 
 /**

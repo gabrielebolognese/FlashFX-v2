@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { AssetFolder } from '../library/types';
 
 // View/sort state for the Media Pool, lifted out of the MediaPool component so
 // the media-pool context menus (which are built by pure functions with no access
@@ -26,7 +27,13 @@ interface MediaPoolState {
   // trigger imports/refresh that need the component's file input + asset manager.
   onImport: ((opts?: MediaImportOptions) => void) | null;
   onRefresh: (() => void) | null;
-  setHandlers: (h: Partial<Pick<MediaPoolState, 'onImport' | 'onRefresh'>>) => void;
+  // Folder list published by the mounted FolderBrowser (for the current tab) so the
+  // pure asset menu can build a "Move to Folder" picker; onFolderRefresh reloads it
+  // after a menu-driven folder mutation.
+  folders: AssetFolder[];
+  setFolders: (folders: AssetFolder[]) => void;
+  onFolderRefresh: (() => void) | null;
+  setHandlers: (h: Partial<Pick<MediaPoolState, 'onImport' | 'onRefresh' | 'onFolderRefresh'>>) => void;
 }
 
 export const useMediaPoolStore = create<MediaPoolState>((set) => ({
@@ -40,5 +47,8 @@ export const useMediaPoolStore = create<MediaPoolState>((set) => ({
   setPreviewAsset: (previewAssetId) => set({ previewAssetId }),
   onImport: null,
   onRefresh: null,
+  folders: [],
+  setFolders: (folders) => set({ folders }),
+  onFolderRefresh: null,
   setHandlers: (h) => set(h),
 }));

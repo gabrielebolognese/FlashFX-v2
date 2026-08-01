@@ -23,6 +23,7 @@ import type {
   MotionPath,
   LayoutObjectLayer,
   LayoutContainerLayer,
+  Track,
 } from './types';
 import type { ResolvedMotionBlur, ResolvedShadow, ResolvedBlur, LayerShadow, LayerGlow, LayerBlur, ResolvedGlow } from './types';
 import { measureText } from '../engine/textAtlas';
@@ -55,8 +56,60 @@ let _exprLayerId: string | null = null;
 // Layout offset map. Computed at the start of resolveFrame for any active
 // layout containers. Maps childId -> {x, y} offset within the layout.
 // ---------------------------------------------------------------------------
-let _layoutOffsets: Map<string, { x: number; y: number }> = new Map();
+let _layoutOffsets: Map<string, { x: number; y: number; rotation?: number }> = new Map();
 let _layoutContainerSizes: Map<string, { width: number; height: number }> = new Map();
+// Layer-by-id lookup used by the per-layer helpers (parenting/group-visibility) for
+// O(1) map hits instead of O(N) linear scans. Populated from the structural cache at
+// the top of resolveFrame (and by buildPhysicsEvaluator for its out-of-resolveFrame
+// use). Saved/restored around the precomp recursion like the layout maps.
+let _layerById: Map<string, Layer> = new Map();
+
+// ---------------------------------------------------------------------------
+// Structural cache: the frame-INDEPENDENT data resolveFrame would otherwise rebuild
+// every frame — the id map, the render-order sort, and the track lookup sets. Keyed
+// on the `layers` array reference (WeakMap → auto-evicts when the composition is
+// edited) and validated against the `tracks` reference, since a track-only edit
+// (e.g. toggling solo) keeps the same layers array but must still invalidate. During
+// playback the composition ref is stable between edits, so this collapses a per-frame
+// O(N log N)+O(N) rebuild to a single map hit.
+// ---------------------------------------------------------------------------
+interface StructuralCache {
+  tracksRef: Track[];
+  layerById: Map<string, Layer>;
+  sortedLayers: Layer[];
+  hiddenTrackIds: Set<string>;
+  soloTrackIds: Set<string>;
+  soloing: boolean;
+  hasLayoutLayers: boolean;
+}
+const _structCacheByLayers = new WeakMap<Layer[], StructuralCache>();
+
+function getStructuralCache(layers: Layer[], tracks: Track[]): StructuralCache {
+  const hit = _structCacheByLayers.get(layers);
+  if (hit && hit.tracksRef === tracks) return hit;
+  const trackOrderMap = new Map(tracks.map((t) => [t.id, t.order]));
+  const soloTrackIds = new Set(tracks.filter((t) => t.solo).map((t) => t.id));
+  const cache: StructuralCache = {
+    tracksRef: tracks,
+    layerById: new Map(layers.map((l) => [l.id, l])),
+    // Highest track order first (top tracks render last / on top); ties break by
+    // clip in-point so abutting multi-clip lanes stack deterministically.
+    sortedLayers: [...layers].sort((a, b) => {
+      const orderA = a.trackId ? (trackOrderMap.get(a.trackId) ?? 0) : 0;
+      const orderB = b.trackId ? (trackOrderMap.get(b.trackId) ?? 0) : 0;
+      if (orderA !== orderB) return orderB - orderA;
+      return a.inPoint - b.inPoint;
+    }),
+    hiddenTrackIds: new Set(tracks.filter((t) => !t.visible).map((t) => t.id)),
+    soloTrackIds,
+    soloing: soloTrackIds.size > 0,
+    hasLayoutLayers: layers.some(
+      (l) => l.type === 'hbox' || l.type === 'vbox' || l.type === 'grid' || l.type === 'layoutContainer',
+    ),
+  };
+  _structCacheByLayers.set(layers, cache);
+  return cache;
+}
 let _exprFrame = 0;
 let _exprFps = 30;
 let _exprLayerIndex = 0;
@@ -364,7 +417,7 @@ export function resolveLayer(layer: Layer, frame: number): ResolvedLayer | null 
 }
 
 function isGroupVisible(groupId: string, layers: Layer[], frame: number): boolean {
-  const group = layers.find((l) => l.id === groupId);
+  const group = _layerById.get(groupId);
   if (!group) return true;
   if (!group.visible) return false;
   if (frame < group.inPoint || frame >= group.outPoint) return false;
@@ -373,15 +426,15 @@ function isGroupVisible(groupId: string, layers: Layer[], frame: number): boolea
 }
 
 function getParentTransform(layerId: string, layers: Layer[], frame: number): ResolvedTransform {
-  const layer = layers.find((l) => l.id === layerId);
+  const layer = _layerById.get(layerId);
   if (!layer || !layer.parentId) {
     const layoutOffset = _layoutOffsets.get(layerId);
     if (layoutOffset) {
-      return { positionX: layoutOffset.x, positionY: layoutOffset.y, rotation: 0, scaleX: 1, scaleY: 1, anchorX: 0, anchorY: 0, opacity: 1 };
+      return { positionX: layoutOffset.x, positionY: layoutOffset.y, rotation: layoutOffset.rotation ?? 0, scaleX: 1, scaleY: 1, anchorX: 0, anchorY: 0, opacity: 1 };
     }
     return { positionX: 0, positionY: 0, rotation: 0, scaleX: 1, scaleY: 1, anchorX: 0, anchorY: 0, opacity: 1 };
   }
-  const parent = layers.find((l) => l.id === layer.parentId);
+  const parent = _layerById.get(layer.parentId);
   if (!parent) {
     return { positionX: 0, positionY: 0, rotation: 0, scaleX: 1, scaleY: 1, anchorX: 0, anchorY: 0, opacity: 1 };
   }
@@ -392,7 +445,12 @@ function getParentTransform(layerId: string, layers: Layer[], frame: number): Re
 
   const layoutOffset = _layoutOffsets.get(layerId);
   if (layoutOffset) {
-    composed = { ...composed, positionX: composed.positionX + layoutOffset.x, positionY: composed.positionY + layoutOffset.y };
+    composed = {
+      ...composed,
+      positionX: composed.positionX + layoutOffset.x,
+      positionY: composed.positionY + layoutOffset.y,
+      rotation: composed.rotation + (layoutOffset.rotation ?? 0),
+    };
   }
 
   return composed;
@@ -751,31 +809,29 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
   const { settings, layers } = composition;
   const motionPaths = composition.motionPaths || [];
   const resolvedLayers: ResolvedLayer[] = [];
-  // Sort layers by track order: highest order first so that top tracks (lowest
-  // order) render last (on top). Within the same track, ties break by clip
-  // in-point (later in-points draw last → on top of earlier ones), giving
-  // multi-clip lanes a deterministic stacking when their time ranges abut.
   const tracks = composition.tracks || [];
-  const trackOrderMap = new Map(tracks.map((t) => [t.id, t.order]));
-  const hiddenTrackIds = new Set(tracks.filter((t) => !t.visible).map((t) => t.id));
-  const sortedLayers = [...layers].sort((a, b) => {
-    const orderA = a.trackId ? (trackOrderMap.get(a.trackId) ?? 0) : 0;
-    const orderB = b.trackId ? (trackOrderMap.get(b.trackId) ?? 0) : 0;
-    if (orderA !== orderB) return orderB - orderA;
-    return a.inPoint - b.inPoint;
-  });
+  // Frame-independent structural data (id map, render-order sort, track sets),
+  // cached across frames — see getStructuralCache. Solo: when any track is soloed,
+  // only soloed tracks render (AE/Premiere semantics); empty set → no-op.
+  const struct = getStructuralCache(layers, tracks);
+  _layerById = struct.layerById;
+  const hiddenTrackIds = struct.hiddenTrackIds;
+  const soloTrackIds = struct.soloTrackIds;
+  const soloing = struct.soloing;
+  const sortedLayers = struct.sortedLayers;
 
   // Pre-compute layout offsets for children of active layout containers
   _layoutOffsets = new Map();
   _layoutContainerSizes = new Map();
   for (const layer of layers) {
+    if (!struct.hasLayoutLayers) break; // no layout/container layers → skip the O(N) pass
     if (layer.type !== 'hbox' && layer.type !== 'vbox' && layer.type !== 'grid') continue;
     if (!layer.visible) continue;
     if (frame < layer.inPoint || frame >= layer.outPoint) continue;
     const layoutLayer = layer as LayoutObjectLayer;
     const children: ChildMeasurement[] = layoutLayer.children
       .map((childId) => {
-        const child = layers.find((l) => l.id === childId);
+        const child = _layerById.get(childId);
         if (!child) return null;
         const override = layoutLayer.childOverrides[childId] || {
           grow: 0, shrink: 0, margin: { top: 0, right: 0, bottom: 0, left: 0 }, layoutVisibility: 'visible' as const,
@@ -801,6 +857,7 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
 
   // Pre-compute layout container (spatial/path-based) offsets
   for (const layer of layers) {
+    if (!struct.hasLayoutLayers) break; // no layout/container layers → skip the O(N) pass
     if (layer.type !== 'layoutContainer') continue;
     if (!layer.visible) continue;
     if (frame < layer.inPoint || frame >= layer.outPoint) continue;
@@ -817,8 +874,11 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
       width: computedData.bounds.width,
       height: computedData.bounds.height,
     });
+    const followRotation = container.followPathRotation === true;
     for (const [childId, pos] of Object.entries(computedData.childPositions)) {
-      _layoutOffsets.set(childId, { x: pos.x, y: pos.y });
+      // pos.angle is the path tangent in degrees (0 for non-path distributions);
+      // only apply it when the container opts into orienting children to the path.
+      _layoutOffsets.set(childId, { x: pos.x, y: pos.y, ...(followRotation ? { rotation: pos.angle } : {}) });
     }
   }
 
@@ -828,6 +888,7 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
     if (layer.type === 'audio') continue;
     if (!layer.visible) continue;
     if (layer.trackId && hiddenTrackIds.has(layer.trackId)) continue;
+    if (soloing && (!layer.trackId || !soloTrackIds.has(layer.trackId))) continue;
     if (frame < layer.inPoint || frame >= layer.outPoint) continue;
     if (layer.parentId && !isGroupVisible(layer.parentId, layers, frame)) continue;
 
@@ -1101,7 +1162,7 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
         // consumes `cloner.instances` via the instanced-shape or texture-stamp path.
         const cloner = layer as ClonerLayer;
         const sourceLayerId = cloner.sourceRef.type === 'layer' ? cloner.sourceRef.layerId : null;
-        const source = sourceLayerId ? layers.find((l) => l.id === sourceLayerId) : undefined;
+        const source = sourceLayerId ? _layerById.get(sourceLayerId) : undefined;
         const sdfTypes = ['rectangle', 'circle', 'star'];
         const isSdf = source?.type === 'shape' && sdfTypes.includes((source as ShapeLayer).shape?.type ?? '');
         // Data-bound sources force the full per-instance render path regardless of type.
@@ -1156,13 +1217,15 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
         if (sub && depth < MAX_PRECOMP_DEPTH && !inProgress.has(precomp.compositionId)) {
           const subLocalFrame = precompLocalFrame(precomp, frame, settings.frameRate, sub);
           // RE-ENTRANCY FIX: the recursive resolveFrame reassigns the module-level
-          // layout maps; save and restore them so the outer comp's still-running
-          // loop keeps reading its own offsets/sizes.
+          // layout maps + the layer-by-id map; save and restore them so the outer
+          // comp's still-running loop keeps reading its own offsets/sizes/layers.
           const savedOffsets = _layoutOffsets;
           const savedSizes = _layoutContainerSizes;
+          const savedById = _layerById;
           nested = resolveFrame(sub, subLocalFrame, { getComposition, depth: depth + 1, visited: inProgress });
           _layoutOffsets = savedOffsets;
           _layoutContainerSizes = savedSizes;
+          _layerById = savedById;
         }
         resolvedLayers.push({
           id: layer.id,
@@ -1280,6 +1343,11 @@ export function buildPhysicsEvaluator(composition: Composition): (layerId: strin
     const layer = layerMap.get(layerId);
     if (!layer) return { x: 0, y: 0, rotation: 0, width: 100, height: 100 };
 
+    // worldTransformAt → getParentTransform reads the module-level _layerById; set
+    // it to THIS composition's map so parenting resolves correctly when the physics
+    // bake runs outside a resolveFrame call (worldTransformAt is synchronous, so this
+    // set-then-use is atomic and can't be clobbered by an interleaving resolve).
+    _layerById = layerMap;
     const transform = worldTransformAt(layer, layers, motionPaths, frame);
     let width = 100;
     let height = 100;

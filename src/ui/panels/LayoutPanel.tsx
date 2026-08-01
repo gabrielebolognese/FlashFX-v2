@@ -132,20 +132,6 @@ export function LayoutParamsPanel({ layer }: LayoutPanelProps) {
         </Section>
       )}
 
-      {/* Advanced Grid placeholders */}
-      {isGrid && (
-        <Section label="Advanced">
-          <div className="space-y-1">
-            {['Uniform Cells', 'Auto Fill', 'Responsive Mode', 'Masonry Mode'].map((feat) => (
-              <div key={feat} className="flex items-center justify-between px-1 py-1 opacity-40">
-                <span className="text-[9px] text-slate-400">{feat}</span>
-                <span className="text-[8px] text-slate-600 bg-white/[0.03] px-1.5 py-0.5 rounded">Coming soon</span>
-              </div>
-            ))}
-          </div>
-        </Section>
-      )}
-
       {/* Visual */}
       <Section label="Visual">
         <DragInput label="Radius" value={p.borderRadius} onChange={(v) => setParam({ borderRadius: Math.max(0, v) })} min={0} max={100} step={1} precision={0} suffix="px" />

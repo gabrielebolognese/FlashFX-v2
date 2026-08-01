@@ -1,6 +1,6 @@
 import { useEditorStore } from '../../store/editor';
 import type { LayoutContainerLayer, ContainerShapeType, ContainerDistributionMode } from '../../core/types';
-import { Container, Circle, Square, Spline, Lock } from 'lucide-react';
+import { Container, Circle, Square, Spline } from 'lucide-react';
 
 interface Props {
   layer: LayoutContainerLayer;
@@ -18,15 +18,6 @@ const DISTRIBUTION_OPTIONS: { value: ContainerDistributionMode; label: string }[
   { value: 'interior', label: 'Interior' },
   { value: 'center', label: 'Center' },
   { value: 'vertices', label: 'Vertices' },
-];
-
-const FUTURE_FEATURES = [
-  'Follow Path Rotation',
-  'Orbit Animation',
-  'Procedural Motion',
-  'Stagger Along Path',
-  'Wave Offset',
-  'Random Offset',
 ];
 
 export function LayoutContainerPanel({ layer }: Props) {
@@ -176,29 +167,26 @@ export function LayoutContainerPanel({ layer }: Props) {
           </div>
         </div>
 
+        {/* Follow Path Rotation */}
+        <button
+          onClick={() => updateLayoutContainer(layer.id, { followPathRotation: !layer.followPathRotation })}
+          className={`w-full flex items-center justify-between px-2 py-1.5 rounded text-[10px] transition-colors border ${
+            layer.followPathRotation
+              ? 'bg-cyan-500/15 text-cyan-400 border-cyan-500/30'
+              : 'bg-[#0d1b2a] text-slate-400 border-[#1a2a42] hover:border-slate-500'
+          }`}
+          title="Rotate children to follow the container path's local tangent"
+        >
+          <span>Follow Path Rotation</span>
+          <span className={`w-7 h-3.5 rounded-full relative transition-colors ${layer.followPathRotation ? 'bg-cyan-500/50' : 'bg-[#1a2a42]'}`}>
+            <span className={`absolute top-0.5 w-2.5 h-2.5 rounded-full bg-white transition-all ${layer.followPathRotation ? 'left-4' : 'left-0.5'}`} />
+          </span>
+        </button>
+
         {/* Children count */}
         <div className="bg-[#0d1b2a] border border-[#1a2a42] rounded p-2 flex items-center justify-between">
           <span className="text-[10px] text-slate-400">Children</span>
           <span className="text-[11px] text-slate-200 font-mono">{layer.children.length}</span>
-        </div>
-
-        {/* Advanced Section */}
-        <div className="border-t border-[#1a2a42] pt-2 mt-2">
-          <div className="flex items-center gap-1.5 mb-2">
-            <span className="text-[10px] text-slate-500 uppercase tracking-wider">Advanced</span>
-            <span className="text-[9px] text-slate-600 bg-[#0d1b2a] px-1.5 py-0.5 rounded">Future</span>
-          </div>
-          <div className="space-y-1">
-            {FUTURE_FEATURES.map((feat) => (
-              <div
-                key={feat}
-                className="flex items-center gap-2 px-2 py-1.5 rounded bg-[#0d1b2a]/50 border border-[#1a2a42]/50 opacity-50 cursor-not-allowed"
-              >
-                <Lock size={9} className="text-slate-600" />
-                <span className="text-[10px] text-slate-500">{feat}</span>
-              </div>
-            ))}
-          </div>
         </div>
       </div>
     </div>

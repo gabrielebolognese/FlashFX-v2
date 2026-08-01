@@ -15,6 +15,10 @@
     "verify:cloner": "node scripts/verify-cloner.mjs",
     "verify:precomp": "node scripts/verify-precomp.mjs",
     "verify:pathops": "node scripts/verify-pathops.mjs",
+    "verify:beats": "node scripts/verify-beats.mjs",
+    "verify:scenes": "node scripts/verify-scenes.mjs",
+    "verify:waveform": "node scripts/verify-waveform.mjs",
+    "verify:resolve-cache": "node scripts/verify-resolve-cache.mjs",
     "preinstall": "echo ignore-scripts=true > .npmrc || true"
   },
   "dependencies": {

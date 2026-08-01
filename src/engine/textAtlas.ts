@@ -101,26 +101,31 @@ function computeLayout(ctx: OffscreenCanvasRenderingContext2D, text: ResolvedTex
   };
 }
 
+// Measurement only needs a 2D context — reuse a single scratch canvas/context
+// across all calls instead of allocating a fresh OffscreenCanvas per text layer
+// per frame (a measurable per-frame cost). Every call sets ctx.font before
+// measuring, so there's no stale-state hazard from sharing it.
+let _measureCtx: OffscreenCanvasRenderingContext2D | null = null;
+function measureCtx(): OffscreenCanvasRenderingContext2D {
+  if (!_measureCtx) _measureCtx = new OffscreenCanvas(1, 1).getContext('2d')!;
+  return _measureCtx;
+}
+
 export function measureText(text: ResolvedText): { width: number; height: number } {
-  const canvas = new OffscreenCanvas(1, 1);
-  const ctx = canvas.getContext('2d')!;
-  const layout = computeLayout(ctx, text);
+  const layout = computeLayout(measureCtx(), text);
   return { width: layout.canvasWidth, height: layout.canvasHeight };
 }
 
 // Full layout used by the text-explode engine to read exact line geometry
 // (the same wrapping + canvas sizing the renderer relies on).
 export function getTextLayout(text: ResolvedText): TextLayout {
-  const canvas = new OffscreenCanvas(1, 1);
-  const ctx = canvas.getContext('2d')!;
-  return computeLayout(ctx, text);
+  return computeLayout(measureCtx(), text);
 }
 
 // Width of a single line/string measured exactly as the renderer draws it
 // (kerned when letterSpacing is 0, otherwise per-glyph + spacing between).
 export function measureStringWidth(text: ResolvedText, str: string): number {
-  const canvas = new OffscreenCanvas(1, 1);
-  const ctx = canvas.getContext('2d')!;
+  const ctx = measureCtx();
   ctx.font = buildFontString(text);
   return lineWidth(ctx, str, text.letterSpacing);
 }

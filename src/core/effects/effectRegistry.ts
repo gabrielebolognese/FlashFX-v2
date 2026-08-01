@@ -69,6 +69,9 @@ export const EFFECT_TYPE = {
   saltAndPepper: 157, perlinNoise: 158, fractalNoise: 159, dust: 160,
   // Cellular pattern generators (class A color — produce a pattern, not a warp)
   voronoiPattern: 161, cellularPattern: 162,
+  // Chroma key (green-screen): keys out pixels near a fixed green key color.
+  // params: [tolerance, keyR, keyG, keyB, softness]. Slider drives tolerance.
+  chromaKey: 163,
   // B1 — geometry & radial distortion (200–218), UV warp (class B)
   rotate: 200, flipH: 201, flipV: 202, scale: 203, crop: 204, perspective: 205,
   shear: 206, skew: 207, affineTransform: 208, offset: 209, lensDistortion: 210,
@@ -156,6 +159,8 @@ export const EFFECT_DEFS: EffectDef[] = [
   { id: 'alphaThreshold',type: EFFECT_TYPE.alphaThreshold,klass: 'color', paramCount: 1, defaults: [0] },
   { id: 'lumaKey',       type: EFFECT_TYPE.lumaKey,       klass: 'color', paramCount: 1, defaults: [0] },
   { id: 'spillSuppression',type: EFFECT_TYPE.spillSuppression, klass: 'color', paramCount: 1, defaults: [0] },
+  // [tolerance, keyR, keyG, keyB, softness] — key color defaults to green.
+  { id: 'chromaKey',     type: EFFECT_TYPE.chromaKey,     klass: 'color', paramCount: 5, defaults: [0, 0, 1, 0, 0.1] },
   { id: 'gradientFill',  type: EFFECT_TYPE.gradientFill,  klass: 'color', paramCount: 1, defaults: [0] },
   { id: 'noiseFill',     type: EFFECT_TYPE.noiseFill,     klass: 'color', paramCount: 1, defaults: [0] },
   { id: 'patternFill',   type: EFFECT_TYPE.patternFill,   klass: 'color', paramCount: 1, defaults: [0] },
@@ -279,9 +284,15 @@ export const EFFECT_DEFS: EffectDef[] = [
 ];
 
 const BY_ID = new Map(EFFECT_DEFS.map((d) => [d.id, d]));
+const BY_TYPE = new Map(EFFECT_DEFS.map((d) => [d.type, d]));
 
 export function getEffectDef(id: string): EffectDef | undefined {
   return BY_ID.get(id);
+}
+
+/** Reverse lookup: the frozen numeric type → its registry def (for the applied-effects UI). */
+export function getEffectDefByType(type: number): EffectDef | undefined {
+  return BY_TYPE.get(type);
 }
 
 export function isLegacyFilter(id: string): boolean {

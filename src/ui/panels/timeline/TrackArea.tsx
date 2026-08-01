@@ -170,7 +170,7 @@ export function TrackArea({ layers, tracks, selectedIds, rulerOnly, ghostRowCoun
     lastKey: string;
   } | null>(null);
 
-  const sortedTracks = [...tracks].sort((a, b) => a.order - b.order);
+  const sortedTracks = useMemo(() => [...tracks].sort((a, b) => a.order - b.order), [tracks]);
   const sortedTracksRef = useRef(sortedTracks);
   sortedTracksRef.current = sortedTracks;
 
@@ -180,12 +180,12 @@ export function TrackArea({ layers, tracks, selectedIds, rulerOnly, ghostRowCoun
   const selectedIdsRef = useRef(selectedIds);
   selectedIdsRef.current = selectedIds;
 
-  const currentFrame = useTimelineStore((s) => s.currentFrame);
+  // currentFrame / isPlaying / followPlayhead are intentionally NOT subscribed here —
+  // they change every played frame; the <TimelinePlayhead> / <FollowPlayheadDriver>
+  // leaves own those subscriptions so the clip tree doesn't re-render during playback.
   const zoomLevel = useTimelineStore((s) => s.zoomLevel);
   const scrollX = useTimelineStore((s) => s.scrollX);
   const scrollY = useTimelineStore((s) => s.scrollY);
-  const isPlaying = useTimelineStore((s) => s.isPlaying);
-  const followPlayhead = useTimelineStore((s) => s.followPlayhead);
   const showWaveforms = useTimelineStore((s) => s.showWaveforms);
   const showThumbnails = useTimelineStore((s) => s.showThumbnails);
   const setScrollX = useTimelineStore((s) => s.setScrollX);
@@ -223,17 +223,8 @@ export function TrackArea({ layers, tracks, selectedIds, rulerOnly, ghostRowCoun
     return () => observer.disconnect();
   }, []);
 
-  useEffect(() => {
-    if (!isPlaying || !followPlayhead) return;
-    const playheadX = frameToPixel(currentFrame, zoomLevel, scrollX);
-    if (playheadX > containerWidth - 60) {
-      const newScrollX = currentFrame * getFrameWidth(zoomLevel) - containerWidth * 0.2;
-      setScrollX(Math.max(0, newScrollX));
-    } else if (playheadX < 40) {
-      const newScrollX = currentFrame * getFrameWidth(zoomLevel) - containerWidth * 0.8;
-      setScrollX(Math.max(0, newScrollX));
-    }
-  }, [currentFrame, isPlaying, followPlayhead, zoomLevel, scrollX, containerWidth, setScrollX]);
+  // Follow-playhead auto-scroll moved to <FollowPlayheadDriver> (owns the per-frame
+  // currentFrame subscription so it doesn't re-render this whole component).
 
   // --- Playhead scrub with edge auto-scroll ---
   const scrubCursorRef = useRef<number | null>(null);
@@ -825,7 +816,6 @@ export function TrackArea({ layers, tracks, selectedIds, rulerOnly, ghostRowCoun
 
   const visibleRange = getVisibleFrameRange(containerWidth, zoomLevel, scrollX);
   const ticks = getRulerTicks(visibleRange, zoomLevel, frameRate);
-  const playheadX = frameToPixel(currentFrame, zoomLevel, scrollX);
   const totalWidth = getTotalTimelineWidth(durationFrames, zoomLevel);
 
   const scrollbarThumbWidth = Math.max(30, (containerWidth / totalWidth) * containerWidth);
@@ -910,14 +900,7 @@ export function TrackArea({ layers, tracks, selectedIds, rulerOnly, ghostRowCoun
           );
         })}
 
-        {playheadX >= -5 && playheadX <= containerWidth + 5 && (
-          <div
-            className="absolute bottom-0 z-20 pointer-events-none"
-            style={{ left: playheadX, transform: 'translateX(-4px)' }}
-          >
-            <div className="w-0 h-0 border-l-[5px] border-r-[5px] border-b-[6px] border-l-transparent border-r-transparent border-b-[#ffcc00]" />
-          </div>
-        )}
+        <TimelinePlayhead variant="ruler" zoomLevel={zoomLevel} scrollX={scrollX} containerWidth={containerWidth} />
       </div>
     );
   }
@@ -1214,13 +1197,10 @@ export function TrackArea({ layers, tracks, selectedIds, rulerOnly, ghostRowCoun
         )}
         </div>{/* end vertical scroll wrapper */}
 
-        {/* Playhead */}
-        {playheadX >= -1 && playheadX <= containerWidth + 1 && (
-          <div
-            className="absolute top-0 bottom-0 z-20 pointer-events-none"
-            style={{ left: playheadX, width: 1, backgroundColor: '#ffcc00' }}
-          />
-        )}
+        {/* Playhead + follow-scroll: own the per-frame subscription so the clip tree
+            above doesn't re-render on playback. */}
+        <TimelinePlayhead variant="track" zoomLevel={zoomLevel} scrollX={scrollX} containerWidth={containerWidth} />
+        <FollowPlayheadDriver zoomLevel={zoomLevel} scrollX={scrollX} containerWidth={containerWidth} />
 
         {/* Snap lines during clip drag */}
         {clipDrag && clipDrag.isDragging && clipDrag.snapLines.length > 0 && (
@@ -1684,4 +1664,61 @@ function KeyframeMarkers({ layer, displayIn, displayOut, barWidth, clipLeft, inX
       })}
     </div>
   );
+}
+
+// ── Playhead leaves ──────────────────────────────────────────────────────────
+// These own the per-frame `currentFrame` subscription so TrackArea's body (the clip
+// tree) renders only on structural/zoom/scroll changes, not every played frame.
+// zoomLevel/scrollX/containerWidth arrive as props (they change on zoom/scroll only).
+
+function TimelinePlayhead({
+  variant,
+  zoomLevel,
+  scrollX,
+  containerWidth,
+}: {
+  variant: 'ruler' | 'track';
+  zoomLevel: number;
+  scrollX: number;
+  containerWidth: number;
+}) {
+  const currentFrame = useTimelineStore((s) => s.currentFrame);
+  const playheadX = frameToPixel(currentFrame, zoomLevel, scrollX);
+  if (variant === 'ruler') {
+    if (playheadX < -5 || playheadX > containerWidth + 5) return null;
+    return (
+      <div className="absolute bottom-0 z-20 pointer-events-none" style={{ left: playheadX, transform: 'translateX(-4px)' }}>
+        <div className="w-0 h-0 border-l-[5px] border-r-[5px] border-b-[6px] border-l-transparent border-r-transparent border-b-[#ffcc00]" />
+      </div>
+    );
+  }
+  if (playheadX < -1 || playheadX > containerWidth + 1) return null;
+  return (
+    <div className="absolute top-0 bottom-0 z-20 pointer-events-none" style={{ left: playheadX, width: 1, backgroundColor: '#ffcc00' }} />
+  );
+}
+
+function FollowPlayheadDriver({
+  zoomLevel,
+  scrollX,
+  containerWidth,
+}: {
+  zoomLevel: number;
+  scrollX: number;
+  containerWidth: number;
+}) {
+  const currentFrame = useTimelineStore((s) => s.currentFrame);
+  const isPlaying = useTimelineStore((s) => s.isPlaying);
+  const followPlayhead = useTimelineStore((s) => s.followPlayhead);
+  const setScrollX = useTimelineStore((s) => s.setScrollX);
+  useEffect(() => {
+    if (!isPlaying || !followPlayhead) return;
+    const playheadX = frameToPixel(currentFrame, zoomLevel, scrollX);
+    if (playheadX > containerWidth - 60) {
+      setScrollX(Math.max(0, currentFrame * getFrameWidth(zoomLevel) - containerWidth * 0.2));
+    } else if (playheadX < 40) {
+      setScrollX(Math.max(0, currentFrame * getFrameWidth(zoomLevel) - containerWidth * 0.8));
+    }
+  }, [currentFrame, isPlaying, followPlayhead, zoomLevel, scrollX, containerWidth, setScrollX]);
+  return null;
 }

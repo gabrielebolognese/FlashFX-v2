@@ -36,7 +36,9 @@ export function Viewport() {
   const addVideoFromAsset = useEditorStore((s) => s.addVideoFromAsset);
   const addImage = useEditorStore((s) => s.addImage);
   const addVideo = useEditorStore((s) => s.addVideo);
-  const currentFrame = useTimelineStore((s) => s.currentFrame);
+  // NB: currentFrame is intentionally NOT subscribed here — it changes every played
+  // frame and would re-render the whole viewport + all overlays. The <FrameCounter>
+  // leaf below owns that subscription so only it updates per frame.
   const addGuideline = useGridStore((s) => s.addGuideline);
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
 
@@ -429,7 +431,7 @@ export function Viewport() {
 
       {/* Status bar */}
       <div className="absolute bottom-2 right-2 text-[10px] text-slate-500 font-mono pointer-events-none">
-        {compW}x{compH} | {composition.settings.frameRate}fps | Frame {currentFrame}/{composition.settings.durationFrames}
+        {compW}x{compH} | {composition.settings.frameRate}fps | <FrameCounter durationFrames={composition.settings.durationFrames} />
         {previewQuality !== 'full' && (
           <span className="ml-2 text-amber-400">Preview: {Math.round(qualityScale * 100)}%</span>
         )}
@@ -447,4 +449,11 @@ export function Viewport() {
       )}
     </div>
   );
+}
+
+// Owns the per-frame `currentFrame` subscription so the status-bar counter updates
+// without re-rendering the whole Viewport and its overlays every played frame.
+function FrameCounter({ durationFrames }: { durationFrames: number }) {
+  const currentFrame = useTimelineStore((s) => s.currentFrame);
+  return <>Frame {currentFrame}/{durationFrames}</>;
 }

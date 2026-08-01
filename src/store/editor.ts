@@ -217,7 +217,7 @@ interface EditorState {
   addLayoutContainer: (shapeType?: ContainerShapeType) => void;
   addChildToLayoutContainer: (containerId: string, childId: string) => void;
   removeChildFromLayoutContainer: (containerId: string, childId: string) => void;
-  updateLayoutContainer: (containerId: string, updates: Partial<Pick<LayoutContainerLayer, 'distributionMode' | 'spacing' | 'padding' | 'rotationOffset' | 'containerShape'>>) => void;
+  updateLayoutContainer: (containerId: string, updates: Partial<Pick<LayoutContainerLayer, 'distributionMode' | 'spacing' | 'padding' | 'rotationOffset' | 'containerShape' | 'followPathRotation'>>) => void;
   addChildToLayout: (layoutId: string, childId: string) => void;
   removeChildFromLayout: (layoutId: string, childId: string) => void;
   reorderLayoutChild: (layoutId: string, childId: string, newIndex: number) => void;
@@ -235,6 +235,9 @@ interface EditorState {
   addImageAsBackground: (assetId: string) => void;
   // Add an image scaled to fit the canvas (contain), centered.
   addImageFitCanvas: (assetId: string) => void;
+  // Add an image (contain-scaled) with a full-extent rectangle crop mask ready to
+  // drag inward — "Crop" for a media-pool image asset, reusing the mask system.
+  cropImageAsset: (assetId: string) => void;
   // Enable a layer effect (shadow/glow/blur) with default params if not already on.
   enableLayerEffect: (layerId: string, kind: 'shadow' | 'glow' | 'blur') => void;
   // Add a trimmed video clip covering source seconds [startSec, endSec] as a new layer.
@@ -257,6 +260,9 @@ interface EditorState {
   // absent), remove deletes the whole effect.
   setLayerEffectParam: (layerId: string, type: number, paramIndex: number, value: number, defaults?: number[]) => void;
   removeLayerEffect: (layerId: string, type: number) => void;
+  // Manage Effects: reorder (stack render order) and enable/disable one effect.
+  reorderLayerEffect: (layerId: string, type: number, direction: 'up' | 'down') => void;
+  toggleLayerEffect: (layerId: string, type: number) => void;
   setLayerParent: (childId: string, parentId: string | null) => void;
   addKeyframe: (layerId: string, propertyPath: string, frame: number, value: number | [number, number]) => void;
   /** Delete the keyframes at the given (propertyPath, frame) targets (undoable, batched). */
@@ -279,12 +285,16 @@ interface EditorState {
   // ── Fades & audio (Batch 5) ──
   /** Add a fade in/out on a property (opacity, volume) via two keyframes (0 ↔ current value). */
   addFade: (layerId: string, propertyPath: string, kind: 'in' | 'out', durationFrames?: number) => void;
+  /** Equal-gain crossfade between a clip and an overlapping audio clip (auto-found). Returns false if none overlaps. */
+  crossfadeAudioClip: (layerId: string) => boolean;
   /** Multiply an audio layer's volume by a dB amount (clamped 0–2). */
   adjustAudioVolumeDb: (layerId: string, dB: number) => void;
   /** Set an audio layer's volume so its peak hits 0 dBFS (from the cached waveform). */
   normalizeAudioVolume: (layerId: string) => void;
   // Timeline markers (editing aids on the ruler).
   addMarker: (frame: number, opts?: { name?: string; color?: string; endFrame?: number }) => void;
+  /** Insert many markers in ONE undoable command (e.g. detected beats). */
+  addMarkersAtFrames: (frames: number[], opts?: { namePrefix?: string; color?: string }) => void;
   updateMarker: (id: string, patch: Partial<Omit<Marker, 'id'>>) => void;
   removeMarker: (id: string) => void;
   clearMarkers: () => void;
@@ -373,6 +383,8 @@ interface EditorState {
 
   toggleTrackVisibility: (trackId: string) => void;
   toggleTrackMute: (trackId: string) => void;
+  toggleTrackSolo: (trackId: string) => void;
+  clearTrackSolo: () => void;
 
   // Toggle CapCut-style gapless compression on a track. Recalculates the
   // gapless layout immediately when enabled; leaves clips in place (now freely
@@ -2158,6 +2170,31 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     });
   },
 
+  cropImageAsset: (assetId) => {
+    const { composition, selection } = get();
+    const oldComp = composition;
+    const oldSel = selection;
+    const meta = mediaAssetManager.getImageMetadata(assetId);
+    if (!meta) return;
+    const asset = mediaAssetManager.getAsset(assetId);
+    const name = asset?.name?.replace(/\.[^.]+$/, '') || 'Image';
+    const { width: cw, height: ch } = composition.settings;
+    const layer = createImageLayer(name, cw / 2, ch / 2, assetId, meta.width, meta.height, meta.format, meta.fileSize, defaultClipFrames(composition));
+    const contain = Math.min(cw / meta.width, ch / meta.height);
+    layer.transform.scale.defaultValue = [contain, contain];
+    // Full-extent rectangle mask centered on the image — a no-op crop the user
+    // drags inward. Sized to the displayed (scaled) image.
+    const mask = createMask('rectangle', cw / 2, ch / 2, meta.width * contain, meta.height * contain);
+    layer.masks = [mask];
+    const newComp = settleComposition(ensureLayerHasTrack({ ...composition, layers: [...composition.layers, layer] }, layer));
+    const newSel: SelectionState = sel([layer.id], layer.id);
+    exec({
+      label: 'Crop Image',
+      execute: () => { set({ composition: newComp, selection: newSel }); },
+      undo: () => { set({ composition: oldComp, selection: oldSel }); },
+    });
+  },
+
   enableLayerEffect: (layerId, kind) => {
     const layer = get().composition.layers.find((l) => l.id === layerId);
     if (!layer) return;
@@ -2518,6 +2555,50 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     });
   },
 
+  reorderLayerEffect: (layerId, type, direction) => {
+    const { composition } = get();
+    const layer = composition.layers.find((l) => l.id === layerId);
+    if (!layer || layer.type !== 'image' || !layer.effects) return;
+    const idx = layer.effects.findIndex((e) => e.type === type);
+    if (idx < 0) return;
+    const target = direction === 'up' ? idx - 1 : idx + 1;
+    if (target < 0 || target >= layer.effects.length) return;
+    const oldComp = composition;
+    const newComp = {
+      ...composition,
+      layers: composition.layers.map((l) => {
+        if (l.id !== layerId || l.type !== 'image') return l;
+        const effects = (l.effects ?? []).slice();
+        [effects[idx], effects[target]] = [effects[target], effects[idx]];
+        return { ...l, effects };
+      }),
+    };
+    exec({
+      label: 'Reorder Effect',
+      execute: () => { set({ composition: newComp }); },
+      undo: () => { set({ composition: oldComp }); },
+    });
+  },
+
+  toggleLayerEffect: (layerId, type) => {
+    const { composition } = get();
+    const layer = composition.layers.find((l) => l.id === layerId);
+    if (!layer || layer.type !== 'image' || !layer.effects?.some((e) => e.type === type)) return;
+    const oldComp = composition;
+    const newComp = {
+      ...composition,
+      layers: composition.layers.map((l) => {
+        if (l.id !== layerId || l.type !== 'image') return l;
+        return { ...l, effects: (l.effects ?? []).map((e) => (e.type === type ? { ...e, enabled: !e.enabled } : e)) };
+      }),
+    };
+    exec({
+      label: 'Toggle Effect',
+      execute: () => { set({ composition: newComp }); },
+      undo: () => { set({ composition: oldComp }); },
+    });
+  },
+
   setLayerParent: (childId, parentId) => {
     const { composition } = get();
     const layer = composition.layers.find((l) => l.id === childId);
@@ -2784,6 +2865,45 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     exec({ label: kind === 'in' ? 'Add Fade In' : 'Add Fade Out', execute: () => set({ composition: newComp }), undo: () => set({ composition: oldComp }) });
   },
 
+  crossfadeAudioClip: (layerId) => {
+    const { composition } = get();
+    const a = composition.layers.find((l) => l.id === layerId);
+    if (!a || a.type !== 'audio') return false;
+    // Overlapping audio clips (prefer the same track), pick the largest overlap.
+    const overlap = (l: Layer) => Math.min(a.outPoint, l.outPoint) - Math.max(a.inPoint, l.inPoint);
+    const candidates = composition.layers.filter((l) => l.id !== a.id && l.type === 'audio' && overlap(l) > 0);
+    if (candidates.length === 0) return false;
+    const sameTrack = candidates.filter((l) => l.trackId === a.trackId);
+    const pool = sameTrack.length > 0 ? sameTrack : candidates;
+    const b = pool.reduce((best, l) => (overlap(l) > overlap(best) ? l : best));
+    const oStart = Math.max(a.inPoint, b.inPoint);
+    const oEnd = Math.min(a.outPoint, b.outPoint);
+    if (oEnd <= oStart) return false;
+    const earlier = a.inPoint <= b.inPoint ? a : b;
+    const later = earlier === a ? b : a;
+
+    const oldComp = composition;
+    const fadeClip = (layer: Layer, mode: 'in' | 'out'): Layer => {
+      const prop = deepGet(layer, 'audio.volume') as AnimatableProperty | undefined;
+      const full = prop && typeof prop.defaultValue === 'number' ? prop.defaultValue : 1;
+      let kfs = prop && Array.isArray(prop.keyframes) ? [...(prop.keyframes as Keyframe[])] : [];
+      const put = (frame: number, value: number) => {
+        kfs = kfs.filter((k) => k.frame !== frame);
+        kfs.push(createKeyframe(frame, value));
+      };
+      if (mode === 'out') { put(oStart, full); put(oEnd, 0); }
+      else { put(oStart, 0); put(oEnd, full); }
+      kfs.sort((x, y) => x.frame - y.frame);
+      return deepSet(layer, 'audio.volume.keyframes', kfs) as Layer;
+    };
+    const newLayers = composition.layers.map((l) =>
+      l.id === earlier.id ? fadeClip(l, 'out') : l.id === later.id ? fadeClip(l, 'in') : l
+    );
+    const newComp = { ...composition, layers: newLayers };
+    exec({ label: 'Crossfade Audio', execute: () => set({ composition: newComp }), undo: () => set({ composition: oldComp }) });
+    return true;
+  },
+
   adjustAudioVolumeDb: (layerId, dB) => {
     const layer = get().composition.layers.find((l) => l.id === layerId);
     if (!layer || layer.type !== 'audio') return;
@@ -2821,6 +2941,26 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const newComp = { ...composition, markers };
     exec({
       label: opts?.endFrame != null ? 'Add Section Marker' : 'Add Marker',
+      execute: () => set({ composition: newComp }),
+      undo: () => set({ composition: oldComp }),
+    });
+  },
+
+  addMarkersAtFrames: (frames, opts) => {
+    if (frames.length === 0) return;
+    const { composition } = get();
+    const oldComp = composition;
+    const existing = composition.markers ?? [];
+    const added: Marker[] = frames.map((fr, i) => ({
+      id: uid(),
+      frame: Math.max(0, Math.round(fr)),
+      ...(opts?.namePrefix ? { name: `${opts.namePrefix} ${i + 1}` } : {}),
+      ...(opts?.color ? { color: opts.color } : {}),
+    }));
+    const markers = [...existing, ...added].sort((a, b) => a.frame - b.frame);
+    const newComp = { ...composition, markers };
+    exec({
+      label: `Add ${added.length} Markers`,
       execute: () => set({ composition: newComp }),
       undo: () => set({ composition: oldComp }),
     });
@@ -4277,6 +4417,38 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
     exec({
       label: next ? 'Mute Track' : 'Unmute Track',
+      execute: () => { set({ composition: newComp }); },
+      undo: () => { set({ composition: oldComp }); },
+    });
+  },
+
+  toggleTrackSolo: (trackId) => {
+    const { composition } = get();
+    const track = composition.tracks.find((t) => t.id === trackId);
+    if (!track) return;
+
+    const oldComp = composition;
+    const next = !track.solo;
+    const tracks = composition.tracks.map((t) =>
+      t.id === trackId ? { ...t, solo: next } : t
+    );
+    const newComp = { ...composition, tracks };
+
+    exec({
+      label: next ? 'Solo Track' : 'Unsolo Track',
+      execute: () => { set({ composition: newComp }); },
+      undo: () => { set({ composition: oldComp }); },
+    });
+  },
+
+  clearTrackSolo: () => {
+    const { composition } = get();
+    if (!composition.tracks.some((t) => t.solo)) return;
+    const oldComp = composition;
+    const tracks = composition.tracks.map((t) => (t.solo ? { ...t, solo: false } : t));
+    const newComp = { ...composition, tracks };
+    exec({
+      label: 'Clear Solo',
       execute: () => { set({ composition: newComp }); },
       undo: () => { set({ composition: oldComp }); },
     });

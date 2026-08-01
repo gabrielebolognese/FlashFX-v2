@@ -71,6 +71,24 @@ export async function addAssetToFolder(folderId: string, assetId: string): Promi
   return true;
 }
 
+const FAVORITES_FOLDER_NAME = 'Favorites';
+
+/**
+ * Add an asset to the reserved "Favorites" folder, creating it on first use.
+ * Reuses the folder tables (no favorites-specific schema). Returns false when
+ * offline (no supabase) or on error.
+ */
+export async function addAssetToFavorites(assetId: string): Promise<boolean> {
+  if (!supabase) return false;
+  const folders = await fetchFolders('all');
+  let fav = folders.find((f) => f.name === FAVORITES_FOLDER_NAME && f.folder_type === 'all');
+  if (!fav) {
+    fav = (await createFolder(FAVORITES_FOLDER_NAME, 'all', undefined, '#f59e0b')) ?? undefined;
+  }
+  if (!fav) return false;
+  return addAssetToFolder(fav.id, assetId);
+}
+
 export async function removeAssetFromFolder(folderId: string, assetId: string): Promise<boolean> {
   if (!supabase) return false;
   const { error } = await supabase
