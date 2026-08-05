@@ -2,6 +2,8 @@ import type { Composition, AudioLayer } from '../../core/types';
 import { evaluateNumber } from '../../core/interpolation';
 import { mediaAssetManager } from './assetManager';
 import { videoAudioPlayer } from '../video/videoAudioPlayer';
+import { audioTransport } from '../audio/audioTransport';
+import { computeSourceSchedule } from '../audio/audioScheduleMath';
 
 export interface AudioDiagnostics {
   contextState: AudioContextState | 'uninitialized';
@@ -20,10 +22,6 @@ function layerKey(layer: { id: string; type: string }): string {
 
 class AudioPlaybackEngine {
   private context: AudioContext | null = null;
-  private analyser: AnalyserNode | null = null;
-  private splitter: ChannelSplitterNode | null = null;
-  private analyserL: AnalyserNode | null = null;
-  private analyserR: AnalyserNode | null = null;
   private masterGain: GainNode | null = null;
   private gainNodes = new Map<string, GainNode>();
   private sourceNodes = new Map<string, AudioBufferSourceNode>();
@@ -39,43 +37,18 @@ class AudioPlaybackEngine {
   private bufferReadyUnsub: (() => void) | null = null;
 
   private ensureContext(): AudioContext {
-    if (!this.context || this.context.state === 'closed') {
-      this.context = new AudioContext();
-      this.masterGain = this.context.createGain();
-      this.analyser = this.context.createAnalyser();
-      this.analyser.fftSize = 2048;
-      this.analyser.smoothingTimeConstant = 0.8;
-
-      this.splitter = this.context.createChannelSplitter(2);
-      this.analyserL = this.context.createAnalyser();
-      this.analyserL.fftSize = 1024;
-      this.analyserL.smoothingTimeConstant = 0.8;
-      this.analyserR = this.context.createAnalyser();
-      this.analyserR.fftSize = 1024;
-      this.analyserR.smoothingTimeConstant = 0.8;
-
-      this.masterGain.connect(this.analyser);
-      this.analyser.connect(this.splitter);
-      this.splitter.connect(this.analyserL, 0);
-      this.splitter.connect(this.analyserR, 1);
-      this.analyser.connect(this.context.destination);
-    }
+    // One shared context + master graph for audio layers AND video-clip audio.
+    this.context = audioTransport.getContext();
+    this.masterGain = audioTransport.getMasterGain();
     return this.context;
   }
 
-  getAnalyserLeft(): AnalyserNode | null { return this.analyserL; }
-  getAnalyserRight(): AnalyserNode | null { return this.analyserR; }
-  getMasterAnalyser(): AnalyserNode | null { return this.analyser; }
+  getAnalyserLeft(): AnalyserNode | null { return audioTransport.getAnalyserLeft(); }
+  getAnalyserRight(): AnalyserNode | null { return audioTransport.getAnalyserRight(); }
+  getMasterAnalyser(): AnalyserNode | null { return audioTransport.getMasterAnalyser(); }
 
   private async resumeContext(): Promise<void> {
-    const ctx = this.ensureContext();
-    if (ctx.state === 'suspended') {
-      try {
-        await ctx.resume();
-      } catch (err) {
-        console.warn('[AudioEngine] Failed to resume AudioContext:', err);
-      }
-    }
+    await audioTransport.resume();
   }
 
   startPlayback(composition: Composition, currentFrame: number, frameRate: number): void {
@@ -228,31 +201,42 @@ class AudioPlaybackEngine {
       return;
     }
 
-    const clipStartTime = layer.inPoint / frameRate;
-    const sourceOffsetSec = (layer.audio.startOffset ?? 0) / frameRate;
-    const offsetIntoClip = currentTime - clipStartTime + sourceOffsetSec;
-    if (offsetIntoClip < 0 || offsetIntoClip >= buffer.duration) return;
+    const volume = evaluateNumber(layer.audio.volume, currentFrame);
+    const pitch = evaluateNumber(layer.audio.pitch, currentFrame);
+    // Pitch shift is a resample (Web Audio has no pitch-preserving rate) — so it
+    // also sets how fast the source buffer is consumed per composition-second.
+    const rate = Math.max(0.25, Math.min(4, Math.pow(2, pitch / 12)));
+
+    // Shared clip→source scheduling (the SAME math the export mixer's anchor
+    // reproduces — see engine/audio/audioScheduleMath + verify:audioschedule).
+    // The preview anchors at (current playhead, ctx.currentTime, rate 1): a clip
+    // already playing at the anchor starts now, advanced into its buffer by how
+    // far past the clip start we are — scaled by the clip's own rate. The old
+    // inline math advanced the offset UNSCALED, so pressing play with the
+    // playhead parked mid-clip started a pitched clip at the wrong sample.
+    const schedule = computeSourceSchedule(
+      {
+        clipStartCompSec: layer.inPoint / frameRate,
+        clipDurationCompSec: (layer.outPoint - layer.inPoint) / frameRate,
+        startOffsetSec: (layer.audio.startOffset ?? 0) / frameRate,
+        playbackRate: rate,
+        bufferDurationSec: buffer.duration,
+      },
+      { anchorCompSec: currentTime, anchorClockTime: ctx.currentTime, masterRate: 1 }
+    );
+    if (!schedule) return;
 
     const source = ctx.createBufferSource();
     source.buffer = buffer;
-
-    const volume = evaluateNumber(layer.audio.volume, currentFrame);
-    const pitch = evaluateNumber(layer.audio.pitch, currentFrame);
-
-    source.playbackRate.value = Math.max(0.25, Math.min(4, Math.pow(2, pitch / 12)));
+    source.playbackRate.value = rate;
 
     const gain = ctx.createGain();
     gain.gain.value = Math.max(0, Math.min(2, volume));
     source.connect(gain);
     gain.connect(this.masterGain!);
 
-    const clipDuration = (layer.outPoint - layer.inPoint) / frameRate;
-    const remainingClip = clipDuration - (currentTime - clipStartTime);
-    const remainingBuffer = buffer.duration - offsetIntoClip;
-    const playDuration = Math.min(remainingClip, remainingBuffer);
-
     try {
-      source.start(0, offsetIntoClip, playDuration > 0 ? playDuration : undefined);
+      source.start(schedule.when, schedule.offset, schedule.duration);
     } catch (err) {
       console.warn(`[AudioEngine] Failed to start audio source for layer "${layer.name}":`, err);
       return;
@@ -262,21 +246,70 @@ class AudioPlaybackEngine {
     this.sourceNodes.set(key, source);
     this.gainNodes.set(key, gain);
     this.activeKeys.add(key);
+
+    // A source with a finite duration ends on its OWN when its buffer/clip runs out
+    // (e.g. a 3s SFX on a 10s layer, or the sample-accurate end just before the
+    // rAF-jittered outPoint crossing). Disconnect it from the master graph then —
+    // otherwise the node leaks: fadeAndStop's teardown only runs when we explicitly
+    // stop a STILL-PLAYING source, never for one that already ended. Keep the key in
+    // activeKeys so the one-shot isn't re-scheduled while the clip is still in range;
+    // drop only the node maps. If we later stopSource() a still-playing instance,
+    // fadeAndStop reassigns onended to its own fade-teardown, superseding this.
+    source.onended = () => {
+      try { source.disconnect(); } catch { /* already gone */ }
+      try { gain.disconnect(); } catch { /* already gone */ }
+      if (this.sourceNodes.get(key) === source) this.sourceNodes.delete(key);
+      if (this.gainNodes.get(key) === gain) this.gainNodes.delete(key);
+    };
   }
 
+  /**
+   * Stop and tear down one scheduled source with a short gain ramp to zero so it
+   * never cuts on a non-zero sample (an audible click on every clip boundary,
+   * pause, and seek). The map entries are removed synchronously (so activeKeys
+   * bookkeeping is unaffected); the nodes disconnect after the fade via `onended`.
+   */
   private stopSource(key: string): void {
     const source = this.sourceNodes.get(key);
-    if (source) {
-      try { source.stop(); } catch {}
-      try { source.disconnect(); } catch {}
-      this.sourceNodes.delete(key);
-    }
     const gain = this.gainNodes.get(key);
-    if (gain) {
-      try { gain.disconnect(); } catch {}
-      this.gainNodes.delete(key);
-    }
+    this.sourceNodes.delete(key);
+    this.gainNodes.delete(key);
     this.activeKeys.delete(key);
+    this.fadeAndStop(source, gain);
+  }
+
+  /** ~8ms declick fade, then stop; disconnect the nodes once the fade finishes. */
+  private static readonly DECLICK_SEC = 0.008;
+  private fadeAndStop(
+    source: AudioBufferSourceNode | undefined,
+    gain: GainNode | undefined
+  ): void {
+    if (!source) {
+      if (gain) { try { gain.disconnect(); } catch { /* already gone */ } }
+      return;
+    }
+    const ctx = this.context;
+    const disconnect = () => {
+      try { source.disconnect(); } catch { /* already gone */ }
+      if (gain) { try { gain.disconnect(); } catch { /* already gone */ } }
+    };
+    if (gain && ctx) {
+      const now = ctx.currentTime;
+      const end = now + AudioPlaybackEngine.DECLICK_SEC;
+      try {
+        gain.gain.cancelScheduledValues(now);
+        gain.gain.setValueAtTime(gain.gain.value, now);
+        gain.gain.linearRampToValueAtTime(0, end);
+      } catch { /* automation rejected — stop still runs below */ }
+      try {
+        source.stop(end);
+        source.onended = disconnect; // disconnect only after the fade is heard
+        return;
+      } catch { /* already stopped — fall through to immediate teardown */ }
+    } else {
+      try { source.stop(); } catch { /* already stopped */ }
+    }
+    disconnect();
   }
 
   /**
@@ -327,21 +360,23 @@ class AudioPlaybackEngine {
   }
 
   private stopAllSources(): void {
-    for (const source of this.sourceNodes.values()) {
-      try { source.stop(); } catch {}
-      try { source.disconnect(); } catch {}
+    // Snapshot then clear the maps up front so bookkeeping is consistent even
+    // though each source keeps playing for the ~8ms declick fade before it stops.
+    const pairs: Array<[AudioBufferSourceNode, GainNode | undefined]> = [];
+    for (const [key, source] of this.sourceNodes) {
+      pairs.push([source, this.gainNodes.get(key)]);
     }
-    for (const gain of this.gainNodes.values()) {
-      try { gain.disconnect(); } catch {}
+    this.sourceNodes.clear();
+    this.gainNodes.clear();
+    this.activeKeys.clear();
+    for (const [source, gain] of pairs) {
+      this.fadeAndStop(source, gain);
     }
     // Pause video audio too: it plays through <video> elements that stopping the
     // buffer sources doesn't touch, so without this it kept playing after pause.
     for (const assetId of this.activeVideoAssets) {
       videoAudioPlayer.pause(assetId);
     }
-    this.sourceNodes.clear();
-    this.gainNodes.clear();
-    this.activeKeys.clear();
     this.activeVideoAssets.clear();
   }
 
@@ -356,14 +391,9 @@ class AudioPlaybackEngine {
 
   destroy(): void {
     this.stopPlayback();
-    if (this.context && this.context.state !== 'closed') {
-      this.context.close();
-    }
+    // The AudioContext + master graph are owned by audioTransport (shared with
+    // video-clip audio), so don't close them here — just drop local references.
     this.context = null;
-    this.analyser = null;
-    this.analyserL = null;
-    this.analyserR = null;
-    this.splitter = null;
     this.masterGain = null;
     this.failedAssets.clear();
   }

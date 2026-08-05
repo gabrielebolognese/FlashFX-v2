@@ -1326,6 +1326,7 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
   return {
     frameNumber: frame,
     totalFrames: settings.durationFrames,
+    frameRate: settings.frameRate,
     width: settings.width,
     height: settings.height,
     backgroundColor: settings.backgroundColor,

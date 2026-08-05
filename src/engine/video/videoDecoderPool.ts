@@ -31,18 +31,59 @@ function nextRequestId(): string {
 }
 
 class VideoDecoderPool {
+  // Insertion order doubles as an LRU: `touchLRU` moves an asset to the end, so
+  // `keys().next()` is always the least-recently-used.
   private workers = new Map<string, WorkerState>();
+  // Sources are retained even after a worker is LRU-evicted, so a later decode
+  // request can transparently re-init the decoder on demand.
+  private sources = new Map<string, File | string>();
+  // Bound the number of live hardware VideoDecoders. Browsers refuse new decoders
+  // past a limit (~16 across WebCodecs + media elements) → decode errors → black
+  // frames. Keep the N most-recently-used; evict the rest (re-init on demand). Held
+  // below the limit with headroom for the per-asset audio <video> elements (which
+  // hold a decoder only while actually playing).
+  private static readonly MAX_ACTIVE_WORKERS = 8;
+
+  /** Move an asset to the most-recently-used end of the LRU. */
+  private touchLRU(assetId: string): void {
+    const state = this.workers.get(assetId);
+    if (state) {
+      this.workers.delete(assetId);
+      this.workers.set(assetId, state);
+    }
+  }
+
+  /** Terminate + drop a worker (LRU eviction) but KEEP its source for re-init. */
+  private evictWorker(assetId: string): void {
+    const state = this.workers.get(assetId);
+    if (!state) return;
+    for (const [, req] of state.inFlight) req.reject(new Error('Decoder evicted (LRU)'));
+    state.inFlight.clear();
+    state.worker.terminate();
+    this.workers.delete(assetId);
+  }
 
   /** Initialize a worker for a video asset. Returns metadata once the moov is parsed. */
   async initAsset(assetId: string, source: File | string): Promise<VideoMetadata> {
+    this.sources.set(assetId, source);
     const existing = this.workers.get(assetId);
     if (existing?.healthy && existing.metadata) {
+      this.touchLRU(assetId);
       return existing.metadata;
     }
 
     if (existing) {
       existing.worker.terminate();
       this.workers.delete(assetId);
+    }
+
+    // Evict least-recently-used decoders to stay under the cap before spawning a new one.
+    if (!this.workers.has(assetId)) {
+      while (this.workers.size >= VideoDecoderPool.MAX_ACTIVE_WORKERS) {
+        const lruId = this.workers.keys().next().value as string | undefined;
+        if (!lruId || lruId === assetId) break;
+        this.evictWorker(lruId);
+      }
     }
 
     const worker = new Worker(
@@ -87,11 +128,12 @@ class VideoDecoderPool {
   }
 
   /** Decode a single frame. Returns a transferable VideoFrame. */
-  decodeFrame(assetId: string, frameIndex: number): Promise<VideoFrame> {
-    const state = this.workers.get(assetId);
+  async decodeFrame(assetId: string, frameIndex: number): Promise<VideoFrame> {
+    const state = await this.ensureWorker(assetId);
     if (!state) {
       return Promise.reject(new Error(`No worker for asset ${assetId}`));
     }
+    this.touchLRU(assetId);
 
     return new Promise<VideoFrame>((resolve, reject) => {
       const requestId = nextRequestId();
@@ -107,12 +149,23 @@ class VideoDecoderPool {
     });
   }
 
+  /** Re-init a worker from its retained source if it was LRU-evicted; null if unknown. */
+  private async ensureWorker(assetId: string): Promise<WorkerState | null> {
+    const existing = this.workers.get(assetId);
+    if (existing) return existing; // present (even if unhealthy — respawn handles that)
+    const source = this.sources.get(assetId);
+    if (!source) return null;
+    await this.initAsset(assetId, source);
+    return this.workers.get(assetId) ?? null;
+  }
+
   /** Decode a frame at full resolution for export (bypasses proxy mode). */
   async decodeFrameForExport(assetId: string, frameIndex: number): Promise<VideoFrame> {
-    const state = this.workers.get(assetId);
+    const state = await this.ensureWorker(assetId);
     if (!state) {
       return Promise.reject(new Error(`No worker for asset ${assetId}`));
     }
+    this.touchLRU(assetId);
 
     // Force full res for this decode without clobbering the asset's scrub proxy
     // state; restore it afterward so scrubbing doesn't stay full-res for the rest
@@ -161,6 +214,7 @@ class VideoDecoderPool {
 
   /** Tear down the worker for an asset. */
   async destroyAsset(assetId: string): Promise<void> {
+    this.sources.delete(assetId); // also clears an LRU-evicted asset with no live worker
     const state = this.workers.get(assetId);
     if (!state) return;
 

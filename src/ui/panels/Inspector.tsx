@@ -90,7 +90,7 @@ export function Inspector() {
     { id: 'anchor', label: 'Anchor', icon: <Link2 size={13} />, show: layer.type !== 'audio' && layer.type !== 'group' },
     { id: 'physics', label: 'Physics', icon: <Atom size={13} />, show: layer.type !== 'audio' && layer.type !== 'group' },
     { id: 'stagger', label: 'Stagger', icon: <Zap size={13} />, show: false },
-    { id: 'fieldSampling', label: 'Field', icon: <Grid3x3 size={13} />, show: false },
+    { id: 'fieldSampling', label: 'Field', icon: <Grid3x3 size={13} />, show: layer.type === 'fieldSampled' },
     { id: 'code', label: 'Code', icon: <Code2 size={13} />, show: layer.type !== 'audio' && layer.type !== 'group' },
     { id: 'animate', label: 'Animate', icon: <Sparkles size={13} />, show: true },
   ];

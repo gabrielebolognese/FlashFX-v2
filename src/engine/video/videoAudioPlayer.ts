@@ -1,3 +1,5 @@
+import { audioTransport } from '../audio/audioTransport';
+
 const DRIFT_THRESHOLD_SEC = 0.08;
 
 interface AudioPlayerRecord {
@@ -11,13 +13,6 @@ interface AudioPlayerRecord {
 
 class VideoAudioPlayer {
   private players = new Map<string, AudioPlayerRecord>();
-  private audioContext: AudioContext | null = null;
-  private masterGain: GainNode | null = null;
-
-  setAudioContext(ctx: AudioContext, masterGain: GainNode): void {
-    this.audioContext = ctx;
-    this.masterGain = masterGain;
-  }
 
   initAudio(assetId: string, file: File): void {
     const existing = this.players.get(assetId);
@@ -35,16 +30,15 @@ class VideoAudioPlayer {
     element.style.display = 'none';
     document.body.appendChild(element);
 
-    const ctx = this.ensureContext();
+    // Shared context + master graph → video audio reaches the master gain + VU
+    // meters and is resumed with the rest of playback (was a private, never-resumed
+    // context → silent on load + dead meters).
+    const ctx = audioTransport.getContext();
     const sourceNode = ctx.createMediaElementSource(element);
     const gainNode = ctx.createGain();
     gainNode.gain.value = 1;
     sourceNode.connect(gainNode);
-    if (this.masterGain) {
-      gainNode.connect(this.masterGain);
-    } else {
-      gainNode.connect(ctx.destination);
-    }
+    gainNode.connect(audioTransport.getMasterGain());
 
     this.players.set(assetId, {
       element,
@@ -54,13 +48,6 @@ class VideoAudioPlayer {
       muted: false,
       refCount: 1,
     });
-  }
-
-  private ensureContext(): AudioContext {
-    if (!this.audioContext) {
-      this.audioContext = new AudioContext();
-    }
-    return this.audioContext;
   }
 
   hasAudioTrack(assetId: string): boolean {

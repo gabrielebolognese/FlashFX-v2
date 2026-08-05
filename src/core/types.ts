@@ -1360,6 +1360,8 @@ export interface ResolvedLayer {
 export interface RenderFrame {
   frameNumber: number;
   totalFrames: number;
+  /** Composition frame rate — used by time-based CPU renderers (e.g. field sampling). */
+  frameRate?: number;
   width: number;
   height: number;
   backgroundColor: Vec4;

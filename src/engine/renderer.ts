@@ -2569,6 +2569,12 @@ export class WebGPURenderer {
   private deviceLost = false;
   private renderErrorCount = 0;
   private deviceLostCallbacks = new Set<(reason: string) => void>();
+  /** Audio-master presentation mode for the current renderFrame() call (video
+   *  layers show the newest decoded frame ≤ target instead of the exact frame). */
+  private presentLatest = false;
+  /** Max source frames a displayed frame may lag its target before we'd rather
+   *  hold/black than show a stale picture (≈ the per-asset open-frame window). */
+  private static readonly PRESENT_MAX_DISTANCE = 12;
   // Directional samples taken along the velocity vector in the blur shader.
   // Driven by the quality/export settings (4 = draft, 8 = preview, 16 = high).
   private motionBlurSamples = 16;
@@ -3238,13 +3244,19 @@ export class WebGPURenderer {
     gpu.pathVertexCapacity = cap;
   }
 
-  renderFrame(frame: RenderFrame, target: 'screen' | 'offscreen' = 'screen'): void {
+  renderFrame(frame: RenderFrame, target: 'screen' | 'offscreen' = 'screen', presentLatest = false): void {
     if (target === 'screen' && this.deviceLost) return;
+    // Scoped to this call: when set (audio-master playback), video layers display
+    // the newest decoded frame ≤ their target and drop the rest, rather than
+    // requesting the exact frame and holding on a decode miss (framePresentation).
+    this.presentLatest = presentLatest;
     try {
       this.renderFrameUnsafe(frame, target);
     } catch (err) {
       if (target === 'screen') this.handleRenderError(err);
       else throw err;
+    } finally {
+      this.presentLatest = false;
     }
   }
 
@@ -3462,9 +3474,25 @@ export class WebGPURenderer {
         // Report the exact resolved source frame so the scheduler prefetches from
         // the same trim/offset/rate the renderer draws (single mapping source).
         frameScheduler.reportVideoRequirement(vidLayer.id, video.assetId, sourceFrame, video.playbackRate);
-        // Only upload when the layer's texture doesn't already hold this exact
-        // source frame — avoids a redundant GPU copy every render while paused.
-        if (videoTextureCache.getCurrentFrameIndex(vidLayer.id) !== sourceFrame) {
+
+        const currentIdx = videoTextureCache.getCurrentFrameIndex(vidLayer.id);
+        if (this.presentLatest) {
+          // Audio-master: display the newest decoded frame ≤ target and drop the
+          // rest; hold the current texture on a miss — never block. Selection is
+          // PER LAYER (two layers on one asset can need different source frames).
+          const pick = frameScheduler.getPresentableFrame(
+            video.assetId,
+            sourceFrame,
+            currentIdx < 0 ? null : currentIdx,
+            WebGPURenderer.PRESENT_MAX_DISTANCE
+          );
+          if (pick && pick.index !== currentIdx) {
+            videoTextureCache.uploadFrame(vidLayer.id, pick.index, pick.frame);
+          }
+        } else if (currentIdx !== sourceFrame) {
+          // Classic path: request the EXACT source frame, hold last on a miss.
+          // Only upload when the texture doesn't already hold it — avoids a
+          // redundant GPU copy every render while paused.
           const videoFrame = frameScheduler.getFrame(video.assetId, sourceFrame);
           if (videoFrame) {
             videoTextureCache.uploadFrame(vidLayer.id, sourceFrame, videoFrame);
@@ -3550,7 +3578,7 @@ export class WebGPURenderer {
             imgLayer.id,
             imgLayer.fieldSampled.configJSON,
             imgLayer.fieldSampled.localFrame,
-            30,
+            frame.frameRate ?? 30,
             frame.width,
             frame.height,
           );

@@ -465,10 +465,16 @@ class VideoDecoderController {
   // per step (O(GOP²)). Cache them (keyed by EXACT frame.timestamp — the value the
   // worker stamps on each chunk and WebCodecs preserves, so a stale/mismatched key
   // simply misses, never returns a wrong frame) so a hit resolves without decoding.
-  // Bounded by bytes (not count) so the cap holds regardless of resolution.
+  // Bounded by BOTH a frame COUNT and a byte budget. The count cap is the important
+  // one: hardware VideoDecoders bound the number of outstanding (un-closed) output
+  // frames (~16-24), so holding too many open here stalls the decoder's output pool.
+  // Keep the count well under that; the byte cap is a secondary memory guard.
   private decodedCache = new Map<number, VideoFrame>();
   private decodedCacheBytes = 0;
-  private static readonly DECODED_CACHE_BYTES = 128 * 1024 * 1024;
+  // Small: these open frames share the decoder's output pool with the main-thread
+  // frameScheduler buffer, so keep this well clear of the ~16-24 pool limit.
+  private static readonly DECODED_CACHE_MAX_FRAMES = 6;
+  private static readonly DECODED_CACHE_BYTES = 64 * 1024 * 1024;
 
   /** Max samples fed in a single pass (bounds byte reads + input-queue depth). */
   private static readonly MAX_FORWARD_SPAN = 120;
@@ -531,7 +537,11 @@ class VideoDecoderController {
     }
     this.decodedCache.set(ts, frame);
     this.decodedCacheBytes += this.frameBytes(frame);
-    while (this.decodedCacheBytes > VideoDecoderController.DECODED_CACHE_BYTES && this.decodedCache.size > 1) {
+    while (
+      (this.decodedCache.size > VideoDecoderController.DECODED_CACHE_MAX_FRAMES ||
+        this.decodedCacheBytes > VideoDecoderController.DECODED_CACHE_BYTES) &&
+      this.decodedCache.size > 1
+    ) {
       const oldest = this.decodedCache.keys().next().value as number;
       const old = this.decodedCache.get(oldest);
       this.decodedCache.delete(oldest);

@@ -2,6 +2,8 @@ import { WebGPURenderer } from './renderer';
 import { TimelineEngine } from './timeline';
 import { audioPlaybackEngine } from './media/audioPlayback';
 import { frameScheduler } from './video/frameScheduler';
+import { masterClock } from './masterClock';
+import { usePreviewStore } from '../store/preview';
 
 type FrameCallback = (frame: number) => void;
 type LagCallback = (lagging: boolean) => void;
@@ -97,6 +99,8 @@ export class PlaybackController {
   private anchorClock(): void {
     this.playStartTime = performance.now();
     this.playStartFrame = this._currentFrame;
+    // Also anchor the audio-master clock (harmless/unused when the toggle is off).
+    masterClock.reanchor(this._currentFrame);
   }
 
   private resetLagMonitor(): void {
@@ -119,6 +123,15 @@ export class PlaybackController {
     const composition = this.engine.getComposition();
     if (composition) {
       audioPlaybackEngine.startPlayback(composition, this._currentFrame, this._frameRate);
+    }
+
+    // Audio-master path: resume the shared context, then re-anchor on the audio
+    // clock once it's actually running (optimistic performance.now() start until then,
+    // so spacebar → motion is instant even while resume() is pending).
+    if (usePreviewStore.getState().audioMasterClock) {
+      masterClock.resume().then((running) => {
+        if (running && this._isPlaying) masterClock.reanchor(this._currentFrame);
+      });
     }
 
     this.animFrameId = requestAnimationFrame(this.tick);
@@ -169,10 +182,10 @@ export class PlaybackController {
     this.notify();
   }
 
-  renderCurrentFrame(): void {
+  renderCurrentFrame(presentLatest = false): void {
     const renderFrame = this.engine.evaluate(this._currentFrame);
     if (renderFrame && this.renderer) {
-      this.renderer.renderFrame(renderFrame, 'screen');
+      this.renderer.renderFrame(renderFrame, 'screen', presentLatest);
     }
   }
 
@@ -189,17 +202,28 @@ export class PlaybackController {
   };
 
   private tickRealtime(_time: number, dur: number): void {
-    const now = performance.now();
-    const elapsedSec = (now - this.playStartTime) / 1000;
-    const absoluteFrame = this.playStartFrame + elapsedSec * this._frameRate;
-    const loopedFrame = ((absoluteFrame % dur) + dur) % dur;
+    const useMaster = usePreviewStore.getState().audioMasterClock;
+    let loopedFrame: number;
+    if (useMaster) {
+      // Audio-master: frame position follows the output-latency-compensated audio
+      // clock (already loop-folded). rAF is just the present pump.
+      loopedFrame = masterClock.nowFrameFloat(this._frameRate, 1, dur, true);
+    } else {
+      const now = performance.now();
+      const elapsedSec = (now - this.playStartTime) / 1000;
+      const absoluteFrame = this.playStartFrame + elapsedSec * this._frameRate;
+      loopedFrame = ((absoluteFrame % dur) + dur) % dur;
+    }
     const newFrame = Math.floor(loopedFrame);
 
     if (newFrame !== this._currentFrame) {
       const wrapped = newFrame < this._currentFrame;
       this._currentFrame = newFrame;
       frameScheduler.setPlaybackState(newFrame, 1, false);
-      this.renderCurrentFrame();
+      // Under the audio-master clock the picture is a passive follower: show the
+      // newest decoded frame ≤ target and drop the rest (never block). Scrub/seek
+      // renders keep requesting the EXACT frame (presentLatest stays false).
+      this.renderCurrentFrame(useMaster);
       this.syncAudio(wrapped);
       this.notify();
     }

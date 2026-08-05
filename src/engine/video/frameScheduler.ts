@@ -1,8 +1,21 @@
 import { videoDecoderPool } from './videoDecoderPool';
+import { selectFramesToEvict } from './frameEviction';
+import { selectPresentFrame } from './framePresentation';
 
-const LOOKAHEAD_NORMAL = 30;
-const LOOKAHEAD_FAST = 60;
+// Look-ahead depth (frames prefetched ahead of the playhead). Kept SMALL and near
+// the ring-buffer sizes production WebCodecs players use (~5-10): a hardware
+// VideoDecoder stalls once too many decoded output frames are held open
+// (~16-24), so decoding 30+ ahead and retaining them chokes the decoder → it
+// stops emitting → getFrame() returns null forever → the picture FREEZES while
+// audio (a separate <video>) keeps playing. See MAX_OPEN_FRAMES_PER_ASSET.
+const LOOKAHEAD_NORMAL = 10;
+const LOOKAHEAD_FAST = 18;
 const MEMORY_BUDGET_BYTES = 512 * 1024 * 1024; // 512 MB
+// Hard cap on decoded frames held OPEN per asset, well under the hardware
+// decoder's output-frame pool. A transferred-but-un-closed VideoFrame still
+// occupies the decoder's pool slot, so this — not the byte budget — is what keeps
+// the decoder emitting. Sized to hold the look-ahead window + a small trailing.
+const MAX_OPEN_FRAMES_PER_ASSET = 12;
 const PROXY_SETTLE_DELAY_MS = 300;
 const PROXY_THRESHOLD_WIDTH = 1920;
 const PROXY_THRESHOLD_HEIGHT = 1080;
@@ -154,6 +167,33 @@ class FrameScheduler {
     return entry.frame;
   }
 
+  /**
+   * Audio-master presentation: pick the buffered frame to DISPLAY for a layer whose
+   * exact target source frame is `target`. Returns the newest decoded frame ≤ target
+   * (within maxDistance), else holds `lastPresented` if still buffered, else null —
+   * the "show the latest decoded frame, drop the rest, never block" follower policy
+   * (pure logic in framePresentation.ts, proven by verify:presentation). Used only on
+   * the audio-master-clock path; the classic path still requests the exact frame.
+   */
+  getPresentableFrame(
+    assetId: string,
+    target: number,
+    lastPresented: number | null,
+    maxDistance: number
+  ): { index: number; frame: VideoFrame | ImageBitmap } | null {
+    const buffer = this.buffers.get(assetId);
+    if (!buffer) return null;
+    const buffered: number[] = [];
+    for (const [idx, entry] of buffer) {
+      if (entry !== 'in-flight') buffered.push(idx);
+    }
+    const index = selectPresentFrame(buffered, target, lastPresented, maxDistance);
+    if (index === null) return null;
+    const entry = buffer.get(index);
+    if (!entry || entry === 'in-flight') return null;
+    return { index, frame: entry.frame };
+  }
+
   getMemoryStats(): { usedBytes: number; budgetBytes: number } {
     return { usedBytes: this.totalMemoryUsage, budgetBytes: MEMORY_BUDGET_BYTES };
   }
@@ -273,6 +313,9 @@ class FrameScheduler {
             const byteSize = this.estimateFrameSize(frame);
             currentBuffer.set(frameIndex, { frame, byteSize });
             this.totalMemoryUsage += byteSize;
+            // Bound OPEN frames per asset FIRST (keeps the decoder emitting), then
+            // the global byte budget as a cross-asset backstop.
+            this.enforceFrameCap(assetId);
             this.enforceMemoryBudget();
             this.onFrameReady?.();
           },
@@ -345,6 +388,41 @@ class FrameScheduler {
       return frame.displayWidth * frame.displayHeight * 4;
     }
     return frame.width * frame.height * 4;
+  }
+
+  /**
+   * Keep the OPEN (decoded, non-in-flight) frame count for one asset under
+   * MAX_OPEN_FRAMES_PER_ASSET, closing evicted frames so the hardware decoder's
+   * output pool is freed and it keeps emitting. This is the primary guard against
+   * the playback freeze — the byte budget alone let ~60 frames pile up open, far
+   * past the decoder's ~16-24 pool, stalling it permanently.
+   */
+  private enforceFrameCap(assetId: string): void {
+    const buffer = this.buffers.get(assetId);
+    if (!buffer) return;
+    const open: number[] = [];
+    for (const [idx, entry] of buffer) {
+      if (entry !== 'in-flight') open.push(idx);
+    }
+    if (open.length <= MAX_OPEN_FRAMES_PER_ASSET) return;
+
+    const reg = this.registrations.find((r) => r.assetId === assetId);
+    const sourceRate = reg?.frameRate ?? 30;
+    const anchors = [...this.requirements.values()]
+      .filter((r) => r.assetId === assetId)
+      .map((r) => r.sourceFrame);
+    if (anchors.length === 0) {
+      anchors.push(Math.floor((this.currentFrame / this.compositionFrameRate) * sourceRate));
+    }
+
+    for (const idx of selectFramesToEvict(open, anchors, MAX_OPEN_FRAMES_PER_ASSET)) {
+      const entry = buffer.get(idx);
+      if (entry && entry !== 'in-flight') {
+        buffer.delete(idx);
+        this.totalMemoryUsage -= entry.byteSize;
+        entry.frame.close();
+      }
+    }
   }
 
   private enforceMemoryBudget(): void {

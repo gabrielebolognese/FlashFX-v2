@@ -12,6 +12,7 @@ import {
   Scissors,
   Sparkles,
   Eye,
+  AudioLines,
 } from 'lucide-react';
 import {
   usePreviewStore,
@@ -35,6 +36,8 @@ export function PreviewControls() {
   const toggleRegionOfInterest = usePreviewStore((s) => s.toggleRegionOfInterest);
   const fastDraft = usePreviewStore((s) => s.fastDraft);
   const toggleFastDraft = usePreviewStore((s) => s.toggleFastDraft);
+  const audioMasterClock = usePreviewStore((s) => s.audioMasterClock);
+  const toggleAudioMasterClock = usePreviewStore((s) => s.toggleAudioMasterClock);
 
   // Solo: per-track solo lives on the timeline TrackRow buttons; this toolbar
   // toggle acts on the selected layer's track (or clears solo when nothing is
@@ -139,6 +142,17 @@ export function PreviewControls() {
         title={soloTitle}
         disabled={!activeTrackId && !anySolo}
         activeColor="text-fuchsia-400"
+      />
+
+      <Divider />
+
+      {/* Audio-master playback clock (experimental A/V-sync rework — A/B toggle) */}
+      <ToggleButton
+        icon={<AudioLines size={12} />}
+        active={audioMasterClock}
+        onClick={toggleAudioMasterClock}
+        title={audioMasterClock ? 'Audio-synced playback: ON (experimental)' : 'Audio-synced playback: OFF (wall clock)'}
+        activeColor="text-emerald-400"
       />
 
       <div className="ml-auto flex items-center gap-2">

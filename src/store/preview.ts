@@ -27,6 +27,10 @@ interface PreviewState {
   fastDraft: boolean;
   /** Skip layer effects (shadow/glow/blur) in the interactive preview only. */
   disableEffects: boolean;
+  /** Experimental: drive playback from the audio (Web Audio) master clock instead
+   *  of the wall clock — CapCut/Canva-style A/V sync. Off = the current wall-clock
+   *  path (zero change). A runtime A/B flag while the rework is browser-verified. */
+  audioMasterClock: boolean;
 
   setQuality: (q: PreviewQuality) => void;
   toggleTransparencyGrid: () => void;
@@ -35,6 +39,7 @@ interface PreviewState {
   toggleRegionOfInterest: () => void;
   toggleFastDraft: () => void;
   toggleDisableEffects: () => void;
+  toggleAudioMasterClock: () => void;
 }
 
 export const usePreviewStore = create<PreviewState>((set) => ({
@@ -45,6 +50,7 @@ export const usePreviewStore = create<PreviewState>((set) => ({
   regionOfInterest: false,
   fastDraft: false,
   disableEffects: false,
+  audioMasterClock: false,
 
   setQuality: (quality) => set({ quality }),
   toggleTransparencyGrid: () => set((s) => ({ transparencyGrid: !s.transparencyGrid })),
@@ -53,6 +59,7 @@ export const usePreviewStore = create<PreviewState>((set) => ({
   toggleRegionOfInterest: () => set((s) => ({ regionOfInterest: !s.regionOfInterest })),
   toggleFastDraft: () => set((s) => ({ fastDraft: !s.fastDraft })),
   toggleDisableEffects: () => set((s) => ({ disableEffects: !s.disableEffects })),
+  toggleAudioMasterClock: () => set((s) => ({ audioMasterClock: !s.audioMasterClock })),
 }));
 
 export function getQualityScale(quality: PreviewQuality): number {

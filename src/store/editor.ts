@@ -2452,12 +2452,27 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }
     if (idsToRemove.size === 0) return;
 
+    // Asset-level teardown (scheduler registration + audio element) must only run
+    // when NO SURVIVING layer still references that asset — deleting one of two
+    // clips that share a source (e.g. the two halves of a Split) would otherwise
+    // freeze the survivor's video and kill its audio. The texture is layer-level,
+    // so it's always safe to destroy. Dedupe per asset so deleting BOTH twins at
+    // once doesn't over-release the audio refcount.
+    const survivingVideoAssetIds = new Set<string>();
+    for (const l of composition.layers) {
+      if (l.type === 'video' && !idsToRemove.has(l.id)) survivingVideoAssetIds.add(l.video.assetId);
+    }
+    const tornDownAssetIds = new Set<string>();
     for (const id of idsToRemove) {
       const layer = composition.layers.find((l) => l.id === id);
       if (layer?.type === 'video') {
-        frameScheduler.unregisterAsset(layer.video.assetId);
         videoTextureCache.destroyLayer(layer.id);
-        videoAudioPlayer.releaseRef(layer.video.assetId);
+        const assetId = layer.video.assetId;
+        if (!survivingVideoAssetIds.has(assetId) && !tornDownAssetIds.has(assetId)) {
+          tornDownAssetIds.add(assetId);
+          frameScheduler.unregisterAsset(assetId);
+          videoAudioPlayer.releaseRef(assetId);
+        }
       }
     }
 
