@@ -54,7 +54,8 @@ type HandleType =
   | 'move'
   | 'tl' | 'tr' | 'bl' | 'br'
   | 'top' | 'bottom' | 'left' | 'right'
-  | 'rotate';
+  | 'rotate'
+  | 'radius';
 
 interface TransformState {
   x: number;
@@ -181,7 +182,7 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
   const [snapLines, setSnapLines] = useState<SnapLine[]>([]);
   const [marquee, setMarquee] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const marqueeRef = useRef<{ startCX: number; startCY: number; active: boolean; lastIds: string } | null>(null);
-  const dragStart = useRef({ mx: 0, my: 0, state: null as TransformState | null, groupPos: null as Vec2 | null, initFontSize: 0, initScale: [1, 1] as Vec2, multiPositions: [] as { id: string; pos: Vec2 }[] });
+  const dragStart = useRef({ mx: 0, my: 0, state: null as TransformState | null, groupPos: null as Vec2 | null, initFontSize: 0, initScale: [1, 1] as Vec2, multiPositions: [] as { id: string; pos: Vec2 }[], startRadius: 0 });
   const snapDataRef = useRef<{ initialRect: Rect; targets: SnapTarget[] } | null>(null);
 
   const activeLayer = composition.layers.find((l) => l.id === selection.activeId) || null;
@@ -357,7 +358,7 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
           }
         }
 
-        dragStart.current = { mx: e.clientX, my: e.clientY, state, groupPos: null, initFontSize: 0, initScale: hitScale, multiPositions: positions };
+        dragStart.current = { mx: e.clientX, my: e.clientY, state, groupPos: null, initFontSize: 0, initScale: hitScale, multiPositions: positions, startRadius: 0 };
         dragSnapshot.current = { comp: composition, sel: selection };
 
         // Update activeId to the hit layer
@@ -483,7 +484,12 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
       initFontSize = evaluateNumber(activeLayer.animOverrides.fontSize, currentFrame);
     }
     const initScale = evaluateProperty(activeLayer.transform.scale, currentFrame) as Vec2;
-    dragStart.current = { mx: e.clientX, my: e.clientY, state, groupPos: gPos, initFontSize, initScale, multiPositions: [] };
+    let initRadius = 0;
+    if (activeLayer.type === 'shape') {
+      const s = (activeLayer as ShapeLayer).shape;
+      if (s.type === 'rectangle') initRadius = evaluateNumber(s.borderRadius, currentFrame);
+    }
+    dragStart.current = { mx: e.clientX, my: e.clientY, state, groupPos: gPos, initFontSize, initScale, multiPositions: [], startRadius: initRadius };
     dragSnapshot.current = { comp: composition, sel: selection };
 
     // Capture initial positions of all selected layers for multi-drag
@@ -623,6 +629,14 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
           if (shiftHeld) angleDelta = Math.round(angleDelta / 15) * 15;
           updateAnimatable('transform.rotation', state.rotation + angleDelta);
         }
+      } else if (dragging === 'radius') {
+        // Corner-radius handle: drag inward from the top-left corner rounds the
+        // rectangle live. Average the two axes so a diagonal (or pure-x/pure-y)
+        // drag both feel natural; clamp to [0, min(w,h)/2]. Screen-space deltas
+        // (like resize) — rotation-agnostic, matching the resize handles.
+        const maxR = Math.min(state.w, state.h) / 2;
+        const newR = Math.max(0, Math.min(maxR, dragStart.current.startRadius + (dx + dy) / 2));
+        updateAnimatable('shape.borderRadius', newR);
       } else {
         if (isGroupActive) return;
 
@@ -741,7 +755,7 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
     const handleUp = () => {
       useHistoryStore.getState().setBatching(false);
       if (dragSnapshot.current) {
-        useEditorStore.getState().commitDrag('Transform', dragSnapshot.current.comp, dragSnapshot.current.sel);
+        useEditorStore.getState().commitDrag(dragging === 'radius' ? 'Corner Radius' : 'Transform', dragSnapshot.current.comp, dragSnapshot.current.sel);
         dragSnapshot.current = null;
       }
       setDragging(null);
@@ -819,6 +833,22 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
     { id: 'left', cx: -sw / 2, cy: 0 },
     { id: 'right', cx: sw / 2, cy: 0 },
   ];
+
+  // Corner-radius handle (rectangles only): a circular handle inset from the
+  // top-left corner by the current radius, so dragging it rounds the corner live.
+  let isRectShape = false;
+  let currentRadius = 0;
+  let hasCornerRadii = false;
+  if (activeLayer.type === 'shape') {
+    const s = (activeLayer as ShapeLayer).shape;
+    if (s.type === 'rectangle') {
+      isRectShape = true;
+      currentRadius = evaluateNumber(s.borderRadius, currentFrame);
+      hasCornerRadii = !!s.cornerRadii; // independent corners → edit in the Inspector, hide the uniform handle
+    }
+  }
+  const radiusInsetPx = Math.min(Math.max(currentRadius * sX, 18), Math.min(sw, sh) / 2);
+  const showRadiusHandle = isRectShape && !hasCornerRadii && !isGroupActive && Math.min(sw, sh) / 2 >= 18;
 
   return (
     <div
@@ -912,6 +942,28 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
               </div>
             );
           })}
+
+          {showRadiusHandle && (
+            <div
+              className="absolute pointer-events-auto flex items-center justify-center"
+              style={{
+                left: radiusInsetPx - 8,
+                top: radiusInsetPx - 8,
+                width: 16,
+                height: 16,
+                cursor: 'nwse-resize',
+              }}
+              title="Drag to round corners"
+              onPointerDown={(e) => startDrag(e, 'radius')}
+              onPointerEnter={() => setHoverHandle('radius')}
+              onPointerLeave={() => setHoverHandle(null)}
+            >
+              <div
+                style={{ width: 9, height: 9 }}
+                className={`rounded-full bg-white border-2 border-[#38bdf8] shadow-[0_0_4px_rgba(56,189,248,0.6)] transition-transform duration-75 ${hoverHandle === 'radius' ? 'scale-[1.4]' : ''}`}
+              />
+            </div>
+          )}
 
           <div
             className="absolute pointer-events-none"

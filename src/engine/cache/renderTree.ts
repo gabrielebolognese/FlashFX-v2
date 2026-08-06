@@ -60,6 +60,7 @@ export function contentSignatureFor(layer: ResolvedLayer): string {
   const s = layer.shape;
   if (s) {
     let sig = `shape:${s.renderType}|${s.width}x${s.height}|r${s.radius}|br${s.borderRadius}`;
+    if (s.cornerRadii) sig += `|cr${s.cornerRadii.join(',')}`;
     sig += `|pts${s.points}|or${s.outerRadius}|ir${s.innerRadius}`;
     sig += `|sw${s.strokeWidth}|${s.lineCap}|${s.lineJoin}|c${s.closed ? 1 : 0}`;
     sig += `|f${colorSig(s.fillColor)}|k${colorSig(s.strokeColor)}`;

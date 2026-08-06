@@ -351,6 +351,14 @@ function resolveShapeLayer(layer: ShapeLayer, frame: number): ResolvedShape {
       base.width = evaluateNumber(shape.width, frame);
       base.height = evaluateNumber(shape.height, frame);
       base.borderRadius = evaluateNumber(shape.borderRadius, frame);
+      if (shape.cornerRadii) {
+        base.cornerRadii = [
+          evaluateNumber(shape.cornerRadii[0], frame),
+          evaluateNumber(shape.cornerRadii[1], frame),
+          evaluateNumber(shape.cornerRadii[2], frame),
+          evaluateNumber(shape.cornerRadii[3], frame),
+        ];
+      }
       break;
     }
     case 'circle': {

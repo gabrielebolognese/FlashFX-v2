@@ -136,6 +136,12 @@ export interface RectangleShape {
   strokeColor: Vec4;
   strokeWidth: AnimatableProperty;
   borderRadius: AnimatableProperty;
+  /**
+   * Optional independent per-corner radii, ordered [topLeft, topRight,
+   * bottomRight, bottomLeft]. When present it overrides `borderRadius` (which
+   * stays as the uniform fallback for legacy scenes and the single-value UI).
+   */
+  cornerRadii?: [AnimatableProperty, AnimatableProperty, AnimatableProperty, AnimatableProperty];
 }
 
 export interface CircleShape {
@@ -1175,6 +1181,9 @@ export interface ResolvedShape {
   pattern?: ResolvedPattern;
   strokeWidth: number;
   borderRadius: number;
+  /** Resolved per-corner radii [tl, tr, br, bl] when the rectangle uses
+   *  independent corners; absent means the uniform `borderRadius` applies. */
+  cornerRadii?: [number, number, number, number];
   // Circle
   radius: number;
   // Star

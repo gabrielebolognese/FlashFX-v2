@@ -95,6 +95,16 @@ function ensureShapeGeometry(val: unknown): ShapeGeometry | null {
         strokeColor,
         strokeWidth,
         borderRadius: ensureAnimatableProperty(s.borderRadius, 'Border Radius', 'number', 0),
+        ...(Array.isArray(s.cornerRadii) && s.cornerRadii.length === 4
+          ? {
+              cornerRadii: [
+                ensureAnimatableProperty(s.cornerRadii[0], 'Corner TL', 'number', 0),
+                ensureAnimatableProperty(s.cornerRadii[1], 'Corner TR', 'number', 0),
+                ensureAnimatableProperty(s.cornerRadii[2], 'Corner BR', 'number', 0),
+                ensureAnimatableProperty(s.cornerRadii[3], 'Corner BL', 'number', 0),
+              ] as [AnimatableProperty, AnimatableProperty, AnimatableProperty, AnimatableProperty],
+            }
+          : {}),
       };
     case 'circle':
       return {

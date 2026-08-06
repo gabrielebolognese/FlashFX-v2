@@ -361,7 +361,15 @@ fn vs(@builtin(vertex_index) vi: u32) -> VertexOutput {
   return out;
 }
 
-fn roundedBoxSDF(p: vec2f, size: vec2f, radius: f32) -> f32 {
+fn roundedBoxSDF(p: vec2f, size: vec2f, radii: vec4f) -> f32 {
+  // radii = (topLeft, topRight, bottomRight, bottomLeft). localUV is centred at 0
+  // with uv.y=0 at the top, so p.y>0 is the bottom half and p.x>0 the right half.
+  let right = p.x > 0.0;
+  let radius = select(
+    select(radii.x, radii.y, right),  // top:    tl | tr
+    select(radii.w, radii.z, right),  // bottom: bl | br
+    p.y > 0.0
+  );
   let q = abs(p) - size + vec2f(radius);
   return length(max(q, vec2f(0.0))) + min(max(q.x, q.y), 0.0) - radius;
 }
@@ -604,8 +612,9 @@ fn fs(in: VertexOutput) -> @location(0) vec4f {
     // Star
     dist = starSDF(localUV, u.shapeParams.x, u.shapeParams.y, u.shapeParams.z);
   } else {
-    // Rectangle (default, also polygon fallback)
-    dist = roundedBoxSDF(localUV, halfSize, u.borderRadius);
+    // Rectangle (default, also polygon fallback). shapeParams carries the 4
+    // per-corner radii (all equal to borderRadius when corners aren't independent).
+    dist = roundedBoxSDF(localUV, halfSize, u.shapeParams);
   }
 
   let aa = fwidth(dist);
@@ -4394,11 +4403,22 @@ export class WebGPURenderer {
     const shapeTypeMap: Record<string, number> = { rectangle: 0, circle: 1, star: 2, polygon: 3 };
     data[11] = shapeTypeMap[s.renderType] ?? 0;
 
-    // shapeParams: vec4 at floats 12..15
-    data[12] = s.points;
-    data[13] = s.outerRadius * t.scaleX;
-    data[14] = s.innerRadius * t.scaleX;
-    data[15] = 0;
+    // shapeParams: vec4 at floats 12..15. Star uses (points, outerR, innerR);
+    // every other SDF shape (rectangle, polygon fallback) uses it for the four
+    // rounded-box corner radii [tl, tr, br, bl] — all equal to borderRadius unless
+    // the rectangle has independent corners, which keeps the uniform case identical.
+    if (s.renderType === 'star') {
+      data[12] = s.points;
+      data[13] = s.outerRadius * t.scaleX;
+      data[14] = s.innerRadius * t.scaleX;
+      data[15] = 0;
+    } else {
+      const cr = s.cornerRadii;
+      data[12] = cr ? cr[0] : s.borderRadius;
+      data[13] = cr ? cr[1] : s.borderRadius;
+      data[14] = cr ? cr[2] : s.borderRadius;
+      data[15] = cr ? cr[3] : s.borderRadius;
+    }
 
     // strokeWidth (16); maskCount (17) written by writeMaskUniforms; pad 18,19
     data[16] = s.strokeWidth * t.scaleX;

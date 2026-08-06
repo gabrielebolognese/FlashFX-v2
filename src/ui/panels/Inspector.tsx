@@ -8,6 +8,7 @@ import { useMaskStore } from '../../store/mask';
 import { BrandColorPicker } from '../components/BrandColorPicker';
 import type { ShapeLayer, TextLayer, VideoLayer, ImageLayer, AudioLayer, ParticleLayer, AnimationItemLayer, LottieIconLayer, AnimatableProperty, Vec2, RectangleShape, CircleShape, StarShape, PolygonShape, MotionPathAnchor, MotionPathLoop, Mask, MaskType, Layer, LayerShadow, LayerGlow, LayerBlur, BlurType, GlowMode, LayoutObjectLayer, LayoutContainerLayer } from '../../core/types';
 import { evaluateProperty } from '../../core/interpolation';
+import { createProperty } from '../../core/factory';
 import { getMotionBlur } from '../../core/layerSwitches';
 import { Diamond, Route, Trash2, Wand2, Sliders, Sparkles, Square, Circle, Star, Hexagon, Zap, Scissors, Moon, Layers, Type, Frame, Copy, ChevronUp, ChevronDown, Eye, EyeOff, Plus, Repeat, Link2, Atom, Grid3x3, Aperture, Code2, SlidersHorizontal, Palette, Loader2 } from 'lucide-react';
 import { DragInput } from '../components/DragInput';
@@ -412,15 +413,70 @@ function ShapeProperties({
             hasKeyframe={hasKeyframeAt((shape as RectangleShape).height)}
             min={1}
           />
-          <NumberDragInput
-            label="Corner R"
-            prop={(shape as RectangleShape).borderRadius}
-            frame={currentFrame}
-            onChange={(v) => updateLayerProperty(layer.id, 'shape.borderRadius.defaultValue', v)}
-            onKeyframe={(v) => addKeyframe(layer.id, 'shape.borderRadius', currentFrame, v)}
-            hasKeyframe={hasKeyframeAt((shape as RectangleShape).borderRadius)}
-            min={0}
-          />
+          {(() => {
+            const rect = shape as RectangleShape;
+            const cr = rect.cornerRadii;
+            if (!cr) {
+              return (
+                <div className="flex items-center gap-1">
+                  <div className="flex-1">
+                    <NumberDragInput
+                      label="Corner R"
+                      prop={rect.borderRadius}
+                      frame={currentFrame}
+                      onChange={(v) => updateLayerProperty(layer.id, 'shape.borderRadius.defaultValue', v)}
+                      onKeyframe={(v) => addKeyframe(layer.id, 'shape.borderRadius', currentFrame, v)}
+                      hasKeyframe={hasKeyframeAt(rect.borderRadius)}
+                      min={0}
+                    />
+                  </div>
+                  <button
+                    title="Independent corners"
+                    onClick={() => {
+                      const base = evaluateProperty(rect.borderRadius, currentFrame) as number;
+                      updateLayerProperty(layer.id, 'shape.cornerRadii', [
+                        createProperty('Corner TL', 'number', base),
+                        createProperty('Corner TR', 'number', base),
+                        createProperty('Corner BR', 'number', base),
+                        createProperty('Corner BL', 'number', base),
+                      ]);
+                    }}
+                    className="mt-4 p-1 rounded text-slate-500 hover:text-cyan-400 hover:bg-white/5"
+                  >
+                    <Grid3x3 size={12} />
+                  </button>
+                </div>
+              );
+            }
+            return (
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] uppercase tracking-wide text-slate-500">Corners</span>
+                  <button
+                    title="Use one uniform corner radius"
+                    onClick={() => updateLayerProperty(layer.id, 'shape.cornerRadii', undefined)}
+                    className="text-[10px] text-cyan-400 hover:text-cyan-300"
+                  >
+                    Uniform
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-1">
+                  {(['TL', 'TR', 'BR', 'BL'] as const).map((lbl, i) => (
+                    <NumberDragInput
+                      key={lbl}
+                      label={lbl}
+                      prop={cr[i]}
+                      frame={currentFrame}
+                      onChange={(v) => updateLayerProperty(layer.id, `shape.cornerRadii.${i}.defaultValue`, v)}
+                      onKeyframe={(v) => addKeyframe(layer.id, `shape.cornerRadii.${i}`, currentFrame, v)}
+                      hasKeyframe={hasKeyframeAt(cr[i])}
+                      min={0}
+                    />
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
         </>
       )}
 
