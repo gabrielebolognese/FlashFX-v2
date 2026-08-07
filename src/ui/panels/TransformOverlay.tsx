@@ -1,4 +1,5 @@
 import { useCallback, useRef, useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useEditorStore } from '../../store/editor';
 import { useTimelineStore } from '../../store/timeline';
 import { useHistoryStore } from '../../store/history';
@@ -12,6 +13,7 @@ import { snap, buildTargets, getSelectionRect, getOtherRects, type Rect, type Sn
 import { CanvasSnapGuides } from './SnapGuides';
 import { sampleBakedFrame } from '../../physics/bake';
 import { getSettingValue } from '../../settings/store';
+import { hudLabel, clampHud, type HudKind } from './transformHud';
 
 /** Current snap toggles (read imperatively when a drag begins). */
 function readSnapFlags() {
@@ -179,6 +181,9 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
   const overlaySize = useElementSize(overlayRef);
   const [dragging, setDragging] = useState<HandleType | null>(null);
   const [hoverHandle, setHoverHandle] = useState<HandleType | null>(null);
+  // Live measurement HUD (follows the cursor while dragging): kind + up to two
+  // numbers + the cursor position in viewport coords. Cleared on pointer-up.
+  const [hud, setHud] = useState<{ kind: HudKind; a: number; b: number; cx: number; cy: number } | null>(null);
   const [snapLines, setSnapLines] = useState<SnapLine[]>([]);
   const [marquee, setMarquee] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const marqueeRef = useRef<{ startCX: number; startCY: number; active: boolean; lastIds: string } | null>(null);
@@ -539,6 +544,8 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
       const dx = deltaScreenX / sX;
       const dy = deltaScreenY / sY;
       const shiftHeld = e.shiftKey;
+      // Accumulated by each branch below; rendered as the cursor-following HUD.
+      let hudData: { kind: HudKind; a: number; b: number } | null = null;
 
       if (dragging === 'move') {
         // Compute snap from initial rect + raw delta (no feedback loop)
@@ -572,10 +579,12 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
           } else {
             updateLayerProperty(activeLayer.id, 'transform.position.defaultValue', [finalX, finalY]);
           }
+          hudData = { kind: 'move', a: finalX, b: finalY };
         } else {
           const finalX = state.x + dx + snapDx;
           const finalY = state.y + dy + snapDy;
           updateAnimatable('transform.position', [finalX, finalY] as Vec2);
+          hudData = { kind: 'move', a: finalX, b: finalY };
 
           // Move all other selected layers by the same delta
           const { multiPositions } = dragStart.current;
@@ -614,6 +623,7 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
           } else {
             updateLayerProperty(activeLayer.id, 'transform.rotation.defaultValue', initRot + angleDelta);
           }
+          hudData = { kind: 'rotate', a: initRot + angleDelta, b: 0 };
         } else {
           const pivotX = state.x + state.anchorX;
           const pivotY = state.y + state.anchorY;
@@ -628,6 +638,7 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
           let angleDelta = ((currentAngle - startAngle) * 180) / Math.PI;
           if (shiftHeld) angleDelta = Math.round(angleDelta / 15) * 15;
           updateAnimatable('transform.rotation', state.rotation + angleDelta);
+          hudData = { kind: 'rotate', a: state.rotation + angleDelta, b: 0 };
         }
       } else if (dragging === 'radius') {
         // Corner-radius handle: drag inward from the top-left corner rounds the
@@ -637,6 +648,7 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
         const maxR = Math.min(state.w, state.h) / 2;
         const newR = Math.max(0, Math.min(maxR, dragStart.current.startRadius + (dx + dy) / 2));
         updateAnimatable('shape.borderRadius', newR);
+        hudData = { kind: 'radius', a: newR, b: 0 };
       } else {
         if (isGroupActive) return;
 
@@ -749,7 +761,10 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
           }
         }
         updateAnimatable('transform.position', [newX, newY] as Vec2);
+        hudData = { kind: 'resize', a: newW, b: newH };
       }
+
+      setHud(hudData ? { ...hudData, cx: e.clientX, cy: e.clientY } : null);
     };
 
     const handleUp = () => {
@@ -759,6 +774,7 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
         dragSnapshot.current = null;
       }
       setDragging(null);
+      setHud(null);
       setSnapLines([]);
       snapDataRef.current = null;
       document.body.style.userSelect = '';
@@ -873,6 +889,34 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
         />
       )}
       <CanvasSnapGuides lines={snapLines} scaleX={sX} scaleY={sY} />
+
+      {/* Live measurement HUD — a cursor-following pill (portaled to <body> so a
+          transformed viewport ancestor can't offset its fixed positioning). */}
+      {hud && createPortal((() => {
+        const text = hudLabel(hud.kind, hud.a, hud.b);
+        const boxW = text.length * 7 + 14;
+        const { x, y } = clampHud(hud.cx, hud.cy, boxW, 22, window.innerWidth, window.innerHeight);
+        return (
+          <div
+            className="fixed z-[9999] pointer-events-none px-1.5 py-0.5 rounded"
+            style={{
+              left: x,
+              top: y,
+              background: 'rgba(15, 23, 42, 0.92)',
+              color: '#fff',
+              border: '1px solid rgba(255,255,255,0.15)',
+              boxShadow: '0 1px 2px rgba(0,0,0,0.3)',
+              fontSize: 11,
+              fontWeight: 500,
+              fontFamily: 'ui-monospace, monospace',
+              fontVariantNumeric: 'tabular-nums',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {text}
+          </div>
+        );
+      })(), document.body)}
 
 
       {showLayerControls && (
