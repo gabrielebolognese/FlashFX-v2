@@ -5,6 +5,7 @@ import { DEFAULT_SHADOW, DEFAULT_GLOW, DEFAULT_BLUR } from '../core/effectDefaul
 import type { AlignResult } from '../core/align';
 import { shapeToPathVertices, reversePathVertices, simplifyPathVertices, booleanLayers, type BooleanOp } from '../core/pathOps';
 import { healDeleteVertex, concatPaths } from '../core/pathCleanup';
+import { extractLayerProperties, applyLayerProperties, type LayerPropertyBundle } from '../core/layerProperties';
 import { evaluateVec2, evaluateNumber, buildPhysicsEvaluator } from '../core/interpolation';
 import {
   remapSelectedFrames, reverseSelectedValues, distributeSelectedEven, alignSelected,
@@ -149,6 +150,8 @@ interface EditorState {
   renamingLayerId: string | null;
   selectionSource: SelectionSource;
   clipboard: ClipboardState | null;
+  /** Separate 'paste attributes' clipboard (M11) — holds an appearance bundle, not layers. */
+  propertiesClipboard: LayerPropertyBundle | null;
   randomizeColors: boolean;
 
   // Internal raw setters (used by commands, no history)
@@ -338,6 +341,10 @@ interface EditorState {
   pasteClipboard: (inPlace?: boolean) => void;
   duplicateSelection: () => void;
   toggleRandomizeColors: () => void;
+  /** M11 — copy the active (or given) layer's appearance bundle into propertiesClipboard. */
+  copyLayerProperties: (id?: string) => void;
+  /** M11 — apply the copied appearance bundle to the selection (or given ids), one undoable command. */
+  pasteLayerProperties: (ids?: string[]) => void;
 
   // Motion path actions
   addMotionPath: (layerId: string) => void;
@@ -914,6 +921,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   renamingLayerId: null,
   selectionSource: 'canvas',
   clipboard: null,
+  propertiesClipboard: null,
   randomizeColors: false,
   lastTransform: null,
   physicsBakeStatus: 'idle',
@@ -3536,6 +3544,34 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       label: 'Paste',
       execute: () => { set({ composition: newComp, selection: newSel }); },
       undo: () => { set({ composition: oldComp, selection: oldSel }); },
+    });
+  },
+
+  copyLayerProperties: (id) => {
+    const { composition, selection, currentFrame } = get();
+    const targetId = id ?? selection.activeId ?? selection.selectedIds[0];
+    const layer = composition.layers.find((l) => l.id === targetId);
+    if (!layer) return;
+    // Snapshot the appearance resolved at the current frame (matches copySelection's bake).
+    const bundle = extractLayerProperties(layer, (p) => evaluateNumber(p, currentFrame));
+    set({ propertiesClipboard: bundle }); // non-undoable, mirrors copySelection
+  },
+
+  pasteLayerProperties: (ids) => {
+    const { composition, selection, propertiesClipboard } = get();
+    if (!propertiesClipboard) return;
+    const targetIds = ids ?? (selection.selectedIds.length > 0 ? selection.selectedIds : (selection.activeId ? [selection.activeId] : []));
+    if (targetIds.length === 0) return;
+    const oldComp = composition;
+    const idSet = new Set(targetIds);
+    // applyLayerProperties deep-clones the bundle's values per call, so N targets never
+    // alias the same fill array / effect object.
+    const layers = composition.layers.map((l) => (idSet.has(l.id) ? applyLayerProperties(l, propertiesClipboard) : l));
+    const newComp = { ...composition, layers };
+    exec({
+      label: 'Paste Properties',
+      execute: () => { set({ composition: newComp }); },
+      undo: () => { set({ composition: oldComp }); },
     });
   },
 

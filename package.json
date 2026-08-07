@@ -31,6 +31,7 @@
     "verify:tangent": "node scripts/verify-tangent.mjs",
     "verify:bend": "node scripts/verify-bend.mjs",
     "verify:pathcleanup": "node scripts/verify-pathcleanup.mjs",
+    "verify:layerprops": "node scripts/verify-layerprops.mjs",
     "preinstall": "echo ignore-scripts=true > .npmrc || true"
   },
   "dependencies": {

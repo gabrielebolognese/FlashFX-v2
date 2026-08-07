@@ -276,6 +276,12 @@ export function buildClipMenu(layerId: string): MenuEntry[] {
         item('clip-duplicate', 'Duplicate', () => editor.duplicateSelection(), Copy, 'Ctrl+D'),
         item('clip-delete', 'Delete', () => editor.removeLayer(layerId), Trash2, 'Del'),
         item('clip-rename', 'Rename', () => editor.startRenameLayer(layerId), Pencil, 'F2'),
+        // M11 — copy/paste appearance. Paste targets the whole selection when this clip is
+        // part of it, else just this clip; disabled until something is copied.
+        item('clip-copy-props', 'Copy Properties', () => editor.copyLayerProperties(layerId), Clipboard, 'Ctrl+Alt+C'),
+        editor.propertiesClipboard
+          ? item('clip-paste-props', 'Paste Properties', () => editor.pasteLayerProperties(editor.selection.selectedIds.includes(layerId) ? undefined : [layerId]), Clipboard, 'Ctrl+Alt+V')
+          : disabled('clip-paste-props', 'Paste Properties', Clipboard, 'Ctrl+Alt+V'),
       ],
     },
     {
@@ -404,6 +410,17 @@ export function buildMultiClipMenu(): MenuEntry[] {
         item('bool-flatten', 'Flatten', () => editor.flattenSelectedShapes(), Layers, 'Ctrl+E'),
       ],
     }] : []),
+    {
+      // M11 — copy the active layer's appearance, paste onto the whole selection.
+      type: 'group',
+      label: 'Properties',
+      items: [
+        item('multi-copy-props', 'Copy Properties', () => editor.copyLayerProperties(), Clipboard, 'Ctrl+Alt+C'),
+        editor.propertiesClipboard
+          ? item('multi-paste-props', 'Paste Properties', () => editor.pasteLayerProperties(), Clipboard, 'Ctrl+Alt+V')
+          : disabled('multi-paste-props', 'Paste Properties', Clipboard, 'Ctrl+Alt+V'),
+      ],
+    },
     {
       type: 'group',
       label: 'Stagger',

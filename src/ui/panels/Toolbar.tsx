@@ -53,6 +53,9 @@ export function Toolbar() {
   const addImage = useEditorStore((s) => s.addImage);
   const copySelection = useEditorStore((s) => s.copySelection);
   const pasteClipboard = useEditorStore((s) => s.pasteClipboard);
+  const copyLayerProperties = useEditorStore((s) => s.copyLayerProperties);
+  const pasteLayerProperties = useEditorStore((s) => s.pasteLayerProperties);
+  const propertiesClipboard = useEditorStore((s) => s.propertiesClipboard);
   const duplicateSelection = useEditorStore((s) => s.duplicateSelection);
   const clipboard = useEditorStore((s) => s.clipboard);
   const randomizeColors = useEditorStore((s) => s.randomizeColors);
@@ -292,6 +295,9 @@ export function Toolbar() {
         { label: 'Duplicate', shortcut: 'Ctrl+D', action: handleDuplicate, disabled: !hasSelection },
         { label: 'Delete', shortcut: 'Del', action: handleDelete, disabled: !hasSelection },
         { label: '', divider: true },
+        { label: 'Copy Properties', shortcut: 'Ctrl+Alt+C', action: () => copyLayerProperties(), disabled: !hasSelection },
+        { label: 'Paste Properties', shortcut: 'Ctrl+Alt+V', action: () => pasteLayerProperties(), disabled: !hasSelection || !propertiesClipboard },
+        { label: '', divider: true },
         { label: 'Select All', shortcut: 'Ctrl+A', action: handleSelectAll },
         { label: 'Deselect All', shortcut: 'Ctrl+Shift+A', action: deselectAll },
         { label: '', divider: true },
@@ -336,7 +342,7 @@ export function Toolbar() {
       label: 'Path',
       items: [
         { label: 'Object to Path', shortcut: 'Ctrl+Shift+C', action: () => { const id = selection.activeId; if (id) convertShapeToPath(id); }, disabled: !isShapeSel },
-        { label: 'Stroke to Path', shortcut: 'Ctrl+Alt+C', disabled: true },
+        { label: 'Stroke to Path', disabled: true },
         { label: '', divider: true },
         { label: 'Union', shortcut: 'Alt+Shift+U', action: () => booleanSelectedShapes('union'), disabled: !canBoolean },
         { label: 'Difference', shortcut: 'Alt+Shift+S', action: () => booleanSelectedShapes('difference'), disabled: !canBoolean },

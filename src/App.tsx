@@ -150,6 +150,21 @@ function Editor() {
           useEditorStore.getState().flattenSelectedShapes();
           return;
         }
+        // M11 — Copy/Paste Properties (Figma Ctrl+Alt+C / Ctrl+Alt+V). Matched by physical
+        // e.code (Alt mangles e.key) and placed BEFORE plain Ctrl+C/V so they don't fall
+        // through to copySelection/pasteClipboard. Paste is GUARDED on a properties
+        // clipboard: with no bundle copied, Ctrl+Alt+V falls through to distribute-vertical
+        // (the M5 align binding), so that muscle memory is only shadowed while restyling.
+        if ((e.ctrlKey || e.metaKey) && e.altKey && e.code === 'KeyC') {
+          e.preventDefault();
+          useEditorStore.getState().copyLayerProperties();
+          return;
+        }
+        if ((e.ctrlKey || e.metaKey) && e.altKey && e.code === 'KeyV' && useEditorStore.getState().propertiesClipboard) {
+          e.preventDefault();
+          useEditorStore.getState().pasteLayerProperties();
+          return;
+        }
         if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
           e.preventDefault();
           copySelection();
