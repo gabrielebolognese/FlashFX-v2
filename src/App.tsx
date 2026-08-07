@@ -9,7 +9,7 @@ import { useTimelineStore } from './store/timeline';
 import { usePanelStore } from './store/panels';
 import { ProjectApp, useProjectStore } from './project-system';
 import { useAnimationBuilderStore } from './animation-builder';
-import { ArrowLeft, LayoutGrid, Workflow, Settings2 } from 'lucide-react';
+import { ArrowLeft, LayoutGrid, Workflow, Settings2, GraduationCap } from 'lucide-react';
 import { ResetEditorDialog } from './ui/recovery/ResetEditorDialog';
 import { EmergencyRecoveryOverlay } from './ui/recovery/EmergencyRecoveryOverlay';
 import { CaptionGenerationModal } from './ui/panels/CaptionGenerationModal';
@@ -500,6 +500,16 @@ function App() {
     <ContextMenuProvider>
       <ProjectApp editorComponent={Editor} />
       <ContextMenuRenderer />
+      {/* Onboarding is hidden by default; this small corner button re-launches the tour. */}
+      <button
+        onClick={() => useOnboardingStore.getState().start()}
+        title="Start onboarding"
+        aria-label="Start onboarding"
+        className="fixed bottom-3 left-3 z-50 flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-[#0a1628]/90 border border-[#1a2a42] text-slate-400 hover:text-slate-100 hover:border-[#2a3a52] shadow-lg backdrop-blur-sm transition-colors"
+      >
+        <GraduationCap size={14} />
+        <span className="text-[11px] font-medium">Onboarding</span>
+      </button>
     </ContextMenuProvider>
   );
 }

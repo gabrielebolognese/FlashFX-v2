@@ -29,10 +29,13 @@ interface OnboardingState {
   setWantsTutorial: (val: boolean) => void;
   complete: () => void;
   skip: () => void;
+  /** Launch (or re-launch) the onboarding flow from the start. */
+  start: () => void;
 }
 
 export const useOnboardingStore = create<OnboardingState>((set) => ({
-  active: true,
+  // Hidden by default — every user starts straight in the editor. Re-openable via start().
+  active: false,
   step: 'welcome',
   bgColor: [0.08, 0.09, 0.12],
   shapeMode: null,
@@ -46,4 +49,5 @@ export const useOnboardingStore = create<OnboardingState>((set) => ({
   setWantsTutorial: (val) => set({ wantsTutorial: val }),
   complete: () => set({ active: false, step: 'done' }),
   skip: () => set({ active: false, step: 'done' }),
+  start: () => set({ active: true, step: 'welcome' }),
 }));
