@@ -17,7 +17,9 @@ import { SilenceStripperModal } from './ui/panels/SilenceStripperModal';
 import { ClipContextMenu } from './ui/panels/ClipContextMenu';
 import { ContextMenuProvider, ContextMenuRenderer } from './ui/context-menu';
 import { SettingsPanel, SettingsCssInjector } from './settings';
-import { useSettingsStore } from './settings/store';
+import { useSettingsStore, getSettingValue } from './settings/store';
+import { nudgeDelta } from './core/nudge';
+import { computeAlignment, computeDistribution, type AlignAxis, type DistributeMode } from './core/align';
 import { OnboardingFlow, useOnboardingStore } from './onboarding';
 
 const LazyIntroPopup = lazy(() => import('@/components/ui/IntroPopup').then(m => ({ default: m.IntroPopup })));
@@ -118,15 +120,64 @@ function Editor() {
           copySelection();
           return;
         }
-        if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
+        if ((e.ctrlKey || e.metaKey) && (e.key === 'v' || e.key === 'V')) {
           e.preventDefault();
-          pasteClipboard();
+          pasteClipboard(e.shiftKey); // Shift = paste in place (original coords)
+          return;
+        }
+        if ((e.ctrlKey || e.metaKey) && (e.key === 'x' || e.key === 'X') && !e.shiftKey) {
+          e.preventDefault();
+          useEditorStore.getState().cutSelection();
+          return;
+        }
+        if ((e.ctrlKey || e.metaKey) && (e.key === 'a' || e.key === 'A')) {
+          e.preventDefault();
+          if (e.shiftKey) useEditorStore.getState().deselectAll();
+          else useEditorStore.getState().selectAllLayers();
           return;
         }
         if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
           e.preventDefault();
           duplicateSelection();
           return;
+        }
+        // Arrow-key nudge (Shift = big nudge), only with a selection so the keys
+        // stay free otherwise. Amounts are configurable in Settings › Editor.
+        if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'ArrowDown')
+            && !e.ctrlKey && !e.metaKey && !e.altKey
+            && (selection.selectedIds.length > 0 || selection.activeId)) {
+          const small = getSettingValue<number>('editor.smallNudge') ?? 1;
+          const big = getSettingValue<number>('editor.bigNudge') ?? 10;
+          const d = nudgeDelta(e.key, e.shiftKey, small, big);
+          if (d) {
+            e.preventDefault();
+            useEditorStore.getState().nudgeSelection(d.dx, d.dy);
+            return;
+          }
+        }
+        // Keyboard align (Figma Alt+A/D/W/S/H/V) + distribute (Ctrl+Alt+H/V), gated
+        // to a multi-selection so single-clip trim (which also uses Alt+S) is
+        // unaffected. e.code (Alt mangles e.key). Placed BEFORE the trim keys so
+        // Alt+S aligns-bottom when ≥2 layers are selected, else falls through to trim.
+        if (e.altKey && !e.shiftKey && selection.selectedIds.length >= 2) {
+          const alignAxis: Record<string, AlignAxis> = { KeyA: 'left', KeyD: 'right', KeyW: 'top', KeyS: 'bottom', KeyH: 'centerH', KeyV: 'centerV' };
+          if (!e.ctrlKey && !e.metaKey && alignAxis[e.code]) {
+            e.preventDefault();
+            const st = useEditorStore.getState();
+            const frame = useTimelineStore.getState().currentFrame;
+            const layers = st.composition.layers.filter((l) => selection.selectedIds.includes(l.id));
+            st.applyAlignResults(computeAlignment(alignAxis[e.code], layers, frame), `Align ${alignAxis[e.code]}`);
+            return;
+          }
+          if ((e.ctrlKey || e.metaKey) && (e.code === 'KeyH' || e.code === 'KeyV') && selection.selectedIds.length >= 3) {
+            e.preventDefault();
+            const mode: DistributeMode = e.code === 'KeyH' ? 'horizontalBounds' : 'verticalBounds';
+            const st = useEditorStore.getState();
+            const frame = useTimelineStore.getState().currentFrame;
+            const layers = st.composition.layers.filter((l) => selection.selectedIds.includes(l.id));
+            st.applyAlignResults(computeDistribution(mode, layers, frame), 'Distribute Spacing');
+            return;
+          }
         }
         if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
           e.preventDefault();

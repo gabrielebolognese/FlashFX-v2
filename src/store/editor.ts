@@ -169,6 +169,12 @@ interface EditorState {
   resetTransformRotation: (id: string) => void;
   resetTransformAll: (id: string) => void;
   deselectAll: () => void;
+  /** Select every layer in the active composition (Ctrl/Cmd+A). */
+  selectAllLayers: () => void;
+  /** Copy the selection, then delete it — one undo (Ctrl/Cmd+X). */
+  cutSelection: () => void;
+  /** Move the selection by (dx, dy) composition px, as one undo (arrow-key nudge). */
+  nudgeSelection: (dx: number, dy: number) => void;
   toggleGroupCollapsed: (groupId: string) => void;
   loadComposition: (comp: Composition) => void;
 
@@ -932,6 +938,57 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   deselectAll: () => set({ selection: { selectedIds: [], activeId: null, selectedKeyframes: [], selectedCurvePoints: [] } }),
+
+  selectAllLayers: () => {
+    const { composition } = get();
+    const ids = composition.layers.filter((l) => !l.locked).map((l) => l.id);
+    set({ selection: { selectedIds: ids, activeId: ids.length ? ids[ids.length - 1] : null, selectedKeyframes: [], selectedCurvePoints: [] } });
+  },
+
+  cutSelection: () => {
+    const { selection } = get();
+    const ids = selection.selectedIds.length > 0 ? selection.selectedIds : (selection.activeId ? [selection.activeId] : []);
+    if (ids.length === 0) return;
+    get().copySelection();     // fills the clipboard (non-undoable)
+    get().removeLayers(ids);   // the delete provides the single undo step
+  },
+
+  nudgeSelection: (dx, dy) => {
+    if (dx === 0 && dy === 0) return;
+    const { composition, selection } = get();
+    const ids = selection.selectedIds.length > 0 ? selection.selectedIds : (selection.activeId ? [selection.activeId] : []);
+    if (ids.length === 0) return;
+    const oldComp = composition;
+    const frame = useTimelineStore.getState().currentFrame;
+    const idSet = new Set(ids);
+    let changed = false;
+    // Add the delta to the base position and to any keyframe at the current frame,
+    // mirroring applyAlignResults (so a nudge works on static and animated layers).
+    const newLayers = composition.layers.map((l) => {
+      if (!idSet.has(l.id) || !('transform' in l) || !l.transform) return l;
+      changed = true;
+      const pos = l.transform.position;
+      const base = pos.defaultValue as [number, number];
+      return {
+        ...l,
+        transform: {
+          ...l.transform,
+          position: {
+            ...pos,
+            defaultValue: [base[0] + dx, base[1] + dy] as [number, number],
+            keyframes: pos.keyframes.length > 0
+              ? pos.keyframes.map((kf) => (kf.frame === frame
+                  ? { ...kf, value: [(kf.value as [number, number])[0] + dx, (kf.value as [number, number])[1] + dy] as [number, number] }
+                  : kf))
+              : [],
+          },
+        },
+      } as Layer;
+    });
+    if (!changed) return;
+    exec({ label: 'Nudge', execute: () => set({ composition: { ...composition, layers: newLayers } }), undo: () => set({ composition: oldComp }) });
+  },
+
   setHoveredLayer: (id) => set({ hoveredLayerId: id }),
   startRenameLayer: (id) => set({ renamingLayerId: id }),
   finishRenameLayer: () => set({ renamingLayerId: null }),

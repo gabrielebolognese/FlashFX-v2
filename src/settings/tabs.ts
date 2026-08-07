@@ -77,6 +77,8 @@ export const SETTINGS_TABS: SettingTab[] = [
         controls: [
           { id: 'editor.dragThreshold', label: 'Drag Threshold', type: 'slider', defaultValue: 3, min: 1, max: 10, step: 1, unit: 'px' },
           { id: 'editor.dragInputSensitivity', label: 'Value Scrub Sensitivity', type: 'slider', defaultValue: 1, min: 0.1, max: 3, step: 0.1 },
+          { id: 'editor.smallNudge', label: 'Arrow Nudge', type: 'slider', defaultValue: 1, min: 0.5, max: 20, step: 0.5, unit: 'px' },
+          { id: 'editor.bigNudge', label: 'Shift Nudge', type: 'slider', defaultValue: 10, min: 1, max: 100, step: 1, unit: 'px' },
         ],
       },
       {
