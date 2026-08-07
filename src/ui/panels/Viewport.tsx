@@ -32,6 +32,7 @@ export function Viewport() {
   const rendererRef = useRef<WebGPURenderer | null>(null);
 
   const composition = useEditorStore((s) => s.composition);
+  const activeGroupId = useEditorStore((s) => s.activeGroupId);
   const addImageFromAsset = useEditorStore((s) => s.addImageFromAsset);
   const addVideoFromAsset = useEditorStore((s) => s.addVideoFromAsset);
   const addImage = useEditorStore((s) => s.addImage);
@@ -445,6 +446,14 @@ export function Viewport() {
           {activeTool === 'star' && 'Star Tool'}
           {activeTool === 'polygon' && 'Polygon Tool'}
           <span className="text-slate-500 ml-1">-- click & drag to create, Esc to cancel</span>
+        </div>
+      )}
+
+      {activeGroupId && !shapeToolActive && (
+        <div className="absolute top-2 left-1/2 -translate-x-1/2 px-2.5 py-1 rounded-full bg-cyan-400/10 border border-cyan-400/30 text-[10px] font-medium text-cyan-300 pointer-events-none flex items-center gap-1.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+          Isolating: {composition.layers.find((l) => l.id === activeGroupId)?.name ?? 'Group'}
+          <span className="text-slate-500 ml-1">-- click outside or Esc to exit</span>
         </div>
       )}
     </div>

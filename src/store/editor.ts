@@ -6,6 +6,7 @@ import type { AlignResult } from '../core/align';
 import { shapeToPathVertices, reversePathVertices, simplifyPathVertices, booleanLayers, type BooleanOp } from '../core/pathOps';
 import { healDeleteVertex, concatPaths } from '../core/pathCleanup';
 import { extractLayerProperties, applyLayerProperties, type LayerPropertyBundle } from '../core/layerProperties';
+import { selectSameLayers, type SameAttr } from '../core/selection';
 import { evaluateVec2, evaluateNumber, buildPhysicsEvaluator } from '../core/interpolation';
 import {
   remapSelectedFrames, reverseSelectedValues, distributeSelectedEven, alignSelected,
@@ -152,6 +153,8 @@ interface EditorState {
   clipboard: ClipboardState | null;
   /** Separate 'paste attributes' clipboard (M11) — holds an appearance bundle, not layers. */
   propertiesClipboard: LayerPropertyBundle | null;
+  /** M12 — the group currently isolated for editing (Figma double-click-to-enter); null = none. */
+  activeGroupId: string | null;
   randomizeColors: boolean;
 
   // Internal raw setters (used by commands, no history)
@@ -182,6 +185,12 @@ interface EditorState {
   deselectAll: () => void;
   /** Select every layer in the active composition (Ctrl/Cmd+A). */
   selectAllLayers: () => void;
+  /** M12 — replace the selection with every layer sharing the active layer's fill/stroke/font/effect/type. */
+  selectAllWithSame: (attr: SameAttr) => void;
+  /** M12 — group isolation: set/enter/exit the active editing group. Non-undoable (navigation-style). */
+  _setActiveGroup: (id: string | null) => void;
+  enterGroupIsolation: (groupId: string) => void;
+  exitGroupIsolation: () => void;
   /** Copy the selection, then delete it — one undo (Ctrl/Cmd+X). */
   cutSelection: () => void;
   /** Move the selection by (dx, dy) composition px, as one undo (arrow-key nudge). */
@@ -922,6 +931,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   selectionSource: 'canvas',
   clipboard: null,
   propertiesClipboard: null,
+  activeGroupId: null,
   randomizeColors: false,
   lastTransform: null,
   physicsBakeStatus: 'idle',
@@ -974,12 +984,43 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }
   },
 
-  deselectAll: () => set({ selection: { selectedIds: [], activeId: null, selectedKeyframes: [], selectedCurvePoints: [] } }),
+  deselectAll: () => set({ selection: { selectedIds: [], activeId: null, selectedKeyframes: [], selectedCurvePoints: [] }, activeGroupId: null }),
 
   selectAllLayers: () => {
     const { composition } = get();
     const ids = composition.layers.filter((l) => !l.locked).map((l) => l.id);
     set({ selection: { selectedIds: ids, activeId: ids.length ? ids[ids.length - 1] : null, selectedKeyframes: [], selectedCurvePoints: [] } });
+  },
+
+  selectAllWithSame: (attr) => {
+    const { composition, selection } = get();
+    const refId = selection.activeId ?? selection.selectedIds[0];
+    if (!refId) return;
+    const ids = selectSameLayers(composition.layers, refId, attr);
+    if (ids.length === 0) return;
+    // Non-undoable selection change; reset the power-duplicate step (Figma resets on select).
+    set({ selection: { selectedIds: ids, activeId: refId, selectedKeyframes: [], selectedCurvePoints: [] }, lastTransform: null });
+  },
+
+  _setActiveGroup: (id) => set({ activeGroupId: id }),
+
+  enterGroupIsolation: (groupId) => {
+    const { composition } = get();
+    const grp = composition.layers.find((l) => l.id === groupId);
+    if (!grp || grp.type !== 'group') return;
+    const firstChild = composition.layers.find((l) => l.parentId === groupId);
+    set({
+      activeGroupId: groupId,
+      selection: { selectedIds: firstChild ? [firstChild.id] : [], activeId: firstChild?.id ?? null, selectedKeyframes: [], selectedCurvePoints: [] },
+      lastTransform: null,
+    });
+  },
+
+  exitGroupIsolation: () => {
+    const { activeGroupId } = get();
+    if (!activeGroupId) return;
+    // Pop back to selecting the group we were editing.
+    set({ activeGroupId: null, selection: { selectedIds: [activeGroupId], activeId: activeGroupId, selectedKeyframes: [], selectedCurvePoints: [] } });
   },
 
   cutSelection: () => {
@@ -1168,6 +1209,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       navStack: [...navStack, compositionId],
       currentFrame: 0,
       selection: { selectedIds: [], activeId: null, selectedKeyframes: [], selectedCurvePoints: [] },
+      activeGroupId: null,
     });
   },
 
@@ -1192,6 +1234,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       navStack: navStack.slice(0, index + 1),
       currentFrame: 0,
       selection: { selectedIds: [], activeId: null, selectedKeyframes: [], selectedCurvePoints: [] },
+      activeGroupId: null,
     });
   },
 
@@ -3494,7 +3537,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
     exec({
       label: 'Ungroup',
-      execute: () => { set({ composition: newComp, selection: newSel }); },
+      // Dissolving a group can't leave it as the isolation scope — exit isolation.
+      execute: () => { set({ composition: newComp, selection: newSel, activeGroupId: null }); },
       undo: () => { set({ composition: oldComp, selection: oldSel }); },
     });
   },

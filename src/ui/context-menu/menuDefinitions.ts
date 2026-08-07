@@ -32,6 +32,7 @@ import { processAudioAsset, toMono, toStereo, normalize, amplifyBy } from '../..
 import { extractMonoAudio } from '../../engine/silence/audioForSilence';
 import { detectBeats } from '../../core/beatDetection';
 import { getSelectionRect } from '../../core/snap/bbox';
+import { availableSameAttrs, type SameAttr } from '../../core/selection';
 import { mediaAssetManager } from '../../engine/media/assetManager';
 import { useProjectStore } from '../../project-system/hooks/useProjectStore';
 
@@ -76,6 +77,22 @@ function pickReplacement(assetId: string): void {
   input.click();
 }
 
+// M12 — 'Select all with same…' submenu, offering only the attributes the layer actually
+// has (Fill/Stroke/Font/Effect/Type). Returns null when the layer can't be resolved.
+const SAME_ATTR_LABELS: Record<SameAttr, string> = {
+  type: 'Same Type', fill: 'Same Fill', stroke: 'Same Stroke', font: 'Same Font', effect: 'Same Effect',
+};
+function buildSelectSameSubmenu(layerId: string): MenuEntry | null {
+  const editor = useEditorStore.getState();
+  const layer = editor.composition.layers.find((l) => l.id === layerId);
+  if (!layer) return null;
+  return {
+    type: 'submenu', id: 'select-same', label: 'Select all with same…', icon: MousePointer,
+    items: availableSameAttrs(layer).map((a) =>
+      item(`sel-same-${a}`, SAME_ATTR_LABELS[a], () => editor.selectAllWithSame(a), MousePointer)),
+  };
+}
+
 // ─── CANVAS CONTEXT MENU ────────────────────────────────────────────────────
 
 export function buildCanvasMenu(): MenuEntry[] {
@@ -85,7 +102,11 @@ export function buildCanvasMenu(): MenuEntry[] {
   const preview = usePreviewStore.getState();
   const { width: compW, height: compH } = editor.composition.settings;
 
+  const activeId = editor.selection.activeId;
+  const sameSub = activeId ? buildSelectSameSubmenu(activeId) : null;
+
   return [
+    ...(sameSub ? [sameSub] : []),
     {
       type: 'group',
       label: 'Navigation',
@@ -351,6 +372,7 @@ export function buildClipMenu(layerId: string): MenuEntry[] {
         item('bake-anim', 'Bake Animation', () => editor.bakeLayerAnimation(layerId), Activity),
       ],
     },
+    ...((): MenuEntry[] => { const sub = buildSelectSameSubmenu(layerId); return sub ? [sub] : []; })(),
     {
       type: 'group',
       label: 'Grouping',

@@ -24,6 +24,7 @@ import { CommandPalette } from './ui/panels/CommandPalette';
 import { useCommandPaletteStore } from './ui/commands/store';
 import { useShapeToolStore, isVectorTool } from './store/shapeTool';
 import { usePathEditStore } from './store/pathEdit';
+import { resolveExitStep } from './core/selection';
 import { OnboardingFlow, useOnboardingStore } from './onboarding';
 
 const LazyIntroPopup = lazy(() => import('@/components/ui/IntroPopup').then(m => ({ default: m.IntroPopup })));
@@ -108,11 +109,29 @@ function Editor() {
         return;
       }
 
-      // Enter → vector edit mode on the selected shape (auto object-to-path for any
-      // primitive, then Direct Select). Esc → exit edit mode back to the Move tool.
-      if (e.key === 'Enter' && !isTextInput) {
+      // M12 — Shift+Enter ascends one group/isolation level. Handled BEFORE the plain-Enter
+      // branch below (which matches Enter without a shift guard) so it isn't swallowed.
+      if (e.key === 'Enter' && e.shiftKey && !isTextInput) {
+        const st = useEditorStore.getState();
+        if (st.activeGroupId || st.composition.layers.find((l) => l.id === st.selection.activeId)?.parentId) {
+          e.preventDefault();
+          const r = resolveExitStep({ activeId: st.selection.activeId, activeGroupId: st.activeGroupId, layers: st.composition.layers });
+          st._setActiveGroup(r.activeGroupId);
+          st.selectLayer(r.selectId, false, 'canvas');
+          return;
+        }
+      }
+      // Enter → enter group isolation (if a group is active) else vector edit mode on the
+      // selected shape (auto object-to-path, then Direct Select). Esc → exit isolation, then
+      // exit edit mode back to the Move tool.
+      if (e.key === 'Enter' && !e.shiftKey && !isTextInput) {
         const st = useEditorStore.getState();
         const active = st.composition.layers.find((l) => l.id === st.selection.activeId);
+        if (active && active.type === 'group') {
+          e.preventDefault();
+          st.enterGroupIsolation(active.id);
+          return;
+        }
         if (active && active.type === 'shape') {
           e.preventDefault();
           if (active.shape.type !== 'polygon') st.convertShapeToPath(active.id);
@@ -121,6 +140,12 @@ function Editor() {
         }
       }
       if (e.key === 'Escape' && !isTextInput) {
+        // Exit group isolation first (before the tool reset), matching Figma's Esc-pops-out.
+        if (useEditorStore.getState().activeGroupId) {
+          e.preventDefault();
+          useEditorStore.getState().exitGroupIsolation();
+          return;
+        }
         if (useShapeToolStore.getState().activeTool !== 'select') {
           e.preventDefault();
           useShapeToolStore.getState().setActiveTool('select');

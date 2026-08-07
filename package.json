@@ -32,6 +32,7 @@
     "verify:bend": "node scripts/verify-bend.mjs",
     "verify:pathcleanup": "node scripts/verify-pathcleanup.mjs",
     "verify:layerprops": "node scripts/verify-layerprops.mjs",
+    "verify:selection": "node scripts/verify-selection.mjs",
     "preinstall": "echo ignore-scripts=true > .npmrc || true"
   },
   "dependencies": {

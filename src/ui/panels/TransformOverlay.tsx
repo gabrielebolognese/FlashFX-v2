@@ -9,6 +9,7 @@ import type { ShapeLayer, TextLayer, GroupLayer, VideoLayer, ImageLayer, Layer, 
 import { evaluateProperty, evaluateNumber, evaluateVec2 } from '../../core/interpolation';
 import { measureText } from '../../engine/textAtlas';
 import { computeGroupBounds } from '../../core/sceneGraph';
+import { resolveCanvasClick, resolveDoubleClick } from '../../core/selection';
 import { snap, buildTargets, getSelectionRect, getLayerRect, getOtherRects, type Rect, type SnapLine, type SnapTarget } from '../../core/snap';
 import { measureGaps, fmtGap } from '../../core/snap/measure';
 import { computeEqualGapSnap, type GapBadge } from '../../core/snap/equalGap';
@@ -170,6 +171,11 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
   const composition = useEditorStore((s) => s.composition);
   const selection = useEditorStore((s) => s.selection);
   const hoveredLayerId = useEditorStore((s) => s.hoveredLayerId);
+  const rawActiveGroupId = useEditorStore((s) => s.activeGroupId);
+  const setActiveGroup = useEditorStore((s) => s._setActiveGroup);
+  // Self-heal a stale isolation scope (group deleted/ungrouped elsewhere) so clicks never
+  // scope to a phantom group.
+  const activeGroupId = rawActiveGroupId && composition.layers.some((l) => l.id === rawActiveGroupId && l.type === 'group') ? rawActiveGroupId : null;
   const currentFrame = useTimelineStore((s) => s.currentFrame);
   const updateLayerProperty = useEditorStore((s) => s.updateLayerProperty);
   const addKeyframe = useEditorStore((s) => s.addKeyframe);
@@ -345,12 +351,15 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
     if (e.button !== 0) return;
     if (e.target !== overlayRef.current) return;
     const [cx, cy] = toComp(e.clientX, e.clientY);
-    const additive = e.shiftKey || e.ctrlKey || e.metaKey;
+    // M12 — on the canvas, Shift is the sole additive modifier; Ctrl/Cmd is now DEEP-SELECT
+    // (pick the deepest leaf, skipping groups). Plain click selects the enclosing group.
+    const additive = e.shiftKey;
+    const deepSelect = e.ctrlKey || e.metaKey;
 
     const hit = hitTestLayers(cx, cy);
     if (hit) {
       // If the hit layer is already part of a multi-selection, start a multi-drag
-      if (selection.selectedIds.length > 1 && selection.selectedIds.includes(hit.id) && !additive) {
+      if (selection.selectedIds.length > 1 && selection.selectedIds.includes(hit.id) && !additive && !deepSelect) {
         // Compute transform state for the hit layer directly
         const hitBounds = getLayerWorldBounds(hit, currentFrame, compW, compH);
         if (!hitBounds) return;
@@ -399,21 +408,38 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
         document.body.style.userSelect = 'none';
         return;
       }
-      selectLayer(hit.id, additive, 'canvas');
+      // Deep-select (Ctrl/Cmd) picks the leaf; plain click resolves to the enclosing group,
+      // or the child one level in when editing inside an isolated group.
+      const r = resolveCanvasClick({ leafId: hit.id, deepSelect, activeGroupId, layers: composition.layers });
+      selectLayer(r.selectId, additive, 'canvas');
+      if (r.activeGroupId !== activeGroupId) setActiveGroup(r.activeGroupId);
       return;
     }
 
     const group = hitTestGroup(cx, cy);
     if (group) {
       selectLayer(group.id, additive, 'canvas');
+      if (activeGroupId) setActiveGroup(null);
       return;
     }
 
-    // Start marquee selection on empty space
+    // Empty space — clear selection and exit any isolation, then start a marquee.
     if (!additive) selectLayer(null, false, 'canvas');
+    if (activeGroupId) setActiveGroup(null);
     marqueeRef.current = { startCX: cx, startCY: cy, active: false, lastIds: '' };
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
-  }, [toComp, hitTestLayers, hitTestGroup, selectLayer, selection, composition, currentFrame, compW, compH, gridSettings, guideSettings]);
+  }, [toComp, hitTestLayers, hitTestGroup, selectLayer, selection, composition, currentFrame, compW, compH, gridSettings, guideSettings, activeGroupId, setActiveGroup]);
+
+  // M12 — double-click descends exactly one nesting level (Figma), entering group isolation.
+  const handleDoubleClick = useCallback((e: React.MouseEvent) => {
+    if (e.button !== 0) return;
+    if (e.target !== overlayRef.current) return;
+    const [cx, cy] = toComp(e.clientX, e.clientY);
+    const hit = hitTestLayers(cx, cy);
+    const r = resolveDoubleClick({ leafId: hit?.id ?? null, activeGroupId, layers: composition.layers });
+    if (r.selectId) selectLayer(r.selectId, false, 'canvas');
+    if (r.activeGroupId !== activeGroupId) setActiveGroup(r.activeGroupId);
+  }, [toComp, hitTestLayers, selectLayer, composition.layers, activeGroupId, setActiveGroup]);
 
   const marqueeHitTest = useCallback((rect: { x: number; y: number; w: number; h: number }): string[] => {
     const ids: string[] = [];
@@ -887,6 +913,7 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
         ref={overlayRef}
         style={style}
         onPointerDown={handleBackgroundClick}
+        onDoubleClick={handleDoubleClick}
         onPointerMove={handleOverlayPointerMove}
         onPointerUp={handleOverlayPointerUp}
         onPointerLeave={handlePointerLeave}
@@ -949,6 +976,7 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
       ref={overlayRef}
       style={style}
       onPointerDown={handleBackgroundClick}
+      onDoubleClick={handleDoubleClick}
       onPointerMove={handleOverlayPointerMove}
       onPointerUp={handleOverlayPointerUp}
       onPointerLeave={handlePointerLeave}
