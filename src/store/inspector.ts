@@ -16,6 +16,7 @@ export type InspectorTab =
   | 'physics'
   | 'stagger'
   | 'fieldSampling'
+  | 'cloner'
   | 'animate'
   | 'code';
 

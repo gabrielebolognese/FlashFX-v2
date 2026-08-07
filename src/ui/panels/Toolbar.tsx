@@ -50,6 +50,7 @@ export function Toolbar() {
   const createGroup = useEditorStore((s) => s.createGroup);
   const ungroupSelection = useEditorStore((s) => s.ungroupSelection);
   const precomposeSelection = useEditorStore((s) => s.precomposeSelection);
+  const createClonerFromSelection = useEditorStore((s) => s.createClonerFromSelection);
   const reorderLayers = useEditorStore((s) => s.reorderLayers);
   const addImage = useEditorStore((s) => s.addImage);
   const copySelection = useEditorStore((s) => s.copySelection);
@@ -329,6 +330,7 @@ export function Toolbar() {
         { label: 'Group', shortcut: 'Ctrl+G', action: createGroup, disabled: !hasMultiSelection },
         { label: 'Ungroup', shortcut: 'Ctrl+Shift+G', action: ungroupSelection, disabled: !hasSelection },
         { label: 'Precompose', shortcut: 'Ctrl+Shift+C', action: precomposeSelection, disabled: !hasSelection },
+        { label: 'Create Cloner from Selection', action: createClonerFromSelection, disabled: !hasSelection },
         { label: '', divider: true },
         { label: 'Bring to Front', shortcut: 'Ctrl+Shift+]', action: handleBringToFront, disabled: !hasSelection },
         { label: 'Bring Forward', shortcut: 'Ctrl+]', action: handleBringForward, disabled: !hasSelection },

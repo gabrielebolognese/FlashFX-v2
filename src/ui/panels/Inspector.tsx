@@ -12,7 +12,7 @@ import { evaluateProperty } from '../../core/interpolation';
 import { createProperty } from '../../core/factory';
 import { getMotionBlur } from '../../core/layerSwitches';
 import { DEFAULT_CONSTRAINTS, type ReframeAxisMode } from '../../core/reframe';
-import { Diamond, Route, Trash2, Wand2, Sliders, Sparkles, Square, Circle, Star, Hexagon, Zap, Scissors, Moon, Layers, Type, Frame, Copy, ChevronUp, ChevronDown, Eye, EyeOff, Plus, Repeat, Link2, Atom, Grid3x3, Aperture, Code2, SlidersHorizontal, Palette, Loader2 } from 'lucide-react';
+import { Diamond, Route, Trash2, Wand2, Sliders, Sparkles, Square, Circle, Star, Hexagon, Zap, Scissors, Moon, Layers, Type, Frame, Copy, ChevronUp, ChevronDown, Eye, EyeOff, Plus, Repeat, Link2, Atom, Grid3x3, Aperture, Code2, SlidersHorizontal, Palette, Loader2, Boxes } from 'lucide-react';
 import { DragInput } from '../components/DragInput';
 import { useSilenceStore } from '../../store/silenceStripper';
 import { BackgroundPanel } from './BackgroundPanel';
@@ -23,6 +23,7 @@ import { AnchoringPanel } from './AnchoringPanel';
 import { PhysicsPanel } from './PhysicsPanel';
 import { StaggerPanel } from './StaggerPanel';
 import { FieldSamplingPanel } from './FieldSamplingPanel';
+import { ClonerInspector } from './ClonerInspector';
 import { AnimatePanel } from './AnimatePanel';
 import { ShapeMaterialPanel } from './ShapeMaterialPanel';
 import { ShapePatternFillPanel } from './ShapePatternFillPanel';
@@ -94,6 +95,7 @@ export function Inspector() {
     { id: 'physics', label: 'Physics', icon: <Atom size={13} />, show: layer.type !== 'audio' && layer.type !== 'group' },
     { id: 'stagger', label: 'Stagger', icon: <Zap size={13} />, show: false },
     { id: 'fieldSampling', label: 'Field', icon: <Grid3x3 size={13} />, show: layer.type === 'fieldSampled' },
+    { id: 'cloner', label: 'Cloner', icon: <Boxes size={13} />, show: layer.type === 'cloner' },
     { id: 'code', label: 'Code', icon: <Code2 size={13} />, show: layer.type !== 'audio' && layer.type !== 'group' },
     { id: 'animate', label: 'Animate', icon: <Sparkles size={13} />, show: true },
   ];
@@ -214,6 +216,9 @@ function InspectorTabContent({ tab, layer }: { tab: InspectorTab; layer: Layer }
     return <StaggerPanel />;
   }
 
+  if (tab === 'cloner') {
+    return <ClonerInspector />;
+  }
   if (tab === 'fieldSampling') {
     return <FieldSamplingPanel />;
   }

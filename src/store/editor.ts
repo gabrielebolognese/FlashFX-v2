@@ -10,6 +10,8 @@ import { selectSameLayers, type SameAttr } from '../core/selection';
 import { applyReplaceSource, sourceFromLayer, sourceKindForLayer, type ReplaceSource } from '../core/replaceSource';
 import { computeReframe, applyAxisPosition, applyAxisScale, DEFAULT_CONSTRAINTS, type LayerConstraints, type ReframeInput } from '../core/reframe';
 import { getLayerRect } from '../core/snap/bbox';
+import { createDefaultCloner, createEffector } from '../cloner/factory';
+import type { ClonerEffector } from '../cloner/types';
 import { evaluateVec2, evaluateNumber, buildPhysicsEvaluator } from '../core/interpolation';
 import {
   remapSelectedFrames, reverseSelectedValues, distributeSelectedEven, alignSelected,
@@ -118,6 +120,9 @@ function sel(ids: string[], activeId?: string | null): SelectionState {
 function layerSupportsMasks(layer: Layer): boolean {
   return layer.type === 'shape' || layer.type === 'text' || layer.type === 'video' || layer.type === 'image' || layer.type === 'lottieIcon';
 }
+
+/** Layer kinds a Cloner can repeat as its source (M16). Excludes self/audio/group/precomp/layout. */
+const CLONER_SOURCE_TYPES = new Set<Layer['type']>(['shape', 'text', 'image', 'video', 'lottieIcon']);
 
 const DEFAULT_CLIP_SECONDS = 4;
 function defaultClipFrames(comp: Composition): number {
@@ -240,6 +245,16 @@ interface EditorState {
   addText: (content?: string) => void;
   addParticleLayer: () => void;
   addFieldSampledLayer: (configJSON?: string) => void;
+  /** M16 — add a Cloner. Clones the single selected eligible layer, or a placeholder circle. */
+  addCloner: () => void;
+  /** M16 — wrap the active selected layer as a Cloner's source. */
+  createClonerFromSelection: () => void;
+  /** M16 — append a default effector of the given type to a cloner's stack. */
+  addClonerEffector: (layerId: string, type: ClonerEffector['type']) => void;
+  /** M16 — remove the effector at `index` from a cloner's stack. */
+  removeClonerEffector: (layerId: string, index: number) => void;
+  /** M16 — move the effector at `index` up/down in the ordered stack. */
+  reorderClonerEffector: (layerId: string, index: number, dir: 'up' | 'down') => void;
   addAnimationItem: (presetName: string) => void;
   addLottieIcon: (jsonPath: string, jsonData: string, totalFrames: number, frameRate: number, sourceWidth: number, sourceHeight: number, name: string) => void;
   addLayoutObject: (layoutType: 'hbox' | 'vbox' | 'grid') => void;
@@ -1695,6 +1710,98 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       label: 'Add Field Sampled Layer',
       execute: () => { set({ composition: newComp, selection: newSel }); },
       undo: () => { set({ composition: oldComp, selection: oldSel }); },
+    });
+  },
+
+  addCloner: () => {
+    const { composition, selection } = get();
+    const oldComp = composition;
+    const oldSel = selection;
+    const selected = selection.activeId ? composition.layers.find((l) => l.id === selection.activeId) : null;
+    let working = composition;
+    let sourceId: string;
+    if (selected && CLONER_SOURCE_TYPES.has(selected.type)) {
+      sourceId = selected.id; // clone the selected layer
+    } else {
+      // No eligible selection → clone a placeholder circle so the tool always yields a result.
+      const src = createCircleLayer('Cloner Source', composition.settings.width / 2, composition.settings.height / 2, 60, [0.55, 0.7, 1, 1], defaultClipFrames(composition));
+      working = ensureLayerHasTrack({ ...working, layers: [...working.layers, src] }, src);
+      sourceId = src.id;
+    }
+    const cloner = createDefaultCloner(uid(), sourceId);
+    working = ensureLayerHasTrack({ ...working, layers: [...working.layers, cloner] }, cloner);
+    const newComp = settleComposition(working);
+    const newSel: SelectionState = sel([cloner.id], cloner.id);
+    exec({
+      label: 'Add Cloner',
+      execute: () => { set({ composition: newComp, selection: newSel }); },
+      undo: () => { set({ composition: oldComp, selection: oldSel }); },
+    });
+  },
+
+  createClonerFromSelection: () => {
+    const { composition, selection } = get();
+    const src = composition.layers.find((l) => l.id === (selection.activeId ?? selection.selectedIds[0]));
+    if (!src || !CLONER_SOURCE_TYPES.has(src.type)) return;
+    const oldComp = composition;
+    const oldSel = selection;
+    const cloner = createDefaultCloner(uid(), src.id);
+    const newComp = settleComposition(ensureLayerHasTrack({ ...composition, layers: [...composition.layers, cloner] }, cloner));
+    const newSel: SelectionState = sel([cloner.id], cloner.id);
+    exec({
+      label: 'Create Cloner',
+      execute: () => { set({ composition: newComp, selection: newSel }); },
+      undo: () => { set({ composition: oldComp, selection: oldSel }); },
+    });
+  },
+
+  addClonerEffector: (layerId, type) => {
+    const { composition } = get();
+    const oldComp = composition;
+    const layer = composition.layers.find((l) => l.id === layerId);
+    if (!layer || layer.type !== 'cloner') return;
+    const eff = createEffector(type, layer.effectors.length * 7919 + 1); // varied, deterministic seed
+    const newLayers = composition.layers.map((l) =>
+      l.id === layerId && l.type === 'cloner' ? ({ ...l, effectors: [...l.effectors, eff] } as Layer) : l
+    );
+    exec({
+      label: 'Add Effector',
+      execute: () => { set({ composition: { ...get().composition, layers: newLayers } }); },
+      undo: () => { set({ composition: oldComp }); },
+    });
+  },
+
+  removeClonerEffector: (layerId, index) => {
+    const { composition } = get();
+    const oldComp = composition;
+    const layer = composition.layers.find((l) => l.id === layerId);
+    if (!layer || layer.type !== 'cloner' || index < 0 || index >= layer.effectors.length) return;
+    const newLayers = composition.layers.map((l) =>
+      l.id === layerId && l.type === 'cloner' ? ({ ...l, effectors: l.effectors.filter((_, i) => i !== index) } as Layer) : l
+    );
+    exec({
+      label: 'Remove Effector',
+      execute: () => { set({ composition: { ...get().composition, layers: newLayers } }); },
+      undo: () => { set({ composition: oldComp }); },
+    });
+  },
+
+  reorderClonerEffector: (layerId, index, dir) => {
+    const { composition } = get();
+    const oldComp = composition;
+    const layer = composition.layers.find((l) => l.id === layerId);
+    if (!layer || layer.type !== 'cloner') return;
+    const j = dir === 'up' ? index - 1 : index + 1;
+    if (index < 0 || index >= layer.effectors.length || j < 0 || j >= layer.effectors.length) return;
+    const eff = [...layer.effectors];
+    [eff[index], eff[j]] = [eff[j], eff[index]];
+    const newLayers = composition.layers.map((l) =>
+      l.id === layerId && l.type === 'cloner' ? ({ ...l, effectors: eff } as Layer) : l
+    );
+    exec({
+      label: 'Reorder Effector',
+      execute: () => { set({ composition: { ...get().composition, layers: newLayers } }); },
+      undo: () => { set({ composition: oldComp }); },
     });
   },
 

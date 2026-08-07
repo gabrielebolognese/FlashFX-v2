@@ -63,6 +63,7 @@ try {
     buildInstanceOverrides,
     buildDataBoundSources,
     CLONER_LOD_THRESHOLDS,
+    createEffector,
   } = m;
 
   // Column-major mat4 × vec4.
@@ -525,6 +526,33 @@ try {
   check('LOD threshold is per-strategy: per-instance < texture-stamp < instanced-shape', () => {
     assert.ok(CLONER_LOD_THRESHOLDS['per-instance'] < CLONER_LOD_THRESHOLDS['texture-stamp']);
     assert.ok(CLONER_LOD_THRESHOLDS['texture-stamp'] < CLONER_LOD_THRESHOLDS['instanced-shape']);
+  });
+
+  // ══ M16 effector default-constructors (authoring UI's "add effector") ═════════
+  console.log('\n[m16: effector factories]');
+  check('createEffector builds each type with a valid common {strength, blendMode}', () => {
+    for (const t of ['random', 'falloff', 'step', 'time', 'target']) {
+      const e = createEffector(t);
+      assert.equal(e.type, t, `type ${t}`);
+      assert.equal(typeof e.strength, 'number');
+      assert.ok(['add', 'multiply', 'override'].includes(e.blendMode), `blend ${t}`);
+    }
+  });
+  check('factory-built effectors are accepted by applyEffectorStack (no throw, finite output)', () => {
+    for (const t of ['random', 'falloff', 'step', 'time', 'target']) {
+      const out = applyEffectorStack(baseInst, [createEffector(t, 7)], 0, 3);
+      assert.ok(Number.isFinite(out.position.x) && Number.isFinite(out.rotationDegrees.z), `finite ${t}`);
+    }
+  });
+  check('random effector carries the caller-supplied seed (so two dont correlate)', () => {
+    assert.equal(createEffector('random', 12345).seed, 12345);
+    assert.notEqual(createEffector('random', 1).seed, createEffector('random', 2).seed);
+  });
+  check('random factory output is frame-pure: same (seed,index) → identical delta', () => {
+    const e = createEffector('random', 99);
+    const a = effectorOutput(4, { x: 0, y: 0, z: 0 }, 0, e);
+    const b = effectorOutput(4, { x: 0, y: 0, z: 0 }, 0, e);
+    assert.deepEqual(a, b);
   });
 
   console.log(`\n✓ all ${passed} checks passed`);

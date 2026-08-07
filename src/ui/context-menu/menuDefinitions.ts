@@ -402,6 +402,7 @@ export function buildClipMenu(layerId: string): MenuEntry[] {
       items: [
         item('group-sel', 'Group', () => editor.createGroup(), Group, 'Ctrl+G'),
         item('ungroup-sel', 'Ungroup', () => editor.ungroupSelection(), Ungroup, 'Ctrl+Shift+G'),
+        item('create-cloner', 'Create Cloner from Selection', () => editor.createClonerFromSelection(), Grid3x3),
         item('precompose-sel', 'Precompose', () => editor.precomposeSelection(), Layers, 'Ctrl+Shift+C'),
         ...(isPrecomp && precompId
           ? [item('open-precomp', 'Open Precomposition', () => editor.enterPrecomp(precompId), Folder)]
@@ -531,6 +532,7 @@ export function buildMultiClipMenu(): MenuEntry[] {
       items: [
         item('multi-group', 'Group', () => editor.createGroup(), Group, 'Ctrl+G'),
         item('multi-precompose', 'Precompose', () => editor.precomposeSelection(), Layers, 'Ctrl+Shift+C'),
+        item('multi-create-cloner', 'Create Cloner from Selection', () => editor.createClonerFromSelection(), Grid3x3),
       ],
     },
   ];
