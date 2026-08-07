@@ -3,6 +3,9 @@
 // runtime dependency of core on the feature module).
 import type { ClonerLayer, InstanceTransform } from '../cloner/types';
 import type { ClonerRenderPath } from '../cloner/renderPath';
+// M14 reframe constraints — type-only (erased at runtime; reframe.ts imports only `type Vec2`
+// back from here, so this cross-reference has no runtime cycle).
+import type { LayerConstraints } from './reframe';
 
 export type Vec2 = [number, number];
 export type Vec4 = [number, number, number, number];
@@ -829,6 +832,8 @@ export interface PrecompLayer {
 export interface LayerDecorations {
   /** Optional timeline label tint (hex). Overrides the type color on clips. */
   labelColor?: string;
+  /** M14 — per-layer reframe pin/scale constraints (top-level layers only). */
+  constraints?: LayerConstraints;
 }
 
 export type Layer = (ShapeLayer | TextLayer | GroupLayer | VideoLayer | ImageLayer | AudioLayer | ParticleLayer | AnimationItemLayer | FieldSampledLayer | LottieIconLayer | LayoutObjectLayer | LayoutContainerLayer | ClonerLayer | PrecompLayer) & LayerDecorations;

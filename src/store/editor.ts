@@ -8,6 +8,8 @@ import { healDeleteVertex, concatPaths } from '../core/pathCleanup';
 import { extractLayerProperties, applyLayerProperties, type LayerPropertyBundle } from '../core/layerProperties';
 import { selectSameLayers, type SameAttr } from '../core/selection';
 import { applyReplaceSource, sourceFromLayer, sourceKindForLayer, type ReplaceSource } from '../core/replaceSource';
+import { computeReframe, applyAxisPosition, applyAxisScale, DEFAULT_CONSTRAINTS, type LayerConstraints, type ReframeInput } from '../core/reframe';
+import { getLayerRect } from '../core/snap/bbox';
 import { evaluateVec2, evaluateNumber, buildPhysicsEvaluator } from '../core/interpolation';
 import {
   remapSelectedFrames, reverseSelectedValues, distributeSelectedEven, alignSelected,
@@ -343,6 +345,10 @@ interface EditorState {
   applyAnimationPreset: (layerId: string, presetId: string) => void;
   applyAnimationPresetBatch: (layerIds: string[], presetId: string, durationSeconds: number, atStart: boolean) => void;
   setCompositionSetting: (key: string, value: number) => void;
+  /** M14 — resize the composition frame and reflow every top-level layer per its constraints (one undo). */
+  setCompositionSize: (width: number, height: number) => void;
+  /** M14 — set a layer's reframe pin/scale constraints. */
+  setLayerConstraints: (layerId: string, patch: Partial<LayerConstraints>) => void;
   createGroup: () => void;
   ungroupSelection: () => void;
 
@@ -3431,6 +3437,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   setCompositionSetting: (key, value) => {
     const { composition } = get();
+    // Width/height changes reflow layers per their constraints — delegate so it's one command.
+    if (key === 'width') { get().setCompositionSize(value, composition.settings.height); return; }
+    if (key === 'height') { get().setCompositionSize(composition.settings.width, value); return; }
     const oldComp = composition;
     // The user-facing "duration" field is the minimum floor; the live actual
     // duration grows automatically from clip content.
@@ -3444,6 +3453,60 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       execute: () => { set({ composition: newComp }); },
       undo: () => { set({ composition: oldComp }); },
     });
+  },
+
+  setCompositionSize: (width, height) => {
+    const { composition, currentFrame } = get();
+    const oldComp = composition;
+    const oldW = composition.settings.width;
+    const oldH = composition.settings.height;
+    if ((width === oldW && height === oldH) || width <= 0 || height <= 0) return;
+
+    // Measure each top-level layer's on-screen box at the current frame (WYSIWYG). Children
+    // ride their parent; boxless layers (audio/empty) are left untouched.
+    const inputs: ReframeInput[] = [];
+    for (const l of composition.layers) {
+      if (l.parentId !== null) continue;
+      const rect = getLayerRect(l, composition.layers, currentFrame);
+      if (!rect) continue;
+      const pos = evaluateVec2(l.transform.position, currentFrame);
+      const scale = evaluateVec2(l.transform.scale, currentFrame);
+      inputs.push({ id: l.id, constraints: l.constraints ?? DEFAULT_CONSTRAINTS, box: rect, position: pos, scale });
+    }
+    const results = new Map(computeReframe(inputs, oldW, oldH, width, height).map((r) => [r.id, r]));
+
+    const newLayers = composition.layers.map((l) => {
+      const r = results.get(l.id);
+      if (!r) return l;
+      const pos = l.transform.position;
+      const scl = l.transform.scale;
+      const newPosition = {
+        ...pos,
+        defaultValue: [applyAxisPosition((pos.defaultValue as Vec2)[0], r.h), applyAxisPosition((pos.defaultValue as Vec2)[1], r.v)] as Vec2,
+        keyframes: pos.keyframes.map((k) => ({ ...k, value: [applyAxisPosition((k.value as Vec2)[0], r.h), applyAxisPosition((k.value as Vec2)[1], r.v)] as Vec2 })),
+      };
+      const newScale = {
+        ...scl,
+        defaultValue: [applyAxisScale((scl.defaultValue as Vec2)[0], r.h), applyAxisScale((scl.defaultValue as Vec2)[1], r.v)] as Vec2,
+        keyframes: scl.keyframes.map((k) => ({ ...k, value: [applyAxisScale((k.value as Vec2)[0], r.h), applyAxisScale((k.value as Vec2)[1], r.v)] as Vec2 })),
+      };
+      return { ...l, transform: { ...l.transform, position: newPosition, scale: newScale } } as Layer;
+    });
+
+    const newComp = recomputeCompositionDuration({ ...composition, settings: { ...composition.settings, width, height }, layers: newLayers });
+    exec({
+      label: 'Reframe composition',
+      execute: () => { set({ composition: newComp }); },
+      undo: () => { set({ composition: oldComp }); },
+    });
+  },
+
+  setLayerConstraints: (layerId, patch) => {
+    const { composition } = get();
+    const layer = composition.layers.find((l) => l.id === layerId);
+    if (!layer) return;
+    const merged: LayerConstraints = { ...(layer.constraints ?? DEFAULT_CONSTRAINTS), ...patch };
+    get().updateLayerProperty(layerId, 'constraints', merged);
   },
 
   createGroup: () => {

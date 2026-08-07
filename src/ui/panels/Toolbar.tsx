@@ -42,6 +42,7 @@ interface MenuGroup {
 export function Toolbar() {
   const composition = useEditorStore((s) => s.composition);
   const setCompositionSetting = useEditorStore((s) => s.setCompositionSetting);
+  const setCompositionSize = useEditorStore((s) => s.setCompositionSize);
   const selection = useEditorStore((s) => s.selection);
   const deselectAll = useEditorStore((s) => s.deselectAll);
   const selectLayer = useEditorStore((s) => s.selectLayer);
@@ -477,6 +478,21 @@ export function Toolbar() {
             <div className="space-y-2">
               <SettingRow label="Width" value={composition.settings.width} onChange={(v) => setCompositionSetting('width', v)} />
               <SettingRow label="Height" value={composition.settings.height} onChange={(v) => setCompositionSetting('height', v)} />
+              {/* M14 — aspect presets reflow every top-level layer per its constraints (one undo). */}
+              <div className="flex items-center gap-1.5">
+                <label className="text-[10px] text-slate-500 w-14 flex-shrink-0">Aspect</label>
+                <div className="flex flex-1 gap-1">
+                  {([['16:9', 1920, 1080], ['9:16', 1080, 1920], ['1:1', 1080, 1080]] as const).map(([label, w, h]) => (
+                    <button
+                      key={label}
+                      onClick={() => setCompositionSize(w, h)}
+                      className={`flex-1 text-[10px] py-1 rounded border transition-colors ${composition.settings.width === w && composition.settings.height === h ? 'bg-[#f7b500]/20 border-[#f7b500]/40 text-[#f7b500]' : 'bg-[#122240] border-[#1a2a42] text-slate-400 hover:text-slate-200'}`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <SettingRow label="FPS" value={composition.settings.frameRate} onChange={(v) => setCompositionSetting('frameRate', v)} />
               <SettingRow
                 label="Min Duration"

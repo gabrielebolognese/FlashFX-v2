@@ -11,6 +11,7 @@ import type { ShapeLayer, TextLayer, VideoLayer, ImageLayer, AudioLayer, Particl
 import { evaluateProperty } from '../../core/interpolation';
 import { createProperty } from '../../core/factory';
 import { getMotionBlur } from '../../core/layerSwitches';
+import { DEFAULT_CONSTRAINTS, type ReframeAxisMode } from '../../core/reframe';
 import { Diamond, Route, Trash2, Wand2, Sliders, Sparkles, Square, Circle, Star, Hexagon, Zap, Scissors, Moon, Layers, Type, Frame, Copy, ChevronUp, ChevronDown, Eye, EyeOff, Plus, Repeat, Link2, Atom, Grid3x3, Aperture, Code2, SlidersHorizontal, Palette, Loader2 } from 'lucide-react';
 import { DragInput } from '../components/DragInput';
 import { useSilenceStore } from '../../store/silenceStripper';
@@ -296,6 +297,8 @@ function InspectorTabContent({ tab, layer }: { tab: InspectorTab; layer: Layer }
           precision={2}
         />
       </Section>
+
+      <ConstraintsSection layer={layer} />
 
       {isText && (
         <TextProperties
@@ -1709,6 +1712,58 @@ function LottieIconSection({ layer }: { layer: LottieIconLayer }) {
         </div>
       </div>
     </div>
+  );
+}
+
+// M14 — per-axis reframe constraints. A 5-way segmented control per axis fully expresses
+// Left/Center/Right + Stretch + Scale (a 3×3 pin grid can't represent stretch/scale). Only
+// meaningful for top-level layers; children ride their parent.
+const H_CONSTRAINT_OPTS: { mode: ReframeAxisMode; label: string }[] = [
+  { mode: 'min', label: 'Left' }, { mode: 'center', label: 'Center' }, { mode: 'max', label: 'Right' },
+  { mode: 'stretch', label: 'Stretch' }, { mode: 'scale', label: 'Scale' },
+];
+const V_CONSTRAINT_OPTS: { mode: ReframeAxisMode; label: string }[] = [
+  { mode: 'min', label: 'Top' }, { mode: 'center', label: 'Center' }, { mode: 'max', label: 'Bottom' },
+  { mode: 'stretch', label: 'Stretch' }, { mode: 'scale', label: 'Scale' },
+];
+
+function ConstraintRow({ label, opts, value, onChange }: { label: string; opts: { mode: ReframeAxisMode; label: string }[]; value: ReframeAxisMode; onChange: (m: ReframeAxisMode) => void }) {
+  return (
+    <div className="flex items-center gap-2">
+      <label className="text-[10px] text-slate-500 w-14 flex-shrink-0">{label}</label>
+      <div className="flex flex-1 rounded border border-[#1a2a42] overflow-hidden">
+        {opts.map((o) => (
+          <button
+            key={o.mode}
+            onClick={() => onChange(o.mode)}
+            className={`flex-1 text-[9px] py-1 transition-colors ${value === o.mode ? 'bg-[#f7b500]/20 text-[#f7b500]' : 'bg-[#122240] text-slate-400 hover:text-slate-200'}`}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ConstraintsSection({ layer }: { layer: Layer }) {
+  const setLayerConstraints = useEditorStore((s) => s.setLayerConstraints);
+  if (layer.parentId !== null) {
+    return (
+      <Section title="Constraints">
+        <div className="text-[10px] text-slate-500">Pinned to parent — reframe constraints apply to top-level layers only.</div>
+      </Section>
+    );
+  }
+  const c = layer.constraints ?? DEFAULT_CONSTRAINTS;
+  return (
+    <Section title="Constraints">
+      <div className="space-y-1.5">
+        <ConstraintRow label="Horizontal" opts={H_CONSTRAINT_OPTS} value={c.h} onChange={(m) => setLayerConstraints(layer.id, { h: m })} />
+        <ConstraintRow label="Vertical" opts={V_CONSTRAINT_OPTS} value={c.v} onChange={(m) => setLayerConstraints(layer.id, { v: m })} />
+        <div className="text-[9px] text-slate-600 pt-0.5">Reflows when the composition frame is resized.</div>
+      </div>
+    </Section>
   );
 }
 

@@ -34,6 +34,7 @@
     "verify:layerprops": "node scripts/verify-layerprops.mjs",
     "verify:selection": "node scripts/verify-selection.mjs",
     "verify:replacesource": "node scripts/verify-replacesource.mjs",
+    "verify:reframe": "node scripts/verify-reframe.mjs",
     "preinstall": "echo ignore-scripts=true > .npmrc || true"
   },
   "dependencies": {

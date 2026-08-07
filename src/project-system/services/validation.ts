@@ -33,6 +33,7 @@ import type {
   ShapeMaterialConfig,
   ShapePatternConfig,
 } from '../../core/types';
+import type { LayerConstraints } from '../../core/reframe';
 
 function isObject(v: unknown): v is Record<string, unknown> {
   return v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -282,6 +283,9 @@ function validateLayer(raw: unknown): Layer | null {
     inPoint: typeof r.inPoint === 'number' ? r.inPoint : 0,
     outPoint: typeof r.outPoint === 'number' ? r.outPoint : 150,
     ...(typeof r.labelColor === 'string' ? { labelColor: r.labelColor } : {}),
+    // M14 reframe constraints — preserve through the round-trip (else stripped on save/load,
+    // the same data-loss class that bit cloner/precomp).
+    ...(isObject(r.constraints) ? { constraints: r.constraints as unknown as LayerConstraints } : {}),
     // Per-layer effects are app-generated structured blobs — preserve them
     // through the round-trip rather than dropping them (was a data-loss bug).
     ...(isObject(r.shadow) ? { shadow: r.shadow as unknown as LayerShadow } : {}),
