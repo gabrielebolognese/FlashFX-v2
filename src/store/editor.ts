@@ -153,6 +153,13 @@ interface EditorState {
   // Internal raw setters (used by commands, no history)
   _setComposition: (comp: Composition) => void;
   _setSelection: (sel: SelectionState) => void;
+  /** The last applied transform delta, for Ctrl+D power-duplicate (repeat). Translation
+   *  + per-object rotation; reset when the user changes selection (Figma model). */
+  lastTransform: { dx: number; dy: number; dRot: number } | null;
+  setLastTransform: (d: { dx: number; dy: number; dRot: number } | null) => void;
+  /** Alt-drag duplicate: after a move-drag, leave a copy of the selection back at the
+   *  origin (offset by −dx,−dy from the dropped position). Batched into the drag's undo. */
+  leaveDuplicateAtOrigin: (dx: number, dy: number) => void;
 
   // Non-undoable actions
   setCurrentFrame: (frame: number) => void;
@@ -840,6 +847,17 @@ function offsetLayerPosition(layer: Layer, dx: number, dy: number): void {
   }
 }
 
+/** Add `dRot` degrees to a layer's rotation (base + keyframes) — for the rotation
+ *  component of a power-duplicate (spin-stepping about each object's own centre). */
+function offsetLayerRotation(layer: Layer, dRot: number): void {
+  if (dRot === 0) return;
+  const rot = layer.transform.rotation;
+  rot.defaultValue = (rot.defaultValue as number) + dRot;
+  if (rot.keyframes.length > 0) {
+    rot.keyframes = rot.keyframes.map((k) => ({ ...k, value: (k.value as number) + dRot }));
+  }
+}
+
 // Turn a copied source layer into a ready-to-insert clone: deep copy, fresh
 // ids, optional keyframe baking, a visible offset, a "copy" suffix, and an
 // optional randomized fill.
@@ -888,11 +906,13 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   selectionSource: 'canvas',
   clipboard: null,
   randomizeColors: false,
+  lastTransform: null,
   physicsBakeStatus: 'idle',
   physicsBakeProgress: 0,
 
   _setComposition: (comp) => set({ composition: settleComposition(comp) }),
-  _setSelection: (sel) => set({ selection: sel }),
+  _setSelection: (sel) => set({ selection: sel, lastTransform: null }),
+  setLastTransform: (d) => set({ lastTransform: d }),
 
   setCurrentFrame: (frame) => set({ currentFrame: frame }),
   setPlaying: (playing) => set({ isPlaying: playing }),
@@ -986,7 +1006,14 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       } as Layer;
     });
     if (!changed) return;
-    exec({ label: 'Nudge', execute: () => set({ composition: { ...composition, layers: newLayers } }), undo: () => set({ composition: oldComp }) });
+    // Remember the nudge so Ctrl+D repeats it into an evenly-stepped array.
+    const oldLast = get().lastTransform;
+    const step = { dx, dy, dRot: 0 };
+    exec({
+      label: 'Nudge',
+      execute: () => set({ composition: { ...composition, layers: newLayers }, lastTransform: step }),
+      undo: () => set({ composition: oldComp, lastTransform: oldLast }),
+    });
   },
 
   setHoveredLayer: (id) => set({ hoveredLayerId: id }),
@@ -3504,11 +3531,16 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   duplicateSelection: () => {
-    const { composition, selection, selectionSource, currentFrame, randomizeColors } = get();
+    const { composition, selection, selectionSource, currentFrame, randomizeColors, lastTransform } = get();
     const ids = selection.selectedIds.length > 0 ? selection.selectedIds : (selection.activeId ? [selection.activeId] : []);
     if (ids.length === 0) return;
     const oldComp = composition;
     const oldSel = selection;
+    const oldLast = lastTransform;
+    // Power-duplicate: repeat the last transform (Ctrl+D builds an evenly-stepped
+    // array), or the +20 default when no transform is remembered. The applied step
+    // is remembered so the NEXT Ctrl+D repeats it.
+    const off = lastTransform ?? { dx: 20, dy: 20, dRot: 0 };
     const bakeFrame = selectionSource === 'timeline' ? null : currentFrame;
     let working = composition;
     const newIds: string[] = [];
@@ -3516,7 +3548,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     for (const id of ids) {
       const source = composition.layers.find((l) => l.id === id);
       if (!source) continue;
-      const clone = instantiatePastedLayer(source, { bakeFrame, randomize: randomizeColors });
+      const clone = instantiatePastedLayer(source, { bakeFrame, randomize: randomizeColors, offset: 0 });
+      offsetLayerPosition(clone, off.dx, off.dy);
+      offsetLayerRotation(clone, off.dRot);
       idMap.set(source.id, clone.id);
       working = ensureLayerHasTrack({ ...working, layers: [...working.layers, clone] }, clone);
       newIds.push(clone.id);
@@ -3533,9 +3567,28 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const newSel: SelectionState = sel(newIds, newIds[newIds.length - 1]);
     exec({
       label: 'Duplicate',
-      execute: () => { set({ composition: newComp, selection: newSel }); },
-      undo: () => { set({ composition: oldComp, selection: oldSel }); },
+      execute: () => { set({ composition: newComp, selection: newSel, lastTransform: off }); },
+      undo: () => { set({ composition: oldComp, selection: oldSel, lastTransform: oldLast }); },
     });
+  },
+
+  leaveDuplicateAtOrigin: (dx, dy) => {
+    // Called mid-drag-batch (before commitDrag): clone the just-moved selection and
+    // shift each clone back by (−dx,−dy) to the drag-start position. Net vs the
+    // pre-drag composition = "a copy added at the origin", folded into the drag's
+    // single undo. The moved originals stay selected (Ctrl+D then extends the array).
+    const { composition, selection, randomizeColors } = get();
+    const ids = selection.selectedIds.length > 0 ? selection.selectedIds : (selection.activeId ? [selection.activeId] : []);
+    if (ids.length === 0) return;
+    let working = composition;
+    for (const id of ids) {
+      const source = working.layers.find((l) => l.id === id);
+      if (!source) continue;
+      const clone = instantiatePastedLayer(source, { bakeFrame: null, randomize: randomizeColors, offset: 0 });
+      offsetLayerPosition(clone, -dx, -dy);
+      working = ensureLayerHasTrack({ ...working, layers: [...working.layers, clone] }, clone);
+    }
+    set({ composition: settleComposition(working) });
   },
 
   toggleRandomizeColors: () => set({ randomizeColors: !get().randomizeColors }),

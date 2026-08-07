@@ -195,7 +195,7 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
   const [snapLines, setSnapLines] = useState<SnapLine[]>([]);
   const [marquee, setMarquee] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const marqueeRef = useRef<{ startCX: number; startCY: number; active: boolean; lastIds: string } | null>(null);
-  const dragStart = useRef({ mx: 0, my: 0, state: null as TransformState | null, groupPos: null as Vec2 | null, initFontSize: 0, initScale: [1, 1] as Vec2, multiPositions: [] as { id: string; pos: Vec2 }[], startRadius: 0 });
+  const dragStart = useRef({ mx: 0, my: 0, state: null as TransformState | null, groupPos: null as Vec2 | null, initFontSize: 0, initScale: [1, 1] as Vec2, multiPositions: [] as { id: string; pos: Vec2 }[], startRadius: 0, altDup: false, netMove: [0, 0] as Vec2, netRot: 0 });
   const snapDataRef = useRef<{ initialRect: Rect; targets: SnapTarget[]; otherRects: Rect[] } | null>(null);
 
   const activeLayer = composition.layers.find((l) => l.id === selection.activeId) || null;
@@ -371,7 +371,7 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
           }
         }
 
-        dragStart.current = { mx: e.clientX, my: e.clientY, state, groupPos: null, initFontSize: 0, initScale: hitScale, multiPositions: positions, startRadius: 0 };
+        dragStart.current = { mx: e.clientX, my: e.clientY, state, groupPos: null, initFontSize: 0, initScale: hitScale, multiPositions: positions, startRadius: 0, altDup: e.altKey, netMove: [0, 0], netRot: 0 };
         dragSnapshot.current = { comp: composition, sel: selection };
 
         // Update activeId to the hit layer
@@ -533,7 +533,9 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
       const s = (activeLayer as ShapeLayer).shape;
       if (s.type === 'rectangle') initRadius = evaluateNumber(s.borderRadius, currentFrame);
     }
-    dragStart.current = { mx: e.clientX, my: e.clientY, state, groupPos: gPos, initFontSize, initScale, multiPositions: [], startRadius: initRadius };
+    // Alt-drag a move = leave the original + drag a copy (committed on release).
+    const altDup = handle === 'move' && e.altKey && (selection.selectedIds.length > 0 || selection.activeId != null);
+    dragStart.current = { mx: e.clientX, my: e.clientY, state, groupPos: gPos, initFontSize, initScale, multiPositions: [], startRadius: initRadius, altDup, netMove: [0, 0], netRot: 0 };
     dragSnapshot.current = { comp: composition, sel: selection };
 
     // Capture initial positions of all selected layers for multi-drag
@@ -622,6 +624,7 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
           setSnapLines([]);
           setEqualGapSegs([]);
         }
+        dragStart.current.netMove = [dx + snapDx, dy + snapDy]; // for power-duplicate / Alt-drag
 
         if (isGroupActive) {
           const gPos = dragStart.current.groupPos;
@@ -672,6 +675,7 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
           const currentAngle = Math.atan2(e.clientY - absPivotY, e.clientX - absPivotX);
           let angleDelta = ((currentAngle - startAngle) * 180) / Math.PI;
           if (shiftHeld) angleDelta = Math.round(angleDelta / 15) * 15;
+          dragStart.current.netRot = angleDelta;
           const initRot = state.rotation;
           const prop = getNestedProp(activeLayer, 'transform.rotation');
           if (prop && prop.keyframes && prop.keyframes.length > 0) {
@@ -693,6 +697,7 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
           const currentAngle = Math.atan2(e.clientY - absPivotY, e.clientX - absPivotX);
           let angleDelta = ((currentAngle - startAngle) * 180) / Math.PI;
           if (shiftHeld) angleDelta = Math.round(angleDelta / 15) * 15;
+          dragStart.current.netRot = angleDelta;
           updateAnimatable('transform.rotation', state.rotation + angleDelta);
           hudData = { kind: 'rotate', a: state.rotation + angleDelta, b: 0 };
         }
@@ -824,10 +829,26 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
     };
 
     const handleUp = () => {
+      const store = useEditorStore.getState();
+      const { altDup, netMove, netRot } = dragStart.current;
+      const [ndx, ndy] = netMove;
+      // Alt-drag duplicate: while still batched, stamp a copy back at the origin so
+      // the whole gesture folds into one "Alt-Drag Duplicate" undo. Also seeds the
+      // power-duplicate step.
+      if (dragging === 'move' && altDup && (ndx !== 0 || ndy !== 0)) {
+        store.leaveDuplicateAtOrigin(ndx, ndy);
+        store.setLastTransform({ dx: ndx, dy: ndy, dRot: 0 });
+      }
       useHistoryStore.getState().setBatching(false);
       if (dragSnapshot.current) {
-        useEditorStore.getState().commitDrag(dragging === 'radius' ? 'Corner Radius' : 'Transform', dragSnapshot.current.comp, dragSnapshot.current.sel);
+        const label = (dragging === 'move' && altDup) ? 'Alt-Drag Duplicate' : (dragging === 'radius' ? 'Corner Radius' : 'Transform');
+        store.commitDrag(label, dragSnapshot.current.comp, dragSnapshot.current.sel);
         dragSnapshot.current = null;
+      }
+      // Remember a plain move/rotate as the power-duplicate step (Ctrl+D repeats it).
+      if (!altDup) {
+        if (dragging === 'move' && (ndx !== 0 || ndy !== 0)) store.setLastTransform({ dx: ndx, dy: ndy, dRot: 0 });
+        else if (dragging === 'rotate' && netRot !== 0) store.setLastTransform({ dx: 0, dy: 0, dRot: netRot });
       }
       setDragging(null);
       setHud(null);
