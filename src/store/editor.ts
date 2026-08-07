@@ -7,6 +7,7 @@ import { shapeToPathVertices, reversePathVertices, simplifyPathVertices, boolean
 import { healDeleteVertex, concatPaths } from '../core/pathCleanup';
 import { extractLayerProperties, applyLayerProperties, type LayerPropertyBundle } from '../core/layerProperties';
 import { selectSameLayers, type SameAttr } from '../core/selection';
+import { applyReplaceSource, sourceFromLayer, sourceKindForLayer, type ReplaceSource } from '../core/replaceSource';
 import { evaluateVec2, evaluateNumber, buildPhysicsEvaluator } from '../core/interpolation';
 import {
   remapSelectedFrames, reverseSelectedValues, distributeSelectedEven, alignSelected,
@@ -354,6 +355,12 @@ interface EditorState {
   copyLayerProperties: (id?: string) => void;
   /** M11 — apply the copied appearance bundle to the selection (or given ids), one undoable command. */
   pasteLayerProperties: (ids?: string[]) => void;
+  /** M13 — swap a layer's media source (image/video/precomp), preserving everything else. */
+  replaceLayerSource: (layerId: string, source: ReplaceSource) => void;
+  /** M13 — replace a layer's source from the first same-kind layer on the clipboard. */
+  replaceSourceFromClipboard: (layerId: string) => void;
+  /** M13 — replace a layer's source with an existing imported asset (metadata read from the pool). */
+  replaceSourceWithAsset: (layerId: string, assetId: string) => void;
 
   // Motion path actions
   addMotionPath: (layerId: string) => void;
@@ -3617,6 +3624,49 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       execute: () => { set({ composition: newComp }); },
       undo: () => { set({ composition: oldComp }); },
     });
+  },
+
+  replaceLayerSource: (layerId, source) => {
+    const { composition } = get();
+    const layer = composition.layers.find((l) => l.id === layerId);
+    if (!layer) return;
+    const newLayer = applyReplaceSource(layer, source);
+    if (newLayer === layer) return; // kind mismatch / no-op
+    const oldComp = composition;
+    const newComp = { ...composition, layers: composition.layers.map((l) => (l.id === layerId ? newLayer : l)) };
+    exec({
+      label: 'Replace Source',
+      execute: () => { set({ composition: newComp }); },
+      undo: () => { set({ composition: oldComp }); },
+    });
+  },
+
+  replaceSourceFromClipboard: (layerId) => {
+    const { composition, clipboard } = get();
+    const target = composition.layers.find((l) => l.id === layerId);
+    if (!target || !clipboard) return;
+    const kind = sourceKindForLayer(target);
+    if (!kind) return;
+    const match = clipboard.layers.find((l) => sourceKindForLayer(l) === kind);
+    if (!match) return;
+    const src = sourceFromLayer(match);
+    if (src) get().replaceLayerSource(layerId, src);
+  },
+
+  replaceSourceWithAsset: (layerId, assetId) => {
+    const { composition } = get();
+    const target = composition.layers.find((l) => l.id === layerId);
+    if (!target) return;
+    const kind = sourceKindForLayer(target);
+    let src: ReplaceSource | null = null;
+    if (kind === 'image') {
+      const m = mediaAssetManager.getImageMetadata(assetId);
+      if (m) src = { kind: 'image', assetId, sourceWidth: m.width, sourceHeight: m.height, format: m.format, fileSize: m.fileSize };
+    } else if (kind === 'video') {
+      const m = mediaAssetManager.getMetadata(assetId);
+      if (m) src = { kind: 'video', assetId, sourceWidth: m.width, sourceHeight: m.height, sourceDuration: m.duration, sourceFrameRate: m.frameRate };
+    }
+    if (src) get().replaceLayerSource(layerId, src);
   },
 
   duplicateSelection: () => {

@@ -33,6 +33,7 @@
     "verify:pathcleanup": "node scripts/verify-pathcleanup.mjs",
     "verify:layerprops": "node scripts/verify-layerprops.mjs",
     "verify:selection": "node scripts/verify-selection.mjs",
+    "verify:replacesource": "node scripts/verify-replacesource.mjs",
     "preinstall": "echo ignore-scripts=true > .npmrc || true"
   },
   "dependencies": {

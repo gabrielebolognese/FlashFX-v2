@@ -77,6 +77,25 @@ function pickReplacement(assetId: string): void {
   input.click();
 }
 
+// M13 — pick a NEW file, import it under a fresh asset id, and point one layer at it
+// (distinct from pickReplacement, which globally rebinds an existing asset id).
+function pickNewSource(layerId: string, kind: 'image' | 'video'): void {
+  const pid = useProjectStore.getState().activeProjectId;
+  if (!pid) return;
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = kind === 'image' ? 'image/*' : 'video/*';
+  input.onchange = async () => {
+    const f = input.files?.[0];
+    if (!f) return;
+    const { assetId } = kind === 'image'
+      ? await mediaAssetManager.importImage(f, pid)
+      : await mediaAssetManager.importVideo(f, pid);
+    useEditorStore.getState().replaceSourceWithAsset(layerId, assetId);
+  };
+  input.click();
+}
+
 // M12 — 'Select all with same…' submenu, offering only the attributes the layer actually
 // has (Fill/Stroke/Font/Effect/Type). Returns null when the layer can't be resolved.
 const SAME_ATTR_LABELS: Record<SameAttr, string> = {
@@ -277,8 +296,12 @@ export function buildClipMenu(layerId: string): MenuEntry[] {
   const layer = editor.composition.layers.find((l) => l.id === layerId);
   const isAudio = layer?.type === 'audio';
   const isVideo = layer?.type === 'video';
+  const isImage = layer?.type === 'image';
   const isPrecomp = layer?.type === 'precomp';
   const precompId = isPrecomp ? (layer as { compositionId?: string }).compositionId : undefined;
+  // M13 — a same-kind layer on the clipboard can replace this one's source.
+  const replaceKind = isImage ? 'image' : isVideo ? 'video' : isPrecomp ? 'precomp' : null;
+  const clipboardHasSameKind = !!replaceKind && !!editor.clipboard?.layers.some((l) => l.type === replaceKind);
 
   // Label color applies to the whole selection when the clicked clip is part
   // of it, otherwise just to this clip.
@@ -385,6 +408,21 @@ export function buildClipMenu(layerId: string): MenuEntry[] {
           : []),
       ],
     },
+    // M13 — Replace Source: swap this layer's media, keeping transform/keyframes/effects.
+    ...(replaceKind ? [{
+      type: 'submenu' as const,
+      id: 'replace-source',
+      label: 'Replace Source',
+      icon: RefreshCcw,
+      items: [
+        clipboardHasSameKind
+          ? item('replace-clip', 'Replace from Clipboard', () => editor.replaceSourceFromClipboard(layerId), Clipboard)
+          : disabled('replace-clip', 'Replace from Clipboard (copy a layer first)', Clipboard),
+        ...(replaceKind !== 'precomp'
+          ? [item('replace-file', 'Replace from File…', () => pickNewSource(layerId, replaceKind), Upload)]
+          : []),
+      ],
+    }] : []),
     ...(isAudio ? buildAudioClipSection(layerId) : []),
     ...(isVideo ? buildVideoClipSection(layerId, (layer as { video: { assetId: string } }).video.assetId) : []),
     {
