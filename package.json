@@ -24,6 +24,8 @@
     "verify:presentation": "node scripts/verify-presentation.mjs",
     "verify:audioschedule": "node scripts/verify-audioschedule.mjs",
     "verify:transformhud": "node scripts/verify-transformhud.mjs",
+    "verify:measure": "node scripts/verify-measure.mjs",
+    "verify:equalgap": "node scripts/verify-equalgap.mjs",
     "preinstall": "echo ignore-scripts=true > .npmrc || true"
   },
   "dependencies": {

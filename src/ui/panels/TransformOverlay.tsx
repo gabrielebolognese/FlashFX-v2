@@ -9,8 +9,11 @@ import type { ShapeLayer, TextLayer, GroupLayer, VideoLayer, ImageLayer, Layer, 
 import { evaluateProperty, evaluateNumber, evaluateVec2 } from '../../core/interpolation';
 import { measureText } from '../../engine/textAtlas';
 import { computeGroupBounds } from '../../core/sceneGraph';
-import { snap, buildTargets, getSelectionRect, getOtherRects, type Rect, type SnapLine, type SnapTarget } from '../../core/snap';
+import { snap, buildTargets, getSelectionRect, getLayerRect, getOtherRects, type Rect, type SnapLine, type SnapTarget } from '../../core/snap';
+import { measureGaps, fmtGap } from '../../core/snap/measure';
+import { computeEqualGapSnap, type GapBadge } from '../../core/snap/equalGap';
 import { CanvasSnapGuides } from './SnapGuides';
+import { MeasureOverlay, type LabeledSeg } from './MeasureOverlay';
 import { sampleBakedFrame } from '../../physics/bake';
 import { getSettingValue } from '../../settings/store';
 import { hudLabel, clampHud, type HudKind } from './transformHud';
@@ -184,11 +187,16 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
   // Live measurement HUD (follows the cursor while dragging): kind + up to two
   // numbers + the cursor position in viewport coords. Cleared on pointer-up.
   const [hud, setHud] = useState<{ kind: HudKind; a: number; b: number; cx: number; cy: number } | null>(null);
+  // Alt-hover distance measurement (selected bbox → hovered bbox) and equal-gap
+  // distribution badges (during a move-drag). Both drawn by MeasureOverlay.
+  const [altHeld, setAltHeld] = useState(false);
+  const [hoverMeasure, setHoverMeasure] = useState<{ segs: LabeledSeg[]; extras: { x: number; y: number; label: string }[] } | null>(null);
+  const [equalGapSegs, setEqualGapSegs] = useState<LabeledSeg[]>([]);
   const [snapLines, setSnapLines] = useState<SnapLine[]>([]);
   const [marquee, setMarquee] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const marqueeRef = useRef<{ startCX: number; startCY: number; active: boolean; lastIds: string } | null>(null);
   const dragStart = useRef({ mx: 0, my: 0, state: null as TransformState | null, groupPos: null as Vec2 | null, initFontSize: 0, initScale: [1, 1] as Vec2, multiPositions: [] as { id: string; pos: Vec2 }[], startRadius: 0 });
-  const snapDataRef = useRef<{ initialRect: Rect; targets: SnapTarget[] } | null>(null);
+  const snapDataRef = useRef<{ initialRect: Rect; targets: SnapTarget[]; otherRects: Rect[] } | null>(null);
 
   const activeLayer = composition.layers.find((l) => l.id === selection.activeId) || null;
   const isGroupActive = activeLayer?.type === 'group';
@@ -381,7 +389,7 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
           ? generateGridLines(compW, compH, gridSettings.columns, gridSettings.rows, gridSettings.subdivisions)
           : { vertical: [], horizontal: [] };
         const targets = buildTargets(otherRects, compW, compH, vertical, horizontal, snapFlags.guides && guideSettings.visible ? guideSettings.guidelines : []);
-        snapDataRef.current = initialRect ? { initialRect, targets } : null;
+        snapDataRef.current = initialRect ? { initialRect, targets, otherRects } : null;
 
         e.preventDefault();
         e.stopPropagation();
@@ -427,6 +435,22 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
     return ids;
   }, [composition.layers, currentFrame]);
 
+  // Track the Alt/Option modifier for hover-to-measure. Alt is a live modifier:
+  // measuring shows only while held, and tears down on release / window blur.
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => { if (e.key === 'Alt') setAltHeld(true); };
+    const up = (e: KeyboardEvent) => { if (e.key === 'Alt') { setAltHeld(false); setHoverMeasure(null); } };
+    const blur = () => { setAltHeld(false); setHoverMeasure(null); };
+    window.addEventListener('keydown', down);
+    window.addEventListener('keyup', up);
+    window.addEventListener('blur', blur);
+    return () => {
+      window.removeEventListener('keydown', down);
+      window.removeEventListener('keyup', up);
+      window.removeEventListener('blur', blur);
+    };
+  }, []);
+
   const handleOverlayPointerMove = useCallback((e: React.PointerEvent) => {
     // Marquee drag
     const m = marqueeRef.current;
@@ -452,16 +476,31 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
     }
 
     // Normal hover
-    if (dragging) return;
+    if (dragging) { setHoverMeasure(null); return; }
     const [cx, cy] = toComp(e.clientX, e.clientY);
     const hit = hitTestLayers(cx, cy);
     if (hit) {
       setHoveredLayer(hit.id);
+      // Alt-hover distance measurement: selection bbox → hovered bbox (Figma-style).
+      const selIds = selection.selectedIds;
+      if (altHeld && selIds.length > 0 && !selIds.includes(hit.id)) {
+        const selRect = getSelectionRect(selIds, composition.layers, currentFrame);
+        const hovRect = getLayerRect(hit, composition.layers, currentFrame);
+        if (selRect && hovRect) {
+          const segs: LabeledSeg[] = measureGaps(selRect, hovRect)
+            .map((s) => ({ x1: s.x1, y1: s.y1, x2: s.x2, y2: s.y2, label: s.label }));
+          const extras = [{ x: hovRect.x + hovRect.w / 2, y: hovRect.y - 12 / Math.max(sY, 0.01), label: `${fmtGap(hovRect.w)} × ${fmtGap(hovRect.h)}` }];
+          setHoverMeasure({ segs, extras });
+        } else setHoverMeasure(null);
+      } else {
+        setHoverMeasure(null);
+      }
       return;
     }
     const group = hitTestGroup(cx, cy);
     setHoveredLayer(group ? group.id : null);
-  }, [toComp, hitTestLayers, hitTestGroup, dragging, setHoveredLayer, marqueeHitTest]);
+    setHoverMeasure(null);
+  }, [toComp, hitTestLayers, hitTestGroup, dragging, setHoveredLayer, marqueeHitTest, altHeld, selection, composition.layers, currentFrame, sY]);
 
   const handleOverlayPointerUp = useCallback(() => {
     if (marqueeRef.current) {
@@ -521,7 +560,7 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
         ? generateGridLines(compW, compH, gridSettings.columns, gridSettings.rows, gridSettings.subdivisions)
         : { vertical: [], horizontal: [] };
       const targets = buildTargets(otherRects, compW, compH, vertical, horizontal, snapFlags.guides && guideSettings.visible ? guideSettings.guidelines : []);
-      snapDataRef.current = initialRect ? { initialRect, targets } : null;
+      snapDataRef.current = initialRect ? { initialRect, targets, otherRects } : null;
     } else {
       snapDataRef.current = null;
     }
@@ -552,7 +591,7 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
         let snapDx = 0;
         let snapDy = 0;
         if (!e.altKey && snapDataRef.current) {
-          const { initialRect, targets } = snapDataRef.current;
+          const { initialRect, targets, otherRects } = snapDataRef.current;
           const proposed: Rect = {
             x: initialRect.x + dx,
             y: initialRect.y + dy,
@@ -563,8 +602,25 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
           snapDx = result.dx;
           snapDy = result.dy;
           setSnapLines(result.lines);
+          // Equal-gap distribution snapping — a separate producer that fills each
+          // axis where edge/centre alignment didn't snap (alignment's tighter 8px
+          // tolerance wins ties; distance uses a wider 20px band).
+          const egTol = 20 / Math.max(screenScale, 0.01);
+          const badges: GapBadge[] = [];
+          if (!result.lines.some((l) => l.axis === 'x')) {
+            const eg = computeEqualGapSnap(proposed, otherRects, 'x', egTol);
+            if (eg) { snapDx = eg.delta; badges.push(...eg.badges); }
+          }
+          if (!result.lines.some((l) => l.axis === 'y')) {
+            const eg = computeEqualGapSnap({ ...proposed, x: proposed.x + snapDx }, otherRects, 'y', egTol);
+            if (eg) { snapDy = eg.delta; badges.push(...eg.badges); }
+          }
+          setEqualGapSegs(badges.map((b) => (b.axis === 'x'
+            ? { x1: b.a1, y1: b.cross, x2: b.a2, y2: b.cross, label: fmtGap(b.gap) }
+            : { x1: b.cross, y1: b.a1, x2: b.cross, y2: b.a2, label: fmtGap(b.gap) })));
         } else {
           setSnapLines([]);
+          setEqualGapSegs([]);
         }
 
         if (isGroupActive) {
@@ -776,6 +832,7 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
       setDragging(null);
       setHud(null);
       setSnapLines([]);
+      setEqualGapSegs([]);
       snapDataRef.current = null;
       document.body.style.userSelect = '';
       document.body.style.cursor = '';
@@ -889,6 +946,14 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
         />
       )}
       <CanvasSnapGuides lines={snapLines} scaleX={sX} scaleY={sY} />
+
+      {/* Red dimension lines: Alt-hover distance + equal-gap distribution badges. */}
+      <MeasureOverlay
+        segments={hoverMeasure ? [...hoverMeasure.segs, ...equalGapSegs] : equalGapSegs}
+        extras={hoverMeasure?.extras ?? []}
+        scaleX={sX}
+        scaleY={sY}
+      />
 
       {/* Live measurement HUD — a cursor-following pill (portaled to <body> so a
           transformed viewport ancestor can't offset its fixed positioning). */}
