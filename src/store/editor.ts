@@ -249,6 +249,9 @@ interface EditorState {
   reverseShapePath: (layerId: string) => void;
   simplifyShapePath: (layerId: string, tolerance: number) => void;
   booleanSelectedShapes: (op: BooleanOp) => void;
+  /** Bake the selected shapes to a single vector path (Figma-style Flatten): union
+   *  of 2+ shapes, or convert one shape to a path. Destructive; one undo. */
+  flattenSelectedShapes: () => void;
   addCaptionClips: (segments: CaptionSegment[], options: CaptionOptions, clipStartFrame: number) => void;
   stripSilence: (layerId: string, segments: SpeechSegment[]) => string[];
   explodeTextLayer: (layerId: string, splitMode: SplitMode, staggerFrames: number) => void;
@@ -2286,22 +2289,67 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const ids = selection.selectedIds.filter((id) => composition.layers.find((l) => l.id === id)?.type === 'shape');
     if (ids.length < 2) return;
     const frame = useTimelineStore.getState().currentFrame;
-    const results = booleanLayers(op, composition.layers, ids, frame);
+    // Order operands bottom-of-stack first (by track z-order). Subtract/difference
+    // then cuts the upper shapes out of the bottom survivor, and the result inherits
+    // a predictable fill — matching Figma/Illustrator/Affinity, which all subtract
+    // top-from-bottom by STACKING order (not selection order).
+    const trackOrder = new Map(composition.tracks.map((t) => [t.id, t.order]));
+    const zOf = (id: string) => { const l = composition.layers.find((x) => x.id === id); return l?.trackId ? (trackOrder.get(l.trackId) ?? 0) : 0; };
+    const orderedIds = [...ids].sort((a, b) => zOf(a) - zOf(b)); // ascending order = bottom → top
+    const results = booleanLayers(op, composition.layers, orderedIds, frame);
     if (results.length === 0) return;
-    const firstShape = (composition.layers.find((l) => l.id === ids[0]) as ShapeLayer).shape;
+    // Fill/stroke inheritance: the bottom survivor for Subtract, else the top shape
+    // (Figma's rule for Union / Intersect / Exclude).
+    const appearanceId = op === 'difference' ? orderedIds[0] : orderedIds[orderedIds.length - 1];
+    const appShape = (composition.layers.find((l) => l.id === appearanceId) as ShapeLayer).shape;
     const labels: Record<BooleanOp, string> = { union: 'Union', intersection: 'Intersection', difference: 'Difference', xor: 'Exclusion' };
     const newLayers = results.map((res, i) => {
-      const nl = createPolygonLayer(`${labels[op]} ${i + 1}`, res.position[0], res.position[1], res.vertices, true, firstShape.fillColor, defaultClipFrames(composition));
-      if (nl.type === 'shape' && nl.shape.type === 'polygon') nl.shape.strokeColor = firstShape.strokeColor;
+      const nl = createPolygonLayer(`${labels[op]} ${i + 1}`, res.position[0], res.position[1], res.vertices, true, appShape.fillColor, defaultClipFrames(composition));
+      if (nl.type === 'shape' && nl.shape.type === 'polygon') nl.shape.strokeColor = appShape.strokeColor;
       return nl;
     });
-    // Boolean ops REPLACE their inputs (Pathfinder-style).
+    // Boolean ops REPLACE their inputs (Pathfinder-style). A live, non-destructive
+    // boolean group (Figma/Sketch/Illustrator/Affinity) is deferred to M22.
     const remaining = composition.layers.filter((l) => !ids.includes(l.id));
     let comp: Composition = { ...composition, layers: [...remaining, ...newLayers] };
     for (const nl of newLayers) comp = ensureLayerHasTrack(comp, nl);
     comp = settleComposition(comp);
     const newSel: SelectionState = sel(newLayers.map((l) => l.id), newLayers[0].id);
     exec({ label: labels[op], execute: () => set({ composition: comp, selection: newSel }), undo: () => set({ composition: oldComp, selection: oldSel }) });
+  },
+
+  flattenSelectedShapes: () => {
+    const { composition, selection } = get();
+    const ids = selection.selectedIds.filter((id) => composition.layers.find((l) => l.id === id)?.type === 'shape');
+    if (ids.length === 0) return;
+    // Single shape → bake it to an editable path (Figma's Flatten on one layer =
+    // convert to vector). Already a polygon path → nothing to do.
+    if (ids.length === 1) {
+      const only = composition.layers.find((l) => l.id === ids[0]) as ShapeLayer;
+      if (only.shape.type !== 'polygon') get().convertShapeToPath(ids[0]);
+      return;
+    }
+    // 2+ → union into a single flattened path (destructive), one undo 'Flatten'.
+    const oldComp = composition;
+    const oldSel = selection;
+    const frame = useTimelineStore.getState().currentFrame;
+    const trackOrder = new Map(composition.tracks.map((t) => [t.id, t.order]));
+    const zOf = (id: string) => { const l = composition.layers.find((x) => x.id === id); return l?.trackId ? (trackOrder.get(l.trackId) ?? 0) : 0; };
+    const orderedIds = [...ids].sort((a, b) => zOf(a) - zOf(b));
+    const results = booleanLayers('union', composition.layers, orderedIds, frame);
+    if (results.length === 0) return;
+    const appShape = (composition.layers.find((l) => l.id === orderedIds[orderedIds.length - 1]) as ShapeLayer).shape;
+    const newLayers = results.map((res, i) => {
+      const nl = createPolygonLayer(results.length > 1 ? `Flatten ${i + 1}` : 'Flatten', res.position[0], res.position[1], res.vertices, true, appShape.fillColor, defaultClipFrames(composition));
+      if (nl.type === 'shape' && nl.shape.type === 'polygon') nl.shape.strokeColor = appShape.strokeColor;
+      return nl;
+    });
+    const remaining = composition.layers.filter((l) => !ids.includes(l.id));
+    let comp: Composition = { ...composition, layers: [...remaining, ...newLayers] };
+    for (const nl of newLayers) comp = ensureLayerHasTrack(comp, nl);
+    comp = settleComposition(comp);
+    const newSel: SelectionState = sel(newLayers.map((l) => l.id), newLayers[0].id);
+    exec({ label: 'Flatten', execute: () => set({ composition: comp, selection: newSel }), undo: () => set({ composition: oldComp, selection: oldSel }) });
   },
 
   addVideoFromAsset: (assetId, x, y, playbackMode: VideoPlaybackMode = 'wait') => {

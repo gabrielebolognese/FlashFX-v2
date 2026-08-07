@@ -93,6 +93,26 @@ function Editor() {
 
       // Trim operations
       if (!isTextInput) {
+        // Boolean shape ops — Figma-standard Alt+Shift+U/S/I/E (Union/Subtract/
+        // Intersect/Exclude) — and Flatten on Ctrl/Cmd+E. Alt mangles e.key on some
+        // keyboard layouts, so match the physical key via e.code.
+        if (e.altKey && e.shiftKey && !e.ctrlKey && !e.metaKey) {
+          const boolOp =
+            e.code === 'KeyU' ? 'union' :
+            e.code === 'KeyS' ? 'difference' :
+            e.code === 'KeyI' ? 'intersection' :
+            e.code === 'KeyE' ? 'xor' : null;
+          if (boolOp) {
+            e.preventDefault();
+            useEditorStore.getState().booleanSelectedShapes(boolOp);
+            return;
+          }
+        }
+        if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === 'e' || e.key === 'E')) {
+          e.preventDefault();
+          useEditorStore.getState().flattenSelectedShapes();
+          return;
+        }
         if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
           e.preventDefault();
           copySelection();

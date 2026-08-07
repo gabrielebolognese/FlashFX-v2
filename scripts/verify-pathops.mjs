@@ -115,6 +115,15 @@ try {
     const r = booleanLayers('difference', [A, B], ['a', 'b'], 0);
     assert.ok(near(totalArea(r), 5000, 5), `got ${totalArea(r)}`);
   });
+  // The base of a difference is the FIRST id — the store now sorts operands
+  // bottom-of-stack first so Subtract cuts upper shapes from the bottom survivor.
+  check('difference is order-dependent (first id survives)', () => {
+    const ab = booleanLayers('difference', [A, B], ['a', 'b'], 0); // A−B → left slab (x<0)
+    const ba = booleanLayers('difference', [A, B], ['b', 'a'], 0); // B−A → right slab (x>0)
+    assert.ok(ab.length && ba.length);
+    assert.ok(ab[0].position[0] < 0, `A−B centroid x=${ab[0].position[0]} should be < 0`);
+    assert.ok(ba[0].position[0] > 0, `B−A centroid x=${ba[0].position[0]} should be > 0`);
+  });
   check('xor area ≈ 10000', () => {
     const r = booleanLayers('xor', [A, B], ['a', 'b'], 0);
     assert.ok(near(totalArea(r), 10000, 5), `got ${totalArea(r)}`);

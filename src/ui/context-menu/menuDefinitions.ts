@@ -8,6 +8,7 @@ import {
   FastForward, Rewind, Tag, Palette, Settings, Wand2, ScanLine, AudioLines,
   Waves, Activity, Gauge, Ungroup, Group, MousePointer, Columns3, Rows3,
   Zap, ArrowLeftToLine, ArrowRightToLine, Container, Download,
+  Combine, Diff, SquareStack, Blend,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { MenuEntry } from './types';
@@ -384,8 +385,25 @@ export function buildClipMenu(layerId: string): MenuEntry[] {
 
 export function buildMultiClipMenu(): MenuEntry[] {
   const editor = useEditorStore.getState();
+  const shapeCount = editor.selection.selectedIds.filter(
+    (id) => editor.composition.layers.find((l) => l.id === id)?.type === 'shape'
+  ).length;
 
   return [
+    // Boolean path ops — shown only for 2+ selected shapes (Figma/Illustrator gate
+    // combining behind a multi-shape selection). Subtract cuts upper shapes from the
+    // bottom one; all are destructive (a live boolean group is milestone M22).
+    ...(shapeCount >= 2 ? [{
+      type: 'group' as const,
+      label: 'Path',
+      items: [
+        item('bool-union', 'Union', () => editor.booleanSelectedShapes('union'), Combine, 'Alt+Shift+U'),
+        item('bool-subtract', 'Subtract', () => editor.booleanSelectedShapes('difference'), Diff, 'Alt+Shift+S'),
+        item('bool-intersect', 'Intersect', () => editor.booleanSelectedShapes('intersection'), SquareStack, 'Alt+Shift+I'),
+        item('bool-exclude', 'Exclude', () => editor.booleanSelectedShapes('xor'), Blend, 'Alt+Shift+E'),
+        item('bool-flatten', 'Flatten', () => editor.flattenSelectedShapes(), Layers, 'Ctrl+E'),
+      ],
+    }] : []),
     {
       type: 'group',
       label: 'Stagger',

@@ -62,6 +62,7 @@ export function Toolbar() {
   const reverseShapePath = useEditorStore((s) => s.reverseShapePath);
   const simplifyShapePath = useEditorStore((s) => s.simplifyShapePath);
   const booleanSelectedShapes = useEditorStore((s) => s.booleanSelectedShapes);
+  const flattenSelectedShapes = useEditorStore((s) => s.flattenSelectedShapes);
   const scenes = useEditorStore((s) => s.scenes);
   const navStack = useEditorStore((s) => s.navStack);
   const createScene = useEditorStore((s) => s.createScene);
@@ -337,10 +338,11 @@ export function Toolbar() {
         { label: 'Object to Path', shortcut: 'Ctrl+Shift+C', action: () => { const id = selection.activeId; if (id) convertShapeToPath(id); }, disabled: !isShapeSel },
         { label: 'Stroke to Path', shortcut: 'Ctrl+Alt+C', disabled: true },
         { label: '', divider: true },
-        { label: 'Union', shortcut: 'Ctrl+Shift+U', action: () => booleanSelectedShapes('union'), disabled: !canBoolean },
-        { label: 'Intersection', action: () => booleanSelectedShapes('intersection'), disabled: !canBoolean },
-        { label: 'Difference', action: () => booleanSelectedShapes('difference'), disabled: !canBoolean },
-        { label: 'Exclusion', action: () => booleanSelectedShapes('xor'), disabled: !canBoolean },
+        { label: 'Union', shortcut: 'Alt+Shift+U', action: () => booleanSelectedShapes('union'), disabled: !canBoolean },
+        { label: 'Difference', shortcut: 'Alt+Shift+S', action: () => booleanSelectedShapes('difference'), disabled: !canBoolean },
+        { label: 'Intersection', shortcut: 'Alt+Shift+I', action: () => booleanSelectedShapes('intersection'), disabled: !canBoolean },
+        { label: 'Exclusion', shortcut: 'Alt+Shift+E', action: () => booleanSelectedShapes('xor'), disabled: !canBoolean },
+        { label: 'Flatten', shortcut: 'Ctrl+E', action: () => flattenSelectedShapes(), disabled: !isShapeSel },
         { label: '', divider: true },
         { label: 'Simplify', shortcut: 'Ctrl+L', action: () => {
             const id = selection.activeId;
