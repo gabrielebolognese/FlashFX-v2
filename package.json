@@ -35,6 +35,7 @@
     "verify:selection": "node scripts/verify-selection.mjs",
     "verify:replacesource": "node scripts/verify-replacesource.mjs",
     "verify:reframe": "node scripts/verify-reframe.mjs",
+    "verify:tidyup": "node scripts/verify-tidyup.mjs",
     "preinstall": "echo ignore-scripts=true > .npmrc || true"
   },
   "dependencies": {

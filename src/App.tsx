@@ -190,6 +190,13 @@ function Editor() {
           useEditorStore.getState().pasteLayerProperties();
           return;
         }
+        // M15 — Tidy Up (Figma Ctrl+Alt+T): infer a row/column/grid + equalize spacing. Gated
+        // to a multi-selection (e.code — Alt mangles e.key) so it never fires for 0/1 layers.
+        if ((e.ctrlKey || e.metaKey) && e.altKey && e.code === 'KeyT' && selection.selectedIds.length >= 2) {
+          e.preventDefault();
+          useEditorStore.getState().tidyUpSelection();
+          return;
+        }
         if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
           e.preventDefault();
           copySelection();

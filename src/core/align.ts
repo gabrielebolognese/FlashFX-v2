@@ -799,3 +799,140 @@ export function computeMatchCanvasAspect(layers: Layer[], frame: number, canvasW
   }
   return results;
 }
+
+// ── M15: Tidy Up — infer a row/column/grid from current positions and equalize spacing ──
+// One-click cleanup (Figma "Tidy up"): cluster the selection into rows by Y, infer 1D row /
+// 1D column / 2D grid, derive the MODAL gap, and reflow anchored at the block's top-left with
+// each item centered in a content-sized cell. Returns AlignResult[] straight into
+// applyAlignResults. Pure/deterministic (all sorts tie-break on id); -0 normalized with `+ 0`.
+
+export interface TidyUpOptions {
+  gap?: number;            // force both axes
+  gapX?: number;
+  gapY?: number;
+  rowTolerance?: number;   // default 0.5 * median(heights)
+}
+
+export interface TidyUpPlan {
+  layout: 'row' | 'column' | 'grid';
+  rows: number;
+  cols: number;
+  gapX: number;
+  gapY: number;
+  cells: { id: string; x: number; y: number }[]; // new CENTER positions (+0 normalized)
+}
+
+function tidyMedian(nums: number[]): number {
+  if (nums.length === 0) return 0;
+  const s = [...nums].sort((a, b) => a - b);
+  const mid = Math.floor(s.length / 2);
+  return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+}
+
+/** Most frequent integer; ties broken toward the SMALLER value. */
+function tidyMode(nums: number[]): number {
+  if (nums.length === 0) return 0;
+  const counts = new Map<number, number>();
+  for (const n of nums) counts.set(n, (counts.get(n) ?? 0) + 1);
+  let best = nums[0], bestC = -1;
+  for (const k of [...counts.keys()].sort((a, b) => a - b)) {
+    const c = counts.get(k)!;
+    if (c > bestC) { bestC = c; best = k; }
+  }
+  return best;
+}
+
+/** Most frequent row length; ties broken toward the LARGER value (Figma prefers more columns). */
+function tidyModeRowLen(lens: number[]): number {
+  if (lens.length === 0) return 1;
+  const counts = new Map<number, number>();
+  for (const n of lens) counts.set(n, (counts.get(n) ?? 0) + 1);
+  let best = lens[0], bestC = -1;
+  for (const k of [...counts.keys()].sort((a, b) => b - a)) {
+    const c = counts.get(k)!;
+    if (c > bestC) { bestC = c; best = k; }
+  }
+  return best;
+}
+
+const idCmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+
+export function planTidyUp(boxes: LayerBounds[], opts: TidyUpOptions = {}): TidyUpPlan {
+  // 1. Cluster into rows by Y (median-height tolerance), deterministic.
+  const sorted = [...boxes].sort((a, b) => a.y - b.y || a.x - b.x || idCmp(a.id, b.id));
+  const rowTol = opts.rowTolerance ?? 0.5 * tidyMedian(boxes.map((b) => b.h));
+  const rows: { cy: number; members: LayerBounds[] }[] = [];
+  for (const b of sorted) {
+    const row = rows.find((r) => Math.abs(r.cy - b.y) <= rowTol);
+    if (row) {
+      row.members.push(b);
+      row.cy = row.members.reduce((s, m) => s + m.y, 0) / row.members.length; // running mean
+    } else {
+      rows.push({ cy: b.y, members: [b] });
+    }
+  }
+  rows.sort((a, b) => a.cy - b.cy);
+  for (const r of rows) r.members.sort((a, b) => a.x - b.x || idCmp(a.id, b.id));
+
+  // 2. Infer layout + column count.
+  const rowLens = rows.map((r) => r.members.length);
+  const cols = rows.length === 1 ? rowLens[0] : tidyModeRowLen(rowLens);
+  const layout: 'row' | 'column' | 'grid' = rows.length === 1 ? 'row' : (cols === 1 ? 'column' : 'grid');
+
+  // 3. Modal gaps (edge-to-edge). opts override.
+  let gapX: number;
+  if (opts.gapX !== undefined) gapX = opts.gapX;
+  else if (opts.gap !== undefined) gapX = opts.gap;
+  else {
+    const gx: number[] = [];
+    for (const r of rows) for (let i = 0; i < r.members.length - 1; i++) {
+      gx.push(Math.round((r.members[i + 1].x - r.members[i + 1].w / 2) - (r.members[i].x + r.members[i].w / 2)));
+    }
+    gapX = gx.length ? tidyMode(gx) : 0;
+  }
+  let gapY: number;
+  if (opts.gapY !== undefined) gapY = opts.gapY;
+  else if (opts.gap !== undefined) gapY = opts.gap;
+  else {
+    const gy: number[] = [];
+    for (let i = 0; i < rows.length - 1; i++) {
+      const curBottom = Math.max(...rows[i].members.map((m) => m.y + m.h / 2));
+      const nextTop = Math.min(...rows[i + 1].members.map((m) => m.y - m.h / 2));
+      gy.push(Math.round(nextTop - curBottom));
+    }
+    gapY = gy.length ? tidyMode(gy) : 0;
+  }
+
+  // 4. Reflow: anchor at the block's top-left, size each cell to its content, center items.
+  const originLeft = Math.min(...boxes.map((b) => b.x - b.w / 2));
+  const originTop = Math.min(...boxes.map((b) => b.y - b.h / 2));
+  const colWidth: number[] = [];
+  for (let j = 0; j < cols; j++) {
+    let w = 0;
+    for (const r of rows) if (r.members[j]) w = Math.max(w, r.members[j].w);
+    colWidth[j] = w;
+  }
+  const rowHeight = rows.map((r) => Math.max(...r.members.map((m) => m.h)));
+  const colLeft: number[] = [];
+  for (let j = 0; j < cols; j++) colLeft[j] = j === 0 ? originLeft : colLeft[j - 1] + colWidth[j - 1] + gapX;
+  const rowTop: number[] = [];
+  for (let i = 0; i < rows.length; i++) rowTop[i] = i === 0 ? originTop : rowTop[i - 1] + rowHeight[i - 1] + gapY;
+
+  const cells: { id: string; x: number; y: number }[] = [];
+  for (let i = 0; i < rows.length; i++) {
+    for (let j = 0; j < rows[i].members.length; j++) {
+      cells.push({ id: rows[i].members[j].id, x: colLeft[j] + colWidth[j] / 2 + 0, y: rowTop[i] + rowHeight[i] / 2 + 0 });
+    }
+  }
+  return { layout, rows: rows.length, cols, gapX, gapY, cells };
+}
+
+/** Tidy Up as position deltas for applyAlignResults; skips already-placed layers. */
+export function computeTidyUp(boxes: LayerBounds[], opts?: TidyUpOptions): AlignResult[] {
+  if (boxes.length < 2) return [];
+  const byId = new Map(boxes.map((b) => [b.id, b]));
+  return planTidyUp(boxes, opts).cells.flatMap((c) => {
+    const b = byId.get(c.id)!;
+    return (c.x !== b.x || c.y !== b.y) ? [{ layerId: c.id, newPosition: [c.x + 0, c.y + 0] as Vec2 }] : [];
+  });
+}

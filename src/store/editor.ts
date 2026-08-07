@@ -2,7 +2,8 @@ import { create } from 'zustand';
 import type { Composition, SceneDocument, Layer, AnimatableProperty, Keyframe, Vec2, InterpolationType, BackgroundLayer, Track, TrackType, VideoPlaybackMode, PathVertex, VertexType, Mask, MaskType, AnchorEdge, PhysicsBindingDef, PhysicsWorldDef, StaggerBindingDef, LayoutObjectLayer, LayoutContainerLayer, ContainerShapeType, Marker, ShapeLayer, PolygonShape } from '../core/types';
 import { createComposition, createRectangleLayer, createCircleLayer, createStarLayer, createPolygonLayer, createDefaultPolygonVertices, createTextLayer, createVideoLayer, createImageLayer, createAudioLayer, createGroupLayer, createKeyframe, createBackgroundLayer, createMask, createParticleLayer, createAnimationItemLayer, createFieldSampledLayer, createLottieIconLayer, createLayoutObjectLayer, createLayoutContainerLayer, createDefaultChildOverride, uid } from '../core/factory';
 import { DEFAULT_SHADOW, DEFAULT_GLOW, DEFAULT_BLUR } from '../core/effectDefaults';
-import type { AlignResult } from '../core/align';
+import type { AlignResult, LayerBounds } from '../core/align';
+import { getLayerBounds, computeTidyUp } from '../core/align';
 import { shapeToPathVertices, reversePathVertices, simplifyPathVertices, booleanLayers, type BooleanOp } from '../core/pathOps';
 import { healDeleteVertex, concatPaths } from '../core/pathCleanup';
 import { extractLayerProperties, applyLayerProperties, type LayerPropertyBundle } from '../core/layerProperties';
@@ -288,6 +289,8 @@ interface EditorState {
   addVideoSubclip: (assetId: string, startSec: number, endSec: number) => void;
   // Apply computed align/distribute results (from core/align) to layer positions. Undoable.
   applyAlignResults: (results: AlignResult[], label: string) => void;
+  /** M15 — Tidy Up: infer a row/column/grid from the selection and equalize spacing (one undo). */
+  tidyUpSelection: () => void;
   // Path ops (Object menu → Path). All undoable.
   convertShapeToPath: (layerId: string) => void;
   reverseShapePath: (layerId: string) => void;
@@ -2500,6 +2503,16 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     });
     const newComp = { ...composition, layers: newLayers };
     exec({ label, execute: () => set({ composition: newComp }), undo: () => set({ composition: oldComp }) });
+  },
+
+  tidyUpSelection: () => {
+    const { composition, selection } = get();
+    const layers = composition.layers.filter((l) => selection.selectedIds.includes(l.id));
+    if (layers.length < 2) return;
+    const frame = useTimelineStore.getState().currentFrame;
+    const boxes = layers.map((l) => getLayerBounds(l, frame)).filter((x): x is LayerBounds => x !== null);
+    // Reuses the undoable align pipeline (keyframe retarget + one 'Tidy Up' undo entry).
+    get().applyAlignResults(computeTidyUp(boxes), 'Tidy Up');
   },
 
   convertShapeToPath: (layerId) => {

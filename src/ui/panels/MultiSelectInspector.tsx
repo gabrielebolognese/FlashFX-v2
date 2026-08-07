@@ -551,6 +551,14 @@ function ArrangeContent() {
       <SelectionHeader count={selectedLayers.length} />
 
       <section className="mb-4">
+        <h3 className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold mb-1.5">Tidy Up</h3>
+        <p className="text-[9px] text-slate-600 mb-3">Snap into a clean row / column / grid with equal spacing (Ctrl+Alt+T)</p>
+        <div className={`${isDisabled ? 'opacity-30 pointer-events-none' : ''}`}>
+          <ActionButton icon={LayoutGrid} label="Tidy Up" onClick={() => useEditorStore.getState().tidyUpSelection()} disabled={isDisabled} />
+        </div>
+      </section>
+
+      <section className="mb-4">
         <h3 className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold mb-1.5">Stack</h3>
         <p className="text-[9px] text-slate-600 mb-3">Arrange objects in a row or column</p>
         <div className={`flex flex-col gap-2 ${isDisabled ? 'opacity-30 pointer-events-none' : ''}`}>
