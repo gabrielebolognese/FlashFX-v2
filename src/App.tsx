@@ -20,6 +20,8 @@ import { SettingsPanel, SettingsCssInjector } from './settings';
 import { useSettingsStore, getSettingValue } from './settings/store';
 import { nudgeDelta } from './core/nudge';
 import { computeAlignment, computeDistribution, type AlignAxis, type DistributeMode } from './core/align';
+import { CommandPalette } from './ui/panels/CommandPalette';
+import { useCommandPaletteStore } from './ui/commands/store';
 import { OnboardingFlow, useOnboardingStore } from './onboarding';
 
 const LazyIntroPopup = lazy(() => import('@/components/ui/IntroPopup').then(m => ({ default: m.IntroPopup })));
@@ -57,6 +59,17 @@ function Editor() {
         e.preventDefault();
         const { activeProjectId, saveCurrentProject } = useProjectStore.getState();
         if (activeProjectId) saveCurrentProject().catch((err) => console.error('Save failed:', err));
+        return;
+      }
+
+      // Command palette: Ctrl/Cmd+/ (primary, Figma-style) or Ctrl/Cmd+K (alias).
+      // Ctrl+/ opens from anywhere; Ctrl+K defers to native/link behavior in a text
+      // input (browser address-bar + hyperlink both claim Cmd+K).
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey
+          && (e.key === '/' || e.key === 'k' || e.key === 'K')) {
+        if ((e.key === 'k' || e.key === 'K') && isTextInput) return;
+        e.preventDefault();
+        useCommandPaletteStore.getState().togglePalette();
         return;
       }
 
@@ -274,6 +287,7 @@ function Editor() {
       <SilenceStripperModal />
       <SettingsPanel />
       <SettingsCssInjector />
+      <CommandPalette />
       <Suspense fallback={null}>
         <LazyIntroPopup />
       </Suspense>

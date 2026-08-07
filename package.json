@@ -26,6 +26,8 @@
     "verify:transformhud": "node scripts/verify-transformhud.mjs",
     "verify:measure": "node scripts/verify-measure.mjs",
     "verify:equalgap": "node scripts/verify-equalgap.mjs",
+    "verify:nudge": "node scripts/verify-nudge.mjs",
+    "verify:fuzzy": "node scripts/verify-fuzzy.mjs",
     "preinstall": "echo ignore-scripts=true > .npmrc || true"
   },
   "dependencies": {
