@@ -3,6 +3,7 @@ import { useEditorStore } from '../../store/editor';
 import { useTimelineStore } from '../../store/timeline';
 import { useShapeToolStore, isVectorTool } from '../../store/shapeTool';
 import { usePathEditStore, type HandleSide } from '../../store/pathEdit';
+import { computeOppositeHandle, defaultHandleMode } from '../../core/tangent';
 import { resolveXform, localToComp, compToLocal } from '../../store/pathTransform';
 import type { PathVertex, Vec2, Layer, ShapeLayer, PolygonShape } from '../../core/types';
 
@@ -286,14 +287,17 @@ export function PenToolOverlay({ style, compW, compH }: PenToolOverlayProps) {
         endpointLocal = compToLocal(xform, snap45(origin, compPt));
       }
       const newHandle: Vec2 = [endpointLocal[0] - v.position[0], endpointLocal[1] - v.position[1]];
-      const mirror: Vec2 = [-newHandle[0], -newHandle[1]];
-      const mirrored = v.vertexType !== 'corner';
+      // Alt-drag breaks the tangent for this drag only; otherwise honor the vertex's
+      // handle mode (mirrored / angle-only / independent; default derived from type).
+      const mode = e.altKey ? 'independent' : (v.handleMode ?? defaultHandleMode(v.vertexType));
+      const opposite = drag.side === 'out' ? v.handleIn : v.handleOut;
+      const newOpp = computeOppositeHandle(mode, newHandle, opposite);
       const next = verts.map((vv, i) => {
         if (i !== drag.index) return vv;
         if (drag.side === 'out') {
-          return { ...vv, handleOut: newHandle, ...(mirrored ? { handleIn: mirror } : {}) };
+          return { ...vv, handleOut: newHandle, ...(newOpp ? { handleIn: newOpp } : {}) };
         }
-        return { ...vv, handleIn: newHandle, ...(mirrored ? { handleOut: mirror } : {}) };
+        return { ...vv, handleIn: newHandle, ...(newOpp ? { handleOut: newOpp } : {}) };
       });
       setPathVerticesLive(editLayer.id, next);
     }

@@ -28,6 +28,7 @@
     "verify:equalgap": "node scripts/verify-equalgap.mjs",
     "verify:nudge": "node scripts/verify-nudge.mjs",
     "verify:fuzzy": "node scripts/verify-fuzzy.mjs",
+    "verify:tangent": "node scripts/verify-tangent.mjs",
     "preinstall": "echo ignore-scripts=true > .npmrc || true"
   },
   "dependencies": {

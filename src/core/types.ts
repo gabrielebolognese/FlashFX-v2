@@ -172,6 +172,9 @@ export interface PathVertex {
   handleIn: Vec2;
   handleOut: Vec2;
   vertexType: VertexType;
+  /** How the two tangent handles relate when one is dragged (vector edit mode).
+   *  Absent → derived from vertexType (corner=independent, else mirrored). */
+  handleMode?: 'mirrored' | 'angle' | 'independent';
 }
 
 export interface PolygonShape {

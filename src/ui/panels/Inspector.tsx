@@ -5,6 +5,7 @@ import { useEditorStore } from '../../store/editor';
 import { useTimelineStore } from '../../store/timeline';
 import { useMotionPathStore } from '../../store/motionPath';
 import { useMaskStore } from '../../store/mask';
+import { usePathEditStore } from '../../store/pathEdit';
 import { BrandColorPicker } from '../components/BrandColorPicker';
 import type { ShapeLayer, TextLayer, VideoLayer, ImageLayer, AudioLayer, ParticleLayer, AnimationItemLayer, LottieIconLayer, AnimatableProperty, Vec2, RectangleShape, CircleShape, StarShape, PolygonShape, MotionPathAnchor, MotionPathLoop, Mask, MaskType, Layer, LayerShadow, LayerGlow, LayerBlur, BlurType, GlowMode, LayoutObjectLayer, LayoutContainerLayer } from '../../core/types';
 import { evaluateProperty } from '../../core/interpolation';
@@ -390,6 +391,8 @@ function ShapeProperties({
   hasKeyframeAt: (prop: AnimatableProperty) => boolean;
 }) {
   const shape = layer.shape;
+  const setPathVertexHandleMode = useEditorStore((s) => s.setPathVertexHandleMode);
+  const selectedVertices = usePathEditStore((s) => s.selectedVertices);
 
   return (
     <Section title={`Shape (${shape.type})`}>
@@ -573,6 +576,18 @@ function ShapeProperties({
             options={[['miter', 'Miter'], ['round', 'Round'], ['bevel', 'Bevel']]}
             onChange={(v) => updateLayerProperty(layer.id, 'shape.lineJoin', v)}
           />
+          {selectedVertices.length > 0 && (() => {
+            const v0 = (shape as PolygonShape).vertices[selectedVertices[0]];
+            const cur = v0?.handleMode ?? (v0?.vertexType === 'corner' ? 'independent' : 'mirrored');
+            return (
+              <SegmentedControl
+                label="Tangent"
+                value={cur}
+                options={[['mirrored', 'Mirror'], ['angle', 'Angle'], ['independent', 'Free']]}
+                onChange={(v) => setPathVertexHandleMode(layer.id, selectedVertices, v as 'mirrored' | 'angle' | 'independent')}
+              />
+            );
+          })()}
         </>
       )}
     </Section>

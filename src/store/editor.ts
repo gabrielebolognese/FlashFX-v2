@@ -431,6 +431,8 @@ interface EditorState {
   addPathPoint: (layerId: string, segmentIndex: number, t: number) => void;
   deletePathPoint: (layerId: string, vertexIndex: number) => void;
   setPathVertexType: (layerId: string, vertexIndex: number, type: VertexType) => void;
+  /** Set the tangent handle mode (mirrored / angle / independent) on the given vertices. */
+  setPathVertexHandleMode: (layerId: string, indices: number[], mode: 'mirrored' | 'angle' | 'independent') => void;
 }
 
 function getDefaultComposition(): Composition {
@@ -3740,6 +3742,25 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
     exec({
       label: 'Convert Point',
+      execute: () => { set({ composition: { ...get().composition, layers: newLayers } }); },
+      undo: () => { set({ composition: oldComp }); },
+    });
+  },
+
+  setPathVertexHandleMode: (layerId, indices, mode) => {
+    const { composition } = get();
+    const oldComp = composition;
+    const layer = composition.layers.find((l) => l.id === layerId);
+    if (!layer || layer.type !== 'shape' || layer.shape.type !== 'polygon') return;
+    const idxSet = new Set(indices);
+    const newVerts = layer.shape.vertices.map((v, i) => (idxSet.has(i) ? { ...v, handleMode: mode } : v));
+    const newLayers = composition.layers.map((l) =>
+      l.id === layerId && l.type === 'shape' && l.shape.type === 'polygon'
+        ? ({ ...l, shape: { ...l.shape, vertices: newVerts } } as Layer)
+        : l
+    );
+    exec({
+      label: 'Handle Mode',
       execute: () => { set({ composition: { ...get().composition, layers: newLayers } }); },
       undo: () => { set({ composition: oldComp }); },
     });

@@ -22,6 +22,7 @@ import { nudgeDelta } from './core/nudge';
 import { computeAlignment, computeDistribution, type AlignAxis, type DistributeMode } from './core/align';
 import { CommandPalette } from './ui/panels/CommandPalette';
 import { useCommandPaletteStore } from './ui/commands/store';
+import { useShapeToolStore } from './store/shapeTool';
 import { OnboardingFlow, useOnboardingStore } from './onboarding';
 
 const LazyIntroPopup = lazy(() => import('@/components/ui/IntroPopup').then(m => ({ default: m.IntroPopup })));
@@ -104,6 +105,26 @@ function Editor() {
         const targetId = selection.activeId ?? selection.selectedIds[0];
         if (targetId) startRenameLayer(targetId);
         return;
+      }
+
+      // Enter → vector edit mode on the selected shape (auto object-to-path for any
+      // primitive, then Direct Select). Esc → exit edit mode back to the Move tool.
+      if (e.key === 'Enter' && !isTextInput) {
+        const st = useEditorStore.getState();
+        const active = st.composition.layers.find((l) => l.id === st.selection.activeId);
+        if (active && active.type === 'shape') {
+          e.preventDefault();
+          if (active.shape.type !== 'polygon') st.convertShapeToPath(active.id);
+          useShapeToolStore.getState().setActiveTool('directSelect');
+          return;
+        }
+      }
+      if (e.key === 'Escape' && !isTextInput) {
+        if (useShapeToolStore.getState().activeTool !== 'select') {
+          e.preventDefault();
+          useShapeToolStore.getState().setActiveTool('select');
+          return;
+        }
       }
 
       // Trim operations
