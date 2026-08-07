@@ -1,5 +1,81 @@
 # Devlog
 
+## 2026-08-07
+
+Nine Figma "time-saver" milestones in one day (M2–M10, 8 commits), plus M1 which
+landed late the night before. All vector/editing UX. 8 new Node verify harnesses
+(transform HUD, measurement, equal-gap, nudge, fuzzy search, tangent, bend, path
+cleanup); typecheck stayed at 0 and lint at its 127 baseline through every commit.
+Everything with pointer/WebGPU behaviour is structurally verified only — it needs a
+browser to feel, so each commit carries its own manual-check list.
+
+- Drag a corner to round it, per-corner (M1, shipped late 2026-08-06).
+  - Number: 4 independent radii per rectangle; `borderRadius` was already an animatable
+    property, so this was exposure, not a new engine.
+  - Hard part: the drag handle has to live in composition space and read back through the
+    same anchor/rotation/scale math the renderer uses, or the handle drifts off the corner
+    once the layer is rotated.
+
+- The four boolean ops and Flatten now have keyboard shortcuts (Alt+Shift+U/S/I/E, Ctrl+E).
+  - Number: before today only 1 of 4 ops (Union) had a binding; now 4 + flatten.
+  - Hard part: subtract was using selection order, so which shape survived depended on
+    click order. Fixed to z-order (bottom shape wins) to match Figma. Alt also mangles
+    `e.key` on some layouts, so every Alt combo matches the physical `e.code`.
+
+- Live transform/measurement HUD while moving, resizing, or rotating.
+  - Number: verify:transformhud, 13 assertions.
+  - Hard part: the HUD numbers have to be derived from the exact same transform pipeline
+    the shader uses (scale → anchor-relative → rotate → translate), or the readout
+    disagrees with what's on screen for any rotated or scaled layer.
+
+- Alt-hover shows pixel distances to neighbours; dragging snaps to equal gaps.
+  - Number: verify:measure (9) + verify:equalgap (7).
+  - Hard part: equal-gap detection is a fuzzy match over the gaps between bounding boxes —
+    finding the run of objects that are (nearly) evenly spaced and snapping to complete it,
+    without the snap fighting the pointer.
+
+- Keyboard nudge (arrows, Shift = big), align (Alt+A/D/W/S/H/V), distribute (Ctrl+Alt+H/V),
+  and several previously-unbound actions wired up.
+  - Number: verify:nudge, 4 assertions; nudge amounts are configurable in Settings.
+  - Hard part: Alt+S already meant "trim clip down". Resolved by gating the align keys to a
+    ≥2 selection and ordering them before the trim keys, so Alt+S aligns-bottom only when it
+    can't mean trim.
+
+- Command palette on Ctrl+/ or Ctrl+K, backed by a command registry.
+  - Number: verify:fuzzy, 10 assertions (the palette's fuzzy matcher).
+  - Hard part: the value is the registry, not the popup — commands had to be described as
+    data (id, label, when-enabled, run) so the palette, and later menus/shortcuts, all read
+    one source instead of re-deriving state.
+
+- Alt-drag to duplicate; Ctrl+D duplicates and then repeats the last transform.
+  - Number: +offset carries; a second Ctrl+D re-applies the same delta (array building).
+  - Hard part: "power duplicate" means remembering the last move/rotate as a delta and
+    re-applying it on each Ctrl+D, and leaving a copy at the origin when you Alt-drag — two
+    different notions of "the thing that just happened" that had to be tracked separately.
+
+- Enter turns any shape into an editable path; full tangent-handle control while editing.
+  - Number: verify:tangent, 6 assertions; handle modes mirrored / angle-only / independent,
+    Alt to break a tangent for one drag.
+  - Hard part: `normalizeAngle(-360)` returned `-0`, which fails `deepEqual` against `0`
+    (Object.is) and broke the harness — fixed with `+0` normalization. And the handle-mode
+    UI had to go in `ShapeProperties`, not `InspectorTabContent`; the polygon inspector
+    section lives in a different component than it looked.
+
+- Bend tool: grab a point on a segment and drag to curve it (M9).
+  - Number: verify:bend, 4 assertions.
+  - Hard part: to make a cubic pass through the cursor at parameter t you add
+    `Δ/(3(1−t)t)` to *both* endpoint handles ("translate-both"), and you apply that delta
+    to the pre-drag handles each move, not the live ones, or it compounds.
+
+- Delete-and-heal an anchor (Shift+Delete) and join/close paths (Ctrl+J) (M10).
+  - Number: verify:pathcleanup, 9 assertions.
+  - Hard part: healing is the interesting one. Dropping an anchor and just reconnecting the
+    neighbours leaves a kink. Figma's actual fix is a Schneider (1990) least-squares refit:
+    fix the two endpoints and their tangent *directions*, then solve only the two handle
+    *lengths* that best fit the original two-curve span. My first version passed the curve
+    through where the point was (cheaper, but changes the tangents and kinks); replaced it
+    with the least-squares solve before shipping.
+
 ## 2026-08-06
 
 Two commits: a dependency-security pass and a feature-planning doc. No user-facing change today.
