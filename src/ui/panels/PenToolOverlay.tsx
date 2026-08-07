@@ -4,6 +4,7 @@ import { useTimelineStore } from '../../store/timeline';
 import { useShapeToolStore, isVectorTool } from '../../store/shapeTool';
 import { usePathEditStore, type HandleSide } from '../../store/pathEdit';
 import { computeOppositeHandle, defaultHandleMode } from '../../core/tangent';
+import { bendHandleDelta } from '../../core/bend';
 import { resolveXform, localToComp, compToLocal } from '../../store/pathTransform';
 import type { PathVertex, Vec2, Layer, ShapeLayer, PolygonShape } from '../../core/types';
 
@@ -52,7 +53,20 @@ function isPolygonLayer(l: Layer | null | undefined): l is PolygonLayer {
 type DragMode =
   | { kind: 'penHandle'; index: number }
   | { kind: 'anchor'; index: number; startLocal: Vec2 }
-  | { kind: 'handle'; index: number; side: HandleSide };
+  | { kind: 'handle'; index: number; side: HandleSide }
+  // Bend tool: drag a point ON the segment i0→i1 so the curve follows the cursor. a0/b0
+  // are the pre-drag endpoints; the delta is applied fresh to them on every move.
+  | { kind: 'bend'; i0: number; i1: number; t: number; a0: PathVertex; b0: PathVertex };
+
+function clonePathVertex(v: PathVertex): PathVertex {
+  return {
+    position: [v.position[0], v.position[1]],
+    handleIn: [v.handleIn[0], v.handleIn[1]],
+    handleOut: [v.handleOut[0], v.handleOut[1]],
+    vertexType: v.vertexType,
+    ...(v.handleMode ? { handleMode: v.handleMode } : {}),
+  };
+}
 
 export function PenToolOverlay({ style, compW, compH }: PenToolOverlayProps) {
   const activeTool = useShapeToolStore((s) => s.activeTool);
@@ -261,6 +275,22 @@ export function PenToolOverlay({ style, compW, compH }: PenToolOverlayProps) {
     const compPt = toComp(e.clientX, e.clientY);
     const verts = editLayer.shape.vertices;
 
+    if (drag.kind === 'bend') {
+      const targetLocal = compToLocal(xform, compPt);
+      const delta = bendHandleDelta(drag.a0, drag.b0, drag.t, targetLocal);
+      const next = verts.map((v, i) => {
+        if (i === drag.i0) {
+          return { ...v, handleOut: [drag.a0.handleOut[0] + delta[0], drag.a0.handleOut[1] + delta[1]] as Vec2, vertexType: 'bezier' as const };
+        }
+        if (i === drag.i1) {
+          return { ...v, handleIn: [drag.b0.handleIn[0] + delta[0], drag.b0.handleIn[1] + delta[1]] as Vec2, vertexType: 'bezier' as const };
+        }
+        return v;
+      });
+      setPathVerticesLive(editLayer.id, next);
+      return;
+    }
+
     if (drag.kind === 'anchor') {
       let local = compToLocal(xform, compPt);
       if (e.shiftKey) {
@@ -305,15 +335,47 @@ export function PenToolOverlay({ style, compW, compH }: PenToolOverlayProps) {
 
   const onEditPointerUp = (e: React.PointerEvent) => {
     const drag = dragRef.current;
-    if (drag && (drag.kind === 'anchor' || drag.kind === 'handle')) {
+    if (drag && (drag.kind === 'anchor' || drag.kind === 'handle' || drag.kind === 'bend')) {
       const snap = dragSnapshotRef.current;
       if (snap) {
-        useEditorStore.getState().commitDrag('Edit Path', snap.comp, snap.sel);
+        useEditorStore.getState().commitDrag(drag.kind === 'bend' ? 'Bend' : 'Edit Path', snap.comp, snap.sel);
         dragSnapshotRef.current = null;
       }
       dragRef.current = null;
       try { overlayRef.current?.releasePointerCapture(e.pointerId); } catch { /* noop */ }
     }
+  };
+
+  // Bend tool: grab the nearest point on a segment and drag to curve it (Illustrator/
+  // Figma "bend"). Hit-test in composition space for a consistent pixel tolerance.
+  const onBendDown = (e: React.PointerEvent) => {
+    if (!editLayer || !xform) return;
+    if (e.target !== overlayRef.current) return;
+    const compPt = toComp(e.clientX, e.clientY);
+    const verts = editLayer.shape.vertices;
+    const n = verts.length;
+    const segCount = editLayer.shape.closed ? n : n - 1;
+
+    let best = { seg: -1, t: 0, d2: Infinity };
+    for (let i = 0; i < segCount; i++) {
+      const a = verts[i];
+      const b = verts[(i + 1) % n];
+      const p0 = localToComp(xform, a.position);
+      const p1 = localToComp(xform, [a.position[0] + a.handleOut[0], a.position[1] + a.handleOut[1]]);
+      const p2 = localToComp(xform, [b.position[0] + b.handleIn[0], b.position[1] + b.handleIn[1]]);
+      const p3 = localToComp(xform, b.position);
+      for (let s = 1; s < 24; s++) {
+        const t = s / 24;
+        const d = dist2(cubicAt(p0, p1, p2, p3, t), compPt);
+        if (d < best.d2) best = { seg: i, t, d2: d };
+      }
+    }
+    const threshComp = 14 / sX;
+    if (best.seg < 0 || best.d2 > threshComp * threshComp) return;
+    e.preventDefault();
+    const i0 = best.seg, i1 = (best.seg + 1) % n;
+    beginEditDrag({ kind: 'bend', i0, i1, t: best.t, a0: clonePathVertex(verts[i0]), b0: clonePathVertex(verts[i1]) });
+    overlayRef.current?.setPointerCapture(e.pointerId);
   };
 
   // Add a point on the nearest segment (Add Point tool).
@@ -350,6 +412,7 @@ export function PenToolOverlay({ style, compW, compH }: PenToolOverlayProps) {
   const onBackgroundDown = (e: React.PointerEvent) => {
     if (e.target !== overlayRef.current) return;
     if (activeTool === 'addPoint') { onAddPointDown(e); return; }
+    if (activeTool === 'bend') { onBendDown(e); return; }
     if (activeTool === 'directSelect') {
       if (!e.shiftKey) selectVertices([]);
     }

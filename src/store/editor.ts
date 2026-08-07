@@ -4,6 +4,7 @@ import { createComposition, createRectangleLayer, createCircleLayer, createStarL
 import { DEFAULT_SHADOW, DEFAULT_GLOW, DEFAULT_BLUR } from '../core/effectDefaults';
 import type { AlignResult } from '../core/align';
 import { shapeToPathVertices, reversePathVertices, simplifyPathVertices, booleanLayers, type BooleanOp } from '../core/pathOps';
+import { healDeleteVertex, concatPaths } from '../core/pathCleanup';
 import { evaluateVec2, evaluateNumber, buildPhysicsEvaluator } from '../core/interpolation';
 import {
   remapSelectedFrames, reverseSelectedValues, distributeSelectedEven, alignSelected,
@@ -433,6 +434,12 @@ interface EditorState {
   setPathVertexType: (layerId: string, vertexIndex: number, type: VertexType) => void;
   /** Set the tangent handle mode (mirrored / angle / independent) on the given vertices. */
   setPathVertexHandleMode: (layerId: string, indices: number[], mode: 'mirrored' | 'angle' | 'independent') => void;
+  /** Delete-and-heal an anchor (Shift+Delete): remove it, refitting the neighbours' curve. */
+  healDeletePoint: (layerId: string, vertexIndex: number) => void;
+  /** Close an open path (Ctrl+J), merging its two endpoints if they coincide. */
+  closePath: (layerId: string) => void;
+  /** Concatenate two open polygon layers into one (Ctrl+J with two paths selected). */
+  concatPathLayers: (layerIdA: string, layerIdB: string) => void;
 }
 
 function getDefaultComposition(): Composition {
@@ -3763,6 +3770,104 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       label: 'Handle Mode',
       execute: () => { set({ composition: { ...get().composition, layers: newLayers } }); },
       undo: () => { set({ composition: oldComp }); },
+    });
+  },
+
+  healDeletePoint: (layerId, vertexIndex) => {
+    const { composition } = get();
+    const oldComp = composition;
+    const layer = composition.layers.find((l) => l.id === layerId);
+    if (!layer || layer.type !== 'shape' || layer.shape.type !== 'polygon') return;
+
+    const newVerts = healDeleteVertex(layer.shape.vertices, vertexIndex, layer.shape.closed);
+    if (!newVerts) return;
+
+    const newLayers = composition.layers.map((l) =>
+      l.id === layerId && l.type === 'shape' && l.shape.type === 'polygon'
+        ? ({ ...l, shape: { ...l.shape, vertices: newVerts } } as Layer)
+        : l
+    );
+
+    exec({
+      label: 'Delete & Heal',
+      execute: () => { set({ composition: { ...get().composition, layers: newLayers } }); },
+      undo: () => { set({ composition: oldComp }); },
+    });
+  },
+
+  closePath: (layerId) => {
+    const { composition } = get();
+    const oldComp = composition;
+    const layer = composition.layers.find((l) => l.id === layerId);
+    if (!layer || layer.type !== 'shape' || layer.shape.type !== 'polygon' || layer.shape.closed) return;
+
+    const verts = layer.shape.vertices;
+    if (verts.length < 2) return;
+    const first = verts[0], last = verts[verts.length - 1];
+    const coincident =
+      Math.hypot(first.position[0] - last.position[0], first.position[1] - last.position[1]) <= 1.5; // px, in local space
+    let newVerts = verts;
+    if (coincident && verts.length > 2) {
+      // Merge the duplicated endpoints into one corner anchor: the survivor keeps the
+      // first's outgoing handle and adopts the last's incoming handle (Figma rule).
+      const merged: PathVertex = {
+        position: [first.position[0], first.position[1]],
+        handleIn: [last.handleIn[0], last.handleIn[1]],
+        handleOut: [first.handleOut[0], first.handleOut[1]],
+        vertexType: 'corner',
+      };
+      newVerts = [merged, ...verts.slice(1, -1)];
+    }
+
+    const newLayers = composition.layers.map((l) =>
+      l.id === layerId && l.type === 'shape' && l.shape.type === 'polygon'
+        ? ({ ...l, shape: { ...l.shape, vertices: newVerts, closed: true } } as Layer)
+        : l
+    );
+
+    exec({
+      label: 'Close Path',
+      execute: () => { set({ composition: { ...get().composition, layers: newLayers } }); },
+      undo: () => { set({ composition: oldComp }); },
+    });
+  },
+
+  concatPathLayers: (layerIdA, layerIdB) => {
+    const { composition } = get();
+    const oldComp = composition;
+    const oldSel = get().selection;
+    const a = composition.layers.find((l) => l.id === layerIdA);
+    const b = composition.layers.find((l) => l.id === layerIdB);
+    if (!a || a.type !== 'shape' || a.shape.type !== 'polygon' || a.shape.closed) return;
+    if (!b || b.type !== 'shape' || b.shape.type !== 'polygon' || b.shape.closed) return;
+
+    // Bring B's local vertices into A's local frame via the position delta (exact for
+    // identity rotation/scale — the common freshly-drawn case).
+    const posA = evaluateVec2(a.transform.position, 0);
+    const posB = evaluateVec2(b.transform.position, 0);
+    const dx = posB[0] - posA[0], dy = posB[1] - posA[1];
+    const bLocal = b.shape.vertices.map((v): PathVertex => ({
+      position: [v.position[0] + dx, v.position[1] + dy],
+      handleIn: [v.handleIn[0], v.handleIn[1]],
+      handleOut: [v.handleOut[0], v.handleOut[1]],
+      vertexType: v.vertexType,
+      ...(v.handleMode ? { handleMode: v.handleMode } : {}),
+    }));
+    const merged = concatPaths(a.shape.vertices, bLocal);
+
+    const newLayers = composition.layers
+      .filter((l) => l.id !== layerIdB)
+      .map((l) =>
+        l.id === layerIdA && l.type === 'shape' && l.shape.type === 'polygon'
+          ? ({ ...l, shape: { ...l.shape, vertices: merged } } as Layer)
+          : l
+      );
+    const newSel: SelectionState = sel([layerIdA], layerIdA);
+
+    exec({
+      label: 'Join Paths',
+      execute: () => { set({ composition: { ...get().composition, layers: newLayers }, selection: newSel }); },
+      undo: () => { set({ composition: oldComp, selection: oldSel }); },
     });
   },
 

@@ -22,7 +22,8 @@ import { nudgeDelta } from './core/nudge';
 import { computeAlignment, computeDistribution, type AlignAxis, type DistributeMode } from './core/align';
 import { CommandPalette } from './ui/panels/CommandPalette';
 import { useCommandPaletteStore } from './ui/commands/store';
-import { useShapeToolStore } from './store/shapeTool';
+import { useShapeToolStore, isVectorTool } from './store/shapeTool';
+import { usePathEditStore } from './store/pathEdit';
 import { OnboardingFlow, useOnboardingStore } from './onboarding';
 
 const LazyIntroPopup = lazy(() => import('@/components/ui/IntroPopup').then(m => ({ default: m.IntroPopup })));
@@ -175,6 +176,30 @@ function Editor() {
           duplicateSelection();
           return;
         }
+        // Join paths (Ctrl/Cmd+J): two open polygon layers → concatenate; one open path
+        // → close it (merging coincident endpoints). The store actions validate types.
+        if ((e.ctrlKey || e.metaKey) && (e.key === 'j' || e.key === 'J')) {
+          const st = useEditorStore.getState();
+          const isOpenPoly = (id: string | undefined) => {
+            const l = id ? st.composition.layers.find((x) => x.id === id) : undefined;
+            return !!l && l.type === 'shape' && l.shape.type === 'polygon' && !l.shape.closed;
+          };
+          const polys = selection.selectedIds.filter((id) => {
+            const l = st.composition.layers.find((x) => x.id === id);
+            return l?.type === 'shape' && l.shape.type === 'polygon';
+          });
+          if (polys.length === 2) {
+            e.preventDefault();
+            st.concatPathLayers(polys[0], polys[1]);
+            return;
+          }
+          const activeId = selection.activeId ?? selection.selectedIds[0];
+          if (isOpenPoly(activeId)) {
+            e.preventDefault();
+            st.closePath(activeId!);
+            return;
+          }
+        }
         // Arrow-key nudge (Shift = big nudge), only with a selection so the keys
         // stay free otherwise. Amounts are configurable in Settings › Editor.
         if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'ArrowDown')
@@ -252,6 +277,25 @@ function Editor() {
         const ts = useTimelineStore.getState();
         if (ts.isPlaying) ts.pause();
         else ts.play();
+      }
+      // Vector edit: Delete/Backspace on selected anchors deletes the points, not the
+      // layer. Shift = delete-and-heal (refit the neighbours' curve); plain = break
+      // (drop the point), matching Figma. Only fires while a vector tool is active.
+      if ((e.key === 'Delete' || e.key === 'Backspace') && !isTextInput) {
+        const st = useEditorStore.getState();
+        const tool = useShapeToolStore.getState().activeTool;
+        const active = st.composition.layers.find((l) => l.id === st.selection.activeId);
+        const verts = usePathEditStore.getState().selectedVertices;
+        if (isVectorTool(tool) && active?.type === 'shape' && active.shape.type === 'polygon' && verts.length > 0) {
+          e.preventDefault();
+          // Highest index first so earlier indices stay valid across the sequence.
+          for (const idx of [...verts].sort((a, b) => b - a)) {
+            if (e.shiftKey) st.healDeletePoint(active.id, idx);
+            else st.deletePathPoint(active.id, idx);
+          }
+          usePathEditStore.getState().clearSelection();
+          return;
+        }
       }
       if ((e.key === 'Delete' || e.key === 'Backspace') && (selection.selectedIds.length > 0 || selection.activeId)) {
         if (isTextInput) return;
