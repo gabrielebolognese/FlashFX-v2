@@ -5,6 +5,7 @@ import { useShapeToolStore, isVectorTool } from '../../store/shapeTool';
 import { usePathEditStore, type HandleSide } from '../../store/pathEdit';
 import { computeOppositeHandle, defaultHandleMode } from '../../core/tangent';
 import { bendHandleDelta } from '../../core/bend';
+import { fitStroke } from '../../core/strokeFit';
 import { resolveXform, localToComp, compToLocal } from '../../store/pathTransform';
 import type { PathVertex, Vec2, Layer, ShapeLayer, PolygonShape } from '../../core/types';
 
@@ -95,6 +96,11 @@ export function PenToolOverlay({ style, compW, compH }: PenToolOverlayProps) {
   const dragRef = useRef<DragMode | null>(null);
   const dragSnapshotRef = useRef<{ comp: typeof composition; sel: typeof selection } | null>(null);
 
+  // Pencil freehand capture: raw comp-space samples (ref) + a live preview polyline (state).
+  const strokeRef = useRef<Vec2[]>([]);
+  const drawingRef = useRef(false);
+  const [strokePts, setStrokePts] = useState<Vec2[]>([]);
+
   const active = isVectorTool(activeTool);
   const overlayW = Number(style?.width) || 0;
   const overlayH = Number(style?.height) || 0;
@@ -143,6 +149,11 @@ export function PenToolOverlay({ style, compW, compH }: PenToolOverlayProps) {
     if (activeTool !== 'pen' && draft.length > 0) {
       setDraft([]);
       setCursor(null);
+    }
+    if (activeTool !== 'pencil' && (drawingRef.current || strokeRef.current.length > 0)) {
+      drawingRef.current = false;
+      strokeRef.current = [];
+      setStrokePts([]);
     }
   }, [activeTool]);
 
@@ -418,15 +429,63 @@ export function PenToolOverlay({ style, compW, compH }: PenToolOverlayProps) {
     }
   };
 
+  // ─────────── PENCIL (freehand) ───────────
+  const STROKE_MIN_STEP = 2;   // screen px between kept samples
+  const STROKE_FIDELITY = 2.5; // screen px fit tolerance
+
+  const onPencilPointerDown = (e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    drawingRef.current = true;
+    const p = toComp(e.clientX, e.clientY);
+    strokeRef.current = [p];
+    setStrokePts([p]);
+    overlayRef.current?.setPointerCapture(e.pointerId);
+  };
+
+  const onPencilPointerMove = (e: React.PointerEvent) => {
+    if (!drawingRef.current) return;
+    const native = e.nativeEvent as PointerEvent;
+    const evs = native.getCoalescedEvents?.() ?? [native]; // dense sampling on fast strokes
+    const buf = strokeRef.current;
+    let changed = false;
+    for (const ev of evs) {
+      const p = toComp(ev.clientX, ev.clientY);
+      const last = buf[buf.length - 1];
+      if (!last || dist2(toScreen(last), toScreen(p)) >= STROKE_MIN_STEP * STROKE_MIN_STEP) { buf.push(p); changed = true; }
+    }
+    if (changed) setStrokePts(buf.slice());
+  };
+
+  const onPencilPointerUp = (e: React.PointerEvent) => {
+    if (!drawingRef.current) return;
+    drawingRef.current = false;
+    try { overlayRef.current?.releasePointerCapture(e.pointerId); } catch { /* noop */ }
+    const samples = strokeRef.current;
+    strokeRef.current = [];
+    setStrokePts([]);
+    if (samples.length < 2) return; // a click draws nothing
+    const first = samples[0], last = samples[samples.length - 1];
+    // Auto-close only when the ends meet AND the stroke has real length (avoid tiny scribble blobs).
+    const totalLen = samples.reduce((s, p, i) => (i ? s + Math.hypot(p[0] - samples[i - 1][0], p[1] - samples[i - 1][1]) : 0), 0);
+    const autoClose = dist2(toScreen(first), toScreen(last)) <= CLOSE_HIT * CLOSE_HIT && totalLen > (CLOSE_HIT / (sX || 1)) * 4;
+    const { vertices, closed } = fitStroke(samples, { tolerance: STROKE_FIDELITY / (sX || 1), straight: e.shiftKey, closed: autoClose });
+    if (vertices.length < 2) return;
+    const id = createPenPath(vertices, closed);
+    useShapeToolStore.getState().setActiveTool('directSelect');
+    selectLayer(id, false, 'canvas');
+  };
+
   const isPen = activeTool === 'pen';
+  const isPencil = activeTool === 'pencil';
 
   return (
     <div
       ref={overlayRef}
       style={{ ...style, cursor: 'crosshair', zIndex: 55, touchAction: 'none', userSelect: 'none' }}
-      onPointerDown={isPen ? onPenPointerDown : onBackgroundDown}
-      onPointerMove={isPen ? onPenPointerMove : onEditPointerMove}
-      onPointerUp={isPen ? onPenPointerUp : onEditPointerUp}
+      onPointerDown={isPen ? onPenPointerDown : isPencil ? onPencilPointerDown : onBackgroundDown}
+      onPointerMove={isPen ? onPenPointerMove : isPencil ? onPencilPointerMove : onEditPointerMove}
+      onPointerUp={isPen ? onPenPointerUp : isPencil ? onPencilPointerUp : onEditPointerUp}
       onContextMenu={(e) => e.preventDefault()}
     >
       <svg
@@ -435,6 +494,12 @@ export function PenToolOverlay({ style, compW, compH }: PenToolOverlayProps) {
         style={{ position: 'absolute', left: 0, top: 0, overflow: 'visible', pointerEvents: 'none' }}
       >
         {isPen && <PenDraft draft={draft} cursor={cursor} toScreen={toScreen} hoverClose={hoverClose} />}
+        {isPencil && strokePts.length > 1 && (
+          <polyline
+            points={strokePts.map((p) => { const s = toScreen(p); return `${s[0]},${s[1]}`; }).join(' ')}
+            fill="none" stroke="#38bdf8" strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round"
+          />
+        )}
         {!isPen && editLayer && xform && (
           <PathAnchors
             layer={editLayer}

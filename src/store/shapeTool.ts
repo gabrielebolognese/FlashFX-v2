@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 
 export type ShapeToolType = 'rectangle' | 'circle' | 'star' | 'polygon';
-export type VectorToolType = 'pen' | 'directSelect' | 'addPoint' | 'deletePoint' | 'convertPoint' | 'bend';
+export type VectorToolType = 'pen' | 'pencil' | 'directSelect' | 'addPoint' | 'deletePoint' | 'convertPoint' | 'bend';
 export type ToolMode = 'select' | ShapeToolType | VectorToolType;
 
 interface ShapeToolState {
@@ -23,6 +23,7 @@ export function isShapeTool(tool: ToolMode): tool is ShapeToolType {
 export function isVectorTool(tool: ToolMode): tool is VectorToolType {
   return (
     tool === 'pen' ||
+    tool === 'pencil' ||
     tool === 'directSelect' ||
     tool === 'addPoint' ||
     tool === 'deletePoint' ||

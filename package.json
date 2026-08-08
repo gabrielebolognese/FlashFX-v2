@@ -39,6 +39,7 @@
     "verify:textoutline": "node scripts/verify-textoutline.mjs",
     "verify:tessellation": "node scripts/verify-tessellation.mjs",
     "verify:batchrename": "node scripts/verify-batchrename.mjs",
+    "verify:strokefit": "node scripts/verify-strokefit.mjs",
     "preinstall": "echo ignore-scripts=true > .npmrc || true"
   },
   "dependencies": {

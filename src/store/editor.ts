@@ -4037,6 +4037,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       handleIn: [v.handleIn[0], v.handleIn[1]] as Vec2,
       handleOut: [v.handleOut[0], v.handleOut[1]] as Vec2,
       vertexType: v.vertexType,
+      ...(v.handleMode ? { handleMode: v.handleMode } : {}), // M18 — keep fitted smooth-joint angle-lock
     }));
 
     const fillColor: [number, number, number, number] = closed ? [0.7, 0.7, 0.7, 1] : [0, 0, 0, 0];

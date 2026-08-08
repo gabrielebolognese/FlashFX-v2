@@ -64,6 +64,7 @@ export function buildCommands(): Command[] {
     cmd('tool.circle', 'Ellipse Tool', 'Tools', () => tool('circle'), undefined, 'draw shape'),
     cmd('tool.star', 'Star Tool', 'Tools', () => tool('star'), undefined, 'draw shape'),
     cmd('tool.pen', 'Pen Tool', 'Tools', () => tool('pen'), undefined, 'draw path vector'),
+    cmd('tool.pencil', 'Pencil Tool', 'Tools', () => tool('pencil'), 'Shift+P', 'draw freehand sketch stroke'),
 
     // Edit
     cmd('edit.cut', 'Cut', 'Edit', () => ed().cutSelection(), 'Ctrl+X'),

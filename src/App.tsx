@@ -198,6 +198,12 @@ function Editor() {
             return;
           }
         }
+        // M18 — Pencil / freehand tool (Shift+P, Figma parity).
+        if (e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && (e.key === 'P' || e.code === 'KeyP')) {
+          e.preventDefault();
+          useShapeToolStore.getState().setActiveTool('pencil');
+          return;
+        }
         // M11 — Copy/Paste Properties (Figma Ctrl+Alt+C / Ctrl+Alt+V). Matched by physical
         // e.code (Alt mangles e.key) and placed BEFORE plain Ctrl+C/V so they don't fall
         // through to copySelection/pasteClipboard. Paste is GUARDED on a properties
