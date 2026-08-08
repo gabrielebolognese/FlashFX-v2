@@ -6,6 +6,8 @@ import { Dashboard } from './Dashboard';
 import { loadProjectScene, saveProjectPreview } from '../services/projects';
 import { mediaAssetManager } from '../../engine/media/assetManager';
 import { playbackController } from '../../store/timeline';
+import { useTemplateBoot } from '../../templates/useTemplateBoot';
+import { TemplateSplash } from '../../templates/TemplateSplash';
 
 interface Props {
   editorComponent: React.ComponentType;
@@ -16,6 +18,8 @@ export function ProjectApp({ editorComponent: EditorComponent }: Props) {
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
   const loadDocument = useEditorStore((s) => s.loadDocument);
   const loadedRef = useRef<string | null>(null);
+  // Deep-link boot: `/?template=<id>` creates + seeds a project and drops the user into the editor.
+  const templateBooting = useTemplateBoot();
 
   useEffect(() => {
     if (view === 'editor' && activeProjectId && loadedRef.current !== activeProjectId) {
@@ -39,6 +43,10 @@ export function ProjectApp({ editorComponent: EditorComponent }: Props) {
       loadedRef.current = null;
     }
   }, [view, activeProjectId, loadDocument]);
+
+  if (templateBooting) {
+    return <TemplateSplash />;
+  }
 
   if (view === 'dashboard') {
     return <Dashboard />;
