@@ -49,7 +49,37 @@ try {
     globalThis.Worker = class { constructor() {} postMessage() {} terminate() {} addEventListener() {} removeEventListener() {} };
   }
   const mod = await import(pathToFileURL(outfile).href);
-  const { shapeToPathVertices, reversePathVertices, simplifyPathVertices, booleanLayers } = mod;
+  const { shapeToPathVertices, reversePathVertices, simplifyPathVertices, booleanLayers, booleanRings } = mod;
+
+  // ── M22: booleanRings preserves holes ──
+  const ringArea = (verts, cx = 0, cy = 0) => { let a = 0; for (let i = 0; i < verts.length; i++) { const p = verts[i].position, q = verts[(i + 1) % verts.length].position; a += (p[0] + cx) * (q[1] + cy) - (q[0] + cx) * (p[1] + cy); } return Math.abs(a) / 2; };
+  const sq = (x0, y0, x1, y1) => [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+
+  check('booleanRings difference: big square − centered small square → 1 result with 1 hole', () => {
+    const r = booleanRings('difference', [sq(0, 0, 100, 100), sq(30, 30, 70, 70)]);
+    assert.equal(r.length, 1);
+    assert.equal(r[0].holes.length, 1, 'hole preserved (not dropped)');
+    const outerA = ringArea(r[0].vertices);
+    const holeA = ringArea(r[0].holes[0]);
+    assert.ok(Math.abs(outerA - 10000) < 1, `outer area ${outerA}`);
+    assert.ok(Math.abs(holeA - 1600) < 1, `hole area ${holeA}`);
+  });
+
+  check('booleanRings union of two disjoint squares → 2 results, no holes', () => {
+    const r = booleanRings('union', [sq(0, 0, 40, 40), sq(60, 60, 100, 100)]);
+    assert.equal(r.length, 2);
+    assert.ok(r.every((x) => x.holes.length === 0));
+  });
+
+  check('booleanRings is deterministic', () => {
+    const a = booleanRings('difference', [sq(0, 0, 100, 100), sq(30, 30, 70, 70)]);
+    const b = booleanRings('difference', [sq(0, 0, 100, 100), sq(30, 30, 70, 70)]);
+    assert.deepEqual(a, b);
+  });
+
+  check('booleanRings <2 rings → empty', () => {
+    assert.deepEqual(booleanRings('union', [sq(0, 0, 10, 10)]), []);
+  });
 
   // ── Object to Path ──
   check('rectangle → 4 corner vertices centered at origin', () => {

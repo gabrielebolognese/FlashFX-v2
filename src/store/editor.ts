@@ -7,7 +7,8 @@ import { detachStyleValue, type SharedStyle } from '../core/styles';
 import { DEFAULT_SHADOW, DEFAULT_GLOW, DEFAULT_BLUR } from '../core/effectDefaults';
 import type { AlignResult, LayerBounds } from '../core/align';
 import { getLayerBounds, computeTidyUp } from '../core/align';
-import { shapeToPathVertices, reversePathVertices, simplifyPathVertices, booleanLayers, type BooleanOp } from '../core/pathOps';
+import { shapeToPathVertices, reversePathVertices, simplifyPathVertices, booleanLayers, booleanLayersWithHoles, type BooleanOp } from '../core/pathOps';
+import { outlineStroke as computeStrokeOutline } from '../core/strokeOutline';
 import { healDeleteVertex, concatPaths } from '../core/pathCleanup';
 import { extractLayerProperties, applyLayerProperties, type LayerPropertyBundle } from '../core/layerProperties';
 import { selectSameLayers, type SameAttr } from '../core/selection';
@@ -329,6 +330,11 @@ interface EditorState {
   reverseShapePath: (layerId: string) => void;
   simplifyShapePath: (layerId: string, tolerance: number) => void;
   booleanSelectedShapes: (op: BooleanOp) => void;
+  /** M22 — non-destructive boolean that PRESERVES holes (renders via the polygon+holes path);
+   *  the sources are hidden, not deleted. */
+  compoundBooleanSelectedShapes: (op: BooleanOp) => void;
+  /** M22 — convert a shape's center-line stroke into a filled, editable outline PolygonShape. */
+  outlineStroke: (layerId: string) => void;
   /** Bake the selected shapes to a single vector path (Figma-style Flatten): union
    *  of 2+ shapes, or convert one shape to a path. Destructive; one undo. */
   flattenSelectedShapes: () => void;
@@ -2787,6 +2793,64 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     comp = settleComposition(comp);
     const newSel: SelectionState = sel(newLayers.map((l) => l.id), newLayers[0].id);
     exec({ label: 'Flatten', execute: () => set({ composition: comp, selection: newSel }), undo: () => set({ composition: oldComp, selection: oldSel }) });
+  },
+
+  compoundBooleanSelectedShapes: (op) => {
+    const { composition, selection } = get();
+    const ids = selection.selectedIds.filter((id) => composition.layers.find((l) => l.id === id)?.type === 'shape');
+    if (ids.length < 2) return;
+    const oldComp = composition;
+    const oldSel = selection;
+    const frame = useTimelineStore.getState().currentFrame;
+    const trackOrder = new Map(composition.tracks.map((t) => [t.id, t.order]));
+    const zOf = (id: string) => { const l = composition.layers.find((x) => x.id === id); return l?.trackId ? (trackOrder.get(l.trackId) ?? 0) : 0; };
+    const orderedIds = [...ids].sort((a, b) => zOf(a) - zOf(b));
+    const results = booleanLayersWithHoles(op, composition.layers, orderedIds, frame);
+    if (results.length === 0) return;
+    const appShape = (composition.layers.find((l) => l.id === orderedIds[orderedIds.length - 1]) as ShapeLayer).shape;
+    const newLayers = results.map((res, i) => {
+      const nl = createPolygonLayer(results.length > 1 ? `Compound ${i + 1}` : 'Compound', res.position[0], res.position[1], res.vertices, true, appShape.fillColor, defaultClipFrames(composition));
+      if (nl.type === 'shape' && nl.shape.type === 'polygon') {
+        nl.shape.strokeColor = appShape.strokeColor;
+        if (res.holes.length > 0) { nl.shape.holes = res.holes; nl.shape.fillRule = 'evenodd'; }
+      }
+      return nl;
+    });
+    // Non-destructive: hide the sources (kept for re-edit), draw the compound result.
+    const hidden = composition.layers.map((l) => (ids.includes(l.id) ? ({ ...l, visible: false } as Layer) : l));
+    let comp: Composition = { ...composition, layers: [...hidden, ...newLayers] };
+    for (const nl of newLayers) comp = ensureLayerHasTrack(comp, nl);
+    comp = settleComposition(comp);
+    const newSel: SelectionState = sel(newLayers.map((l) => l.id), newLayers[0].id);
+    exec({ label: 'Compound Boolean', execute: () => set({ composition: comp, selection: newSel }), undo: () => set({ composition: oldComp, selection: oldSel }) });
+  },
+
+  outlineStroke: (layerId) => {
+    const { composition } = get();
+    const layer = composition.layers.find((l) => l.id === layerId);
+    if (!layer || layer.type !== 'shape') return;
+    const frame = useTimelineStore.getState().currentFrame;
+    const shape = layer.shape;
+    const width = evaluateNumber(shape.strokeWidth, frame);
+    if (width <= 0) return;
+    const centerline = shape.type === 'polygon' ? shape.vertices : shapeToPathVertices(shape, frame);
+    const closed = shape.type === 'polygon' ? shape.closed : true;
+    const cap = shape.type === 'polygon' ? (shape.lineCap ?? 'butt') : 'butt';
+    const join = shape.type === 'polygon' ? (shape.lineJoin ?? 'miter') : 'miter';
+    const result = computeStrokeOutline(centerline, closed, width, cap, join);
+    if (!result) return;
+    const oldComp = composition;
+    const oldSel = get().selection;
+    const pos = evaluateVec2(layer.transform.position, frame);
+    const nl = createPolygonLayer(`${layer.name} Outline`, pos[0], pos[1], result.vertices, true, shape.strokeColor, defaultClipFrames(composition));
+    if (nl.type === 'shape' && nl.shape.type === 'polygon') {
+      nl.shape.strokeColor = [0, 0, 0, 0]; // the stroke became a fill
+      nl.shape.strokeWidth = createProperty('Stroke Width', 'number', 0);
+      if (result.holes.length > 0) { nl.shape.holes = result.holes; nl.shape.fillRule = 'evenodd'; }
+    }
+    const newComp = settleComposition(ensureLayerHasTrack({ ...composition, layers: [...composition.layers, nl] }, nl));
+    const newSel: SelectionState = sel([nl.id], nl.id);
+    exec({ label: 'Outline Stroke', execute: () => set({ composition: newComp, selection: newSel }), undo: () => set({ composition: oldComp, selection: oldSel }) });
   },
 
   outlineTextLayer: async (layerId) => {

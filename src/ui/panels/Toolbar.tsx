@@ -52,6 +52,7 @@ export function Toolbar() {
   const precomposeSelection = useEditorStore((s) => s.precomposeSelection);
   const createClonerFromSelection = useEditorStore((s) => s.createClonerFromSelection);
   const outlineTextLayer = useEditorStore((s) => s.outlineTextLayer);
+  const outlineStroke = useEditorStore((s) => s.outlineStroke);
   const reorderLayers = useEditorStore((s) => s.reorderLayers);
   const addImage = useEditorStore((s) => s.addImage);
   const copySelection = useEditorStore((s) => s.copySelection);
@@ -348,7 +349,7 @@ export function Toolbar() {
       items: [
         { label: 'Object to Path', shortcut: 'Ctrl+Shift+C', action: () => { const id = selection.activeId; if (id) convertShapeToPath(id); }, disabled: !isShapeSel },
         { label: 'Outline Text', shortcut: 'Ctrl+Shift+O', action: () => { const id = selection.activeId; if (id) outlineTextLayer(id); }, disabled: !isTextSel },
-        { label: 'Stroke to Path', disabled: true },
+        { label: 'Stroke to Path', action: () => { const id = selection.activeId; if (id) outlineStroke(id); }, disabled: !isShapeSel },
         { label: '', divider: true },
         { label: 'Union', shortcut: 'Alt+Shift+U', action: () => booleanSelectedShapes('union'), disabled: !canBoolean },
         { label: 'Difference', shortcut: 'Alt+Shift+S', action: () => booleanSelectedShapes('difference'), disabled: !canBoolean },

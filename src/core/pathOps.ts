@@ -121,6 +121,62 @@ export interface BooleanResultLayer {
   vertices: PathVertex[];
 }
 
+/** A boolean result that KEEPS its holes (glyph-counter style), for the M17 polygon+holes render
+ *  path — the missing capability the destructive booleanLayers dropped. */
+export interface CompoundResult {
+  position: Vec2;
+  vertices: PathVertex[];   // outer ring, centered on `position`
+  holes: PathVertex[][];    // inner rings, centered by the same centroid
+}
+
+function dedupeRing(ring: readonly number[][] | undefined): number[][] | null {
+  if (!ring || ring.length < 3) return null;
+  const last = ring[ring.length - 1];
+  return last[0] === ring[0][0] && last[1] === ring[0][1] ? (ring.slice(0, -1) as number[][]) : (ring as number[][]);
+}
+
+/**
+ * Boolean op over already-world-space rings, PRESERVING holes (polygon-clipping returns them; the
+ * legacy booleanLayers threw them away). Pure — takes/returns plain geometry. Each result is
+ * recentered on its outer-ring centroid; holes share that centroid.
+ */
+export function booleanRings(op: BooleanOp, rings: Vec2[][]): CompoundResult[] {
+  const polys: Polygon[] = rings.filter((r) => r.length >= 3).map((r) => [r.map((p) => [p[0], p[1]]) as Ring]);
+  if (polys.length < 2) return [];
+  const [first, ...rest] = polys;
+  const result: MultiPolygon =
+    op === 'union' ? pc.union(first, ...rest)
+    : op === 'intersection' ? pc.intersection(first, ...rest)
+    : op === 'difference' ? pc.difference(first, ...rest)
+    : pc.xor(first, ...rest);
+
+  const out: CompoundResult[] = [];
+  for (const polygon of result) {
+    const outer = dedupeRing(polygon[0]);
+    if (!outer || outer.length < 3) continue;
+    let cx = 0, cy = 0;
+    for (const pt of outer) { cx += pt[0]; cy += pt[1]; }
+    cx /= outer.length; cy /= outer.length;
+    const rel = (ring: number[][]) => ring.map((pt) => cornerVertex([pt[0] - cx + 0, pt[1] - cy + 0]));
+    const holes: PathVertex[][] = [];
+    for (let h = 1; h < polygon.length; h++) { const hr = dedupeRing(polygon[h]); if (hr) holes.push(rel(hr)); }
+    out.push({ position: [cx + 0, cy + 0], vertices: rel(outer), holes });
+  }
+  return out;
+}
+
+/** Layer-space boolean that keeps holes — the non-destructive compound-boolean source. */
+export function booleanLayersWithHoles(op: BooleanOp, layers: Layer[], ids: string[], frame: number): CompoundResult[] {
+  const rings: Vec2[][] = [];
+  for (const id of ids) {
+    const layer = layers.find((l) => l.id === id);
+    if (!layer) continue;
+    const ring = layerToWorldRing(layer, layers, frame);
+    if (ring && ring.length >= 3) rings.push(ring);
+  }
+  return booleanRings(op, rings);
+}
+
 /**
  * Run a boolean op over the given shape layers (world space) and return one
  * result-layer spec per output polygon — each recentered around its centroid

@@ -474,6 +474,16 @@ export function buildMultiClipMenu(): MenuEntry[] {
         item('bool-intersect', 'Intersect', () => editor.booleanSelectedShapes('intersection'), SquareStack, 'Alt+Shift+I'),
         item('bool-exclude', 'Exclude', () => editor.booleanSelectedShapes('xor'), Blend, 'Alt+Shift+E'),
         item('bool-flatten', 'Flatten', () => editor.flattenSelectedShapes(), Layers, 'Ctrl+E'),
+        {
+          // M22 — non-destructive booleans that KEEP holes (o/8-style cutouts); sources hidden.
+          type: 'submenu' as const, id: 'compound-bool', label: 'Compound (keep holes)', icon: Diff,
+          items: [
+            item('compound-union', 'Union', () => editor.compoundBooleanSelectedShapes('union'), Combine),
+            item('compound-subtract', 'Subtract', () => editor.compoundBooleanSelectedShapes('difference'), Diff),
+            item('compound-intersect', 'Intersect', () => editor.compoundBooleanSelectedShapes('intersection'), SquareStack),
+            item('compound-exclude', 'Exclude', () => editor.compoundBooleanSelectedShapes('xor'), Blend),
+          ],
+        },
       ],
     }] : []),
     {
