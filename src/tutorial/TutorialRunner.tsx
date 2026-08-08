@@ -52,7 +52,7 @@ export function TutorialRunner() {
       timeline: () => useTimelineStore.getState(),
       tools: () => useShapeToolStore.getState(),
       wait,
-      setFrame: (n) => useEditorStore.getState().setCurrentFrame(n),
+      setFrame: (n) => useTimelineStore.getState().seekTo(n), // drives the playback controller + a real re-render
       select: (ids) => useEditorStore.getState()._setSelection({ selectedIds: ids, activeId: ids[ids.length - 1] ?? null, selectedKeyframes: [], selectedCurvePoints: [] }),
       lastLayerId: () => { const ls = useEditorStore.getState().composition.layers; return ls[ls.length - 1]?.id; },
     };
