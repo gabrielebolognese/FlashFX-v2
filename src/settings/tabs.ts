@@ -91,6 +91,7 @@ export const SETTINGS_TABS: SettingTab[] = [
           { id: 'editor.snapToGrid', label: 'Snap to Grid', type: 'toggle', defaultValue: true },
           { id: 'editor.snapToGuides', label: 'Snap to Guides', type: 'toggle', defaultValue: true },
           { id: 'editor.snapToLayers', label: 'Snap to Other Layers', type: 'toggle', defaultValue: true },
+          { id: 'editor.snapToPixel', label: 'Snap to Pixel', type: 'toggle', defaultValue: false },
         ],
       },
     ],

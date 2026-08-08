@@ -1,5 +1,6 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
 import { WebGPURenderer } from '../../engine/renderer';
+import { generateRulerTicks } from '../../core/rulers';
 import { timelineEngine } from '../../engine/timeline';
 import { playbackController } from '../../store/timeline';
 import { useTimelineStore } from '../../store/timeline';
@@ -360,37 +361,41 @@ export function Viewport() {
         </div>
       )}
 
-      {/* Top ruler */}
+      {/* Top ruler — ticks + labels; double-click still adds a vertical guide (M20). */}
       <div
-        className="absolute h-3 cursor-crosshair bg-[#0e1c32]/60 hover:bg-cyan-900/20 transition-colors"
-        style={{
-          left: canvasStyle.left,
-          top: canvasStyle.top - 14,
-          width: canvasStyle.width,
-        }}
+        className="absolute cursor-crosshair bg-[#0a1628]/85 overflow-hidden"
+        style={{ left: canvasStyle.left, top: canvasStyle.top - 17, width: canvasStyle.width, height: 15 }}
         onDoubleClick={(e) => {
           const rect = e.currentTarget.getBoundingClientRect();
-          const relX = (e.clientX - rect.left) / (canvasStyle.width / compW);
-          addGuideline('vertical', Math.round(relX));
+          addGuideline('vertical', Math.round((e.clientX - rect.left) / (canvasStyle.width / compW)));
         }}
         title="Double-click to add vertical guide"
-      />
+      >
+        {compW > 0 && generateRulerTicks(0, compW, canvasStyle.width / compW).ticks.map((t, i) => (
+          <div key={i}>
+            <div className="absolute bottom-0 bg-slate-600" style={{ left: Math.round(t.screenPos), width: 1, height: t.major ? 7 : 3 }} />
+            {t.label !== undefined && <span className="absolute top-0 text-[8px] font-mono text-slate-500 leading-none" style={{ left: Math.round(t.screenPos) + 2 }}>{t.label}</span>}
+          </div>
+        ))}
+      </div>
 
       {/* Left ruler */}
       <div
-        className="absolute w-3 cursor-crosshair bg-[#0e1c32]/60 hover:bg-cyan-900/20 transition-colors"
-        style={{
-          left: canvasStyle.left - 14,
-          top: canvasStyle.top,
-          height: canvasStyle.height,
-        }}
+        className="absolute cursor-crosshair bg-[#0a1628]/85 overflow-hidden"
+        style={{ left: canvasStyle.left - 27, top: canvasStyle.top, width: 25, height: canvasStyle.height }}
         onDoubleClick={(e) => {
           const rect = e.currentTarget.getBoundingClientRect();
-          const relY = (e.clientY - rect.top) / (canvasStyle.height / compH);
-          addGuideline('horizontal', Math.round(relY));
+          addGuideline('horizontal', Math.round((e.clientY - rect.top) / (canvasStyle.height / compH)));
         }}
         title="Double-click to add horizontal guide"
-      />
+      >
+        {compH > 0 && generateRulerTicks(0, compH, canvasStyle.height / compH).ticks.map((t, i) => (
+          <div key={i}>
+            <div className="absolute right-0 bg-slate-600" style={{ top: Math.round(t.screenPos), height: 1, width: t.major ? 7 : 3 }} />
+            {t.label !== undefined && <span className="absolute right-2.5 text-[8px] font-mono text-slate-500 leading-none" style={{ top: Math.round(t.screenPos) + 1 }}>{t.label}</span>}
+          </div>
+        ))}
+      </div>
 
       {/* Zoom controls */}
       <div className="absolute bottom-2 left-2 flex items-center gap-1 pointer-events-auto">

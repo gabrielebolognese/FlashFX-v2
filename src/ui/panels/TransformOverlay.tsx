@@ -27,8 +27,12 @@ function readSnapFlags() {
     grid: enabled && (getSettingValue<boolean>('editor.snapToGrid') ?? true),
     guides: enabled && (getSettingValue<boolean>('editor.snapToGuides') ?? true),
     layers: enabled && (getSettingValue<boolean>('editor.snapToLayers') ?? true),
+    // Independent of `enabled` — you want crisp pixels even with element-snapping off (M20).
+    pixel: getSettingValue<boolean>('editor.snapToPixel') ?? false,
   };
 }
+/** Round to whole pixels when snap-to-pixel is on (applied LAST, after grid/guide snapping). */
+function px(v: number, on: boolean): number { return on ? Math.round(v) + 0 : v; }
 
 function getShapeDimensions(shape: ShapeGeometry, frame: number): { w: number; h: number } {
   switch (shape.type) {
@@ -203,6 +207,7 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
   const marqueeRef = useRef<{ startCX: number; startCY: number; active: boolean; lastIds: string } | null>(null);
   const dragStart = useRef({ mx: 0, my: 0, state: null as TransformState | null, groupPos: null as Vec2 | null, initFontSize: 0, initScale: [1, 1] as Vec2, multiPositions: [] as { id: string; pos: Vec2 }[], startRadius: 0, altDup: false, netMove: [0, 0] as Vec2, netRot: 0 });
   const snapDataRef = useRef<{ initialRect: Rect; targets: SnapTarget[]; otherRects: Rect[] } | null>(null);
+  const snapPixelRef = useRef(false); // M20 — snap-to-pixel captured at drag start
 
   const activeLayer = composition.layers.find((l) => l.id === selection.activeId) || null;
   const isGroupActive = activeLayer?.type === 'group';
@@ -593,6 +598,7 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
       snapDataRef.current = null;
     }
 
+    snapPixelRef.current = readSnapFlags().pixel; // M20 — round the committed result to whole pixels
     useHistoryStore.getState().setBatching(true);
     setDragging(handle);
     setSnapLines([]);
@@ -652,11 +658,12 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
         }
         dragStart.current.netMove = [dx + snapDx, dy + snapDy]; // for power-duplicate / Alt-drag
 
+        const sp = snapPixelRef.current;
         if (isGroupActive) {
           const gPos = dragStart.current.groupPos;
           if (!gPos) return;
-          const finalX = gPos[0] + dx + snapDx;
-          const finalY = gPos[1] + dy + snapDy;
+          const finalX = px(gPos[0] + dx + snapDx, sp);
+          const finalY = px(gPos[1] + dy + snapDy, sp);
 
           const prop = getNestedProp(activeLayer, 'transform.position');
           if (prop && prop.keyframes && prop.keyframes.length > 0) {
@@ -666,8 +673,8 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
           }
           hudData = { kind: 'move', a: finalX, b: finalY };
         } else {
-          const finalX = state.x + dx + snapDx;
-          const finalY = state.y + dy + snapDy;
+          const finalX = px(state.x + dx + snapDx, sp);
+          const finalY = px(state.y + dy + snapDy, sp);
           updateAnimatable('transform.position', [finalX, finalY] as Vec2);
           hudData = { kind: 'move', a: finalX, b: finalY };
 
@@ -676,8 +683,8 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
           for (const mp of multiPositions) {
             const layer = composition.layers.find((l) => l.id === mp.id);
             if (!layer) continue;
-            const newX = mp.pos[0] + dx + snapDx;
-            const newY = mp.pos[1] + dy + snapDy;
+            const newX = px(mp.pos[0] + dx + snapDx, sp);
+            const newY = px(mp.pos[1] + dy + snapDy, sp);
             const prop = getNestedProp(layer, 'transform.position');
             if (prop && prop.keyframes && prop.keyframes.length > 0) {
               addKeyframe(layer.id, 'transform.position', currentFrame, [newX, newY] as [number, number]);
@@ -794,6 +801,13 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
           } else {
             newH = newW / aspect;
           }
+        }
+
+        // M20 — snap-to-pixel: round size + position AFTER the aspect solve so every downstream
+        // commit (width/height, or scale = newW/state.w) yields crisp integer dimensions.
+        if (snapPixelRef.current) {
+          newW = Math.round(newW); newH = Math.round(newH);
+          newX = Math.round(newX); newY = Math.round(newY);
         }
 
         if (activeLayer.type === 'shape') {

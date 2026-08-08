@@ -166,6 +166,8 @@ export function buildCanvasMenu(): MenuEntry[] {
         },
         check('snap-guides', 'Snap to Guides', getSettingValue<boolean>('editor.snapToGuides') ?? true,
           () => useSettingsStore.getState().setValue('editor.snapToGuides', !(getSettingValue<boolean>('editor.snapToGuides') ?? true)), Magnet),
+        check('snap-pixel', 'Snap to Pixel', getSettingValue<boolean>('editor.snapToPixel') ?? false,
+          () => useSettingsStore.getState().setValue('editor.snapToPixel', !(getSettingValue<boolean>('editor.snapToPixel') ?? false)), Magnet),
         item('add-h-guide', 'Add Horizontal Guide', () => grid.addGuideline('horizontal', Math.round(compH / 2)), Ruler),
         item('add-v-guide', 'Add Vertical Guide', () => grid.addGuideline('vertical', Math.round(compW / 2)), Ruler),
         item('clear-guides', 'Clear Guides', () => grid.clearGuidelines(), Trash2),

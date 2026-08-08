@@ -40,6 +40,7 @@
     "verify:tessellation": "node scripts/verify-tessellation.mjs",
     "verify:batchrename": "node scripts/verify-batchrename.mjs",
     "verify:strokefit": "node scripts/verify-strokefit.mjs",
+    "verify:rulers": "node scripts/verify-rulers.mjs",
     "preinstall": "echo ignore-scripts=true > .npmrc || true"
   },
   "dependencies": {
