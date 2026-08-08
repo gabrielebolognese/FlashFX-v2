@@ -14,6 +14,8 @@ import { ResetEditorDialog } from './ui/recovery/ResetEditorDialog';
 import { EmergencyRecoveryOverlay } from './ui/recovery/EmergencyRecoveryOverlay';
 import { CaptionGenerationModal } from './ui/panels/CaptionGenerationModal';
 import { SilenceStripperModal } from './ui/panels/SilenceStripperModal';
+import { RenameModal } from './ui/panels/RenameModal';
+import { useRenameModalStore } from './store/renameModal';
 import { ClipContextMenu } from './ui/panels/ClipContextMenu';
 import { ContextMenuProvider, ContextMenuRenderer } from './ui/context-menu';
 import { SettingsPanel, SettingsCssInjector } from './settings';
@@ -107,6 +109,16 @@ function Editor() {
         const targetId = selection.activeId ?? selection.selectedIds[0];
         if (targetId) startRenameLayer(targetId);
         return;
+      }
+
+      // M19 — Batch rename (Ctrl/Cmd+R) for a multi-selection. preventDefault so the browser
+      // doesn't reload. Single-layer rename stays on F2.
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === 'r' || e.key === 'R') && !isTextInput) {
+        if (useEditorStore.getState().selection.selectedIds.length >= 2) {
+          e.preventDefault();
+          useRenameModalStore.getState().open();
+          return;
+        }
       }
 
       // M12 — Shift+Enter ascends one group/isolation level. Handled BEFORE the plain-Enter
@@ -408,6 +420,7 @@ function Editor() {
       <ClipContextMenu />
       <CaptionGenerationModal />
       <SilenceStripperModal />
+      <RenameModal />
       <SettingsPanel />
       <SettingsCssInjector />
       <CommandPalette />

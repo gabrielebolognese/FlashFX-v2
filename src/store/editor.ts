@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { Composition, SceneDocument, Layer, AnimatableProperty, Keyframe, Vec2, InterpolationType, BackgroundLayer, Track, TrackType, VideoPlaybackMode, PathVertex, VertexType, Mask, MaskType, AnchorEdge, PhysicsBindingDef, PhysicsWorldDef, StaggerBindingDef, LayoutObjectLayer, LayoutContainerLayer, ContainerShapeType, Marker, ShapeLayer, PolygonShape } from '../core/types';
 import { createComposition, createRectangleLayer, createCircleLayer, createStarLayer, createPolygonLayer, createDefaultPolygonVertices, createTextLayer, createVideoLayer, createImageLayer, createAudioLayer, createGroupLayer, createKeyframe, createBackgroundLayer, createMask, createParticleLayer, createAnimationItemLayer, createFieldSampledLayer, createLottieIconLayer, createLayoutObjectLayer, createLayoutContainerLayer, createDefaultChildOverride, createProperty, uid } from '../core/factory';
 import { outlineText, canOutlineFont } from '../text/outlineText';
+import { computeBatchNames, type RenamePattern } from '../core/batchRename';
 import { DEFAULT_SHADOW, DEFAULT_GLOW, DEFAULT_BLUR } from '../core/effectDefaults';
 import type { AlignResult, LayerBounds } from '../core/align';
 import { getLayerBounds, computeTidyUp } from '../core/align';
@@ -188,6 +189,8 @@ interface EditorState {
   startRenameLayer: (id: string) => void;
   finishRenameLayer: () => void;
   renameLayer: (id: string, name: string) => void;
+  /** M19 — batch-rename layers from a token/number/regex pattern, one undo. */
+  renameLayers: (ids: string[], pattern: RenamePattern) => void;
   resetTransformPosition: (id: string) => void;
   resetTransformScale: (id: string) => void;
   resetTransformRotation: (id: string) => void;
@@ -1123,6 +1126,23 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     exec({
       label: 'Rename Layer',
       execute: () => { set({ composition: newComp, renamingLayerId: null }); },
+      undo: () => { set({ composition: oldComp }); },
+    });
+  },
+
+  renameLayers: (ids, pattern) => {
+    const { composition } = get();
+    // Number by document (z-order) order — Figma-style — not click order.
+    const ordered = composition.layers.filter((l) => ids.includes(l.id));
+    if (ordered.length === 0) return;
+    const { results } = computeBatchNames(ordered.map((l) => ({ id: l.id, name: l.name, type: l.type })), pattern);
+    const nameById = new Map(results.map((r) => [r.id, r.name]));
+    const oldComp = composition;
+    const newLayers = composition.layers.map((l) => (nameById.has(l.id) ? ({ ...l, name: nameById.get(l.id)! } as Layer) : l));
+    const newComp = { ...composition, layers: newLayers };
+    exec({
+      label: 'Rename Layers',
+      execute: () => { set({ composition: newComp }); },
       undo: () => { set({ composition: oldComp }); },
     });
   },

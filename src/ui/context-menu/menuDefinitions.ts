@@ -33,6 +33,7 @@ import { extractMonoAudio } from '../../engine/silence/audioForSilence';
 import { detectBeats } from '../../core/beatDetection';
 import { getSelectionRect } from '../../core/snap/bbox';
 import { availableSameAttrs, type SameAttr } from '../../core/selection';
+import { useRenameModalStore } from '../../store/renameModal';
 import { mediaAssetManager } from '../../engine/media/assetManager';
 import { useProjectStore } from '../../project-system/hooks/useProjectStore';
 
@@ -473,6 +474,13 @@ export function buildMultiClipMenu(): MenuEntry[] {
         item('bool-flatten', 'Flatten', () => editor.flattenSelectedShapes(), Layers, 'Ctrl+E'),
       ],
     }] : []),
+    {
+      type: 'group',
+      label: 'Edit',
+      items: [
+        item('multi-rename', 'Rename Layers…', () => useRenameModalStore.getState().open(), Pencil, 'Ctrl+R'),
+      ],
+    },
     {
       // M11 — copy the active layer's appearance, paste onto the whole selection.
       type: 'group',
