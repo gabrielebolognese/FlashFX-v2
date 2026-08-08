@@ -1,3 +1,4 @@
+import earcut from 'earcut';
 import type { PathVertex, Vec2, Vec4, LineCap, LineJoin } from '../core/types';
 import { LruCache } from './cache/lruCache';
 
@@ -20,6 +21,8 @@ export interface TessellateOptions {
   strokeWidth: number;
   lineCap: LineCap;
   lineJoin: LineJoin;
+  /** Inner sub-contours (glyph counters) — filled as holes (even-odd) and stroked. */
+  holes?: PathVertex[][];
 }
 
 const BEZIER_STEPS = 18;
@@ -144,6 +147,23 @@ function earClip(polygon: Vec2[]): Vec2[] {
     tris.push(polygon[indices[0]], polygon[indices[1]], polygon[indices[2]]);
   }
 
+  return tris;
+}
+
+// Fill a contour with holes (glyph counters) via earcut — the standard robust triangulator,
+// which carves any number of holes correctly (our hand-rolled keyhole ear-clip only survived a
+// single hole). Returns a flat triangle-vertex list, matching earClip's shape.
+function earcutFill(outer: Vec2[], holes: Vec2[][]): Vec2[] {
+  const coords: number[] = [];
+  for (const p of outer) coords.push(p[0], p[1]);
+  const holeIndices: number[] = [];
+  for (const h of holes) {
+    holeIndices.push(coords.length / 2);
+    for (const p of h) coords.push(p[0], p[1]);
+  }
+  const idx = earcut(coords, holeIndices, 2);
+  const tris: Vec2[] = new Array(idx.length);
+  for (let i = 0; i < idx.length; i++) tris[i] = [coords[idx[i] * 2], coords[idx[i] * 2 + 1]];
   return tris;
 }
 
@@ -321,17 +341,22 @@ function addCap(inner: Vec2, end: Vec2, hw: number, color: Vec4, cap: LineCap, o
 export function tessellatePath(opts: TessellateOptions): TessellatedPath {
   const out: number[] = [];
   const pts = flattenPath(opts.vertices, opts.closed);
+  const holePolys = (opts.holes ?? []).map((h) => flattenPath(h, true)).filter((h) => h.length >= 3);
 
-  // Fill (only for closed paths with a visible fill).
+  // Fill (only for closed paths with a visible fill). Holes are bridged into the outer contour
+  // so the ear-clipper carves out the counters.
   if (opts.closed && pts.length >= 3 && opts.fillColor[3] > 0) {
-    const tris = earClip(pts);
+    const tris = holePolys.length > 0 ? earcutFill(pts, holePolys) : earClip(pts);
     for (let i = 0; i < tris.length; i += 3) {
       pushTri(out, tris[i], tris[i + 1], tris[i + 2], opts.fillColor);
     }
   }
 
-  // Stroke.
+  // Stroke the outer contour and every hole contour.
   buildStroke(pts, opts.closed, opts.strokeWidth, opts.strokeColor, opts.lineCap, opts.lineJoin, out);
+  for (const h of holePolys) {
+    buildStroke(h, true, opts.strokeWidth, opts.strokeColor, opts.lineCap, opts.lineJoin, out);
+  }
 
   const data = new Float32Array(out);
   return { data, vertexCount: data.length / FLOATS_PER_VERTEX };
@@ -353,6 +378,14 @@ function signature(opts: TessellateOptions): string {
   s += `|f${opts.fillColor.join(',')}|k${opts.strokeColor.join(',')}|`;
   for (const v of opts.vertices) {
     s += `${v.position[0]},${v.position[1]},${v.handleIn[0]},${v.handleIn[1]},${v.handleOut[0]},${v.handleOut[1]};`;
+  }
+  if (opts.holes && opts.holes.length > 0) {
+    s += '|H';
+    for (const hole of opts.holes) {
+      s += '(';
+      for (const v of hole) s += `${v.position[0]},${v.position[1]},${v.handleIn[0]},${v.handleIn[1]},${v.handleOut[0]},${v.handleOut[1]};`;
+      s += ')';
+    }
   }
   return s;
 }

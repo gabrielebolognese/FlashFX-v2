@@ -32,6 +32,7 @@ import type {
   LayerEffect,
   ShapeMaterialConfig,
   ShapePatternConfig,
+  PathVertex,
 } from '../../core/types';
 import type { LayerConstraints } from '../../core/reframe';
 
@@ -133,6 +134,9 @@ function ensureShapeGeometry(val: unknown): ShapeGeometry | null {
         fillColor,
         strokeColor,
         strokeWidth,
+        // M17 — preserve glyph counters + fill rule (else stripped on save/load).
+        ...(Array.isArray(s.holes) ? { holes: s.holes as PathVertex[][] } : {}),
+        ...(s.fillRule === 'evenodd' || s.fillRule === 'nonzero' ? { fillRule: s.fillRule } : {}),
       };
     default:
       return null;

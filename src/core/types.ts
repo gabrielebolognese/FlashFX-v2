@@ -189,6 +189,14 @@ export interface PolygonShape {
   strokeWidth: AnimatableProperty;
   lineCap?: LineCap;
   lineJoin?: LineJoin;
+  /**
+   * Optional inner sub-contours (M17 outlined text): the counters of glyphs like o/a/e/B.
+   * Each is a closed `PathVertex[]` in the same local space as `vertices`; the tessellator
+   * fills `vertices` minus `holes` (even-odd). Absent for ordinary single-contour shapes.
+   */
+  holes?: PathVertex[][];
+  /** Fill rule when `holes` are present. Defaults to 'evenodd'. */
+  fillRule?: 'evenodd' | 'nonzero';
 }
 
 export type ShapeGeometry = RectangleShape | CircleShape | StarShape | PolygonShape;
@@ -1203,6 +1211,8 @@ export interface ResolvedShape {
   closed: boolean;
   lineCap: LineCap;
   lineJoin: LineJoin;
+  /** Glyph counters / inner contours (M17 outlined text) — filled as holes. */
+  holes?: PathVertex[][];
 }
 
 export interface ResolvedText {

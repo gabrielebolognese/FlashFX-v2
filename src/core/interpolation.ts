@@ -384,6 +384,7 @@ function resolveShapeLayer(layer: ShapeLayer, frame: number): ResolvedShape {
       base.closed = shape.closed;
       base.lineCap = shape.lineCap ?? 'butt';
       base.lineJoin = shape.lineJoin ?? 'miter';
+      if (shape.holes && shape.holes.length > 0) base.holes = shape.holes; // M17 glyph counters
       // Compute bounding box for width/height
       if (shape.vertices.length > 0) {
         let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;

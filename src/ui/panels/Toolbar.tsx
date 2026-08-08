@@ -51,6 +51,7 @@ export function Toolbar() {
   const ungroupSelection = useEditorStore((s) => s.ungroupSelection);
   const precomposeSelection = useEditorStore((s) => s.precomposeSelection);
   const createClonerFromSelection = useEditorStore((s) => s.createClonerFromSelection);
+  const outlineTextLayer = useEditorStore((s) => s.outlineTextLayer);
   const reorderLayers = useEditorStore((s) => s.reorderLayers);
   const addImage = useEditorStore((s) => s.addImage);
   const copySelection = useEditorStore((s) => s.copySelection);
@@ -120,6 +121,7 @@ export function Toolbar() {
   const activeLayer = composition.layers.find((l) => l.id === selection.activeId);
   const isImageSel = activeLayer?.type === 'image';
   const isShapeSel = activeLayer?.type === 'shape';
+  const isTextSel = activeLayer?.type === 'text';
   const isPolygonSel = activeLayer?.type === 'shape' && activeLayer.shape.type === 'polygon';
   const selectedShapeCount = composition.layers.filter((l) => selection.selectedIds.includes(l.id) && l.type === 'shape').length;
   const canBoolean = selectedShapeCount >= 2;
@@ -345,6 +347,7 @@ export function Toolbar() {
       label: 'Path',
       items: [
         { label: 'Object to Path', shortcut: 'Ctrl+Shift+C', action: () => { const id = selection.activeId; if (id) convertShapeToPath(id); }, disabled: !isShapeSel },
+        { label: 'Outline Text', shortcut: 'Ctrl+Shift+O', action: () => { const id = selection.activeId; if (id) outlineTextLayer(id); }, disabled: !isTextSel },
         { label: 'Stroke to Path', disabled: true },
         { label: '', divider: true },
         { label: 'Union', shortcut: 'Alt+Shift+U', action: () => booleanSelectedShapes('union'), disabled: !canBoolean },

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { Composition, SceneDocument, Layer, AnimatableProperty, Keyframe, Vec2, InterpolationType, BackgroundLayer, Track, TrackType, VideoPlaybackMode, PathVertex, VertexType, Mask, MaskType, AnchorEdge, PhysicsBindingDef, PhysicsWorldDef, StaggerBindingDef, LayoutObjectLayer, LayoutContainerLayer, ContainerShapeType, Marker, ShapeLayer, PolygonShape } from '../core/types';
-import { createComposition, createRectangleLayer, createCircleLayer, createStarLayer, createPolygonLayer, createDefaultPolygonVertices, createTextLayer, createVideoLayer, createImageLayer, createAudioLayer, createGroupLayer, createKeyframe, createBackgroundLayer, createMask, createParticleLayer, createAnimationItemLayer, createFieldSampledLayer, createLottieIconLayer, createLayoutObjectLayer, createLayoutContainerLayer, createDefaultChildOverride, uid } from '../core/factory';
+import { createComposition, createRectangleLayer, createCircleLayer, createStarLayer, createPolygonLayer, createDefaultPolygonVertices, createTextLayer, createVideoLayer, createImageLayer, createAudioLayer, createGroupLayer, createKeyframe, createBackgroundLayer, createMask, createParticleLayer, createAnimationItemLayer, createFieldSampledLayer, createLottieIconLayer, createLayoutObjectLayer, createLayoutContainerLayer, createDefaultChildOverride, createProperty, uid } from '../core/factory';
+import { outlineText, canOutlineFont } from '../text/outlineText';
 import { DEFAULT_SHADOW, DEFAULT_GLOW, DEFAULT_BLUR } from '../core/effectDefaults';
 import type { AlignResult, LayerBounds } from '../core/align';
 import { getLayerBounds, computeTidyUp } from '../core/align';
@@ -299,6 +300,9 @@ interface EditorState {
   /** Bake the selected shapes to a single vector path (Figma-style Flatten): union
    *  of 2+ shapes, or convert one shape to a path. Destructive; one undo. */
   flattenSelectedShapes: () => void;
+  /** M17 — Convert a text layer to editable vector glyph paths (grouped, with counters as
+   *  holes), preserving transform + fill/stroke. Async (loads the bundled font). */
+  outlineTextLayer: (layerId: string) => void;
   addCaptionClips: (segments: CaptionSegment[], options: CaptionOptions, clipStartFrame: number) => void;
   stripSilence: (layerId: string, segments: SpeechSegment[]) => string[];
   explodeTextLayer: (layerId: string, splitMode: SplitMode, staggerFrames: number) => void;
@@ -2627,6 +2631,68 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     comp = settleComposition(comp);
     const newSel: SelectionState = sel(newLayers.map((l) => l.id), newLayers[0].id);
     exec({ label: 'Flatten', execute: () => set({ composition: comp, selection: newSel }), undo: () => set({ composition: oldComp, selection: oldSel }) });
+  },
+
+  outlineTextLayer: async (layerId) => {
+    const layer = get().composition.layers.find((l) => l.id === layerId);
+    if (!layer || layer.type !== 'text') return;
+    const style = layer.content.spans[0]?.style;
+    if (!style) return;
+    if (!canOutlineFont(style.fontFamily)) {
+      console.warn(`[outline] no bundled font for "${style.fontFamily}" — cannot create outlines`);
+      return;
+    }
+    const frame = get().currentFrame;
+    const transform = (t: string, s: string): string =>
+      s === 'uppercase' ? t.toUpperCase() : s === 'lowercase' ? t.toLowerCase()
+        : s === 'capitalize' ? t.replace(/\b\w/g, (c) => c.toUpperCase()) : t;
+    const text = transform(layer.content.spans.map((sp) => sp.text).join(''), style.textTransform);
+    if (!text.trim()) return;
+
+    const align = layer.layoutConfig.horizontalAlign;
+    const glyphs = await outlineText({
+      text,
+      fontFamily: style.fontFamily,
+      fontWeight: style.fontWeight,
+      fontSize: evaluateNumber(layer.animOverrides.fontSize, frame),
+      lineHeight: evaluateNumber(layer.animOverrides.lineHeight, frame),
+      letterSpacing: evaluateNumber(layer.animOverrides.letterSpacing, frame),
+      textAlign: align === 'center' ? 'center' : align === 'right' ? 'right' : 'left',
+    });
+    if (!glyphs || glyphs.length === 0) return;
+
+    // Re-read state — the font fetch was async and the doc may have changed.
+    const oldComp = get().composition;
+    const oldSel = get().selection;
+    const src = oldComp.layers.find((l) => l.id === layerId);
+    if (!src || src.type !== 'text') return;
+
+    const pos = evaluateVec2(src.transform.position, frame);
+    const strokeW = evaluateNumber(src.animOverrides.strokeWidth, frame);
+    const dur = defaultClipFrames(oldComp);
+    const group = createGroupLayer(`${src.name} Outlines`, pos[0], pos[1], dur);
+    group.transform = JSON.parse(JSON.stringify(src.transform)); // preserve rotation/scale/anchor/opacity
+    const children: Layer[] = glyphs.map((g, i) => {
+      const poly = createPolygonLayer(`Glyph ${i + 1}`, g.center[0], g.center[1], g.contours[0], true, style.color, dur);
+      if (poly.type === 'shape' && poly.shape.type === 'polygon') {
+        poly.shape.strokeColor = style.strokeColor;
+        poly.shape.strokeWidth = createProperty('Stroke Width', 'number', strokeW);
+        if (g.contours.length > 1) { poly.shape.holes = g.contours.slice(1); poly.shape.fillRule = 'evenodd'; }
+      }
+      poly.parentId = group.id;
+      return poly;
+    });
+
+    const remaining = oldComp.layers.filter((l) => l.id !== layerId);
+    let comp: Composition = { ...oldComp, layers: [...remaining, group, ...children] };
+    for (const nl of [group, ...children]) comp = ensureLayerHasTrack(comp, nl);
+    comp = settleComposition(comp);
+    const newSel: SelectionState = sel([group.id], group.id);
+    exec({
+      label: 'Outline Text',
+      execute: () => set({ composition: comp, selection: newSel }),
+      undo: () => set({ composition: oldComp, selection: oldSel }),
+    });
   },
 
   addVideoFromAsset: (assetId, x, y, playbackMode: VideoPlaybackMode = 'wait') => {

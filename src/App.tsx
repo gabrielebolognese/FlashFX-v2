@@ -175,6 +175,17 @@ function Editor() {
           useEditorStore.getState().flattenSelectedShapes();
           return;
         }
+        // M17 — Outline Text (Figma/Illustrator Ctrl+Shift+O): convert a text layer to editable
+        // glyph paths. Gated on an active text layer.
+        if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && (e.key === 'o' || e.key === 'O')) {
+          const st = useEditorStore.getState();
+          const active = st.composition.layers.find((l) => l.id === st.selection.activeId);
+          if (active?.type === 'text') {
+            e.preventDefault();
+            st.outlineTextLayer(active.id);
+            return;
+          }
+        }
         // M11 — Copy/Paste Properties (Figma Ctrl+Alt+C / Ctrl+Alt+V). Matched by physical
         // e.code (Alt mangles e.key) and placed BEFORE plain Ctrl+C/V so they don't fall
         // through to copySelection/pasteClipboard. Paste is GUARDED on a properties

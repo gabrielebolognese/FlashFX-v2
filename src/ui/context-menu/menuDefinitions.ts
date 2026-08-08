@@ -297,6 +297,7 @@ export function buildClipMenu(layerId: string): MenuEntry[] {
   const isAudio = layer?.type === 'audio';
   const isVideo = layer?.type === 'video';
   const isImage = layer?.type === 'image';
+  const isText = layer?.type === 'text';
   const isPrecomp = layer?.type === 'precomp';
   const precompId = isPrecomp ? (layer as { compositionId?: string }).compositionId : undefined;
   // M13 — a same-kind layer on the clipboard can replace this one's source.
@@ -403,6 +404,7 @@ export function buildClipMenu(layerId: string): MenuEntry[] {
         item('group-sel', 'Group', () => editor.createGroup(), Group, 'Ctrl+G'),
         item('ungroup-sel', 'Ungroup', () => editor.ungroupSelection(), Ungroup, 'Ctrl+Shift+G'),
         item('create-cloner', 'Create Cloner from Selection', () => editor.createClonerFromSelection(), Grid3x3),
+        ...(isText ? [item('outline-text', 'Outline Text', () => editor.outlineTextLayer(layerId), Type, 'Ctrl+Shift+O')] : []),
         item('precompose-sel', 'Precompose', () => editor.precomposeSelection(), Layers, 'Ctrl+Shift+C'),
         ...(isPrecomp && precompId
           ? [item('open-precomp', 'Open Precomposition', () => editor.enterPrecomp(precompId), Folder)]
