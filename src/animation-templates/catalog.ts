@@ -1,4 +1,5 @@
 import type { AnimationTemplate, TemplateCategory } from './types';
+import { chainReaction } from './categories/machine';
 import { beachScene, forestScene, nightScene } from './categories/scenes';
 import { sunsetScene, rainScene, cityScene, snowScene } from './categories/weather';
 import { galaxyScene } from './categories/galaxy';
@@ -14,6 +15,7 @@ import { logoPop } from './categories/logo';
 // The animation-template library. Add a template = author a builder in categories/ and list it here.
 
 export const ANIMATION_TEMPLATES: AnimationTemplate[] = [
+  chainReaction,
   beachScene,
   forestScene,
   nightScene,
@@ -39,6 +41,7 @@ export const ANIMATION_TEMPLATES: AnimationTemplate[] = [
 ];
 
 export const CATEGORY_LABELS: Record<TemplateCategory, string> = {
+  showcase: 'Showcase',
   scenes: 'Scenes',
   ui: 'UI',
   fun: 'Fun',
