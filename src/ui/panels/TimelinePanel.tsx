@@ -2,6 +2,7 @@ import { useRef, useState, useCallback, useEffect } from 'react';
 import { useEditorStore } from '../../store/editor';
 import { useTimelineStore } from '../../store/timeline';
 import { useProjectStore } from '../../project-system/hooks/useProjectStore';
+import { usePanelStore } from '../../store/panels';
 import { TrackArea } from './timeline/TrackArea';
 import { TrackRow, GhostTrackRow } from './timeline/TrackRow';
 import { TimelineZoomControl } from './timeline/TimelineZoomControl';
@@ -35,6 +36,11 @@ export function TimelinePanel() {
   const scrollY = useTimelineStore((s) => s.scrollY);
   const setScrollY = useTimelineStore((s) => s.setScrollY);
   const { show: showContextMenu } = useContextMenu();
+
+  // Edit mode packs many layers per track, so widen the name/switches column there to fit more of
+  // the layer-name chips before they scroll. (The clip timeline on the right is flex-1 and unaffected.)
+  const editorWorkspace = usePanelStore((s) => s.editorWorkspace);
+  const labelColumnWidth = editorWorkspace === 'edit' ? LABEL_COLUMN_WIDTH * 2 : LABEL_COLUMN_WIDTH;
 
   const allLayers = composition.layers;
   const tracks = [...(composition.tracks || [])].sort((a, b) => a.order - b.order);
@@ -228,7 +234,7 @@ export function TimelinePanel() {
           <div className="flex flex-row flex-shrink-0" style={{ height: 21 }}>
             <div
               className="flex-shrink-0 border-r border-b border-[#1a2a42]/40 bg-[#081220] flex items-center justify-end pr-2"
-              style={{ width: LABEL_COLUMN_WIDTH }}
+              style={{ width: labelColumnWidth }}
             >
               <span className="text-[8px] text-slate-600 uppercase tracking-wider font-mono">
                 Layer Name & Switches
@@ -243,7 +249,7 @@ export function TimelinePanel() {
             <div
               ref={labelRef}
               className="flex-shrink-0 min-h-0 relative overflow-hidden border-r border-[#1a2a42]"
-              style={{ width: LABEL_COLUMN_WIDTH }}
+              style={{ width: labelColumnWidth }}
               onWheel={handleLabelWheel}
             >
               <div
