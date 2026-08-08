@@ -209,13 +209,20 @@ Authored as `categories/*.ts`. First-wave targets in **bold**; the rest are the 
 - **`bar-chart-grow`** (bars scaleY from 0, staggered), **`donut-sweep`** (arc draw-on + center
   counter), `line-draw` (polyline draw-on), `progress-ring`, `rating-stars` (stars pop + fill).
 
-**Showcase** (marquee demos — BUILT: `chain-reaction`, `split-flap-board`)
-- **`chain-reaction`** (Rube Goldberg: dominoes → marble → lever → weight → bucket → string → **200
-  balls** funnel; the 200 generated-not-keyframed balls are the "impossible in AE" flex), and
-  **`split-flap-board`** (airport departure board resolving in a per-character flip wave — cell-squash
-  reveal, grid stagger — with parallax planes taxiing behind rain-streaked terminal glass). Backlog:
-  `valley-day-cycle` (needs the real particle + expression systems — a scene-seed, not a pure
-  keyframe template).
+**Showcase** (marquee demos — BUILT: `chain-reaction`, `split-flap-board`, `bar-chart-race`,
+`recursive-editor`)
+- **`chain-reaction`** (Rube Goldberg → **200 balls** funnel), **`split-flap-board`** (departure board
+  flip wave + parallax planes + rain), **`bar-chart-race`** (rank reordering with spring settle + axis
+  rescale + odometer counters — baked, see note), and **`recursive-editor`** (FlashFX animating a video
+  editor: 5-region UI, cold-open assemble, two believable cursors — driven by the **cursor engine**
+  `cursor.ts`, which bakes bezier-arc paths + ballistic velocity + overshoot-correct + dwell +
+  sub-pixel noise + icon swaps from a waypoint list).
+- **Baked vs live note:** these bake the data/logic in the builder. The truly-live versions
+  (`bar-chart-race` reordering off editable data; `recursive-editor`'s repeater clips + expression
+  cursor + precomp track mattes + a real nested video) need the data-bound **Cloner to render** (not
+  wired) or dedicated live layers — real features, not templates. Backlog: `valley-day-cycle`
+  (real particles + expression shadows — a scene-seed); the full 30s editor beat sheet (the engine
+  + waypoint approach extends the current opening-beats foundation).
 
 **Scenes** (looping illustrated backdrops — BUILT: `beach-waves`, `forest`, `night-sky`, `galaxy`,
 `sunset`, `rain`, `city-skyline`, `snow`)
