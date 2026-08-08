@@ -18,6 +18,8 @@ import { RenderTree, type RenderTreeStats } from './cache/renderTree';
 import { particleRenderer } from './particleRenderer';
 import { fieldSampledRenderer } from '../field-sampling/renderer';
 import { patternRenderer } from '../patterns/renderer';
+import { parsePatternConfig } from '../patterns/config';
+import { PATTERN_TYPE } from '../patterns/types';
 import { lottieRendererEngine } from './lottieRenderer';
 import { videoTextureCache } from './video/videoTextureCache';
 import { frameScheduler } from './video/frameScheduler';
@@ -752,6 +754,120 @@ let proceduralClampWarned = false;
 const SHAPE_UNIFORM_SIZE = 3664;
 const SHAPE_UNIFORM_ALIGN = 3840;
 const SHAPE_UNIFORM_FLOATS = 916;
+
+// Procedural pattern layer (Phase 1.5): a buffer-only quad whose fragment GENERATES the pattern
+// per-pixel at full res (waves/plasma/kaleidoscope/mosaic), no input texture. Float layout MUST match
+// the fill in renderPatternLayers() and the WGSL struct below.
+const PATTERN_UNIFORM_FLOATS = 52;              // 20 scalars + 8 palette vec4
+const PATTERN_UNIFORM_SIZE = PATTERN_UNIFORM_FLOATS * 4; // 208 bytes
+const PATTERN_UNIFORM_ALIGN = 256;              // dynamic-offset alignment
+const PATTERN_MAX_STOPS = 8;
+
+const PATTERN_SHADER = /* wgsl */ `
+struct PatternU {
+  resolution: vec2f,      // 0,1
+  quadPos: vec2f,         // 2,3
+  quadSize: vec2f,        // 4,5
+  anchorPoint: vec2f,     // 6,7
+  rotation: f32,          // 8  (layer rotation, radians)
+  opacity: f32,           // 9
+  time: f32,              // 10 (seconds)
+  patternType: f32,       // 11
+  scale: f32,             // 12
+  speed: f32,             // 13
+  patRot: f32,            // 14 (pattern rotation, degrees)
+  complexity: f32,        // 15
+  warp: f32,              // 16
+  contrast: f32,          // 17
+  paletteMode: f32,       // 18 (0 linear, 1 smooth)
+  paletteCount: f32,      // 19
+  palette: array<vec4f, ${PATTERN_MAX_STOPS}>, // 20.. (rgb, pos)
+}
+@group(0) @binding(0) var<uniform> u: PatternU;
+
+struct VO { @builtin(position) position: vec4f, @location(0) uv: vec2f }
+
+@vertex
+fn vs(@builtin(vertex_index) vi: u32) -> VO {
+  var pos = array<vec2f, 6>(vec2f(0,0), vec2f(1,0), vec2f(0,1), vec2f(0,1), vec2f(1,0), vec2f(1,1));
+  let p = pos[vi];
+  let local = (p - vec2f(0.5)) * u.quadSize;
+  let rel = local - u.anchorPoint;
+  let cr = cos(u.rotation); let sr = sin(u.rotation);
+  let rotated = vec2f(rel.x * cr - rel.y * sr, rel.x * sr + rel.y * cr);
+  let world = rotated + u.anchorPoint + u.quadPos;
+  let ndc = vec2f((world.x / u.resolution.x) * 2.0 - 1.0, 1.0 - (world.y / u.resolution.y) * 2.0);
+  var o: VO; o.position = vec4f(ndc, 0.0, 1.0); o.uv = p; return o;
+}
+
+fn rot2(p: vec2f, deg: f32) -> vec2f { let a = deg * 0.017453292; let c = cos(a); let s = sin(a); return vec2f(p.x*c - p.y*s, p.x*s + p.y*c); }
+fn phash(p: vec2f) -> f32 { return fract(sin(p.x*127.1 + p.y*311.7) * 43758.5453); }
+fn pvnoise(p: vec2f) -> f32 {
+  let ip = floor(p); let fp = fract(p); let uu = fp*fp*(3.0 - 2.0*fp);
+  let a = phash(ip); let b = phash(ip+vec2f(1,0)); let c = phash(ip+vec2f(0,1)); let d = phash(ip+vec2f(1,1));
+  return mix(mix(a,b,uu.x), mix(c,d,uu.x), uu.y);
+}
+fn pfbm(p0: vec2f, oct: i32) -> f32 {
+  var v = 0.0; var amp = 0.5; var f = 1.0;
+  for (var i = 0; i < oct; i = i + 1) { v = v + amp * pvnoise(p0 * f); f = f * 2.0; amp = amp * 0.5; }
+  return v;
+}
+fn patternValue(uv: vec2f) -> f32 {
+  var p = (uv - vec2f(0.5)) * vec2f(u.resolution.x / u.resolution.y, 1.0);
+  p = rot2(p, u.patRot);
+  let s = max(0.05, u.scale) * 4.0; let sp = u.time * u.speed;
+  if (u.warp > 0.0) { let wx = p.x; p.x = p.x + u.warp*0.3*sin(p.y*3.0 + sp); p.y = p.y + u.warp*0.3*cos(wx*3.0 + sp); }
+  var val = 0.0;
+  let pt = i32(u.patternType);
+  if (pt == 0) {
+    let n = max(1, i32(u.complexity)); var a = 0.0;
+    for (var i = 0; i < n; i = i + 1) { let ang = f32(i) * 2.399963; a = a + sin((p.x*cos(ang) + p.y*sin(ang)) * s + sp * (1.0 + f32(i)*0.2)); }
+    val = a / f32(n) * 0.5 + 0.5;
+  } else if (pt == 1) {
+    let x = p.x * s; let y = p.y * s;
+    let a = sin(x+sp) + sin(y+sp*1.1) + sin((x+y)*0.7+sp*0.8) + sin(length(vec2f(x,y))+sp*1.3);
+    val = a / 4.0 * 0.5 + 0.5;
+  } else if (pt == 2) {
+    let r = length(p); let n = max(2, i32(u.complexity));
+    var ang = atan2(p.y, p.x) / 6.2831853;
+    ang = abs(fract(ang * f32(n) + 1.0) * 2.0 - 1.0);
+    val = pfbm(vec2f(ang*s + sp*0.1, r*s - sp*0.2), 3);
+  } else {
+    let g = p * s; let cell = floor(g); var best = 9.0; var bh = 0.0;
+    for (var oy = -1; oy <= 1; oy = oy + 1) { for (var ox = -1; ox <= 1; ox = ox + 1) {
+      let nb = cell + vec2f(f32(ox), f32(oy));
+      let jx = nb.x + phash(nb) + 0.3*sin(sp + phash(nb)*6.2831);
+      let jy = nb.y + phash(vec2f(nb.y, nb.x)) + 0.3*cos(sp + phash(vec2f(nb.y, nb.x))*6.2831);
+      let d = length(g - vec2f(jx, jy));
+      if (d < best) { best = d; bh = phash(nb * vec2f(1.7, 1.3) + vec2f(0.3, 0.7)); }
+    } }
+    val = bh;
+  }
+  return clamp((val - 0.5) * (1.0 + u.contrast*2.0) + 0.5, 0.0, 1.0);
+}
+fn samplePalette(v: f32) -> vec3f {
+  let n = i32(u.paletteCount);
+  if (n <= 0) { return vec3f(v); }
+  if (v <= u.palette[0].w) { return u.palette[0].xyz; }
+  if (v >= u.palette[n-1].w) { return u.palette[n-1].xyz; }
+  for (var i = 0; i < n-1; i = i + 1) {
+    let a = u.palette[i]; let b = u.palette[i+1];
+    if (v >= a.w && v <= b.w) {
+      var t = (v - a.w) / max(0.0001, b.w - a.w);
+      if (u.paletteMode > 0.5) { t = t*t*(3.0 - 2.0*t); }
+      return mix(a.xyz, b.xyz, t);
+    }
+  }
+  return u.palette[n-1].xyz;
+}
+
+@fragment
+fn fs(in: VO) -> @location(0) vec4f {
+  let val = patternValue(in.uv);
+  let col = samplePalette(val);
+  return vec4f(col, u.opacity);
+}
+`;
 const TEXT_UNIFORM_SIZE = 432;
 
 const IMAGE_SHADER = /* wgsl */ `
@@ -2479,6 +2595,12 @@ interface GPUState {
   textSampler: GPUSampler;
   format: GPUTextureFormat;
 
+  // Procedural pattern pipeline (Phase 1.5). Nullable: if the shader fails to build, generativePattern
+  // layers fall back to the CPU renderer (image bucket) instead of breaking the renderer.
+  patternPipeline: GPURenderPipeline | null;
+  patternUniformBuffer: GPUBuffer | null;
+  patternBindGroupLayout: GPUBindGroupLayout | null;
+
   // Motion-blur multi-pass resources. Pipelines/buffers/layouts are created
   // once; the textures + bind groups are (re)allocated lazily by
   // ensureBlurTextures and reused across frames until dimensions change.
@@ -3081,12 +3203,29 @@ export class WebGPURenderer {
       primitive: { topology: 'triangle-list' },
     });
 
+    // Procedural pattern pipeline — guarded so a shader failure only disables the GPU pattern path
+    // (falls back to the CPU renderer), never the whole renderer. Straight-alpha blend, like shapes.
+    let patternPipeline: GPURenderPipeline | null = null;
+    let patternUniformBuffer: GPUBuffer | null = null;
+    let patternBindGroupLayout: GPUBindGroupLayout | null = null;
+    try {
+      const patternModule = device.createShaderModule({ code: PATTERN_SHADER });
+      patternUniformBuffer = device.createBuffer({ size: PATTERN_UNIFORM_ALIGN * MAX_LAYERS, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+      patternBindGroupLayout = device.createBindGroupLayout({ entries: [{ binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform', hasDynamicOffset: true, minBindingSize: PATTERN_UNIFORM_SIZE } }] });
+      const patternLayout = device.createPipelineLayout({ bindGroupLayouts: [patternBindGroupLayout] });
+      patternPipeline = device.createRenderPipeline({ layout: patternLayout, vertex: { module: patternModule, entryPoint: 'vs' }, fragment: { module: patternModule, entryPoint: 'fs', targets: [{ format, blend: blendState }] }, primitive: { topology: 'triangle-list' } });
+    } catch (err) {
+      console.warn('[renderer] pattern GPU pipeline unavailable — using CPU fallback', err);
+      patternPipeline = null; patternUniformBuffer = null; patternBindGroupLayout = null;
+    }
+
     return {
       device, context, pipeline, textPipeline, imagePipeline, bgPipeline, pathPipeline,
       uniformBuffer, textUniformBuffer, imageUniformBuffer, bgUniformBuffer, pathUniformBuffer,
       pathVertexBuffer, pathVertexCapacity: PATH_INITIAL_VERTS, bgBindGroup,
       bindGroupLayout, textBindGroupLayout, imageBindGroupLayout, pathBindGroupLayout,
       textSampler, format,
+      patternPipeline, patternUniformBuffer, patternBindGroupLayout,
       blurPipeline, blitPipeline, blurUniformBuffer, blurBindGroupLayout, blitBindGroupLayout,
       sceneTex: null, layerTex: null, sceneTexView: null, layerTexView: null,
       blurBindGroup: null, blitBindGroup: null, blurTexW: 0, blurTexH: 0,
@@ -3329,6 +3468,7 @@ export class WebGPURenderer {
     const videoLayers: { index: number; layer: ResolvedLayer }[] = [];
     const imageLayers: { index: number; layer: ResolvedLayer }[] = [];
     const pathLayers: { index: number; layer: ResolvedLayer }[] = [];
+    const patternLayers: { index: number; layer: ResolvedLayer }[] = [];
 
     // Expand procedural grid/tile layers into multiple instances. Each per-layer
     // uniform buffer holds MAX_LAYERS slots, and buckets partition expandedLayers,
@@ -3399,6 +3539,9 @@ export class WebGPURenderer {
         textLayers.push({ index: i, layer });
       } else if (layer.layerType === 'video') {
         videoLayers.push({ index: i, layer });
+      } else if (layer.layerType === 'generativePattern' && gpu.patternPipeline) {
+        // GPU pattern path (Phase 1.5). Without the pipeline it falls through to the image bucket (CPU).
+        patternLayers.push({ index: i, layer });
       } else if (layer.layerType === 'image' || layer.layerType === 'particle' || layer.layerType === 'fieldSampled' || layer.layerType === 'generativePattern' || layer.layerType === 'lottieIcon' || layer.layerType === 'precomp') {
         // A precomp composites like an image: its pre-rendered texture as a
         // transformed, opacity-scaled quad through the image pipeline.
@@ -3783,6 +3926,41 @@ export class WebGPURenderer {
         })
       : null;
 
+    // Procedural pattern layers (Phase 1.5, GPU). Fill one uniform slot each; the fragment generates
+    // the pattern per-pixel at full res. Float layout MUST match PATTERN_SHADER's PatternU struct.
+    let patternBindGroup: GPUBindGroup | null = null;
+    if (patternLayers.length > 0 && gpu.patternUniformBuffer && gpu.patternBindGroupLayout) {
+      const patBuf = new ArrayBuffer(PATTERN_UNIFORM_ALIGN * patternLayers.length);
+      for (let pi = 0; pi < patternLayers.length; pi++) {
+        const pl = patternLayers[pi].layer;
+        const gp = pl.generativePattern;
+        if (!gp) continue;
+        const cfg = parsePatternConfig(gp.configJSON);
+        const t = pl.transform;
+        const d = new Float32Array(patBuf, PATTERN_UNIFORM_ALIGN * pi, PATTERN_UNIFORM_FLOATS);
+        d[0] = frame.width; d[1] = frame.height;
+        d[2] = t.positionX; d[3] = t.positionY;
+        d[4] = frame.width * t.scaleX; d[5] = frame.height * t.scaleY;
+        d[6] = t.anchorX; d[7] = t.anchorY;
+        d[8] = t.rotation * (Math.PI / 180); d[9] = t.opacity;
+        d[10] = gp.localFrame / (frame.frameRate ?? 30);
+        d[11] = PATTERN_TYPE[cfg.type];
+        d[12] = cfg.scale; d[13] = cfg.speed; d[14] = cfg.rotationDeg; d[15] = cfg.complexity;
+        d[16] = cfg.warp; d[17] = cfg.contrast; d[18] = cfg.paletteMode === 'smooth' ? 1 : 0;
+        const stops = cfg.palette.slice(0, PATTERN_MAX_STOPS);
+        d[19] = stops.length;
+        for (let si = 0; si < stops.length; si++) {
+          const o = 20 + si * 4;
+          d[o] = stops[si].color[0]; d[o + 1] = stops[si].color[1]; d[o + 2] = stops[si].color[2]; d[o + 3] = stops[si].pos;
+        }
+      }
+      device.queue.writeBuffer(gpu.patternUniformBuffer, 0, patBuf);
+      patternBindGroup = device.createBindGroup({
+        layout: gpu.patternBindGroupLayout,
+        entries: [{ binding: 0, resource: { buffer: gpu.patternUniformBuffer, size: PATTERN_UNIFORM_SIZE } }],
+      });
+    }
+
     // Build an ordered list of draw calls. Each entry carries its layer's
     // motion-blur descriptor (if any) so the render path below can decide
     // between the single-pass fast path and the per-layer blur path. Bind
@@ -3790,7 +3968,7 @@ export class WebGPURenderer {
     type Draw = { blur?: ResolvedLayer['motionBlur']; shadow?: ResolvedLayer['shadow']; glow?: ResolvedLayer['glow']; blurFx?: ResolvedLayer['blur']; fn: (p: GPURenderPassEncoder) => void };
     const draws: Draw[] = [];
     {
-      let shapeIdx = 0, textIdx = 0, videoIdx = 0, imageIdx = 0, pathIdx = 0;
+      let shapeIdx = 0, textIdx = 0, videoIdx = 0, imageIdx = 0, pathIdx = 0, patternIdx = 0;
       // Iterate expandedLayers (NOT frame.layers): bucket `index` values refer to
       // expandedLayers positions, and procedural loops make expandedLayers longer
       // than frame.layers. Bounding by frame.layers.length would silently drop
@@ -3822,6 +4000,17 @@ export class WebGPURenderer {
             } });
           }
           pathIdx++;
+        } else if (patternIdx < patternLayers.length && patternLayers[patternIdx].index === i) {
+          const slot = patternIdx;
+          if (patternBindGroup && gpu.patternPipeline) {
+            const ppl = gpu.patternPipeline, pbg = patternBindGroup;
+            draws.push({ blur, shadow, glow, blurFx, fn: (p) => {
+              p.setPipeline(ppl);
+              p.setBindGroup(0, pbg, [PATTERN_UNIFORM_ALIGN * slot]);
+              p.draw(6);
+            } });
+          }
+          patternIdx++;
         } else if (textIdx < textLayers.length && textLayers[textIdx].index === i) {
           const bindGroup = textBindGroups[textIdx];
           const slot = textIdx;
