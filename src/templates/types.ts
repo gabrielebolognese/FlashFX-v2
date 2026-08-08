@@ -13,6 +13,8 @@ export interface Template {
   width: number;
   height: number;
   videoFormat: 'long' | 'short';
+  /** Composition length in frames (defaults to the app default when omitted). */
+  durationFrames?: number;
   /** Start playback once seeded (nice for motion demos like particles). */
   autoplay?: boolean;
   /** Seed the freshly-opened, loaded scene via store actions. */

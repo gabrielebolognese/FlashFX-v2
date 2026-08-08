@@ -44,15 +44,17 @@ export function ProjectApp({ editorComponent: EditorComponent }: Props) {
     }
   }, [view, activeProjectId, loadDocument]);
 
-  if (templateBooting) {
-    return <TemplateSplash />;
-  }
-
-  if (view === 'dashboard') {
-    return <Dashboard />;
-  }
-
-  return <EditorWithAutoSave EditorComponent={EditorComponent} />;
+  // The splash OVERLAYS the app (rather than replacing it) so the editor mounts and its WebGPU
+  // renderer warms up behind it — launchTemplate pre-rolls frames, then lifts the splash into a
+  // smoothly-playing scene.
+  return (
+    <>
+      {view === 'dashboard'
+        ? <Dashboard />
+        : <EditorWithAutoSave EditorComponent={EditorComponent} />}
+      {templateBooting && <TemplateSplash />}
+    </>
+  );
 }
 
 function EditorWithAutoSave({ EditorComponent }: { EditorComponent: React.ComponentType }) {

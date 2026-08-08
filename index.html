@@ -9,8 +9,16 @@
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:image" content="https://bolt.new/static/og_default.png" />
   </head>
-  <body>
-    <div id="root"></div>
+  <body style="margin:0;background:#0a0f16">
+    <div id="root">
+      <!-- Instant loader shown while the JS bundle downloads/parses; React replaces #root's
+           contents on mount (the deep-link splash then takes over seamlessly for ?template links). -->
+      <div style="position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:#0a0f16;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif">
+        <div style="width:28px;height:28px;border:2px solid rgba(247,181,0,0.25);border-top-color:#f7b500;border-radius:50%;animation:ffxspin 0.8s linear infinite"></div>
+        <div style="color:#cbd5e1;font-size:13px;font-weight:500">Loading editor…</div>
+        <style>@keyframes ffxspin{to{transform:rotate(360deg)}}</style>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
