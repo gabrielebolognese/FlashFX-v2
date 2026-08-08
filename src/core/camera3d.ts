@@ -7,9 +7,15 @@
 // model). The camera sits in front at negative Z looking toward +Z. The renderer's y-down
 // handedness is reconciled at the projection/viewport step in M2, not here.
 
-import type { Mat4, Vec3 } from './mat4';
-import { identity, multiply, multiplyAll, perspective, lookAt, composeModel, rotateX, rotateY, rotateZ, transformPoint } from './mat4';
+import type { Mat4, Vec2, Vec3 } from './mat4';
+import { identity, multiply, multiplyAll, perspective, lookAt, composeModel, translate, rotateX, rotateY, rotateZ, transformPoint } from './mat4';
 import type { ResolvedTransform } from './types';
+
+// The renderer's raster space is Y-DOWN (comp y=0 is the top; ndc.y=+1 is the top). A camera
+// with a conventional +Y up vector would flip both screen axes vs. every existing 2D pipeline,
+// so comp "up" is −Y here. With this, a flat card at z=0 under the default camera projects to
+// EXACTLY the 2D map ndc=(2x/W−1, 1−2y/H) — the AE parity property, pinned in verify:camera3d.
+const COMP_UP: Vec3 = [0, -1, 0];
 
 export const deg2rad = (d: number): number => (d * Math.PI) / 180;
 
@@ -69,7 +75,7 @@ export function cameraFromParams(params: {
   // near/far bracket a generous depth range around the z=0 plane. compH-relative so it scales.
   const near = Math.max(1, zoom * 0.001);
   const far = zoom * 1000 + compH * 100;
-  const view = lookAt(eye, target, [0, 1, 0]);
+  const view = lookAt(eye, target, COMP_UP);
   const projection = perspective(fovY, aspect, near, far);
   return {
     view,
@@ -107,6 +113,26 @@ export function defaultCamera(compW: number, compH: number): ResolvedCamera {
  *  by this and do the perspective divide to get clip space — the M2 renderer's vertex path. */
 export function mvp(camera: ResolvedCamera, worldMatrix: Mat4): Mat4 {
   return multiply(camera.viewProjection, worldMatrix);
+}
+
+/**
+ * MVP for a renderer "card": the matrix the vertex shader multiplies the LOCAL quad corner by
+ * (corner already scaled — quadSize carries scale, exactly as the 2D path). It reproduces the
+ * renderer's 2D placement `world = R(local − pivot) + pivot + pos` — i.e.
+ *   A3D = T(pos) · T(pivot) · Rz · Ry · Rx · T(−pivot)
+ * extended into 3D (pos.z, X/Y rotation) — then projects through the camera: `P·V·A3D`. When
+ * rotX=rotY=posZ=0 under the default camera this equals the 2D map (parity). `pivot`/`pos.xy`
+ * are the SAME anchor/position values the pipeline's uniform packer already writes.
+ */
+export function cardMVP(camera: ResolvedCamera, pos: Vec3, pivot: Vec2, rotDegXYZ: Vec3): Mat4 {
+  const R = multiplyAll(rotateZ(deg2rad(rotDegXYZ[2])), rotateY(deg2rad(rotDegXYZ[1])), rotateX(deg2rad(rotDegXYZ[0])));
+  const a3d = multiplyAll(
+    translate(pos[0], pos[1], pos[2]),
+    translate(pivot[0], pivot[1], 0),
+    R,
+    translate(-pivot[0], -pivot[1], 0),
+  );
+  return multiply(camera.viewProjection, a3d);
 }
 
 /** Camera-space depth of a layer's origin (local 0,0,0 → world → view). The camera looks down

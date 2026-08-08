@@ -1,5 +1,8 @@
 import type { RenderFrame, ResolvedLayer, ResolvedMask, ResolvedFill, ResolvedPattern, ResolvedEffect, Background } from '../core/types';
 import { MAX_PRECOMP_DEPTH } from '../core/precomp';
+// 2.5D (M2): per-3D-layer MVP + painter's depth sort. cardMVP/cameraSpaceDepth are pure and
+// harness-verified (verify:camera3d); the renderer just packs the matrix + reorders draws.
+import { cardMVP, cameraSpaceDepth, painterOrder, type ResolvedCamera } from '../core/camera3d';
 
 /** Options for a recursive precomp render into an offscreen target texture. */
 interface PrecompRenderOpts {
@@ -318,6 +321,12 @@ struct Uniforms {
   patB: vec4f,                 // (markSize, opacity, hasBackground, _)
   patColor: vec4f,             // mark rgb
   patBg: vec4f,                // background rgb
+  // 2.5D (M2): 0 for a 2D layer (untouched path); 1 → project the quad through mvp.
+  is3D: f32,
+  _mvpPad0: f32,
+  _mvpPad1: f32,
+  _mvpPad2: f32,
+  mvp: mat4x4<f32>,
 }
 
 @group(0) @binding(0) var<uniform> u: Uniforms;
@@ -359,6 +368,8 @@ fn vs(@builtin(vertex_index) vi: u32) -> VertexOutput {
 
   var out: VertexOutput;
   out.position = vec4f(ndc, 0.0, 1.0);
+  // 2.5D (M2): project the local (already-scaled) quad corner through the camera MVP.
+  if (u.is3D > 0.5) { out.position = u.mvp * vec4f(local, 0.0, 1.0); }
   out.uv = p;
   out.worldPos = worldPos;
   return out;
@@ -684,6 +695,12 @@ struct TextUniforms {
   maskCount: f32,
   _pad1: f32,
   masks: array<MaskSlot, 8>,
+  // 2.5D (M2): 0 for a 2D layer; 1 → project the quad through mvp.
+  is3D: f32,
+  _mvpPad0: f32,
+  _mvpPad1: f32,
+  _mvpPad2: f32,
+  mvp: mat4x4<f32>,
 }
 
 @group(0) @binding(0) var<uniform> u: TextUniforms;
@@ -727,6 +744,8 @@ fn vs(@builtin(vertex_index) vi: u32) -> VertexOutput {
 
   var out: VertexOutput;
   out.position = vec4f(ndc, 0.0, 1.0);
+  // 2.5D (M2): project the local (already-scaled) quad corner through the camera MVP.
+  if (u.is3D > 0.5) { out.position = u.mvp * vec4f(local, 0.0, 1.0); }
   out.uv = p;
   out.worldPos = worldPos;
   return out;
@@ -751,16 +770,22 @@ let proceduralClampWarned = false;
 // other pipelines. Layout (bytes): base 80 + masks 384 + fill/stroke arrays 3136
 // + pattern 64 = 3664 (916 f32). The fill/stroke arrays are flat with index
 // 0 = fill, 1 = stroke. Aligned up to a 256-byte multiple for dynamic offsets.
-const SHAPE_UNIFORM_SIZE = 3664;
+// 2.5D (M2): +80 bytes appended for the is3D flag (f916) + mvp mat4 (f920). ALIGN already has
+// the headroom (3840 ≥ 3744); SIZE/FLOATS grown to cover the appended fields.
+const SHAPE_UNIFORM_SIZE = 3744;
 const SHAPE_UNIFORM_ALIGN = 3840;
-const SHAPE_UNIFORM_FLOATS = 916;
+const SHAPE_UNIFORM_FLOATS = 936;
+const SHAPE_MVP_FLAG = 916; // float index of is3D
+const SHAPE_MVP_BASE = 920; // float index of mvp[0]
 
 // Procedural pattern layer (Phase 1.5): a buffer-only quad whose fragment GENERATES the pattern
 // per-pixel at full res (waves/plasma/kaleidoscope/mosaic), no input texture. Float layout MUST match
 // the fill in renderPatternLayers() and the WGSL struct below.
-const PATTERN_UNIFORM_FLOATS = 56;              // 24 scalars (incl. pad) + 8 palette vec4
-const PATTERN_UNIFORM_SIZE = PATTERN_UNIFORM_FLOATS * 4; // 224 bytes
-const PATTERN_UNIFORM_ALIGN = 256;              // dynamic-offset alignment
+const PATTERN_UNIFORM_FLOATS = 76;              // 24 scalars + 8 palette vec4 (f0..55) + 2.5D mvp
+const PATTERN_UNIFORM_SIZE = 304;               // 224 (base) + is3D(f56) + pad + mvp(f60..75)
+const PATTERN_UNIFORM_ALIGN = 512;              // dynamic-offset alignment (256-multiple, ≥ SIZE)
+const PATTERN_MVP_FLAG = 56; // float index of is3D
+const PATTERN_MVP_BASE = 60; // float index of mvp[0]
 const PATTERN_MAX_STOPS = 8;
 // Blend-with-below: layer.blendMode → the pipeline variant + the fragment output form (frozen).
 const PATTERN_BLEND_INDEX: Record<string, number> = { normal: 0, add: 1, multiply: 2, screen: 3, overlay: 0 };
@@ -787,7 +812,11 @@ struct PatternU {
   paletteCount: f32,      // 19
   blendMode: f32,         // 20 (fragment output form, matched to the pipeline's blend state)
   _p0: f32, _p1: f32, _p2: f32, // 21,22,23 (pad palette to a 16-byte boundary)
-  palette: array<vec4f, ${PATTERN_MAX_STOPS}>, // 24.. (rgb, pos)
+  palette: array<vec4f, ${PATTERN_MAX_STOPS}>, // 24..55 (rgb, pos)
+  // 2.5D (M2): 0 for a 2D layer; 1 → project the quad through mvp.
+  is3D: f32,              // 56
+  _mvpPad0: f32, _mvpPad1: f32, _mvpPad2: f32, // 57,58,59
+  mvp: mat4x4<f32>,       // 60..75
 }
 @group(0) @binding(0) var<uniform> u: PatternU;
 
@@ -803,7 +832,10 @@ fn vs(@builtin(vertex_index) vi: u32) -> VO {
   let rotated = vec2f(rel.x * cr - rel.y * sr, rel.x * sr + rel.y * cr);
   let world = rotated + u.anchorPoint + u.quadPos;
   let ndc = vec2f((world.x / u.resolution.x) * 2.0 - 1.0, 1.0 - (world.y / u.resolution.y) * 2.0);
-  var o: VO; o.position = vec4f(ndc, 0.0, 1.0); o.uv = p; return o;
+  var o: VO; o.position = vec4f(ndc, 0.0, 1.0);
+  // 2.5D (M2): project the local (already-scaled) quad corner through the camera MVP.
+  if (u.is3D > 0.5) { o.position = u.mvp * vec4f(local, 0.0, 1.0); }
+  o.uv = p; return o;
 }
 
 fn rot2(p: vec2f, deg: f32) -> vec2f { let a = deg * 0.017453292; let c = cos(a); let s = sin(a); return vec2f(p.x*c - p.y*s, p.x*s + p.y*c); }
@@ -906,7 +938,11 @@ fn fs(in: VO) -> @location(0) vec4f {
   return vec4f(col, a); // normal (over) / add (src-alpha,one) — same output, different blend state
 }
 `;
-const TEXT_UNIFORM_SIZE = 432;
+// 2.5D (M2): +80 bytes (is3D f108, mvp f112..127) → struct 512, fits UNIFORM_ALIGN (512) exactly.
+const TEXT_UNIFORM_SIZE = 512;
+const TEXT_MVP_FLAG = 108; // float index of is3D
+const TEXT_MVP_BASE = 112; // float index of mvp[0]
+const TEXT_UNIFORM_FLOATS = 128; // packer view length (covers mvp)
 
 const IMAGE_SHADER = /* wgsl */ `
 struct MaskSlot {
@@ -957,6 +993,12 @@ struct ImageUniforms {
   _epad1: f32,
   _epad2: f32,
   effects: array<EffectSlot, 16>,
+  // 2.5D (M2): 0 for a 2D layer; 1 → project the quad through mvp (image/video/precomp cards).
+  is3D: f32,
+  _mvpPad0: f32,
+  _mvpPad1: f32,
+  _mvpPad2: f32,
+  mvp: mat4x4<f32>,
 }
 
 @group(0) @binding(0) var<uniform> u: ImageUniforms;
@@ -1000,6 +1042,8 @@ fn vs(@builtin(vertex_index) vi: u32) -> VertexOutput {
 
   var out: VertexOutput;
   out.position = vec4f(ndc, 0.0, 1.0);
+  // 2.5D (M2): project the local (already-scaled) quad corner through the camera MVP.
+  if (u.is3D > 0.5) { out.position = u.mvp * vec4f(local, 0.0, 1.0); }
   out.uv = p;
   out.worldPos = worldPos;
   return out;
@@ -2073,9 +2117,25 @@ fn fs(in: VertexOutput) -> @location(0) vec4f {
 // the shared UNIFORM_ALIGN (512), enlarged to fit the effect-slot array appended
 // AFTER the masks (so the mask base index at float 28 never moves). Layout (bytes):
 // header 112 + masks 384 + effectCount(+pad) 16 + effects 512 = 1024 (256 f32).
-const IMAGE_UNIFORM_SIZE = 1024;
-const IMAGE_UNIFORM_ALIGN = 1024;
-const IMAGE_UNIFORM_FLOATS = 256;
+// 2.5D (M2): +80 bytes (is3D f256, mvp f260..275). ALIGN/SIZE grown to 1280 (5×256).
+const IMAGE_UNIFORM_SIZE = 1280;
+const IMAGE_UNIFORM_ALIGN = 1280;
+const IMAGE_UNIFORM_FLOATS = 320;
+const IMAGE_MVP_FLAG = 256; // float index of is3D
+const IMAGE_MVP_BASE = 260; // float index of mvp[0]
+
+// 2.5D (M2): pack a 3D layer's MVP into its pipeline uniform view. NO-OP for 2D layers or when
+// there is no active camera — the is3D flag stays 0 (buffers are zero-initialized) and the 2D
+// vertex path runs unchanged, so 2D output is byte-identical regardless of the appended fields.
+// pivot/position are the SAME anchor/position the packer already wrote to the quad uniform, so
+// a flat card at z=0 under the default camera matches the 2D placement (parity, verify:camera3d).
+function writeCard3D(data: Float32Array, flagIdx: number, mvpIdx: number, layer: ResolvedLayer, camera: ResolvedCamera | undefined): void {
+  if (!layer.is3D || !camera) return;
+  const t = layer.transform;
+  const m = cardMVP(camera, [t.positionX, t.positionY, t.positionZ], [t.anchorX, t.anchorY], [t.rotationX, t.rotationY, t.rotation]);
+  data[flagIdx] = 1;
+  for (let k = 0; k < 16; k++) data[mvpIdx + k] = m[k];
+}
 // Effect slots: 16 × (2 vec4f = type + 7 params). effectCount at float 124,
 // effects array base at float 128.
 const IMAGE_MAX_EFFECTS = 16;
@@ -3606,6 +3666,7 @@ export class WebGPURenderer {
       for (let i = 0; i < shapeLayers.length; i++) {
         const data = new Float32Array(bufferData, SHAPE_UNIFORM_ALIGN * i, SHAPE_UNIFORM_FLOATS);
         this.fillLayerData(data, shapeLayers[i].layer, frame.width, frame.height);
+        writeCard3D(data, SHAPE_MVP_FLAG, SHAPE_MVP_BASE, shapeLayers[i].layer, frame.camera);
       }
       device.queue.writeBuffer(uniformBuffer, 0, bufferData, 0, SHAPE_UNIFORM_ALIGN * shapeLayers.length);
     }
@@ -3628,7 +3689,7 @@ export class WebGPURenderer {
         }
 
         const t = textLayer.transform;
-        const data = new Float32Array(textBufData, UNIFORM_ALIGN * i, 108);
+        const data = new Float32Array(textBufData, UNIFORM_ALIGN * i, TEXT_UNIFORM_FLOATS);
         data[0] = frame.width;
         data[1] = frame.height;
         data[2] = t.positionX;
@@ -3640,6 +3701,7 @@ export class WebGPURenderer {
         data[8] = t.rotation * (Math.PI / 180);
         data[9] = t.opacity;
         this.writeMaskUniforms(data, 10, 12, textLayer.masks);
+        writeCard3D(data, TEXT_MVP_FLAG, TEXT_MVP_BASE, textLayer, frame.camera);
 
         const gpuTexture = this.getOrCreateTextTexture(gpu, rendered.key, rendered.bitmap, rendered.width, rendered.height);
         if (!gpuTexture) {
@@ -3723,6 +3785,7 @@ export class WebGPURenderer {
         // near-black. Write the identity (1) to keep video color untouched.
         data[14] = 1;
         this.writeMaskUniforms(data, 15, 28, vidLayer.masks);
+        writeCard3D(data, IMAGE_MVP_FLAG, IMAGE_MVP_BASE, vidLayer, frame.camera);
 
         const vbg = device.createBindGroup({
           layout: imageBindGroupLayout,
@@ -3878,6 +3941,7 @@ export class WebGPURenderer {
         this.writeMaskUniforms(data, 15, 28, imgLayer.masks);
         this.writeEffectSlots(data, imgEffects);
         data[IMAGE_EFFECTTIME_FLOAT] = frame.frameNumber; // seeds procedural/noise effects
+        writeCard3D(data, IMAGE_MVP_FLAG, IMAGE_MVP_BASE, imgLayer, frame.camera);
 
         let textureView: GPUTextureView | null;
         if (precompView) {
@@ -3997,6 +4061,7 @@ export class WebGPURenderer {
           const o = 24 + si * 4;
           d[o] = stops[si].color[0]; d[o + 1] = stops[si].color[1]; d[o + 2] = stops[si].color[2]; d[o + 3] = stops[si].pos;
         }
+        writeCard3D(d, PATTERN_MVP_FLAG, PATTERN_MVP_BASE, pl, frame.camera);
       }
       device.queue.writeBuffer(gpu.patternUniformBuffer, 0, patBuf);
       patternBindGroup = device.createBindGroup({
@@ -4009,7 +4074,7 @@ export class WebGPURenderer {
     // motion-blur descriptor (if any) so the render path below can decide
     // between the single-pass fast path and the per-layer blur path. Bind
     // groups and dynamic offsets are identical regardless of the target pass.
-    type Draw = { blur?: ResolvedLayer['motionBlur']; shadow?: ResolvedLayer['shadow']; glow?: ResolvedLayer['glow']; blurFx?: ResolvedLayer['blur']; fn: (p: GPURenderPassEncoder) => void };
+    type Draw = { blur?: ResolvedLayer['motionBlur']; shadow?: ResolvedLayer['shadow']; glow?: ResolvedLayer['glow']; blurFx?: ResolvedLayer['blur']; is3D?: boolean; depth?: number; fn: (p: GPURenderPassEncoder) => void };
     const draws: Draw[] = [];
     {
       let shapeIdx = 0, textIdx = 0, videoIdx = 0, imageIdx = 0, pathIdx = 0, patternIdx = 0;
@@ -4023,6 +4088,11 @@ export class WebGPURenderer {
         const shadow = fx ? expandedLayers[i].shadow : undefined;
         const glow = fx ? expandedLayers[i].glow : undefined;
         const blurFx = fx ? expandedLayers[i].blur : undefined;
+        // 2.5D (M2): tag this iteration's draw(s) with depth so the composite order can painter-sort.
+        const drawStart = draws.length;
+        const rl3d = expandedLayers[i];
+        const is3DLayer = !!rl3d.is3D;
+        const layerDepth = is3DLayer && frame.camera && rl3d.worldMatrix ? cameraSpaceDepth(frame.camera, rl3d.worldMatrix) : 0;
         if (shapeIdx < shapeLayers.length && shapeLayers[shapeIdx].index === i) {
           const slot = shapeIdx;
           draws.push({ blur, shadow, glow, blurFx, fn: (p) => {
@@ -4090,7 +4160,18 @@ export class WebGPURenderer {
           }
           imageIdx++;
         }
+        for (let k = drawStart; k < draws.length; k++) { draws[k].is3D = is3DLayer; draws[k].depth = layerDepth; }
       }
+    }
+
+    // 2.5D (M2): painter's z-sort — runs of 3D layers composite far→near while 2D layers pin the
+    // order (AE Classic-3D model). Gated on an actual 3D layer + active camera, so all-2D comps
+    // keep the exact original draw order (byte-identical). Sort is stable for equal depths.
+    if (frame.camera && draws.some((d) => d.is3D)) {
+      const order = painterOrder(draws.map((d) => ({ is3D: !!d.is3D, depth: d.depth ?? 0 })));
+      const sorted = order.map((k) => draws[k]);
+      draws.length = 0;
+      for (const d of sorted) draws.push(d);
     }
 
     const blurDraws = draws.filter((d) => d.blur);

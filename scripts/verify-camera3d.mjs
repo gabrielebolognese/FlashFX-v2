@@ -28,7 +28,7 @@ try {
   await build({ entryPoints: ['src/core/mat4.ts'], bundle: true, format: 'esm', platform: 'node', outfile: mfile, logLevel: 'silent' });
   const { transformPoint } = await import(pathToFileURL(mfile).href);
 
-  const { defaultCamera, cameraFromParams, fovYForZoom, zoomForFovY, localModelMatrix, composeWorldMatrix, forwardVector, mvp, cameraSpaceDepth, painterOrder } = m;
+  const { defaultCamera, cameraFromParams, fovYForZoom, zoomForFovY, localModelMatrix, composeWorldMatrix, forwardVector, mvp, cameraSpaceDepth, painterOrder, cardMVP } = m;
 
   console.log('2.5D camera + world-matrix core — acceptance\n');
 
@@ -43,6 +43,47 @@ try {
     // right-center edge
     const right = projectNDC(cam, W / 2 + W / 2, H / 2, 0, transformPoint);
     assert.ok(near(Math.abs(right[0]), 1, 1e-4), `right edge maps to |ndc.x|=1 (got ${right[0]})`);
+  });
+
+  check('default camera reproduces the renderer 2D map EXACTLY (signed y-down parity)', () => {
+    // The 2D pipelines use ndc = (2x/W − 1, 1 − 2y/H). A flat card at z=0 must match sign-for-sign,
+    // or 3D content renders mirrored/upside-down vs 2D (the #1 handedness trap).
+    const cam = defaultCamera(W, H);
+    const cases = [
+      [0, 0, -1, 1],           // top-left → (−1, +1)
+      [W, 0, 1, 1],            // top-right → (+1, +1)
+      [0, H, -1, -1],          // bottom-left → (−1, −1)
+      [W, H, 1, -1],           // bottom-right → (+1, −1)
+      [W / 2, H / 2, 0, 0],    // center → (0, 0)
+    ];
+    for (const [x, y, ex, ey] of cases) {
+      const n = projectNDC(cam, x, y, 0, transformPoint);
+      assert.ok(near(n[0], ex, 1e-4) && near(n[1], ey, 1e-4), `(${x},${y}) → ndc(${n[0].toFixed(3)},${n[1].toFixed(3)}) want (${ex},${ey})`);
+    }
+  });
+
+  check('cardMVP with identity transform matches the 2D map (parity under default camera)', () => {
+    const cam = defaultCamera(W, H);
+    // A card whose local corner (x,y) sits at comp position via pivot/pos: place pivot at pos so
+    // the local origin maps to `pos`. Local point (0,0) → should project like comp point `pos`.
+    const pos = [700, 260, 0], pivot = [0, 0];
+    const M = cardMVP(cam, pos, pivot, [0, 0, 0]);
+    const c = transformPoint(M, 0, 0, 0);
+    const ndc = [c[0] / c[3], c[1] / c[3]];
+    assert.ok(near(ndc[0], (2 * pos[0]) / W - 1, 1e-4) && near(ndc[1], 1 - (2 * pos[1]) / H, 1e-4), `local origin projects to its comp position`);
+  });
+
+  check('cardMVP: an X-rotated card foreshortens (top/bottom edges get different depths)', () => {
+    const cam = defaultCamera(W, H);
+    const pos = [W / 2, H / 2, 0], pivot = [0, 0];
+    const flat = cardMVP(cam, pos, pivot, [0, 0, 0]);
+    const tilted = cardMVP(cam, pos, pivot, [60, 0, 0]); // 60° about X
+    // top & bottom local corners at (0, ±200)
+    const topFlat = transformPoint(flat, 0, -200, 0), botFlat = transformPoint(flat, 0, 200, 0);
+    const topTilt = transformPoint(tilted, 0, -200, 0), botTilt = transformPoint(tilted, 0, 200, 0);
+    // flat card: equal w (no perspective difference); tilted: unequal w (one edge nearer)
+    assert.ok(near(topFlat[3], botFlat[3], 1e-6), 'flat card edges share depth');
+    assert.ok(Math.abs(topTilt[3] - botTilt[3]) > 1e-3, 'tilted card edges differ in depth (foreshortening)');
   });
 
   check('default camera is 1:1 for ANY zoom (parity — no jump when a lone layer goes 3D)', () => {

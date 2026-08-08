@@ -4,6 +4,7 @@
 // handedness is reconciled at the projection/viewport step in M2, not here.
 
 export type Mat4 = number[]; // length 16, column-major
+export type Vec2 = [number, number];
 export type Vec3 = [number, number, number];
 export type Vec4 = [number, number, number, number];
 

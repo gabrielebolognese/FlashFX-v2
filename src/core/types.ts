@@ -1504,8 +1504,11 @@ export interface ResolvedLayer {
   cloner?: ResolvedCloner;
   precomp?: ResolvedPrecomp;
   // 2.5D (M1): world model matrix for 3D layers (`is3D`), for the M2 MVP path. Absent on 2D
-  // layers, which keep the cheap affine transform above. The renderer ignores it until M2.
+  // layers, which keep the cheap affine transform above.
   worldMatrix?: Mat4;
+  // 2.5D (M2): true when the source layer's 3D switch is on — the renderer projects it through
+  // the frame camera (MVP) and depth-sorts it. Absent/false → the untouched 2D path.
+  is3D?: boolean;
   layerType: 'shape' | 'text' | 'video' | 'image' | 'audio' | 'particle' | 'fieldSampled' | 'generativePattern' | 'lottieIcon' | 'cloner' | 'precomp';
 }
 

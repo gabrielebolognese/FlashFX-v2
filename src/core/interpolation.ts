@@ -1429,7 +1429,7 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
   if (struct.hasThreeDLayers) {
     for (const rl of resolvedLayers) {
       const src = _layerById.get(rl.id);
-      if (src?.is3D) rl.worldMatrix = worldMatrixFor(rl.id, frame);
+      if (src?.is3D) { rl.worldMatrix = worldMatrixFor(rl.id, frame); rl.is3D = true; }
     }
   }
 
