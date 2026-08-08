@@ -153,7 +153,7 @@ export const tutorialScript: TutorialChapter[] = [
         id: 'link',
         say: 'Colours can be shared. I’ll link the rectangle and the star to one brand style…',
         hold: 1900,
-        spotlight: 'inspector',
+        spotlight: 'canvas',
         run: (api) => {
           brandStyle = api.editor().createColorStyle(AMBER, 'Brand');
           if (!brandStyle) return;
@@ -165,7 +165,7 @@ export const tutorialScript: TutorialChapter[] = [
         id: 'recolor',
         say: '…now editing that one style repaints both at once.',
         hold: 2200,
-        spotlight: 'inspector',
+        spotlight: 'canvas',
         run: (api) => {
           if (brandStyle) api.editor().updateStyleColor(brandStyle, TEAL);
         },
@@ -284,7 +284,7 @@ export const tutorialScript: TutorialChapter[] = [
         id: 'glow-shadow',
         say: 'Depth in a click — a soft glow and a drop shadow on the title.',
         hold: 2200,
-        spotlight: 'inspector',
+        spotlight: 'canvas',
         run: (api) => {
           if (!titleId) return;
           api.editor().enableLayerEffect(titleId, 'glow');
@@ -361,7 +361,7 @@ export const tutorialScript: TutorialChapter[] = [
         id: 'go',
         say: 'The headline flies in, the particles ignite — your piece, running live.',
         hold: 5200,
-        spotlight: 'transport',
+        spotlight: 'canvas',
         run: (api) => { api.timeline().play(); },
       },
     ],

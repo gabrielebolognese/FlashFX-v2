@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useTutorialStore, SKIP_TO_END } from './store';
 import { tutorialScript } from './tutorialScript';
 import { NarrationBar } from './NarrationBar';
+import { SpotlightOverlay } from './SpotlightOverlay';
 import type { TutorialApi } from './types';
 import { useEditorStore } from '../store/editor';
 import { useTimelineStore } from '../store/timeline';
@@ -16,6 +17,7 @@ export function TutorialRunner() {
   const active = useTutorialStore((s) => s.active);
   const phase = useTutorialStore((s) => s.phase);
   const paused = useTutorialStore((s) => s.paused);
+  const spotlight = useTutorialStore((s) => s.spotlight);
 
   const ctrl = useRef({ paused: false, speed: 1 as number, jumpTo: null as number | null, aborted: false });
 
@@ -63,8 +65,8 @@ export function TutorialRunner() {
       while (ci < tutorialScript.length && !ctrl.current.aborted) {
         const chapter = tutorialScript[ci];
         if (si >= chapter.steps.length) { ci++; si = 0; continue; }
-        useTutorialStore.getState()._patch({ phase: 'running', chapterIndex: ci, stepIndex: si });
         const step = chapter.steps[si];
+        useTutorialStore.getState()._patch({ phase: 'running', chapterIndex: ci, stepIndex: si, spotlight: step.spotlight });
         try { await step.run?.(api); } catch (err) { console.error('[tutorial] step failed', step.id, err); }
         await wait(step.hold ?? 1200);
         if (ctrl.current.aborted) return;
@@ -80,7 +82,7 @@ export function TutorialRunner() {
       }
       if (!ctrl.current.aborted) {
         useTimelineStore.getState().pause();
-        useTutorialStore.getState()._patch({ phase: 'handoff' });
+        useTutorialStore.getState()._patch({ phase: 'handoff', spotlight: undefined });
       }
     })();
 
@@ -96,6 +98,7 @@ export function TutorialRunner() {
       {phase === 'running' && !paused && (
         <div className="fixed inset-0 z-[110] cursor-progress" onClick={(e) => e.stopPropagation()} />
       )}
+      {phase === 'running' && <SpotlightOverlay target={spotlight} />}
       <NarrationBar />
     </>
   );

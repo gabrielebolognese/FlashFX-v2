@@ -14,6 +14,8 @@ interface TutorialState {
   stepIndex: number;
   paused: boolean;
   speed: TutorialSpeed;
+  /** Current step's spotlight target (a data-tutorial-id, 'canvas', or undefined for none). */
+  spotlight: string | undefined;
   /** Runner consumes this: jump to chapter i (>= chapter count → run to handoff). null = no jump. */
   jumpTo: number | null;
 
@@ -25,7 +27,7 @@ interface TutorialState {
   skipToChapter: (i: number) => void;
   skipAll: () => void;
   /** Runner-internal progress/phase updates. */
-  _patch: (p: Partial<Pick<TutorialState, 'phase' | 'chapterIndex' | 'stepIndex' | 'jumpTo'>>) => void;
+  _patch: (p: Partial<Pick<TutorialState, 'phase' | 'chapterIndex' | 'stepIndex' | 'jumpTo' | 'spotlight'>>) => void;
 }
 
 const SKIP_TO_END = 1_000_000;
@@ -37,10 +39,11 @@ export const useTutorialStore = create<TutorialState>((set) => ({
   stepIndex: 0,
   paused: false,
   speed: 1,
+  spotlight: undefined,
   jumpTo: null,
 
-  start: () => set({ active: true, phase: 'running', chapterIndex: 0, stepIndex: 0, paused: false, speed: 1, jumpTo: null }),
-  stop: () => set({ active: false, phase: 'idle', paused: false, jumpTo: null }),
+  start: () => set({ active: true, phase: 'running', chapterIndex: 0, stepIndex: 0, paused: false, speed: 1, spotlight: undefined, jumpTo: null }),
+  stop: () => set({ active: false, phase: 'idle', paused: false, spotlight: undefined, jumpTo: null }),
   pause: () => set({ paused: true }),
   resume: () => set({ paused: false }),
   setSpeed: (speed) => set({ speed }),

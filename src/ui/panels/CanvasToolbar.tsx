@@ -160,7 +160,7 @@ export function CanvasToolbar() {
   return (
     <div className="h-[28px] min-h-[28px] flex items-center gap-0.5 px-2 bg-[#081220] border-b border-[#1a2a42] select-none">
       {groups.map((group, gi) => (
-        <div key={group} className="flex items-center">
+        <div key={group} data-tutorial-id={group === 'shape' ? 'shape-tools' : undefined} className="flex items-center">
           {gi > 0 && <div className="w-px h-4 bg-[#1a2a42] mx-1.5" />}
           {TOOLS.filter((t) => t.group === group).map((tool) => {
             const active = isToolActive(tool);

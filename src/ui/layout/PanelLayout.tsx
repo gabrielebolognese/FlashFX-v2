@@ -50,7 +50,7 @@ export function PanelLayout() {
         </div>
 
         {/* Canvas - takes remaining space */}
-        <div className="flex-1 min-h-0 min-w-0 flex flex-col bg-[#050d18] border-l border-[#1a2a42]/40">
+        <div data-tutorial-id="canvas" className="flex-1 min-h-0 min-w-0 flex flex-col bg-[#050d18] border-l border-[#1a2a42]/40">
           <CanvasToolbar />
           <PanelErrorBoundary name="Viewport">
             <Viewport />
@@ -61,6 +61,7 @@ export function PanelLayout() {
         {/* Inspector - far right */}
         {panels.properties.visible && (
           <div
+            data-tutorial-id="inspector"
             className="flex-shrink-0 min-h-0 overflow-hidden border-l border-[#1a2a42]/40"
             style={{ width: layout.inspectorWidth }}
           >
@@ -80,6 +81,7 @@ export function PanelLayout() {
           style={{ height: layout.bottomHeight }}
         >
           <div
+            data-tutorial-id="timeline"
             className="min-w-0 min-h-0 overflow-hidden"
             style={{ width: layout.showAnimationPanel ? '66.66%' : '100%' }}
           >

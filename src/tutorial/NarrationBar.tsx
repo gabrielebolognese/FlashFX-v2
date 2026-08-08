@@ -1,6 +1,7 @@
 import { useTutorialStore, type TutorialSpeed } from './store';
 import { tutorialScript } from './tutorialScript';
-import { Play, Pause, SkipForward, Gauge, GraduationCap, Check } from 'lucide-react';
+import { launchTutorial } from './launch';
+import { Play, Pause, SkipForward, Gauge, GraduationCap, Check, RotateCcw } from 'lucide-react';
 
 const NEXT_SPEED: Record<TutorialSpeed, TutorialSpeed> = { 1: 2, 2: 4, 4: 1 };
 
@@ -42,9 +43,14 @@ export function NarrationBar() {
           <p className="flex-1 text-[13px] leading-snug text-slate-200">{say}</p>
 
           {handoff ? (
-            <button onClick={() => useTutorialStore.getState().stop()} className="shrink-0 px-3 py-1.5 rounded-lg text-[12px] font-semibold bg-[#f7b500] hover:bg-[#ffc21a] text-[#0e1c32]">
-              Start creating
-            </button>
+            <div className="shrink-0 flex items-center gap-1.5">
+              <button onClick={() => { void launchTutorial(); }} title="Replay the tutorial from a fresh project" className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[12px] font-medium text-slate-300 hover:text-white hover:bg-white/5">
+                <RotateCcw size={13} /> Replay
+              </button>
+              <button onClick={() => useTutorialStore.getState().stop()} className="px-3 py-1.5 rounded-lg text-[12px] font-semibold bg-[#f7b500] hover:bg-[#ffc21a] text-[#0e1c32]">
+                Start creating
+              </button>
+            </div>
           ) : (
             <div className="shrink-0 flex items-center gap-1">
               <button onClick={() => useTutorialStore.getState().setSpeed(NEXT_SPEED[speed])} title="Playback speed" className="flex items-center gap-1 px-2 py-1.5 rounded-md text-[11px] text-slate-400 hover:text-slate-100 hover:bg-white/5">

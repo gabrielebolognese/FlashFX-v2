@@ -443,8 +443,8 @@ export function Toolbar() {
         <ToolbarButton icon={Download} label="Download" onClick={handleDownloadProject} />
         <ToolbarSep />
         <ToolbarButton icon={Cog} label="Render" onClick={() => setShowExport(true)} />
-        <ToolbarButton icon={MonitorPlay} label="Preview" onClick={() => { const t = useTimelineStore.getState(); if (t.isPlaying) t.pause(); else t.play(); }} />
-        <ToolbarButton icon={FileCode} label="Export" onClick={() => setShowExport(true)} />
+        <ToolbarButton icon={MonitorPlay} label="Preview" tutorialId="transport" onClick={() => { const t = useTimelineStore.getState(); if (t.isPlaying) t.pause(); else t.play(); }} />
+        <ToolbarButton icon={FileCode} label="Export" tutorialId="export" onClick={() => setShowExport(true)} />
         <ToolbarSep />
         <ToolbarButton icon={SlidersHorizontal} label="Settings" onClick={() => setShowSettings(!showSettings)} />
         <ToolbarButton icon={Settings2} label="Preferences" onClick={() => useSettingsStore.getState().openSettings()} />
@@ -632,10 +632,11 @@ function MenuDropdown({
   );
 }
 
-function ToolbarButton({ icon: Icon, label, onClick }: { icon: typeof Save; label: string; onClick?: () => void }) {
+function ToolbarButton({ icon: Icon, label, onClick, tutorialId }: { icon: typeof Save; label: string; onClick?: () => void; tutorialId?: string }) {
   return (
     <button
       onClick={onClick}
+      data-tutorial-id={tutorialId}
       className="flex items-center gap-1 px-1.5 h-[22px] text-[10px] text-slate-400 hover:text-slate-100 hover:bg-white/[0.04] rounded transition-colors"
     >
       <Icon size={12} strokeWidth={1.5} />
