@@ -37,13 +37,21 @@ export function TimelinePanel() {
   const setScrollY = useTimelineStore((s) => s.setScrollY);
   const { show: showContextMenu } = useContextMenu();
 
-  // Edit mode packs many layers per track, so widen the name/switches column there to fit more of
-  // the layer-name chips before they scroll. (The clip timeline on the right is flex-1 and unaffected.)
   const editorWorkspace = usePanelStore((s) => s.editorWorkspace);
-  const labelColumnWidth = editorWorkspace === 'edit' ? LABEL_COLUMN_WIDTH * 2 : LABEL_COLUMN_WIDTH;
-
   const allLayers = composition.layers;
   const tracks = [...(composition.tracks || [])].sort((a, b) => a.order - b.order);
+
+  // The layer-name / switches column sizes DYNAMICALLY to fit the busiest track's name chips: it grows
+  // from half the base width up to the full width (doubled in Edit mode) as more layers pack onto a
+  // single track. (The clip timeline on the right is flex-1 and unaffected.)
+  const maxColumnWidth = editorWorkspace === 'edit' ? LABEL_COLUMN_WIDTH * 2 : LABEL_COLUMN_WIDTH;
+  const minColumnWidth = maxColumnWidth / 2;
+  const clipCounts = new Map<string, number>();
+  for (const l of allLayers) if (l.trackId) clipCounts.set(l.trackId, (clipCounts.get(l.trackId) ?? 0) + 1);
+  const maxClipsPerTrack = clipCounts.size ? Math.max(...clipCounts.values()) : 1;
+  const CHIP_ESTIMATE = 96; // per name chip; fixed header + switches ≈ 176px
+  const labelColumnWidth = Math.round(Math.max(minColumnWidth, Math.min(maxColumnWidth, 176 + maxClipsPerTrack * CHIP_ESTIMATE)));
+
   const hasSelection = selection.selectedIds.length > 0;
 
   const handleTrackSelect = (layerId: string, additive: boolean) => {
