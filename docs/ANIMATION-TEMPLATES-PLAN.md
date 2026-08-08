@@ -209,23 +209,23 @@ Authored as `categories/*.ts`. First-wave targets in **bold**; the rest are the 
 - **`bar-chart-grow`** (bars scaleY from 0, staggered), **`donut-sweep`** (arc draw-on + center
   counter), `line-draw` (polyline draw-on), `progress-ring`, `rating-stars` (stars pop + fill).
 
-**Scenes** (looping illustrated backdrops — BUILT: `beach-waves`, `forest`, `night-sky`, `galaxy`)
-- **`beach-waves`** (sun+glow, drifting clouds, rolling foam waves, bobbing ball), **`forest`** (layered
-  swaying trees + drifting leaves + glowing sun), **`night-sky`** (glowing moon, twinkling stars,
-  looping shooting star, hill silhouette), **`galaxy`** (glowing core + planets on tilted elliptical
-  orbits over a starfield). Backlog: `sunset`, `rain`, `mountains`, `city-skyline`, `underwater`, `snow`.
-  Built on kit loop helpers (`floatLoop`/`swayLoop`/`spinLoop`/`twinkle`/`glow`/`orbit`), authored
-  back-to-front so track-stacking gives correct z-order.
+**Scenes** (looping illustrated backdrops — BUILT: `beach-waves`, `forest`, `night-sky`, `galaxy`,
+`sunset`, `rain`, `city-skyline`, `snow`)
+- Nature/weather scenes from shape layers + ambient loops. `rain`/`snow` use the `fallLoop` helper
+  (repeat-travel with invisible wrap); `city-skyline` has twinkling window grids; `sunset` sinks a
+  glowing sun into the sea. Backlog: `mountains`, `underwater`, `autumn-leaves`, `aurora`, `desert`.
+  Built on kit loop helpers (`floatLoop`/`swayLoop`/`spinLoop`/`twinkle`/`glow`/`orbit`/`fallLoop`),
+  authored back-to-front so track-stacking gives correct z-order.
 
-**UI** (device/app mockups — BUILT: `phone-messages`)
-- **`phone-messages`** (chat bubbles pop into a phone one by one, with a typing indicator). Backlog:
-  `notification-stack`, `app-onboarding`, `progress-checkout`, `like-counter`.
+**UI** (device/app mockups — BUILT: `phone-messages`, `loading-spinner`)
+- **`phone-messages`** (chat bubbles + typing indicator), **`loading-spinner`** (chasing-dot loader).
+  Backlog: `notification-stack`, `app-onboarding`, `progress-checkout`, `like-counter`.
 
-**Fun** (delightful one-offs — BUILT: `pen-writing`, `clock`, `fireworks`)
-- **`pen-writing`** (a pen glides across paper as handwriting draws on, line by line — uses a nested
-  nib parented to the pen body), **`clock`** (sweeping hour/minute/second hands via nested rotating
-  pivot groups), **`fireworks`** (launch streaks + radial spark bursts via `burstOut`). Backlog:
-  `coffee-steam`, `rocket-launch`, `confetti-pop`, `heartbeat-ekg`, `loading-orbit`.
+**Fun** (delightful one-offs — BUILT: `pen-writing`, `clock`, `fireworks`, `rocket-launch`,
+`coffee-steam`, `confetti-pop`)
+- Handwriting draw-on, a ticking clock (nested pivot hands), fireworks + confetti (`burstOut`), a
+  rocket lifting off with a flickering flame (nested rocket group), a steaming coffee cup
+  (`fallLoop` rising wisps). Backlog: `heartbeat-ekg`, `balloon-float`, `piggy-bank`, `trophy-shine`.
 
   > Nesting note: `assemble()` now only parents children whose `parentId` is null, so templates can
   > build multi-level hierarchies (pivot groups, pen nib). Parent rotation composes into children

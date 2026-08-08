@@ -179,6 +179,26 @@ export function orbit(l: Layer, radius: number, radiusY: number, period: number,
   setKeys(l.transform.position, keys);
 }
 
+/** Repeatedly travel `dist` from the resting position (down for rain/snow, negative for rising
+ *  steam), fading in near the start and out near the end so the wrap is invisible. `drift` skews the
+ *  sideways travel. */
+export function fallLoop(l: Layer, dist: number, period: number, cycles: number, at = 0, drift = 0): void {
+  const base = l.transform.position.defaultValue as Vec2;
+  const pos: KeyStep[] = [];
+  const op: KeyStep[] = [];
+  for (let i = 0; i < cycles; i++) {
+    const b = at + i * period;
+    pos.push({ f: b, v: [base[0] - drift, base[1]] });
+    pos.push({ f: b + period - 1, v: [base[0] + drift, base[1] + dist], ease: LINEAR });
+    op.push({ f: b, v: 0 });
+    op.push({ f: b + 3, v: 1 });
+    op.push({ f: b + Math.max(4, period - 6), v: 1 });
+    op.push({ f: b + period - 1, v: 0 });
+  }
+  setKeys(l.transform.position, pos);
+  setKeys(l.transform.opacity, op);
+}
+
 /** Fly a particle outward from its position along an angle, growing faint + small — firework sparks. */
 export function burstOut(l: Layer, at: number, angleDeg: number, dist: number, dur = 18): void {
   const base = l.transform.position.defaultValue as Vec2;

@@ -1,8 +1,10 @@
 import type { AnimationTemplate, TemplateCategory } from './types';
 import { beachScene, forestScene, nightScene } from './categories/scenes';
+import { sunsetScene, rainScene, cityScene, snowScene } from './categories/weather';
 import { galaxyScene } from './categories/galaxy';
 import { phoneMessages } from './categories/ui';
 import { penWriting, clockTick, fireworks } from './categories/fun';
+import { rocketLaunch, coffeeSteam, confettiPop, loadingSpinner } from './categories/delight';
 import { calendarMonth } from './categories/calendar';
 import { titleRise, lowerThirdSlide } from './categories/titles';
 import { bulletList } from './categories/lists';
@@ -15,11 +17,19 @@ export const ANIMATION_TEMPLATES: AnimationTemplate[] = [
   beachScene,
   forestScene,
   nightScene,
+  sunsetScene,
+  rainScene,
+  cityScene,
+  snowScene,
   galaxyScene,
   phoneMessages,
+  loadingSpinner,
   penWriting,
   clockTick,
   fireworks,
+  rocketLaunch,
+  coffeeSteam,
+  confettiPop,
   calendarMonth,
   titleRise,
   lowerThirdSlide,
