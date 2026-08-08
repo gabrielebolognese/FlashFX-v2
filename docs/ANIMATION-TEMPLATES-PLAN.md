@@ -209,12 +209,27 @@ Authored as `categories/*.ts`. First-wave targets in **bold**; the rest are the 
 - **`bar-chart-grow`** (bars scaleY from 0, staggered), **`donut-sweep`** (arc draw-on + center
   counter), `line-draw` (polyline draw-on), `progress-ring`, `rating-stars` (stars pop + fill).
 
-**Scenes** (looping illustrated backdrops — BUILT: `beach-waves`, `forest`, `night-sky`)
+**Scenes** (looping illustrated backdrops — BUILT: `beach-waves`, `forest`, `night-sky`, `galaxy`)
 - **`beach-waves`** (sun+glow, drifting clouds, rolling foam waves, bobbing ball), **`forest`** (layered
   swaying trees + drifting leaves + glowing sun), **`night-sky`** (glowing moon, twinkling stars,
-  looping shooting star, hill silhouette). Backlog: `sunset`, `rain`, `mountains`, `city-skyline`,
-  `underwater`, `snow`. Built on kit loop helpers (`floatLoop`/`swayLoop`/`spinLoop`/`twinkle`/`glow`),
-  authored back-to-front so track-stacking gives correct z-order.
+  looping shooting star, hill silhouette), **`galaxy`** (glowing core + planets on tilted elliptical
+  orbits over a starfield). Backlog: `sunset`, `rain`, `mountains`, `city-skyline`, `underwater`, `snow`.
+  Built on kit loop helpers (`floatLoop`/`swayLoop`/`spinLoop`/`twinkle`/`glow`/`orbit`), authored
+  back-to-front so track-stacking gives correct z-order.
+
+**UI** (device/app mockups — BUILT: `phone-messages`)
+- **`phone-messages`** (chat bubbles pop into a phone one by one, with a typing indicator). Backlog:
+  `notification-stack`, `app-onboarding`, `progress-checkout`, `like-counter`.
+
+**Fun** (delightful one-offs — BUILT: `pen-writing`, `clock`, `fireworks`)
+- **`pen-writing`** (a pen glides across paper as handwriting draws on, line by line — uses a nested
+  nib parented to the pen body), **`clock`** (sweeping hour/minute/second hands via nested rotating
+  pivot groups), **`fireworks`** (launch streaks + radial spark bursts via `burstOut`). Backlog:
+  `coffee-steam`, `rocket-launch`, `confetti-pop`, `heartbeat-ekg`, `loading-orbit`.
+
+  > Nesting note: `assemble()` now only parents children whose `parentId` is null, so templates can
+  > build multi-level hierarchies (pivot groups, pen nib). Parent rotation composes into children
+  > (`interpolation.ts:471-482`), which is what makes clock hands and orbits work.
 
 **Backgrounds & shapes**
 - **`gradient-drift`** (animated gradient bg loop), `blob-morph` (polygon vertex tween), `grid-parallax`,

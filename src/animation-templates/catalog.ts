@@ -1,5 +1,8 @@
 import type { AnimationTemplate, TemplateCategory } from './types';
 import { beachScene, forestScene, nightScene } from './categories/scenes';
+import { galaxyScene } from './categories/galaxy';
+import { phoneMessages } from './categories/ui';
+import { penWriting, clockTick, fireworks } from './categories/fun';
 import { calendarMonth } from './categories/calendar';
 import { titleRise, lowerThirdSlide } from './categories/titles';
 import { bulletList } from './categories/lists';
@@ -12,6 +15,11 @@ export const ANIMATION_TEMPLATES: AnimationTemplate[] = [
   beachScene,
   forestScene,
   nightScene,
+  galaxyScene,
+  phoneMessages,
+  penWriting,
+  clockTick,
+  fireworks,
   calendarMonth,
   titleRise,
   lowerThirdSlide,
@@ -22,6 +30,8 @@ export const ANIMATION_TEMPLATES: AnimationTemplate[] = [
 
 export const CATEGORY_LABELS: Record<TemplateCategory, string> = {
   scenes: 'Scenes',
+  ui: 'UI',
+  fun: 'Fun',
   calendar: 'Calendar',
   titles: 'Titles',
   lists: 'Lists',

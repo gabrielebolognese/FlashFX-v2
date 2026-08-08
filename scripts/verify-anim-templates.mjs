@@ -76,8 +76,11 @@ try {
       assert.equal(group.type, 'group', 'first layer is the root group');
       const ids = layers.map((l) => l.id);
       assert.equal(new Set(ids).size, ids.length, 'all layer ids unique');
+      const idSet = new Set(ids);
       for (const l of layers.slice(1)) {
-        assert.equal(l.parentId, group.id, `${l.name} is parented to the group`);
+        // Every non-root layer is parented within the template (to the root group OR a nested
+        // pivot/parent that is itself in the set — clock hands, pen nib, etc.).
+        assert.ok(l.parentId && idSet.has(l.parentId), `${l.name} is parented within the template`);
       }
       assert.deepEqual(group.transform.position.defaultValue, CENTER, 'group sits at ctx.center');
     });
@@ -92,10 +95,11 @@ try {
       }
     });
 
-    check(`${t.id}: instantiate rebases the earliest keyframe onto the playhead`, () => {
+    check(`${t.id}: instantiate rebases keyframes + clips by the playhead`, () => {
+      const baseMin = Math.min(...allKeyframes(layers).map((k) => k.frame));
       const inst = instantiateTemplate(t, { playhead: 100, frameRate: 30, center: CENTER });
-      const frames = allKeyframes(inst).map((k) => k.frame);
-      assert.equal(Math.min(...frames), 100, 'earliest keyframe lands on the playhead');
+      const instMin = Math.min(...allKeyframes(inst).map((k) => k.frame));
+      assert.equal(instMin, 100 + baseMin, 'earliest keyframe shifted by the playhead');
       for (const l of inst) assert.equal(l.inPoint, 100, 'clip starts at the playhead');
     });
 

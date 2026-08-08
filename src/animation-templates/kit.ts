@@ -66,11 +66,12 @@ export function group(name: string, center: Vec2): GroupLayer {
   return createGroupLayer(name, center[0], center[1], DUR);
 }
 
-/** Parent every child to the group and stamp the whole set with the template's clip length. */
+/** Parent top-level children to the group (children with an explicit parentId — e.g. nested pivots —
+ *  are left alone) and stamp the whole set with the template's clip length. */
 export function assemble(g: GroupLayer, children: Layer[], durationFrames: number): Layer[] {
   g.outPoint = durationFrames;
   for (const c of children) {
-    c.parentId = g.id;
+    if (!c.parentId) c.parentId = g.id;
     c.outPoint = durationFrames;
   }
   return [g, ...children];
@@ -162,6 +163,30 @@ export function spinLoop(l: Layer, period: number, cycles: number, at = 0): void
   const keys: KeyStep[] = [];
   for (let i = 0; i <= cycles; i++) keys.push({ f: at + i * period, v: i * 360 });
   setKeys(l.transform.rotation, keys);
+}
+
+/** Constant-speed circular/elliptical orbit around the resting position (planets, satellites). */
+export function orbit(l: Layer, radius: number, radiusY: number, period: number, cycles: number, phase = 0): void {
+  const base = l.transform.position.defaultValue as Vec2;
+  const keys: KeyStep[] = [];
+  const per = 16; // samples per revolution — smooth circle, linear between for constant speed
+  const total = Math.max(1, Math.round(cycles * per));
+  for (let i = 0; i <= total; i++) {
+    const f = (i / per) * period;
+    const a = phase + (i / per) * Math.PI * 2;
+    keys.push({ f, v: [base[0] + Math.cos(a) * radius, base[1] + Math.sin(a) * radiusY] });
+  }
+  setKeys(l.transform.position, keys);
+}
+
+/** Fly a particle outward from its position along an angle, growing faint + small — firework sparks. */
+export function burstOut(l: Layer, at: number, angleDeg: number, dist: number, dur = 18): void {
+  const base = l.transform.position.defaultValue as Vec2;
+  const a = (angleDeg * Math.PI) / 180;
+  const end: Vec2 = [base[0] + Math.cos(a) * dist, base[1] + Math.sin(a) * dist];
+  setKeys(l.transform.position, [{ f: at, v: base }, { f: at + dur, v: end, ease: EASE_OUT }]);
+  setKeys(l.transform.opacity, [{ f: at, v: 0 }, { f: at + 2, v: 1 }, { f: at + dur * 0.55, v: 1 }, { f: at + dur, v: 0, ease: EASE_IN }]);
+  setKeys(l.transform.scale, [{ f: at, v: [1, 1] }, { f: at + dur, v: [0.3, 0.3], ease: EASE_OUT }]);
 }
 
 /** Opacity flicker between 1 and `min` — twinkling stars. */

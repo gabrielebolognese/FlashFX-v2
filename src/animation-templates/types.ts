@@ -8,6 +8,8 @@ import type { Layer } from '../core/types';
 
 export type TemplateCategory =
   | 'scenes'
+  | 'ui'
+  | 'fun'
   | 'calendar'
   | 'titles'
   | 'lists'
