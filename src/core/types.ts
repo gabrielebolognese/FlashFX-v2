@@ -657,6 +657,14 @@ export interface GenerativePatternLayer {
   width: AnimatableProperty;
   height: AnimatableProperty;
   masks?: Mask[];
+  // Keyframeable pattern knobs — override the static config values when animated (frequency, rotation,
+  // domain-warp, contrast). Seeded from the config; the render reads these, not the config copies.
+  patternAnim: {
+    scale: AnimatableProperty;
+    rotation: AnimatableProperty;
+    warp: AnimatableProperty;
+    contrast: AnimatableProperty;
+  };
   generativePattern: {
     configJSON: string;
   };
@@ -1379,6 +1387,10 @@ export interface ResolvedGenerativePattern {
   localFrame: number;
   width: number;
   height: number;
+  scale: number;
+  rotation: number;
+  warp: number;
+  contrast: number;
 }
 
 export interface ResolvedLottieIcon {

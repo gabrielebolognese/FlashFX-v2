@@ -85,8 +85,8 @@ try {
     assert.deepEqual(samplePalette(stops, 2, false), stops[stops.length - 1].color);
   });
 
-  check('generativePattern layer survives the validation whitelist round-trip (config + bounds)', () => {
-    const layer = createGenerativePatternLayer('Pattern 1', 960, 540, 800, 500, serializePatternConfig(DEFAULT_PATTERN), 90);
+  check('generativePattern layer survives the validation round-trip (config + bounds + keyframeable knobs)', () => {
+    const layer = createGenerativePatternLayer('Pattern 1', 960, 540, 800, 500, serializePatternConfig(DEFAULT_PATTERN), { scale: 1.5, rotation: 45, warp: 0.4, contrast: 0.3 }, 90);
     const validated = validateComposition({ layers: [layer] });
     assert.equal(validated.layers.length, 1, 'layer not stripped');
     const out = validated.layers[0];
@@ -94,6 +94,9 @@ try {
     assert.equal(out.generativePattern.configJSON, layer.generativePattern.configJSON, 'config preserved');
     assert.equal(out.width.defaultValue, 800, 'width preserved');
     assert.equal(out.height.defaultValue, 500, 'height preserved');
+    assert.equal(out.patternAnim.scale.defaultValue, 1.5, 'knob scale preserved');
+    assert.equal(out.patternAnim.rotation.defaultValue, 45, 'knob rotation preserved');
+    assert.ok(Array.isArray(out.patternAnim.warp.keyframes), 'knob is a real AnimatableProperty (keyframeable)');
   });
 
   console.log(`\n✅ ${passed} checks passed`);

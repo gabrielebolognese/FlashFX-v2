@@ -14,7 +14,7 @@ import { extractLayerProperties, applyLayerProperties, type LayerPropertyBundle 
 import { selectSameLayers, type SameAttr } from '../core/selection';
 import { applyReplaceSource, sourceFromLayer, sourceKindForLayer, type ReplaceSource } from '../core/replaceSource';
 import { computeReframe, applyAxisPosition, applyAxisScale, DEFAULT_CONSTRAINTS, type LayerConstraints, type ReframeInput } from '../core/reframe';
-import { serializePatternConfig } from '../patterns/config';
+import { serializePatternConfig, parsePatternConfig } from '../patterns/config';
 import { DEFAULT_PATTERN } from '../patterns/presets';
 import { getTemplate as getAnimationTemplate, ANIMATION_TEMPLATES } from '../animation-templates/catalog';
 import { instantiateTemplate as instantiateAnimationTemplate } from '../animation-templates/instantiate';
@@ -1900,10 +1900,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const y = composition.settings.height / 2;
     const count = composition.layers.filter((l) => l.type === 'generativePattern').length;
     const config = configJSON || serializePatternConfig(DEFAULT_PATTERN);
+    const parsed = parsePatternConfig(config);
+    const knobs = { scale: parsed.scale, rotation: parsed.rotationDeg, warp: parsed.warp, contrast: parsed.contrast };
     const w = Math.round(composition.settings.width * 0.6);
     const h = Math.round(composition.settings.height * 0.6);
     const layer = createGenerativePatternLayer(
-      `Pattern ${count + 1}`, x, y, w, h, config,
+      `Pattern ${count + 1}`, x, y, w, h, config, knobs,
       defaultClipFrames(composition)
     );
     const newComp = settleComposition(ensureLayerHasTrack({ ...composition, layers: [...composition.layers, layer] }, layer));

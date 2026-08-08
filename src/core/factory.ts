@@ -635,6 +635,7 @@ export function createGenerativePatternLayer(
   width: number,
   height: number,
   configJSON: string,
+  knobs: { scale: number; rotation: number; warp: number; contrast: number },
   durationFrames: number,
 ): GenerativePatternLayer {
   return {
@@ -649,6 +650,12 @@ export function createGenerativePatternLayer(
     transform: createTransform(x, y),
     width: createProperty('Width', 'number', width),
     height: createProperty('Height', 'number', height),
+    patternAnim: {
+      scale: createProperty('Pattern Scale', 'number', knobs.scale),
+      rotation: createProperty('Pattern Rotation', 'number', knobs.rotation),
+      warp: createProperty('Pattern Warp', 'number', knobs.warp),
+      contrast: createProperty('Pattern Contrast', 'number', knobs.contrast),
+    },
     generativePattern: {
       configJSON,
     },

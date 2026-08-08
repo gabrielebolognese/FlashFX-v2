@@ -1,9 +1,13 @@
+import { Diamond } from 'lucide-react';
 import { useEditorStore } from '../../store/editor';
+import { useTimelineStore } from '../../store/timeline';
 import type { GenerativePatternLayer } from '../../core/types';
 import { parsePatternConfig, serializePatternConfig } from '../../patterns/config';
 import type { PatternConfig, PatternType } from '../../patterns/types';
 import { PATTERN_TYPES } from '../../patterns/types';
 import { PATTERN_PRESETS, PALETTES } from '../../patterns/presets';
+
+type Knob = 'scale' | 'rotation' | 'warp' | 'contrast';
 
 const TYPE_LABEL: Record<PatternType, string> = {
   waves: 'Waves', plasma: 'Plasma', kaleidoscope: 'Kaleidoscope', mosaic: 'Mosaic',
@@ -16,10 +20,20 @@ const hexToRgb = (h: string): [number, number, number] => { const n = parseInt(h
 
 export function GenerativePatternPanel({ layer }: { layer: GenerativePatternLayer }) {
   const updateLayerProperty = useEditorStore((s) => s.updateLayerProperty);
+  const addKeyframe = useEditorStore((s) => s.addKeyframe);
+  const currentFrame = useTimelineStore((s) => s.currentFrame);
   const cfg = parsePatternConfig(layer.generativePattern.configJSON);
 
   const write = (next: PatternConfig) => updateLayerProperty(layer.id, 'generativePattern.configJSON', serializePatternConfig(next));
   const set = <K extends keyof PatternConfig>(k: K, v: PatternConfig[K]) => write({ ...cfg, [k]: v });
+
+  // Keyframeable knobs live on layer.patternAnim (not the config). Applying a preset seeds both.
+  const setKnob = (k: Knob, v: number) => updateLayerProperty(layer.id, `patternAnim.${k}.defaultValue`, v);
+  const keyKnob = (k: Knob) => addKeyframe(layer.id, `patternAnim.${k}`, currentFrame, layer.patternAnim[k].defaultValue as number);
+  const applyPreset = (config: PatternConfig) => {
+    write(config);
+    setKnob('scale', config.scale); setKnob('rotation', config.rotationDeg); setKnob('warp', config.warp); setKnob('contrast', config.contrast);
+  };
 
   return (
     <div className="p-3 space-y-3">
@@ -28,7 +42,7 @@ export function GenerativePatternPanel({ layer }: { layer: GenerativePatternLaye
         <div className="text-[10px] uppercase tracking-wider text-slate-500 font-medium mb-1.5">Presets</div>
         <div className="grid grid-cols-2 gap-1">
           {PATTERN_PRESETS.map((p) => (
-            <button key={p.name} onClick={() => write(p.config)}
+            <button key={p.name} onClick={() => applyPreset(p.config)}
               className="px-2 py-1 rounded text-[11px] bg-[#122240] text-slate-300 hover:bg-[#1a2f52] hover:text-slate-100 transition-colors text-left truncate">
               {p.name}
             </button>
@@ -57,12 +71,24 @@ export function GenerativePatternPanel({ layer }: { layer: GenerativePatternLaye
         </select>
       </Row>
 
-      <Slider label="Scale" value={cfg.scale} min={0.1} max={4} step={0.05} onChange={(v) => set('scale', v)} />
+      {/* Blend with the layers below (GPU: normal/add/multiply/screen) */}
+      <Row label="Blend">
+        <select value={layer.blendMode} onChange={(e) => updateLayerProperty(layer.id, 'blendMode', e.target.value)}
+          className="w-full h-6 px-1.5 rounded bg-[#0b1220] border border-[#1a2a42] text-[11px] text-slate-200 focus:outline-none">
+          <option value="normal">Normal</option>
+          <option value="add">Add (Linear Dodge)</option>
+          <option value="multiply">Multiply</option>
+          <option value="screen">Screen</option>
+        </select>
+      </Row>
+
+      {/* Keyframeable knobs (◆ sets a keyframe at the playhead) */}
+      <Slider label="Scale" value={layer.patternAnim.scale.defaultValue as number} min={0.1} max={4} step={0.05} onChange={(v) => setKnob('scale', v)} onKey={() => keyKnob('scale')} />
+      <Slider label="Rotation" value={layer.patternAnim.rotation.defaultValue as number} min={0} max={360} step={1} onChange={(v) => setKnob('rotation', v)} onKey={() => keyKnob('rotation')} unit="°" />
+      <Slider label="Warp" value={layer.patternAnim.warp.defaultValue as number} min={0} max={1.5} step={0.02} onChange={(v) => setKnob('warp', v)} onKey={() => keyKnob('warp')} />
+      <Slider label="Contrast" value={layer.patternAnim.contrast.defaultValue as number} min={0} max={1.5} step={0.02} onChange={(v) => setKnob('contrast', v)} onKey={() => keyKnob('contrast')} />
       <Slider label="Speed" value={cfg.speed} min={0} max={3} step={0.05} onChange={(v) => set('speed', v)} />
-      <Slider label="Rotation" value={cfg.rotationDeg} min={0} max={360} step={1} onChange={(v) => set('rotationDeg', v)} unit="°" />
       <Slider label="Complexity" value={cfg.complexity} min={1} max={8} step={1} onChange={(v) => set('complexity', v)} />
-      <Slider label="Warp" value={cfg.warp} min={0} max={1.5} step={0.02} onChange={(v) => set('warp', v)} />
-      <Slider label="Contrast" value={cfg.contrast} min={0} max={1.5} step={0.02} onChange={(v) => set('contrast', v)} />
 
       {/* Palette */}
       <div>
@@ -117,10 +143,15 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   );
 }
 
-function Slider({ label, value, min, max, step, onChange, unit }: { label: string; value: number; min: number; max: number; step: number; onChange: (v: number) => void; unit?: string }) {
+function Slider({ label, value, min, max, step, onChange, unit, onKey }: { label: string; value: number; min: number; max: number; step: number; onChange: (v: number) => void; unit?: string; onKey?: () => void }) {
   return (
     <Row label={label}>
       <div className="flex items-center gap-2">
+        {onKey && (
+          <button onClick={onKey} title="Add keyframe at playhead" className="flex-shrink-0 text-slate-600 hover:text-[#f7b500] transition-colors">
+            <Diamond size={11} />
+          </button>
+        )}
         <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(parseFloat(e.target.value))} className="flex-1 accent-[#f7b500]" />
         <span className="text-[10px] text-slate-500 font-mono w-10 text-right">{value.toFixed(step < 1 ? 2 : 0)}{unit}</span>
       </div>

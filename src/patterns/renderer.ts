@@ -18,13 +18,14 @@ interface Entry {
 class PatternRendererManager {
   private cache = new Map<string, Entry>();
 
-  renderPatternLayer(id: string, configJSON: string, localFrame: number, fps: number, width: number, height: number): OffscreenCanvas | null {
+  renderPatternLayer(id: string, configJSON: string, localFrame: number, fps: number, width: number, height: number, knobs?: { scale: number; rotation: number; warp: number; contrast: number }): OffscreenCanvas | null {
     if (width < 2 || height < 2) return null;
-    const key = `${configJSON}|${localFrame}`;
+    const key = `${configJSON}|${localFrame}|${knobs ? `${knobs.scale},${knobs.rotation},${knobs.warp},${knobs.contrast}` : ''}`;
     let e = this.cache.get(id);
     if (e && e.key === key && e.w === width && e.h === height) return e.full;
 
-    const cfg = parsePatternConfig(configJSON);
+    const parsed = parsePatternConfig(configJSON);
+    const cfg = knobs ? { ...parsed, scale: knobs.scale, rotationDeg: knobs.rotation, warp: knobs.warp, contrast: knobs.contrast } : parsed;
     const t = localFrame / (fps || 30);
     const aspect = width / height;
     const scale = INTERNAL_MAX / Math.max(width, height);

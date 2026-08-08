@@ -758,10 +758,14 @@ const SHAPE_UNIFORM_FLOATS = 916;
 // Procedural pattern layer (Phase 1.5): a buffer-only quad whose fragment GENERATES the pattern
 // per-pixel at full res (waves/plasma/kaleidoscope/mosaic), no input texture. Float layout MUST match
 // the fill in renderPatternLayers() and the WGSL struct below.
-const PATTERN_UNIFORM_FLOATS = 52;              // 20 scalars + 8 palette vec4
-const PATTERN_UNIFORM_SIZE = PATTERN_UNIFORM_FLOATS * 4; // 208 bytes
+const PATTERN_UNIFORM_FLOATS = 56;              // 24 scalars (incl. pad) + 8 palette vec4
+const PATTERN_UNIFORM_SIZE = PATTERN_UNIFORM_FLOATS * 4; // 224 bytes
 const PATTERN_UNIFORM_ALIGN = 256;              // dynamic-offset alignment
 const PATTERN_MAX_STOPS = 8;
+// Blend-with-below: layer.blendMode → the pipeline variant + the fragment output form (frozen).
+const PATTERN_BLEND_INDEX: Record<string, number> = { normal: 0, add: 1, multiply: 2, screen: 3, overlay: 0 };
+type PatternBlendKey = 'normal' | 'add' | 'multiply' | 'screen';
+const PATTERN_BLEND_KEY: Record<number, PatternBlendKey> = { 0: 'normal', 1: 'add', 2: 'multiply', 3: 'screen' };
 
 const PATTERN_SHADER = /* wgsl */ `
 struct PatternU {
@@ -781,7 +785,9 @@ struct PatternU {
   contrast: f32,          // 17
   paletteMode: f32,       // 18 (0 linear, 1 smooth)
   paletteCount: f32,      // 19
-  palette: array<vec4f, ${PATTERN_MAX_STOPS}>, // 20.. (rgb, pos)
+  blendMode: f32,         // 20 (fragment output form, matched to the pipeline's blend state)
+  _p0: f32, _p1: f32, _p2: f32, // 21,22,23 (pad palette to a 16-byte boundary)
+  palette: array<vec4f, ${PATTERN_MAX_STOPS}>, // 24.. (rgb, pos)
 }
 @group(0) @binding(0) var<uniform> u: PatternU;
 
@@ -891,7 +897,13 @@ fn samplePalette(v: f32) -> vec3f {
 fn fs(in: VO) -> @location(0) vec4f {
   let val = patternValue(in.uv);
   let col = samplePalette(val);
-  return vec4f(col, u.opacity);
+  let a = u.opacity;
+  let m = i32(u.blendMode);
+  // Output form must match the selected pipeline's blend state (opacity-correct):
+  //  multiply: dst*mix(1,col,a)  [blend dst,zero]     screen: col*a*(1-dst)+dst  [blend one-minus-dst,one]
+  if (m == 2) { return vec4f(mix(vec3f(1.0), col, a), 1.0); }
+  if (m == 3) { return vec4f(col * a, a); }
+  return vec4f(col, a); // normal (over) / add (src-alpha,one) — same output, different blend state
 }
 `;
 const TEXT_UNIFORM_SIZE = 432;
@@ -2621,9 +2633,10 @@ interface GPUState {
   textSampler: GPUSampler;
   format: GPUTextureFormat;
 
-  // Procedural pattern pipeline (Phase 1.5). Nullable: if the shader fails to build, generativePattern
-  // layers fall back to the CPU renderer (image bucket) instead of breaking the renderer.
-  patternPipeline: GPURenderPipeline | null;
+  // Procedural pattern pipelines (Phase 1.5 + blend-with-below). One variant per blend mode (normal/
+  // add/multiply/screen). Nullable: if the shader fails to build, generativePattern layers fall back
+  // to the CPU renderer (image bucket) instead of breaking the renderer.
+  patternPipelines: Record<PatternBlendKey, GPURenderPipeline> | null;
   patternUniformBuffer: GPUBuffer | null;
   patternBindGroupLayout: GPUBindGroupLayout | null;
 
@@ -3229,9 +3242,9 @@ export class WebGPURenderer {
       primitive: { topology: 'triangle-list' },
     });
 
-    // Procedural pattern pipeline — guarded so a shader failure only disables the GPU pattern path
-    // (falls back to the CPU renderer), never the whole renderer. Straight-alpha blend, like shapes.
-    let patternPipeline: GPURenderPipeline | null = null;
+    // Procedural pattern pipelines — one per blend mode (blend-with-below). Guarded so a shader failure
+    // only disables the GPU pattern path (falls back to the CPU renderer), never the whole renderer.
+    let patternPipelines: Record<PatternBlendKey, GPURenderPipeline> | null = null;
     let patternUniformBuffer: GPUBuffer | null = null;
     let patternBindGroupLayout: GPUBindGroupLayout | null = null;
     try {
@@ -3239,10 +3252,18 @@ export class WebGPURenderer {
       patternUniformBuffer = device.createBuffer({ size: PATTERN_UNIFORM_ALIGN * MAX_LAYERS, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
       patternBindGroupLayout = device.createBindGroupLayout({ entries: [{ binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform', hasDynamicOffset: true, minBindingSize: PATTERN_UNIFORM_SIZE } }] });
       const patternLayout = device.createPipelineLayout({ bindGroupLayouts: [patternBindGroupLayout] });
-      patternPipeline = device.createRenderPipeline({ layout: patternLayout, vertex: { module: patternModule, entryPoint: 'vs' }, fragment: { module: patternModule, entryPoint: 'fs', targets: [{ format, blend: blendState }] }, primitive: { topology: 'triangle-list' } });
+      // Blend states matched to the fragment's per-mode output form (see PATTERN_SHADER::fs).
+      const blends: Record<PatternBlendKey, GPUBlendState> = {
+        normal:   { color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha', operation: 'add' }, alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' } },
+        add:      { color: { srcFactor: 'src-alpha', dstFactor: 'one', operation: 'add' },                 alpha: { srcFactor: 'zero', dstFactor: 'one', operation: 'add' } },
+        multiply: { color: { srcFactor: 'dst', dstFactor: 'zero', operation: 'add' },                      alpha: { srcFactor: 'zero', dstFactor: 'one', operation: 'add' } },
+        screen:   { color: { srcFactor: 'one-minus-dst', dstFactor: 'one', operation: 'add' },             alpha: { srcFactor: 'zero', dstFactor: 'one', operation: 'add' } },
+      };
+      const mk = (blend: GPUBlendState) => device.createRenderPipeline({ layout: patternLayout, vertex: { module: patternModule, entryPoint: 'vs' }, fragment: { module: patternModule, entryPoint: 'fs', targets: [{ format, blend }] }, primitive: { topology: 'triangle-list' } });
+      patternPipelines = { normal: mk(blends.normal), add: mk(blends.add), multiply: mk(blends.multiply), screen: mk(blends.screen) };
     } catch (err) {
-      console.warn('[renderer] pattern GPU pipeline unavailable — using CPU fallback', err);
-      patternPipeline = null; patternUniformBuffer = null; patternBindGroupLayout = null;
+      console.warn('[renderer] pattern GPU pipelines unavailable — using CPU fallback', err);
+      patternPipelines = null; patternUniformBuffer = null; patternBindGroupLayout = null;
     }
 
     return {
@@ -3251,7 +3272,7 @@ export class WebGPURenderer {
       pathVertexBuffer, pathVertexCapacity: PATH_INITIAL_VERTS, bgBindGroup,
       bindGroupLayout, textBindGroupLayout, imageBindGroupLayout, pathBindGroupLayout,
       textSampler, format,
-      patternPipeline, patternUniformBuffer, patternBindGroupLayout,
+      patternPipelines, patternUniformBuffer, patternBindGroupLayout,
       blurPipeline, blitPipeline, blurUniformBuffer, blurBindGroupLayout, blitBindGroupLayout,
       sceneTex: null, layerTex: null, sceneTexView: null, layerTexView: null,
       blurBindGroup: null, blitBindGroup: null, blurTexW: 0, blurTexH: 0,
@@ -3565,7 +3586,7 @@ export class WebGPURenderer {
         textLayers.push({ index: i, layer });
       } else if (layer.layerType === 'video') {
         videoLayers.push({ index: i, layer });
-      } else if (layer.layerType === 'generativePattern' && gpu.patternPipeline && !(layer.masks && layer.masks.length > 0)) {
+      } else if (layer.layerType === 'generativePattern' && gpu.patternPipelines && !(layer.masks && layer.masks.length > 0)) {
         // GPU pattern path (Phase 1.5), used for un-masked patterns. Masked patterns (and the
         // no-pipeline fallback) go through the image bucket, which applies masks + transform.
         patternLayers.push({ index: i, layer });
@@ -3773,7 +3794,7 @@ export class WebGPURenderer {
         } else if (imgLayer.layerType === 'generativePattern' && imgLayer.generativePattern) {
           const gp = imgLayer.generativePattern;
           const pw = Math.max(2, Math.round(gp.width)), ph = Math.max(2, Math.round(gp.height));
-          const patCanvas = patternRenderer.renderPatternLayer(imgLayer.id, gp.configJSON, gp.localFrame, frame.frameRate ?? 30, pw, ph);
+          const patCanvas = patternRenderer.renderPatternLayer(imgLayer.id, gp.configJSON, gp.localFrame, frame.frameRate ?? 30, pw, ph, { scale: gp.scale, rotation: gp.rotation, warp: gp.warp, contrast: gp.contrast });
           if (!patCanvas) {
             imageBindGroups.push(null);
             continue;
@@ -3967,12 +3988,13 @@ export class WebGPURenderer {
         d[8] = t.rotation * (Math.PI / 180); d[9] = t.opacity;
         d[10] = gp.localFrame / (frame.frameRate ?? 30);
         d[11] = PATTERN_TYPE[cfg.type];
-        d[12] = cfg.scale; d[13] = cfg.speed; d[14] = cfg.rotationDeg; d[15] = cfg.complexity;
-        d[16] = cfg.warp; d[17] = cfg.contrast; d[18] = cfg.paletteMode === 'smooth' ? 1 : 0;
+        d[12] = gp.scale; d[13] = cfg.speed; d[14] = gp.rotation; d[15] = cfg.complexity; // knobs are keyframed
+        d[16] = gp.warp; d[17] = gp.contrast; d[18] = cfg.paletteMode === 'smooth' ? 1 : 0;
+        d[20] = PATTERN_BLEND_INDEX[pl.blendMode] ?? 0; // blend-with-below mode
         const stops = cfg.palette.slice(0, PATTERN_MAX_STOPS);
         d[19] = stops.length;
         for (let si = 0; si < stops.length; si++) {
-          const o = 20 + si * 4;
+          const o = 24 + si * 4;
           d[o] = stops[si].color[0]; d[o + 1] = stops[si].color[1]; d[o + 2] = stops[si].color[2]; d[o + 3] = stops[si].pos;
         }
       }
@@ -4024,8 +4046,9 @@ export class WebGPURenderer {
           pathIdx++;
         } else if (patternIdx < patternLayers.length && patternLayers[patternIdx].index === i) {
           const slot = patternIdx;
-          if (patternBindGroup && gpu.patternPipeline) {
-            const ppl = gpu.patternPipeline, pbg = patternBindGroup;
+          if (patternBindGroup && gpu.patternPipelines) {
+            const blendKey = PATTERN_BLEND_KEY[PATTERN_BLEND_INDEX[patternLayers[patternIdx].layer.blendMode] ?? 0];
+            const ppl = gpu.patternPipelines[blendKey], pbg = patternBindGroup;
             draws.push({ blur, shadow, glow, blurFx, fn: (p) => {
               p.setPipeline(ppl);
               p.setBindGroup(0, pbg, [PATTERN_UNIFORM_ALIGN * slot]);
