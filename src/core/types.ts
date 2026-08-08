@@ -2,6 +2,7 @@
 // module (src/cloner) and are imported type-only here (erased at runtime — no
 // runtime dependency of core on the feature module).
 import type { ClonerLayer, InstanceTransform } from '../cloner/types';
+import type { SharedStyle } from './styles'; // M21 — type-only (erased; no runtime cycle)
 import type { ClonerRenderPath } from '../cloner/renderPath';
 // M14 reframe constraints — type-only (erased at runtime; reframe.ts imports only `type Vec2`
 // back from here, so this cross-reference has no runtime cycle).
@@ -362,6 +363,9 @@ export interface ShapeLayer {
   materialConfig?: ShapeMaterialConfig;
   strokeMaterialConfig?: ShapeMaterialConfig;
   patternFill?: ShapePatternConfig;
+  /** M21 — linked color styles for fill/stroke (resolve reads through the style). */
+  fillStyleId?: string;
+  strokeStyleId?: string;
   inPoint: number;
   outPoint: number;
 }
@@ -387,6 +391,9 @@ export interface TextLayer {
   content: TextContent;
   layoutConfig: TextLayoutConfig;
   animOverrides: TextAnimatableOverrides;
+  /** M21 — linked color styles for text fill/stroke. */
+  fillStyleId?: string;
+  strokeStyleId?: string;
   inPoint: number;
   outPoint: number;
 }
@@ -1008,6 +1015,8 @@ export interface SceneDocument {
    *  legacy documents (migrated to `[rootCompositionId]` on load). */
   scenes?: string[];
   compositions: Record<string, Composition>;
+  /** M21 — document-level shared/linked style definitions (id → style), shared across comps. */
+  styles?: Record<string, SharedStyle>;
 }
 
 export type StaggerDirectionMode =

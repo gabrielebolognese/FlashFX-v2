@@ -8,6 +8,7 @@
 // edges (the cloner's WHITE/GRAY/BLACK DFS was deliberately shaped for exactly this).
 
 import type { Composition, PrecompLayer } from './types';
+import type { SharedStyle } from './styles';
 
 /** Hard recursion cap — guarantees termination even if resolve-time cycle
  *  validation is bypassed. Nesting deeper than this renders nothing. */
@@ -22,6 +23,8 @@ export const MAX_PRECOMP_DEPTH = 16;
 export interface ResolveContext {
   /** Resolve a composition by id from the document registry. */
   getComposition?: (id: string) => Composition | undefined;
+  /** M21 — resolve a shared/linked style by id from the document registry. */
+  getStyle?: (id: string) => SharedStyle | undefined;
   /** Current recursion depth (0 at the root). */
   depth?: number;
   /** Composition ids currently on the recursion stack (cycle guard). */

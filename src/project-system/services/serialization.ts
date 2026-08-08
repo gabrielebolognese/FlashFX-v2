@@ -44,5 +44,20 @@ export function deserializeDocument(data: string): SceneDocument {
   // single scene (the root). The store guarantees the root is always a scene.
   const rawScenes = Array.isArray(raw?.scenes) ? (raw.scenes as unknown[]).filter((id): id is string => typeof id === 'string' && !!compositions[id]) : [];
   const scenes = rawScenes.length > 0 ? rawScenes : [rootCompositionId];
-  return { version: SCENE_DOCUMENT_VERSION, rootCompositionId, scenes, compositions };
+  return { version: SCENE_DOCUMENT_VERSION, rootCompositionId, scenes, compositions, styles: validateStyles(raw?.styles) };
+}
+
+// M21 — preserve the shared-style registry through the round-trip (else it vanishes on load).
+function validateStyles(raw: unknown): SceneDocument['styles'] {
+  if (!raw || typeof raw !== 'object') return {};
+  const out: NonNullable<SceneDocument['styles']> = {};
+  for (const [id, s] of Object.entries(raw as Record<string, unknown>)) {
+    if (s && typeof s === 'object') {
+      const st = s as { id?: unknown; name?: unknown; type?: unknown; value?: unknown };
+      if (typeof st.id === 'string' && typeof st.name === 'string' && typeof st.type === 'string' && st.value && typeof st.value === 'object') {
+        out[id] = s as NonNullable<SceneDocument['styles']>[string];
+      }
+    }
+  }
+  return out;
 }

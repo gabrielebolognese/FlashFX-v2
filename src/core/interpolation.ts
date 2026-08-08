@@ -33,6 +33,7 @@ import type { ClonerLayer } from '../cloner/types';
 import { rasterizeField, type FieldGrid } from '../field-sampling/fields';
 import { precompLocalFrame, MAX_PRECOMP_DEPTH } from './precomp';
 import type { ResolveContext } from './precomp';
+import { resolveStyleColor, type StyleLookup } from './styles';
 import type { PrecompLayer } from './types';
 import { resolveDominantColor, resolveShapeFill, resolveShapePattern, hexToVec4 } from './material';
 import { getMotionBlur } from './layerSwitches';
@@ -320,11 +321,12 @@ function resolveTransform(transform: Transform, frame: number): ResolvedTransfor
   };
 }
 
-function resolveShapeLayer(layer: ShapeLayer, frame: number): ResolvedShape {
+function resolveShapeLayer(layer: ShapeLayer, frame: number, getStyle?: StyleLookup): ResolvedShape {
   const shape = layer.shape;
   const defaultColor: Vec4 = [0.5, 0.5, 0.5, 1];
-  const fillColor = resolveDominantColor(layer.materialConfig, shape.fillColor ?? defaultColor);
-  const strokeColor = resolveDominantColor(layer.strokeMaterialConfig, shape.strokeColor ?? [0, 0, 0, 1]);
+  // M21 — read fill/stroke THROUGH any linked color style before the material overlay.
+  const fillColor = resolveDominantColor(layer.materialConfig, resolveStyleColor(layer.fillStyleId, shape.fillColor ?? defaultColor, getStyle));
+  const strokeColor = resolveDominantColor(layer.strokeMaterialConfig, resolveStyleColor(layer.strokeStyleId, shape.strokeColor ?? [0, 0, 0, 1], getStyle));
   const base: ResolvedShape = {
     renderType: shape.type,
     width: 0,
@@ -486,7 +488,7 @@ function composeTransforms(parent: ResolvedTransform, child: ResolvedTransform):
   };
 }
 
-function resolveTextLayer(layer: TextLayer, frame: number): ResolvedText {
+function resolveTextLayer(layer: TextLayer, frame: number, getStyle?: StyleLookup): ResolvedText {
   const span = layer.content.spans[0];
   if (!span) {
     return {
@@ -536,8 +538,8 @@ function resolveTextLayer(layer: TextLayer, frame: number): ResolvedText {
     fontSize: evaluateNumber(layer.animOverrides.fontSize, frame),
     lineHeight: evaluateNumber(layer.animOverrides.lineHeight, frame),
     letterSpacing: evaluateNumber(layer.animOverrides.letterSpacing, frame),
-    fillColor: style.color,
-    strokeColor: style.strokeColor,
+    fillColor: resolveStyleColor(layer.fillStyleId, style.color, getStyle),
+    strokeColor: resolveStyleColor(layer.strokeStyleId, style.strokeColor, getStyle),
     strokeWidth: evaluateNumber(layer.animOverrides.strokeWidth, frame),
     textAlign: layer.layoutConfig.horizontalAlign,
     underline: style.underline,
@@ -816,6 +818,7 @@ const EMPTY_VISITED: ReadonlySet<string> = new Set();
 
 export function resolveFrame(composition: Composition, frame: number, ctx?: ResolveContext): RenderFrame {
   const { settings, layers } = composition;
+  const getStyle = ctx?.getStyle; // M21 — linked-style lookup, read through by shape/text fill+stroke
   const motionPaths = composition.motionPaths || [];
   const resolvedLayers: ResolvedLayer[] = [];
   const tracks = composition.tracks || [];
@@ -963,7 +966,7 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
       const blur = computeBlur((layer as { blur?: LayerBlur }).blur);
 
       if (layer.type === 'text') {
-        const resolvedText = resolveTextLayer(layer, frame);
+        const resolvedText = resolveTextLayer(layer, frame, getStyle);
         resolvedLayers.push({
           id: layer.id,
           visible: true,
@@ -1020,7 +1023,7 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
           visible: true,
           blendMode: layer.blendMode,
           transform: worldTransform,
-          shape: resolveShapeLayer(shapeLayer, frame),
+          shape: resolveShapeLayer(shapeLayer, frame, getStyle),
           mask: resolveMask(layer.masks, frame),
           masks: resolveMasks(layer.masks, frame),
           motionBlur,

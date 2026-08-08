@@ -159,7 +159,10 @@ export function Viewport() {
   useEffect(() => {
     timelineEngine.setComposition(composition);
     // Precomp layers resolve their referenced sub-compositions from the registry.
-    timelineEngine.setResolveContext({ getComposition: (id) => useEditorStore.getState().getComposition(id) });
+    timelineEngine.setResolveContext({
+      getComposition: (id) => useEditorStore.getState().getComposition(id),
+      getStyle: (id) => useEditorStore.getState().styles[id], // M21 — linked styles read-through
+    });
     playbackController.setFrameRate(composition.settings.frameRate);
     playbackController.setDuration(composition.settings.durationFrames);
     playbackController.renderCurrentFrame();

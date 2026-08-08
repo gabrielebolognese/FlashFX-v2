@@ -1,8 +1,9 @@
 import { create } from 'zustand';
-import type { Composition, SceneDocument, Layer, AnimatableProperty, Keyframe, Vec2, InterpolationType, BackgroundLayer, Track, TrackType, VideoPlaybackMode, PathVertex, VertexType, Mask, MaskType, AnchorEdge, PhysicsBindingDef, PhysicsWorldDef, StaggerBindingDef, LayoutObjectLayer, LayoutContainerLayer, ContainerShapeType, Marker, ShapeLayer, PolygonShape } from '../core/types';
+import type { Composition, SceneDocument, Layer, AnimatableProperty, Keyframe, Vec2, Vec4, InterpolationType, BackgroundLayer, Track, TrackType, VideoPlaybackMode, PathVertex, VertexType, Mask, MaskType, AnchorEdge, PhysicsBindingDef, PhysicsWorldDef, StaggerBindingDef, LayoutObjectLayer, LayoutContainerLayer, ContainerShapeType, Marker, ShapeLayer, PolygonShape } from '../core/types';
 import { createComposition, createRectangleLayer, createCircleLayer, createStarLayer, createPolygonLayer, createDefaultPolygonVertices, createTextLayer, createVideoLayer, createImageLayer, createAudioLayer, createGroupLayer, createKeyframe, createBackgroundLayer, createMask, createParticleLayer, createAnimationItemLayer, createFieldSampledLayer, createLottieIconLayer, createLayoutObjectLayer, createLayoutContainerLayer, createDefaultChildOverride, createProperty, uid } from '../core/factory';
 import { outlineText, canOutlineFont } from '../text/outlineText';
 import { computeBatchNames, type RenamePattern } from '../core/batchRename';
+import { detachStyleValue, type SharedStyle } from '../core/styles';
 import { DEFAULT_SHADOW, DEFAULT_GLOW, DEFAULT_BLUR } from '../core/effectDefaults';
 import type { AlignResult, LayerBounds } from '../core/align';
 import { getLayerBounds, computeTidyUp } from '../core/align';
@@ -127,6 +128,24 @@ function layerSupportsMasks(layer: Layer): boolean {
 /** Layer kinds a Cloner can repeat as its source (M16). Excludes self/audio/group/precomp/layout. */
 const CLONER_SOURCE_TYPES = new Set<Layer['type']>(['shape', 'text', 'image', 'video', 'lottieIcon']);
 
+// M21 — read/write a layer's raw fill/stroke color (shape geometry, or the first text span).
+function layerRawColor(layer: Layer, slot: 'fill' | 'stroke'): Vec4 | null {
+  if (layer.type === 'shape') return slot === 'fill' ? layer.shape.fillColor : layer.shape.strokeColor;
+  if (layer.type === 'text') { const s = layer.content.spans[0]?.style; return s ? (slot === 'fill' ? s.color : s.strokeColor) : null; }
+  return null;
+}
+function bakeColor(layer: Layer, slot: 'fill' | 'stroke', color: Vec4): Layer {
+  const c = [...color] as Vec4;
+  if (layer.type === 'shape') {
+    return { ...layer, shape: { ...layer.shape, [slot === 'fill' ? 'fillColor' : 'strokeColor']: c } } as Layer;
+  }
+  if (layer.type === 'text') {
+    const spans = layer.content.spans.map((sp, i) => (i === 0 ? { ...sp, style: { ...sp.style, [slot === 'fill' ? 'color' : 'strokeColor']: c } } : sp));
+    return { ...layer, content: { ...layer.content, spans } } as Layer;
+  }
+  return layer;
+}
+
 const DEFAULT_CLIP_SECONDS = 4;
 function defaultClipFrames(comp: Composition): number {
   // Cap to user's minimum duration so newly inserted clips don't auto-extend
@@ -145,6 +164,8 @@ interface EditorState {
    *  The active entry may be stale — `composition` is authoritative for it; use
    *  `getComposition()` which merges the two. */
   compositions: Record<string, Composition>;
+  /** M21 — document-level shared/linked style registry. */
+  styles: Record<string, SharedStyle>;
   /** The top-level composition id (what a project opens to). */
   rootCompositionId: string;
   /** Which composition `composition` currently mirrors (root, or a precomp entered). */
@@ -210,6 +231,14 @@ interface EditorState {
   nudgeSelection: (dx: number, dy: number) => void;
   toggleGroupCollapsed: (groupId: string) => void;
   loadComposition: (comp: Composition) => void;
+
+  // M21 — shared/linked color styles (document-level)
+  createColorStyle: (color: Vec4, name?: string) => string;
+  updateStyleColor: (id: string, color: Vec4) => void;
+  renameStyle: (id: string, name: string) => void;
+  linkLayerColorStyle: (layerId: string, slot: 'fill' | 'stroke', styleId: string) => void;
+  detachLayerColorStyle: (layerId: string, slot: 'fill' | 'stroke') => void;
+  deleteStyle: (id: string) => void;
 
   // Precomposition (multi-composition document)
   /** Merge lookup: the live active comp for its id, else the registry entry. */
@@ -957,6 +986,7 @@ const _initialRoot = getDefaultComposition();
 export const useEditorStore = create<EditorState>((set, get) => ({
   composition: _initialRoot,
   compositions: { [_initialRoot.id]: _initialRoot },
+  styles: {},
   rootCompositionId: _initialRoot.id,
   activeCompositionId: _initialRoot.id,
   navStack: [_initialRoot.id],
@@ -1144,6 +1174,111 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       label: 'Rename Layers',
       execute: () => { set({ composition: newComp }); },
       undo: () => { set({ composition: oldComp }); },
+    });
+  },
+
+  // ─── M21 shared/linked color styles ───
+  createColorStyle: (color, name) => {
+    const id = uid();
+    const style: SharedStyle = { id, name: name || `Color ${Object.keys(get().styles).length + 1}`, type: 'color', value: { kind: 'color', color: [...color] as Vec4 } };
+    const oldStyles = get().styles;
+    exec({
+      label: 'Create Style',
+      execute: () => { set({ styles: { ...get().styles, [id]: style } }); },
+      undo: () => { set({ styles: oldStyles }); },
+    });
+    return id;
+  },
+
+  // Edit the definition — every linked referent updates for free (resolve reads through it).
+  updateStyleColor: (id, color) => {
+    const cur = get().styles[id];
+    if (!cur || cur.value.kind !== 'color') return;
+    const oldStyles = get().styles;
+    const next: SharedStyle = { ...cur, value: { kind: 'color', color: [...color] as Vec4 } };
+    exec({
+      label: 'Edit Style',
+      execute: () => { set({ styles: { ...get().styles, [id]: next } }); },
+      undo: () => { set({ styles: oldStyles }); },
+    });
+  },
+
+  renameStyle: (id, name) => {
+    const cur = get().styles[id];
+    if (!cur || cur.name === name) return;
+    const oldStyles = get().styles;
+    exec({
+      label: 'Rename Style',
+      execute: () => { set({ styles: { ...get().styles, [id]: { ...get().styles[id], name } } }); },
+      undo: () => { set({ styles: oldStyles }); },
+    });
+  },
+
+  linkLayerColorStyle: (layerId, slot, styleId) => {
+    const { composition } = get();
+    const field = slot === 'fill' ? 'fillStyleId' : 'strokeStyleId';
+    const oldComp = composition;
+    const layers = composition.layers.map((l) => (l.id === layerId && (l.type === 'shape' || l.type === 'text') ? ({ ...l, [field]: styleId } as Layer) : l));
+    const newComp = { ...composition, layers };
+    exec({
+      label: 'Link Style',
+      execute: () => { set({ composition: newComp }); },
+      undo: () => { set({ composition: oldComp }); },
+    });
+  },
+
+  detachLayerColorStyle: (layerId, slot) => {
+    const { composition, styles } = get();
+    const layer = composition.layers.find((l) => l.id === layerId);
+    if (!layer || (layer.type !== 'shape' && layer.type !== 'text')) return;
+    const field = slot === 'fill' ? 'fillStyleId' : 'strokeStyleId';
+    const styleId = (layer as { fillStyleId?: string; strokeStyleId?: string })[field];
+    const raw = layerRawColor(layer, slot);
+    if (!raw) return;
+    const baked = detachStyleValue(styleId, raw, (id) => styles[id]);
+    const oldComp = composition;
+    const layers = composition.layers.map((l) => (l.id === layerId ? bakeColor({ ...l, [field]: undefined } as Layer, slot, baked) : l));
+    const newComp = { ...composition, layers };
+    exec({
+      label: 'Detach Style',
+      execute: () => { set({ composition: newComp }); },
+      undo: () => { set({ composition: oldComp }); },
+    });
+  },
+
+  deleteStyle: (id) => {
+    const { styles } = get();
+    const style = styles[id];
+    if (!style) return;
+    const oldStyles = styles;
+    const { [id]: _removed, ...rest } = styles;
+    void _removed;
+    // Bake the style's value into every referent across the live comp + registry, clearing the ref.
+    const bakeInComp = (comp: Composition): Composition => {
+      let touched = false;
+      const layers = comp.layers.map((l) => {
+        const rec = l as { fillStyleId?: string; strokeStyleId?: string };
+        let nl = l;
+        for (const slot of ['fill', 'stroke'] as const) {
+          const field = slot === 'fill' ? 'fillStyleId' : 'strokeStyleId';
+          if (rec[field] === id) {
+            const raw = layerRawColor(nl, slot);
+            if (raw) { nl = bakeColor({ ...nl, [field]: undefined } as Layer, slot, style.value.kind === 'color' ? style.value.color : raw); touched = true; }
+          }
+        }
+        return nl;
+      });
+      return touched ? { ...comp, layers } : comp;
+    };
+    const oldComp = get().composition;
+    const oldCompositions = get().compositions;
+    const newComp = bakeInComp(oldComp);
+    const newCompositions: Record<string, Composition> = {};
+    for (const [cid, c] of Object.entries(oldCompositions)) newCompositions[cid] = bakeInComp(c);
+    exec({
+      label: 'Delete Style',
+      execute: () => { set({ styles: rest, composition: newComp, compositions: newCompositions }); },
+      undo: () => { set({ styles: oldStyles, composition: oldComp, compositions: oldCompositions }); },
     });
   },
 
@@ -1422,7 +1557,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   getDocument: () => {
     const { compositions, activeCompositionId, composition, rootCompositionId, scenes } = get();
     // Fold the live active comp into the registry so the document is complete.
-    return { version: 2, rootCompositionId, scenes, compositions: { ...compositions, [activeCompositionId]: composition } };
+    return { version: 2, rootCompositionId, scenes, compositions: { ...compositions, [activeCompositionId]: composition }, styles: get().styles };
   },
 
   loadDocument: (doc) => {
@@ -1444,6 +1579,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       : [rootId];
     set({
       compositions,
+      styles: doc.styles ?? {},
       composition: compositions[rootId],
       rootCompositionId: rootId,
       activeCompositionId: rootId,

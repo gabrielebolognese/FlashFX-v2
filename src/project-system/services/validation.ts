@@ -310,6 +310,9 @@ function validateLayer(raw: unknown): Layer | null {
         ...(isObject(r.materialConfig) ? { materialConfig: r.materialConfig as unknown as ShapeMaterialConfig } : {}),
         ...(isObject(r.strokeMaterialConfig) ? { strokeMaterialConfig: r.strokeMaterialConfig as unknown as ShapeMaterialConfig } : {}),
         ...(isObject(r.patternFill) ? { patternFill: r.patternFill as unknown as ShapePatternConfig } : {}),
+        // M21 — preserve linked-style refs (else stripped on save/load).
+        ...(typeof r.fillStyleId === 'string' ? { fillStyleId: r.fillStyleId } : {}),
+        ...(typeof r.strokeStyleId === 'string' ? { strokeStyleId: r.strokeStyleId } : {}),
       } as ShapeLayer;
     }
     case 'text': {
@@ -357,6 +360,9 @@ function validateLayer(raw: unknown): Layer | null {
         content: textContent,
         layoutConfig,
         animOverrides,
+        // M21 — preserve linked-style refs.
+        ...(typeof r.fillStyleId === 'string' ? { fillStyleId: r.fillStyleId } : {}),
+        ...(typeof r.strokeStyleId === 'string' ? { strokeStyleId: r.strokeStyleId } : {}),
       } as TextLayer;
     }
     case 'group': {

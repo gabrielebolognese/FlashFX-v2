@@ -7,7 +7,7 @@ import { useMotionPathStore } from '../../store/motionPath';
 import { useMaskStore } from '../../store/mask';
 import { usePathEditStore } from '../../store/pathEdit';
 import { BrandColorPicker } from '../components/BrandColorPicker';
-import type { ShapeLayer, TextLayer, VideoLayer, ImageLayer, AudioLayer, ParticleLayer, AnimationItemLayer, LottieIconLayer, AnimatableProperty, Vec2, RectangleShape, CircleShape, StarShape, PolygonShape, MotionPathAnchor, MotionPathLoop, Mask, MaskType, Layer, LayerShadow, LayerGlow, LayerBlur, BlurType, GlowMode, LayoutObjectLayer, LayoutContainerLayer } from '../../core/types';
+import type { ShapeLayer, TextLayer, VideoLayer, ImageLayer, AudioLayer, ParticleLayer, AnimationItemLayer, LottieIconLayer, AnimatableProperty, Vec2, Vec4, RectangleShape, CircleShape, StarShape, PolygonShape, MotionPathAnchor, MotionPathLoop, Mask, MaskType, Layer, LayerShadow, LayerGlow, LayerBlur, BlurType, GlowMode, LayoutObjectLayer, LayoutContainerLayer } from '../../core/types';
 import { evaluateProperty } from '../../core/interpolation';
 import { createProperty } from '../../core/factory';
 import { getMotionBlur } from '../../core/layerSwitches';
@@ -548,16 +548,8 @@ function ShapeProperties({
         </div>
       )}
 
-      <ColorInput
-        label="Fill"
-        value={shape.fillColor}
-        onChange={(v) => updateLayerProperty(layer.id, 'shape.fillColor', v)}
-      />
-      <ColorInput
-        label="Stroke"
-        value={shape.strokeColor}
-        onChange={(v) => updateLayerProperty(layer.id, 'shape.strokeColor', v)}
-      />
+      <ColorStyleRow label="Fill" layerId={layer.id} slot="fill" rawColor={shape.fillColor} onRawChange={(v) => updateLayerProperty(layer.id, 'shape.fillColor', v)} />
+      <ColorStyleRow label="Stroke" layerId={layer.id} slot="stroke" rawColor={shape.strokeColor} onRawChange={(v) => updateLayerProperty(layer.id, 'shape.strokeColor', v)} />
       <NumberDragInput
         label="Stroke W"
         prop={shape.strokeWidth}
@@ -1769,6 +1761,55 @@ function ConstraintsSection({ layer }: { layer: Layer }) {
         <div className="text-[9px] text-slate-600 pt-0.5">Reflows when the composition frame is resized.</div>
       </div>
     </Section>
+  );
+}
+
+// M21 — a fill/stroke color row that can LINK to a shared style. When linked, the swatch shows
+// the style's color and editing updates the style (→ all referents); a chain menu links to an
+// existing style, creates one from the current color, or detaches (bakes the value locally).
+function ColorStyleRow({ label, layerId, slot, rawColor, onRawChange }: {
+  label: string; layerId: string; slot: 'fill' | 'stroke'; rawColor: Vec4; onRawChange: (v: Vec4) => void;
+}) {
+  const styles = useEditorStore((s) => s.styles);
+  const layer = useEditorStore((s) => s.composition.layers.find((l) => l.id === layerId));
+  const createColorStyle = useEditorStore((s) => s.createColorStyle);
+  const updateStyleColor = useEditorStore((s) => s.updateStyleColor);
+  const linkLayerColorStyle = useEditorStore((s) => s.linkLayerColorStyle);
+  const detachLayerColorStyle = useEditorStore((s) => s.detachLayerColorStyle);
+  const [open, setOpen] = useState(false);
+
+  const styleId = (layer as { fillStyleId?: string; strokeStyleId?: string } | undefined)?.[slot === 'fill' ? 'fillStyleId' : 'strokeStyleId'];
+  const linked = styleId ? styles[styleId] : undefined;
+  const linkedColor = linked?.value.kind === 'color' ? linked.value.color : undefined;
+  const eff = linkedColor ?? rawColor;
+  const colorStyles = Object.values(styles).filter((s) => s.type === 'color');
+  const swatch = (c: Vec4) => `rgba(${Math.round(c[0] * 255)},${Math.round(c[1] * 255)},${Math.round(c[2] * 255)},${c[3]})`;
+
+  return (
+    <div className="relative flex items-center gap-1">
+      <div className="flex-1">
+        <ColorInput label={label} value={eff} onChange={(v) => (linked && styleId ? updateStyleColor(styleId, v) : onRawChange(v))} />
+      </div>
+      <button onClick={() => setOpen((o) => !o)} title="Link to style" className={`p-1 rounded hover:bg-white/5 ${linked ? 'text-cyan-400' : 'text-slate-600'}`}><Link2 size={12} /></button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 top-6 z-50 w-44 bg-[#0e1c32] border border-[#1a2a42] rounded-md shadow-xl p-1 text-[11px]">
+            {linked && <div className="px-1.5 py-1 text-slate-500">Linked: {linked.name}</div>}
+            <div className="max-h-40 overflow-y-auto">
+              {colorStyles.map((s) => (
+                <button key={s.id} onClick={() => { linkLayerColorStyle(layerId, slot, s.id); setOpen(false); }} className="w-full flex items-center gap-1.5 px-1.5 py-1 rounded hover:bg-white/5 text-slate-300">
+                  <span className="w-3 h-3 rounded-sm border border-[#1a2a42]" style={{ background: s.value.kind === 'color' ? swatch(s.value.color) : undefined }} />
+                  <span className="truncate">{s.name}</span>
+                </button>
+              ))}
+            </div>
+            <button onClick={() => { const id = createColorStyle(eff); linkLayerColorStyle(layerId, slot, id); setOpen(false); }} className="w-full text-left px-1.5 py-1 rounded hover:bg-white/5 text-cyan-300">+ New style from color</button>
+            {linked && <button onClick={() => { detachLayerColorStyle(layerId, slot); setOpen(false); }} className="w-full text-left px-1.5 py-1 rounded hover:bg-white/5 text-slate-400">Detach</button>}
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
