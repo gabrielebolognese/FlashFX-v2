@@ -357,6 +357,7 @@ interface EditorState {
   removeLayer: (id: string) => void;
   removeLayers: (ids: string[]) => void;
   updateLayerProperty: (layerId: string, path: string, value: unknown) => void;
+  toggleLayer3D: (layerId: string) => void;
   // Image effect-stack actions (see core/effects/effectRegistry). `type` is the
   // frozen numeric effect id; upsert sets one param (creating the effect if
   // absent), remove deletes the whole effect.
@@ -3181,6 +3182,36 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
     exec({
       label: 'Update Property',
+      execute: () => { set({ composition: newComp }); },
+      undo: () => { set({ composition: oldComp }); },
+    });
+  },
+
+  // 2.5D (M3) — flip a layer's 3D switch. Enabling ensures the depth transform props
+  // (positionZ / rotationX / rotationY) exist so the inspector can show + keyframe them; the
+  // props are left in place when disabling (all 0 → the 2D affine path is byte-identical).
+  toggleLayer3D: (layerId) => {
+    const { composition } = get();
+    const layer = composition.layers.find((l) => l.id === layerId);
+    if (!layer || layer.type === 'camera' || layer.type === 'group' || layer.type === 'audio') return;
+    const oldComp = composition;
+    const next = !layer.is3D;
+    const newLayers = composition.layers.map((l) => {
+      if (l.id !== layerId) return l;
+      const t = l.transform;
+      const transform = next
+        ? {
+            ...t,
+            positionZ: t.positionZ ?? createProperty('Z Position', 'number', 0),
+            rotationX: t.rotationX ?? createProperty('X Rotation', 'number', 0),
+            rotationY: t.rotationY ?? createProperty('Y Rotation', 'number', 0),
+          }
+        : t;
+      return { ...l, is3D: next, transform } as Layer;
+    });
+    const newComp = { ...composition, layers: newLayers };
+    exec({
+      label: next ? 'Enable 3D Layer' : 'Disable 3D Layer',
       execute: () => { set({ composition: newComp }); },
       undo: () => { set({ composition: oldComp }); },
     });

@@ -12,7 +12,7 @@ import { evaluateProperty } from '../../core/interpolation';
 import { createProperty } from '../../core/factory';
 import { getMotionBlur } from '../../core/layerSwitches';
 import { DEFAULT_CONSTRAINTS, type ReframeAxisMode } from '../../core/reframe';
-import { Diamond, Route, Trash2, Wand2, Sliders, Sparkles, Square, Circle, Star, Hexagon, Zap, Scissors, Moon, Layers, Type, Frame, Copy, ChevronUp, ChevronDown, Eye, EyeOff, Plus, Repeat, Link2, Atom, Grid3x3, Aperture, Code2, SlidersHorizontal, Palette, Loader2, Boxes } from 'lucide-react';
+import { Diamond, Route, Trash2, Wand2, Sliders, Sparkles, Square, Circle, Star, Hexagon, Zap, Scissors, Moon, Layers, Type, Frame, Copy, ChevronUp, ChevronDown, Eye, EyeOff, Plus, Repeat, Link2, Atom, Grid3x3, Aperture, Code2, SlidersHorizontal, Palette, Loader2, Boxes, Box } from 'lucide-react';
 import { DragInput } from '../components/DragInput';
 import { useSilenceStore } from '../../store/silenceStripper';
 import { BackgroundPanel } from './BackgroundPanel';
@@ -162,6 +162,7 @@ function InspectorTabContent({ tab, layer }: { tab: InspectorTab; layer: Layer }
   const currentFrame = useTimelineStore((s) => s.currentFrame);
   const updateLayerProperty = useEditorStore((s) => s.updateLayerProperty);
   const addKeyframe = useEditorStore((s) => s.addKeyframe);
+  const toggleLayer3D = useEditorStore((s) => s.toggleLayer3D);
 
   const hasKeyframeAt = (prop: AnimatableProperty) =>
     prop.keyframes.some((k) => k.frame === currentFrame);
@@ -262,6 +263,21 @@ function InspectorTabContent({ tab, layer }: { tab: InspectorTab; layer: Layer }
       </Section>
 
       <Section title="Transform">
+        {/* 2.5D — 3D layer switch. Off for cameras (always 3D), groups, audio. */}
+        {layer.type !== 'camera' && layer.type !== 'group' && layer.type !== 'audio' && (
+          <button
+            onClick={() => toggleLayer3D(layer.id)}
+            title="Toggle 3D layer (adds Z position + X/Y/Z rotation)"
+            className={`flex items-center gap-1.5 mb-1.5 px-2 py-1 rounded text-[11px] border transition-colors ${
+              layer.is3D
+                ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
+                : 'bg-[#122240] border-[#1a2a42] text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Box size={12} />
+            3D Layer{layer.is3D ? ' · on' : ''}
+          </button>
+        )}
         <Vec2DragInput
           label="Position"
           prop={layer.transform.position}
@@ -271,8 +287,44 @@ function InspectorTabContent({ tab, layer }: { tab: InspectorTab; layer: Layer }
           hasKeyframe={hasKeyframeAt(layer.transform.position)}
           labels={['X', 'Y']}
         />
+        {/* 2.5D depth: Z position (present once the layer is 3D). */}
+        {layer.is3D && layer.transform.positionZ && (
+          <NumberDragInput
+            label="Z Position"
+            prop={layer.transform.positionZ}
+            frame={currentFrame}
+            onChange={(v) => updateLayerProperty(layer.id, 'transform.positionZ.defaultValue', v)}
+            onKeyframe={(v) => addKeyframe(layer.id, 'transform.positionZ', currentFrame, v)}
+            hasKeyframe={hasKeyframeAt(layer.transform.positionZ)}
+            step={1}
+          />
+        )}
+        {layer.is3D && layer.transform.rotationX && (
+          <NumberDragInput
+            label="X Rotation"
+            prop={layer.transform.rotationX}
+            frame={currentFrame}
+            onChange={(v) => updateLayerProperty(layer.id, 'transform.rotationX.defaultValue', v)}
+            onKeyframe={(v) => addKeyframe(layer.id, 'transform.rotationX', currentFrame, v)}
+            hasKeyframe={hasKeyframeAt(layer.transform.rotationX)}
+            suffix="deg"
+            step={0.5}
+          />
+        )}
+        {layer.is3D && layer.transform.rotationY && (
+          <NumberDragInput
+            label="Y Rotation"
+            prop={layer.transform.rotationY}
+            frame={currentFrame}
+            onChange={(v) => updateLayerProperty(layer.id, 'transform.rotationY.defaultValue', v)}
+            onKeyframe={(v) => addKeyframe(layer.id, 'transform.rotationY', currentFrame, v)}
+            hasKeyframe={hasKeyframeAt(layer.transform.rotationY)}
+            suffix="deg"
+            step={0.5}
+          />
+        )}
         <NumberDragInput
-          label="Rotation"
+          label={layer.is3D ? 'Z Rotation' : 'Rotation'}
           prop={layer.transform.rotation}
           frame={currentFrame}
           onChange={(v) => updateLayerProperty(layer.id, 'transform.rotation.defaultValue', v)}
