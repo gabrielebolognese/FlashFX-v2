@@ -28,7 +28,7 @@ try {
   await build({ entryPoints: ['src/core/mat4.ts'], bundle: true, format: 'esm', platform: 'node', outfile: mfile, logLevel: 'silent' });
   const { transformPoint } = await import(pathToFileURL(mfile).href);
 
-  const { defaultCamera, cameraFromParams, fovYForZoom, zoomForFovY, localModelMatrix, composeWorldMatrix, forwardVector } = m;
+  const { defaultCamera, cameraFromParams, fovYForZoom, zoomForFovY, localModelMatrix, composeWorldMatrix, forwardVector, mvp, cameraSpaceDepth, painterOrder } = m;
 
   console.log('2.5D camera + world-matrix core — acceptance\n');
 
@@ -105,6 +105,48 @@ try {
     const a = localModelMatrix(t);
     const b = composeWorldMatrix([a]);
     assert.ok(a.every((v, i) => near(v, b[i], 1e-12)));
+  });
+
+  // ---- M2: MVP + painter's depth sort ----
+  const ident16 = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+
+  check('mvp(camera, identity) equals the camera viewProjection', () => {
+    const cam = defaultCamera(W, H);
+    const got = mvp(cam, ident16);
+    assert.ok(got.every((v, i) => near(v, cam.viewProjection[i], 1e-9)));
+  });
+
+  check('cameraSpaceDepth: farther card (+Z) is more negative than a nearer one', () => {
+    const cam = defaultCamera(W, H);
+    const near0 = cameraSpaceDepth(cam, localModelMatrix({ positionX: W / 2, positionY: H / 2, positionZ: 0, rotation: 0, rotationX: 0, rotationY: 0, scaleX: 1, scaleY: 1, anchorX: 0, anchorY: 0, opacity: 1 }));
+    const far = cameraSpaceDepth(cam, localModelMatrix({ positionX: W / 2, positionY: H / 2, positionZ: 500, rotation: 0, rotationX: 0, rotationY: 0, scaleX: 1, scaleY: 1, anchorX: 0, anchorY: 0, opacity: 1 }));
+    assert.ok(far < near0, `farther is more negative (near=${near0}, far=${far})`);
+  });
+
+  check('painterOrder sorts a pure-3D run far→near', () => {
+    // depths: index0 near(-100), 1 far(-900), 2 mid(-500) → order far,mid,near = [1,2,0]
+    const order = painterOrder([
+      { is3D: true, depth: -100 },
+      { is3D: true, depth: -900 },
+      { is3D: true, depth: -500 },
+    ]);
+    assert.deepEqual(order, [1, 2, 0]);
+  });
+
+  check('painterOrder: 2D layers pin position and split 3D runs (AE model)', () => {
+    // [3D -100, 2D, 3D -500, 3D -900] → run0=[0] stays; 2D at 1 pinned; run1=[2,3] far→near = [3,2]
+    const order = painterOrder([
+      { is3D: true, depth: -100 },
+      { is3D: false, depth: 0 },
+      { is3D: true, depth: -500 },
+      { is3D: true, depth: -900 },
+    ]);
+    assert.deepEqual(order, [0, 1, 3, 2]);
+  });
+
+  check('painterOrder is stable for equal depths and identity for all-2D', () => {
+    assert.deepEqual(painterOrder([{ is3D: true, depth: -5 }, { is3D: true, depth: -5 }]), [0, 1]);
+    assert.deepEqual(painterOrder([{ is3D: false, depth: 0 }, { is3D: false, depth: 0 }, { is3D: false, depth: 0 }]), [0, 1, 2]);
   });
 
   console.log(`\n✅ ${passed} checks passed`);

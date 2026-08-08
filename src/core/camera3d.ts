@@ -103,6 +103,47 @@ export function defaultCamera(compW: number, compH: number): ResolvedCamera {
   });
 }
 
+/** MVP for a 3D layer: camera.viewProjection · worldMatrix. Multiply a local corner (px, z=0)
+ *  by this and do the perspective divide to get clip space — the M2 renderer's vertex path. */
+export function mvp(camera: ResolvedCamera, worldMatrix: Mat4): Mat4 {
+  return multiply(camera.viewProjection, worldMatrix);
+}
+
+/** Camera-space depth of a layer's origin (local 0,0,0 → world → view). The camera looks down
+ *  −Z, so points in front are negative and FARTHER points are MORE negative. Painter's order
+ *  draws ascending (most-negative/farthest first). */
+export function cameraSpaceDepth(camera: ResolvedCamera, worldMatrix: Mat4): number {
+  const w = transformPoint(worldMatrix, 0, 0, 0);
+  const iw = w[3] || 1;
+  const v = transformPoint(camera.view, w[0] / iw, w[1] / iw, w[2] / iw);
+  return v[2];
+}
+
+export interface DepthSortItem { is3D: boolean; depth: number }
+
+/**
+ * Painter's composite order (AE Classic-3D model). Returns a permutation of input indices:
+ * runs of *consecutive* 3D layers are sorted far→near (ascending camera-space depth); 2D layers
+ * pin the order — they split the 3D runs and never move. Stable within equal depths. This is the
+ * exact AE rule (2D layers act as dividers; 3D layers only sort among their contiguous group).
+ */
+export function painterOrder(items: DepthSortItem[]): number[] {
+  const out: number[] = [];
+  let run: number[] = [];
+  const flush = () => {
+    // stable sort, farthest (most negative depth) first
+    run.sort((a, b) => items[a].depth - items[b].depth);
+    for (const idx of run) out.push(idx);
+    run = [];
+  };
+  for (let i = 0; i < items.length; i++) {
+    if (items[i].is3D) run.push(i);
+    else { flush(); out.push(i); }
+  }
+  flush();
+  return out;
+}
+
 /** A single 3D layer's local model matrix from its resolved transform (rotations in degrees). */
 export function localModelMatrix(t: ResolvedTransform): Mat4 {
   return composeModel(
