@@ -5,7 +5,14 @@ import type { PatternConfig, PatternType } from '../../patterns/types';
 import { PATTERN_TYPES } from '../../patterns/types';
 import { PATTERN_PRESETS, PALETTES } from '../../patterns/presets';
 
-const TYPE_LABEL: Record<PatternType, string> = { waves: 'Waves', plasma: 'Plasma', kaleidoscope: 'Kaleidoscope', mosaic: 'Mosaic' };
+const TYPE_LABEL: Record<PatternType, string> = {
+  waves: 'Waves', plasma: 'Plasma', kaleidoscope: 'Kaleidoscope', mosaic: 'Mosaic',
+  clouds: 'Clouds', voronoi: 'Voronoi', rings: 'Rings', spiral: 'Spiral',
+  interference: 'Interference', gradient: 'Gradient Sweep', warp: 'Warp',
+};
+
+const rgbToHex = (c: [number, number, number]) => '#' + c.map((v) => Math.round(Math.min(1, Math.max(0, v)) * 255).toString(16).padStart(2, '0')).join('');
+const hexToRgb = (h: string): [number, number, number] => { const n = parseInt(h.slice(1), 16); return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255]; };
 
 export function GenerativePatternPanel({ layer }: { layer: GenerativePatternLayer }) {
   const updateLayerProperty = useEditorStore((s) => s.updateLayerProperty);
@@ -46,12 +53,37 @@ export function GenerativePatternPanel({ layer }: { layer: GenerativePatternLaye
 
       {/* Palette */}
       <div>
-        <div className="text-[10px] uppercase tracking-wider text-slate-500 font-medium mb-1.5">Palette</div>
-        <div className="flex flex-wrap gap-1">
+        <div className="flex items-center justify-between mb-1.5">
+          <span className="text-[10px] uppercase tracking-wider text-slate-500 font-medium">Palette</span>
+          <button onClick={() => set('palette', [...cfg.palette, { color: cfg.palette[cfg.palette.length - 1]?.color ?? [1, 1, 1], pos: 1 }])}
+            className="text-[10px] text-slate-400 hover:text-slate-200">+ stop</button>
+        </div>
+        {/* live gradient bar */}
+        <div className="h-5 rounded border border-[#1a2a42] mb-2"
+          style={{ background: `linear-gradient(90deg, ${[...cfg.palette].sort((a, b) => a.pos - b.pos).map((s) => `rgb(${s.color.map((c) => Math.round(c * 255)).join(',')}) ${Math.round(s.pos * 100)}%`).join(', ')})` }} />
+        {/* preset swatches */}
+        <div className="flex flex-wrap gap-1 mb-2">
           {Object.entries(PALETTES).map(([name, stops]) => (
             <button key={name} onClick={() => set('palette', stops)} title={name}
-              className="w-9 h-6 rounded border border-[#1a2a42] overflow-hidden"
+              className="w-8 h-5 rounded border border-[#1a2a42] overflow-hidden"
               style={{ background: `linear-gradient(90deg, ${stops.map((s) => `rgb(${s.color.map((c) => Math.round(c * 255)).join(',')}) ${Math.round(s.pos * 100)}%`).join(', ')})` }} />
+          ))}
+        </div>
+        {/* per-stop editor */}
+        <div className="space-y-1">
+          {cfg.palette.map((stop, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <input type="color" value={rgbToHex(stop.color)}
+                onChange={(e) => set('palette', cfg.palette.map((s, j) => j === i ? { ...s, color: hexToRgb(e.target.value) } : s))}
+                className="w-6 h-6 rounded bg-transparent border border-[#1a2a42] p-0 cursor-pointer" />
+              <input type="range" min={0} max={1} step={0.01} value={stop.pos}
+                onChange={(e) => set('palette', cfg.palette.map((s, j) => j === i ? { ...s, pos: parseFloat(e.target.value) } : s))}
+                className="flex-1 accent-[#f7b500]" />
+              <span className="text-[9px] text-slate-500 font-mono w-8 text-right">{Math.round(stop.pos * 100)}%</span>
+              {cfg.palette.length > 2 && (
+                <button onClick={() => set('palette', cfg.palette.filter((_, j) => j !== i))} className="text-slate-600 hover:text-red-400 text-[12px] leading-none">×</button>
+              )}
+            </div>
           ))}
         </div>
         <label className="flex items-center gap-1.5 mt-2 text-[11px] text-slate-400">

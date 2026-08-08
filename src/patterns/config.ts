@@ -1,7 +1,8 @@
 import type { PatternConfig, PatternType } from './types';
+import { PATTERN_TYPES } from './types';
 import { DEFAULT_PATTERN } from './presets';
 
-const TYPES: PatternType[] = ['waves', 'plasma', 'kaleidoscope', 'mosaic'];
+const TYPES: PatternType[] = PATTERN_TYPES;
 const num = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
 
 /** Parse a stored configJSON into a complete, defaulted PatternConfig (lenient — never throws). */

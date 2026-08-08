@@ -24,6 +24,20 @@ function fbm(x: number, y: number, oct: number): number {
 }
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 
+// Worley (cellular) F1: nearest jittered cell point. Returns its distance + the cell's hash.
+function worley(gx: number, gy: number, sp: number): { dist: number; hash: number } {
+  const cx = Math.floor(gx), cy = Math.floor(gy);
+  let best = 9, bh = 0;
+  for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
+    const nx = cx + ox, ny = cy + oy;
+    const jx = nx + hash21(nx, ny) + 0.3 * Math.sin(sp + hash21(nx, ny) * 6.2831);
+    const jy = ny + hash21(ny, nx) + 0.3 * Math.cos(sp + hash21(ny, nx) * 6.2831);
+    const d = Math.hypot(gx - jx, gy - jy);
+    if (d < best) { best = d; bh = hash21(nx * 1.7 + 0.3, ny * 1.3 + 0.7); }
+  }
+  return { dist: best, hash: bh };
+}
+
 /** Scalar field in [0,1] for a pattern at uv (0..1), aspect-corrected, at time t (seconds). */
 export function patternValue(cfg: PatternConfig, u: number, v: number, aspect: number, t: number): number {
   let px = (u - 0.5) * aspect, py = v - 0.5;
@@ -52,16 +66,41 @@ export function patternValue(cfg: PatternConfig, u: number, v: number, aspect: n
       val = fbm(ang * s + sp * 0.1, r * s - sp * 0.2, 3); break;
     }
     case 'mosaic': {
-      const gx = px * s, gy = py * s, cx = Math.floor(gx), cy = Math.floor(gy);
-      let best = 9, bh = 0;
-      for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
-        const nx = cx + ox, ny = cy + oy;
-        const jx = nx + hash21(nx, ny) + 0.3 * Math.sin(sp + hash21(nx, ny) * 6.2831);
-        const jy = ny + hash21(ny, nx) + 0.3 * Math.cos(sp + hash21(ny, nx) * 6.2831);
-        const d = Math.hypot(gx - jx, gy - jy);
-        if (d < best) { best = d; bh = hash21(nx * 1.7 + 0.3, ny * 1.3 + 0.7); }
-      }
-      val = bh; break;
+      const g = worley(px * s, py * s, sp);
+      val = g.hash; break;
+    }
+    case 'voronoi': {
+      const g = worley(px * s, py * s, sp);
+      val = 1 - Math.min(1, g.dist); break;
+    }
+    case 'clouds': {
+      const x = px * s, y = py * s;
+      const w1 = fbm(x + sp * 0.1, y, 4);
+      const w2 = fbm(x + w1 * 0.8 + 1.7, y + w1 * 0.8 + 9.2, 4);
+      val = fbm(x + w2 + sp * 0.05, y + w2, 5); break;
+    }
+    case 'rings': {
+      const r = Math.hypot(px, py);
+      val = Math.sin(r * s * 2 - sp * 2) * 0.5 + 0.5; break;
+    }
+    case 'spiral': {
+      const r = Math.hypot(px, py) + 0.001, ang = Math.atan2(py, px);
+      const n = Math.max(1, Math.round(cfg.complexity));
+      val = Math.sin(ang * n + Math.log(r) * s - sp) * 0.5 + 0.5; break;
+    }
+    case 'interference': {
+      const g1 = Math.sin((px * Math.cos(0.2) + py * Math.sin(0.2)) * s + sp);
+      const g2 = Math.sin((px * Math.cos(-0.5) + py * Math.sin(-0.5)) * s * 1.1 - sp);
+      val = g1 * g2 * 0.5 + 0.5; break;
+    }
+    case 'gradient': {
+      const ang = Math.atan2(py, px) / (Math.PI * 2) + 0.5;
+      val = ((ang + sp * 0.08) % 1 + 1) % 1; break;
+    }
+    case 'warp': {
+      const x = px * s, y = py * s, k = 2 + cfg.warp * 4;
+      const qx = fbm(x, y, 4), qy = fbm(x + 5.2, y + 1.3, 4);
+      val = fbm(x + qx * k + sp * 0.1, y + qy * k, 4); break;
     }
     default: val = 0;
   }

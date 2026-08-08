@@ -812,6 +812,17 @@ fn pfbm(p0: vec2f, oct: i32) -> f32 {
   for (var i = 0; i < oct; i = i + 1) { v = v + amp * pvnoise(p0 * f); f = f * 2.0; amp = amp * 0.5; }
   return v;
 }
+fn pworley(g: vec2f, sp: f32) -> vec2f {
+  let cell = floor(g); var best = 9.0; var bh = 0.0;
+  for (var oy = -1; oy <= 1; oy = oy + 1) { for (var ox = -1; ox <= 1; ox = ox + 1) {
+    let nb = cell + vec2f(f32(ox), f32(oy));
+    let jx = nb.x + phash(nb) + 0.3*sin(sp + phash(nb)*6.2831);
+    let jy = nb.y + phash(vec2f(nb.y, nb.x)) + 0.3*cos(sp + phash(vec2f(nb.y, nb.x))*6.2831);
+    let d = length(g - vec2f(jx, jy));
+    if (d < best) { best = d; bh = phash(nb * vec2f(1.7, 1.3) + vec2f(0.3, 0.7)); }
+  } }
+  return vec2f(best, bh);
+}
 fn patternValue(uv: vec2f) -> f32 {
   var p = (uv - vec2f(0.5)) * vec2f(u.resolution.x / u.resolution.y, 1.0);
   p = rot2(p, u.patRot);
@@ -832,16 +843,31 @@ fn patternValue(uv: vec2f) -> f32 {
     var ang = atan2(p.y, p.x) / 6.2831853;
     ang = abs(fract(ang * f32(n) + 1.0) * 2.0 - 1.0);
     val = pfbm(vec2f(ang*s + sp*0.1, r*s - sp*0.2), 3);
+  } else if (pt == 3) {
+    let w = pworley(p * s, sp); val = w.y;
+  } else if (pt == 4) {
+    let x = p.x * s; let y = p.y * s;
+    let w1 = pfbm(vec2f(x + sp*0.1, y), 4);
+    let w2 = pfbm(vec2f(x + w1*0.8 + 1.7, y + w1*0.8 + 9.2), 4);
+    val = pfbm(vec2f(x + w2 + sp*0.05, y + w2), 5);
+  } else if (pt == 5) {
+    let w = pworley(p * s, sp); val = 1.0 - min(1.0, w.x);
+  } else if (pt == 6) {
+    let r = length(p); val = sin(r*s*2.0 - sp*2.0)*0.5 + 0.5;
+  } else if (pt == 7) {
+    let r = length(p) + 0.001; let ang = atan2(p.y, p.x); let n = max(1, i32(u.complexity));
+    val = sin(ang*f32(n) + log(r)*s - sp)*0.5 + 0.5;
+  } else if (pt == 8) {
+    let g1 = sin((p.x*cos(0.2) + p.y*sin(0.2))*s + sp);
+    let g2 = sin((p.x*cos(-0.5) + p.y*sin(-0.5))*s*1.1 - sp);
+    val = g1*g2*0.5 + 0.5;
+  } else if (pt == 9) {
+    let ang = atan2(p.y, p.x)/6.2831853 + 0.5;
+    val = fract(ang + sp*0.08);
   } else {
-    let g = p * s; let cell = floor(g); var best = 9.0; var bh = 0.0;
-    for (var oy = -1; oy <= 1; oy = oy + 1) { for (var ox = -1; ox <= 1; ox = ox + 1) {
-      let nb = cell + vec2f(f32(ox), f32(oy));
-      let jx = nb.x + phash(nb) + 0.3*sin(sp + phash(nb)*6.2831);
-      let jy = nb.y + phash(vec2f(nb.y, nb.x)) + 0.3*cos(sp + phash(vec2f(nb.y, nb.x))*6.2831);
-      let d = length(g - vec2f(jx, jy));
-      if (d < best) { best = d; bh = phash(nb * vec2f(1.7, 1.3) + vec2f(0.3, 0.7)); }
-    } }
-    val = bh;
+    let x = p.x * s; let y = p.y * s; let k = 2.0 + u.warp*4.0;
+    let qx = pfbm(vec2f(x, y), 4); let qy = pfbm(vec2f(x + 5.2, y + 1.3), 4);
+    val = pfbm(vec2f(x + qx*k + sp*0.1, y + qy*k), 4);
   }
   return clamp((val - 0.5) * (1.0 + u.contrast*2.0) + 0.5, 0.0, 1.0);
 }

@@ -23,4 +23,11 @@ export const PATTERN_PRESETS: PatternPreset[] = [
   { name: 'Kaleido Bloom', config: { type: 'kaleidoscope', scale: 1, speed: 0.4, rotationDeg: 0, complexity: 6, warp: 0.1, contrast: 0.4, paletteMode: 'smooth', palette: PALETTES.Aurora } },
   { name: 'Hex Mosaic', config: { type: 'mosaic', scale: 1.4, speed: 0.5, rotationDeg: 0, complexity: 1, warp: 0, contrast: 0.5, paletteMode: 'linear', palette: PALETTES.Sunset } },
   { name: 'Sunset Waves', config: { type: 'waves', scale: 0.8, speed: 0.5, rotationDeg: 20, complexity: 3, warp: 0.4, contrast: 0.35, paletteMode: 'smooth', palette: PALETTES.Sunset } },
+  { name: 'Drifting Clouds', config: { type: 'clouds', scale: 0.7, speed: 0.3, rotationDeg: 0, complexity: 5, warp: 0.2, contrast: 0.2, paletteMode: 'smooth', palette: PALETTES.Mono } },
+  { name: 'Cell Field', config: { type: 'voronoi', scale: 1.5, speed: 0.4, rotationDeg: 0, complexity: 1, warp: 0, contrast: 0.3, paletteMode: 'smooth', palette: PALETTES.Aurora } },
+  { name: 'Ripple Rings', config: { type: 'rings', scale: 1.2, speed: 0.8, rotationDeg: 0, complexity: 1, warp: 0.1, contrast: 0.3, paletteMode: 'smooth', palette: PALETTES.Ocean } },
+  { name: 'Hypno Spiral', config: { type: 'spiral', scale: 0.9, speed: 0.6, rotationDeg: 0, complexity: 4, warp: 0, contrast: 0.4, paletteMode: 'smooth', palette: PALETTES.Neon } },
+  { name: 'Moiré', config: { type: 'interference', scale: 1.6, speed: 0.4, rotationDeg: 0, complexity: 1, warp: 0, contrast: 0.3, paletteMode: 'smooth', palette: PALETTES.Mono } },
+  { name: 'Color Sweep', config: { type: 'gradient', scale: 1, speed: 0.7, rotationDeg: 0, complexity: 1, warp: 0, contrast: 0, paletteMode: 'smooth', palette: PALETTES.Sunset } },
+  { name: 'Turbulence', config: { type: 'warp', scale: 0.9, speed: 0.4, rotationDeg: 0, complexity: 4, warp: 0.6, contrast: 0.25, paletteMode: 'smooth', palette: PALETTES.Aurora } },
 ];
