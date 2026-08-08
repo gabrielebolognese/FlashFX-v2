@@ -12,7 +12,8 @@ export interface LayerBounds {
 export type AlignAxis = 'left' | 'centerH' | 'right' | 'top' | 'centerV' | 'bottom';
 
 function getLayerSize(layer: Layer, frame: number): { w: number; h: number } | null {
-  if (layer.type === 'group' || layer.type === 'audio') return null;
+  // group/audio have no spatial box; camera is a viewpoint, not a card — never align/nudge it.
+  if (layer.type === 'group' || layer.type === 'audio' || layer.type === 'camera') return null;
   if (layer.type === 'video') {
     const vl = layer as any;
     return { w: vl.video.sourceWidth, h: vl.video.sourceHeight };
