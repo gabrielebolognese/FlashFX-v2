@@ -209,6 +209,13 @@ Authored as `categories/*.ts`. First-wave targets in **bold**; the rest are the 
 - **`bar-chart-grow`** (bars scaleY from 0, staggered), **`donut-sweep`** (arc draw-on + center
   counter), `line-draw` (polyline draw-on), `progress-ring`, `rating-stars` (stars pop + fill).
 
+**Scenes** (looping illustrated backdrops — BUILT: `beach-waves`, `forest`, `night-sky`)
+- **`beach-waves`** (sun+glow, drifting clouds, rolling foam waves, bobbing ball), **`forest`** (layered
+  swaying trees + drifting leaves + glowing sun), **`night-sky`** (glowing moon, twinkling stars,
+  looping shooting star, hill silhouette). Backlog: `sunset`, `rain`, `mountains`, `city-skyline`,
+  `underwater`, `snow`. Built on kit loop helpers (`floatLoop`/`swayLoop`/`spinLoop`/`twinkle`/`glow`),
+  authored back-to-front so track-stacking gives correct z-order.
+
 **Backgrounds & shapes**
 - **`gradient-drift`** (animated gradient bg loop), `blob-morph` (polygon vertex tween), `grid-parallax`,
   `confetti-burst` (shape particles via staggered fly-out), `geometric-loader` (loop).

@@ -7,6 +7,7 @@ import type { Layer } from '../core/types';
 // child is parent-linked to the group it makes — no cloning / id-regen needed.
 
 export type TemplateCategory =
+  | 'scenes'
   | 'calendar'
   | 'titles'
   | 'lists'

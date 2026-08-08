@@ -129,6 +129,60 @@ export function growUp(bar: ShapeLayer, bottomY: number, h: number, at: number, 
   ]);
 }
 
+// ---- Ambient loops (for looping scene motion: waves, clouds, sway, twinkle) -----------------------
+
+/** Smooth elliptical drift around the resting position — dx horizontal, dy vertical, `cycles` loops. */
+export function floatLoop(l: Layer, dx: number, dy: number, period: number, cycles: number, at = 0, phase = 0): void {
+  const base = l.transform.position.defaultValue as Vec2;
+  const keys: KeyStep[] = [];
+  const steps = Math.max(1, Math.round(cycles * 4));
+  for (let i = 0; i <= steps; i++) {
+    const f = at + (i / 4) * period;
+    const ph = phase + (i / 4) * Math.PI * 2;
+    keys.push({ f, v: [base[0] + Math.sin(ph) * dx, base[1] + Math.cos(ph) * dy], ease: EASE_IO });
+  }
+  setKeys(l.transform.position, keys);
+}
+
+/** Rock back and forth around 0° by ±deg — a gentle sway (trees, boats). */
+export function swayLoop(l: Layer, deg: number, period: number, cycles: number, at = 0): void {
+  const keys: KeyStep[] = [{ f: at, v: 0, ease: EASE_IO }];
+  for (let i = 0; i < cycles; i++) {
+    const b = at + i * period;
+    keys.push({ f: b + period * 0.25, v: deg, ease: EASE_IO });
+    keys.push({ f: b + period * 0.5, v: 0, ease: EASE_IO });
+    keys.push({ f: b + period * 0.75, v: -deg, ease: EASE_IO });
+    keys.push({ f: b + period, v: 0, ease: EASE_IO });
+  }
+  setKeys(l.transform.rotation, keys);
+}
+
+/** Continuous full rotation, `cycles` turns over the clip (sun rays, spinners). */
+export function spinLoop(l: Layer, period: number, cycles: number, at = 0): void {
+  const keys: KeyStep[] = [];
+  for (let i = 0; i <= cycles; i++) keys.push({ f: at + i * period, v: i * 360 });
+  setKeys(l.transform.rotation, keys);
+}
+
+/** Opacity flicker between 1 and `min` — twinkling stars. */
+export function twinkle(l: Layer, period: number, cycles: number, at = 0, min = 0.3): void {
+  const keys: KeyStep[] = [];
+  for (let i = 0; i <= cycles * 2; i++) keys.push({ f: at + (i / 2) * period, v: i % 2 === 0 ? 1 : min, ease: EASE_IO });
+  setKeys(l.transform.opacity, keys);
+}
+
+/** Attach an outer glow to a shape (renders as a real bloom pass). */
+export function glow(l: ShapeLayer, color: Vec4, intensity = 1, radius = 24): ShapeLayer {
+  l.glow = { enabled: true, mode: 'outer', onlyGlow: false, color, intensity, radius, threshold: 0.15 };
+  return l;
+}
+
+/** Make a circle render as a wide, flat ellipse (waves, clouds, hills). */
+export function ellipse(l: ShapeLayer, scaleX: number, scaleY: number): ShapeLayer {
+  l.transform.scale.defaultValue = [scaleX, scaleY];
+  return l;
+}
+
 /** Reveal a horizontal bar left-to-right by keyframing width + position (left edge fixed at leftX). */
 export function growRight(bar: ShapeLayer, leftX: number, w: number, at: number, dur: number): void {
   if (bar.shape.type !== 'rectangle') return;

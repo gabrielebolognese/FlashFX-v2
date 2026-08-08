@@ -1,4 +1,5 @@
 import type { AnimationTemplate, TemplateCategory } from './types';
+import { beachScene, forestScene, nightScene } from './categories/scenes';
 import { calendarMonth } from './categories/calendar';
 import { titleRise, lowerThirdSlide } from './categories/titles';
 import { bulletList } from './categories/lists';
@@ -8,6 +9,9 @@ import { logoPop } from './categories/logo';
 // The animation-template library. Add a template = author a builder in categories/ and list it here.
 
 export const ANIMATION_TEMPLATES: AnimationTemplate[] = [
+  beachScene,
+  forestScene,
+  nightScene,
   calendarMonth,
   titleRise,
   lowerThirdSlide,
@@ -17,6 +21,7 @@ export const ANIMATION_TEMPLATES: AnimationTemplate[] = [
 ];
 
 export const CATEGORY_LABELS: Record<TemplateCategory, string> = {
+  scenes: 'Scenes',
   calendar: 'Calendar',
   titles: 'Titles',
   lists: 'Lists',
