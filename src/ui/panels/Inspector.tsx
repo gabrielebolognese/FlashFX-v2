@@ -7,7 +7,7 @@ import { useMotionPathStore } from '../../store/motionPath';
 import { useMaskStore } from '../../store/mask';
 import { usePathEditStore } from '../../store/pathEdit';
 import { BrandColorPicker } from '../components/BrandColorPicker';
-import type { ShapeLayer, TextLayer, VideoLayer, ImageLayer, AudioLayer, ParticleLayer, GenerativePatternLayer, AnimationItemLayer, LottieIconLayer, AnimatableProperty, Vec2, Vec4, RectangleShape, CircleShape, StarShape, PolygonShape, MotionPathAnchor, MotionPathLoop, Mask, MaskType, Layer, LayerShadow, LayerGlow, LayerBlur, BlurType, GlowMode, LayoutObjectLayer, LayoutContainerLayer } from '../../core/types';
+import type { ShapeLayer, TextLayer, VideoLayer, ImageLayer, AudioLayer, ParticleLayer, GenerativePatternLayer, CameraLayer, AnimationItemLayer, LottieIconLayer, AnimatableProperty, Vec2, Vec4, RectangleShape, CircleShape, StarShape, PolygonShape, MotionPathAnchor, MotionPathLoop, Mask, MaskType, Layer, LayerShadow, LayerGlow, LayerBlur, BlurType, GlowMode, LayoutObjectLayer, LayoutContainerLayer } from '../../core/types';
 import { evaluateProperty } from '../../core/interpolation';
 import { createProperty } from '../../core/factory';
 import { getMotionBlur } from '../../core/layerSwitches';
@@ -24,6 +24,7 @@ import { PhysicsPanel } from './PhysicsPanel';
 import { StaggerPanel } from './StaggerPanel';
 import { FieldSamplingPanel } from './FieldSamplingPanel';
 import { GenerativePatternPanel } from './GenerativePatternPanel';
+import { CameraPanel } from './CameraPanel';
 import { ClonerInspector } from './ClonerInspector';
 import { AnimatePanel } from './AnimatePanel';
 import { ShapeMaterialPanel } from './ShapeMaterialPanel';
@@ -356,6 +357,10 @@ function InspectorTabContent({ tab, layer }: { tab: InspectorTab; layer: Layer }
 
       {isPattern && (
         <GenerativePatternPanel layer={layer as GenerativePatternLayer} />
+      )}
+
+      {layer.type === 'camera' && (
+        <CameraPanel layer={layer as CameraLayer} />
       )}
 
       {isAnimationItem && (

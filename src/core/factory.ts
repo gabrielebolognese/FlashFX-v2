@@ -18,6 +18,7 @@ import type {
   LayoutObjectLayer,
   LayoutContainerLayer,
   PrecompLayer,
+  CameraLayer,
   LayoutParams,
   VideoPlaybackMode,
   ImageFilters,
@@ -107,6 +108,53 @@ export function createPrecompLayer(
     inPoint: 0,
     outPoint: durationFrames,
     compositionId,
+  };
+}
+
+/** A 2.5D camera layer. Defaults to a two-node camera centered on the comp, `compH` in front
+ *  of the z=0 plane, aimed at the comp center — i.e. it starts identical to the default camera
+ *  (framing the comp 1:1), so adding one changes nothing until it (or a 3D layer) moves. */
+export function createCameraLayer(
+  name: string,
+  compW: number,
+  compH: number,
+  durationFrames: number,
+): CameraLayer {
+  const cx = compW / 2;
+  const cy = compH / 2;
+  const transform: Transform = {
+    position: createProperty('Position', 'vec2', [cx, cy]),
+    rotation: createProperty('Z Rotation', 'number', 0),
+    scale: createProperty('Scale', 'vec2', [1, 1]),
+    anchorPoint: createProperty('Anchor Point', 'vec2', [0, 0]),
+    opacity: createProperty('Opacity', 'number', 1),
+    positionZ: createProperty('Z Position', 'number', -compH),
+    rotationX: createProperty('X Rotation', 'number', 0),
+    rotationY: createProperty('Y Rotation', 'number', 0),
+  };
+  return {
+    id: uid(),
+    type: 'camera',
+    name,
+    parentId: null,
+    trackId: null,
+    visible: true,
+    locked: false,
+    is3D: true,
+    blendMode: 'normal',
+    transform,
+    inPoint: 0,
+    outPoint: durationFrames,
+    camera: {
+      mode: 'two-node',
+      pointOfInterest: createProperty('Point of Interest', 'vec2', [cx, cy]),
+      pointOfInterestZ: createProperty('POI Z', 'number', 0),
+      zoom: createProperty('Zoom', 'number', compH),
+      dofEnabled: false,
+      focusDistance: createProperty('Focus Distance', 'number', compH),
+      aperture: createProperty('Aperture', 'number', 25),
+      blurLevel: createProperty('Blur Level', 'number', 1),
+    },
   };
 }
 

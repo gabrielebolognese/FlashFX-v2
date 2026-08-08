@@ -7,6 +7,10 @@ import type { ClonerRenderPath } from '../cloner/renderPath';
 // M14 reframe constraints — type-only (erased at runtime; reframe.ts imports only `type Vec2`
 // back from here, so this cross-reference has no runtime cycle).
 import type { LayerConstraints } from './reframe';
+// 2.5D — type-only (erased at runtime). camera3d imports ResolvedTransform back from here; a
+// type-only cycle has no runtime dependency.
+import type { Mat4 } from './mat4';
+import type { ResolvedCamera } from './camera3d';
 
 export type Vec2 = [number, number];
 export type Vec4 = [number, number, number, number];
@@ -859,6 +863,53 @@ export interface PrecompTimeRemap {
  * single layer in this composition. Mirrors the common Layer fields (there is no
  * shared BaseLayer interface in this codebase — each variant spells them out).
  */
+// --- 2.5D Camera (M1) ---
+// One-node = free camera aimed by its own orientation (transform rotationX/Y/Z); two-node =
+// aims at a Point of Interest. `zoom` (px) drives the FOV. DOF params are carried + persisted
+// now and consumed by the renderer in M5.
+export type CameraMode = 'one-node' | 'two-node';
+
+export interface CameraSettings {
+  mode: CameraMode;
+  // Two-node aim target in composition space (x,y from `pointOfInterest`, z from `…Z`).
+  pointOfInterest: AnimatableProperty; // vec2
+  pointOfInterestZ: AnimatableProperty; // number
+  // Lens: AE-style zoom in pixels. fovY = 2·atan((compH/2)/zoom).
+  zoom: AnimatableProperty; // number
+  // Depth of field (M5).
+  dofEnabled: boolean;
+  focusDistance: AnimatableProperty; // number, px
+  aperture: AnimatableProperty; // number
+  blurLevel: AnimatableProperty; // number
+}
+
+// A camera is a first-class layer but resolves to View/Projection matrices, not a drawn quad.
+// It carries a full Transform (position x/y + positionZ = eye; rotationX/Y/Z = one-node aim).
+export interface CameraLayer {
+  id: string;
+  type: 'camera';
+  name: string;
+  parentId: string | null;
+  trackId: string | null;
+  visible: boolean;
+  locked: boolean;
+  blendMode: BlendMode;
+  transform: Transform;
+  inPoint: number;
+  outPoint: number;
+  is3D?: boolean; // always true for a camera; kept for union-access parity
+  effectsEnabled?: boolean;
+  // Common effect fields so Layer-union member accesses type-check (a camera never draws, so
+  // these are inert — it's skipped before the draw/effect path in resolveFrame).
+  motionBlur?: boolean;
+  motionBlurShutter?: number;
+  shadow?: LayerShadow;
+  glow?: LayerGlow;
+  blur?: LayerBlur;
+  masks?: Mask[];
+  camera: CameraSettings;
+}
+
 export interface PrecompLayer {
   id: string;
   type: 'precomp';
@@ -896,10 +947,10 @@ export interface LayerDecorations {
   constraints?: LayerConstraints;
 }
 
-export type Layer = (ShapeLayer | TextLayer | GroupLayer | VideoLayer | ImageLayer | AudioLayer | ParticleLayer | AnimationItemLayer | FieldSampledLayer | GenerativePatternLayer | LottieIconLayer | LayoutObjectLayer | LayoutContainerLayer | ClonerLayer | PrecompLayer) & LayerDecorations;
+export type Layer = (ShapeLayer | TextLayer | GroupLayer | VideoLayer | ImageLayer | AudioLayer | ParticleLayer | AnimationItemLayer | FieldSampledLayer | GenerativePatternLayer | LottieIconLayer | LayoutObjectLayer | LayoutContainerLayer | ClonerLayer | PrecompLayer | CameraLayer) & LayerDecorations;
 
 // Track system
-export type TrackType = 'video' | 'image' | 'text' | 'shape' | 'group' | 'audio' | 'particle' | 'animationItem' | 'fieldSampled' | 'generativePattern' | 'lottieIcon' | 'hbox' | 'vbox' | 'grid' | 'layoutContainer' | 'cloner' | 'precomp' | 'mixed';
+export type TrackType = 'video' | 'image' | 'text' | 'shape' | 'group' | 'audio' | 'particle' | 'animationItem' | 'fieldSampled' | 'generativePattern' | 'lottieIcon' | 'hbox' | 'vbox' | 'grid' | 'layoutContainer' | 'cloner' | 'precomp' | 'camera' | 'mixed';
 
 export interface Track {
   id: string;
@@ -1452,6 +1503,9 @@ export interface ResolvedLayer {
   blur?: ResolvedBlur;
   cloner?: ResolvedCloner;
   precomp?: ResolvedPrecomp;
+  // 2.5D (M1): world model matrix for 3D layers (`is3D`), for the M2 MVP path. Absent on 2D
+  // layers, which keep the cheap affine transform above. The renderer ignores it until M2.
+  worldMatrix?: Mat4;
   layerType: 'shape' | 'text' | 'video' | 'image' | 'audio' | 'particle' | 'fieldSampled' | 'generativePattern' | 'lottieIcon' | 'cloner' | 'precomp';
 }
 
@@ -1465,6 +1519,10 @@ export interface RenderFrame {
   backgroundColor: Vec4;
   background: Background;
   layers: ResolvedLayer[];
+  // 2.5D (M1): the active camera resolved to View/Projection for this frame (the topmost
+  // enabled camera layer, else a default camera framing the comp 1:1). The renderer consumes
+  // it in M2; present on every frame so 3D layers always have a camera.
+  camera?: ResolvedCamera;
 }
 
 /**

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { Composition, SceneDocument, Layer, AnimatableProperty, Keyframe, Vec2, Vec4, InterpolationType, BackgroundLayer, Track, TrackType, VideoPlaybackMode, PathVertex, VertexType, Mask, MaskType, AnchorEdge, PhysicsBindingDef, PhysicsWorldDef, StaggerBindingDef, LayoutObjectLayer, LayoutContainerLayer, ContainerShapeType, Marker, ShapeLayer, PolygonShape } from '../core/types';
-import { createComposition, createRectangleLayer, createCircleLayer, createStarLayer, createPolygonLayer, createDefaultPolygonVertices, createTextLayer, createVideoLayer, createImageLayer, createAudioLayer, createGroupLayer, createKeyframe, createBackgroundLayer, createMask, createParticleLayer, createAnimationItemLayer, createFieldSampledLayer, createGenerativePatternLayer, createLottieIconLayer, createLayoutObjectLayer, createLayoutContainerLayer, createDefaultChildOverride, createProperty, uid } from '../core/factory';
+import { createComposition, createRectangleLayer, createCircleLayer, createStarLayer, createPolygonLayer, createDefaultPolygonVertices, createTextLayer, createVideoLayer, createImageLayer, createAudioLayer, createGroupLayer, createKeyframe, createBackgroundLayer, createMask, createParticleLayer, createAnimationItemLayer, createFieldSampledLayer, createGenerativePatternLayer, createCameraLayer, createLottieIconLayer, createLayoutObjectLayer, createLayoutContainerLayer, createDefaultChildOverride, createProperty, uid } from '../core/factory';
 import { outlineText, canOutlineFont } from '../text/outlineText';
 import { computeBatchNames, type RenamePattern } from '../core/batchRename';
 import { detachStyleValue, type SharedStyle } from '../core/styles';
@@ -285,6 +285,7 @@ interface EditorState {
   addParticleLayer: () => void;
   addFieldSampledLayer: (configJSON?: string) => void;
   addGenerativePatternLayer: (configJSON?: string) => void;
+  addCameraLayer: () => void;
   /** M16 — add a Cloner. Clones the single selected eligible layer, or a placeholder circle. */
   addCloner: () => void;
   /** M16 — wrap the active selected layer as a Cloner's source. */
@@ -565,6 +566,7 @@ function layerTypeToTrackType(type: Layer['type']): TrackType {
     case 'lottieIcon': return 'lottieIcon';
     case 'cloner': return 'cloner';
     case 'precomp': return 'precomp';
+    case 'camera': return 'camera';
     default: return 'mixed';
   }
 }
@@ -1912,6 +1914,26 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const newSel: SelectionState = sel([layer.id], layer.id);
     exec({
       label: 'Add Pattern Layer',
+      execute: () => { set({ composition: newComp, selection: newSel }); },
+      undo: () => { set({ composition: oldComp, selection: oldSel }); },
+    });
+  },
+
+  addCameraLayer: () => {
+    const { composition, selection } = get();
+    const oldComp = composition;
+    const oldSel = selection;
+    const count = composition.layers.filter((l) => l.type === 'camera').length;
+    const layer = createCameraLayer(
+      count === 0 ? 'Camera 1' : `Camera ${count + 1}`,
+      composition.settings.width,
+      composition.settings.height,
+      defaultClipFrames(composition),
+    );
+    const newComp = settleComposition(ensureLayerHasTrack({ ...composition, layers: [...composition.layers, layer] }, layer));
+    const newSel: SelectionState = sel([layer.id], layer.id);
+    exec({
+      label: 'Add Camera',
       execute: () => { set({ composition: newComp, selection: newSel }); },
       undo: () => { set({ composition: oldComp, selection: oldSel }); },
     });

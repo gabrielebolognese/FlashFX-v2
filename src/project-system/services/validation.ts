@@ -512,6 +512,25 @@ function validateLayer(raw: unknown): Layer | null {
       if (!isObject(r.fieldSampled)) return null;
       return { ...baseFields, type: 'fieldSampled', fieldSampled: r.fieldSampled } as unknown as Layer;
     }
+    case 'camera': {
+      // 2.5D camera: round-trip the lens/aim/DOF settings (else silently stripped on load).
+      const c = isObject(r.camera) ? r.camera as Record<string, unknown> : {};
+      return {
+        ...baseFields,
+        type: 'camera',
+        is3D: true,
+        camera: {
+          mode: c.mode === 'one-node' ? 'one-node' : 'two-node',
+          pointOfInterest: ensureAnimatableProperty(c.pointOfInterest, 'Point of Interest', 'vec2', [0, 0]),
+          pointOfInterestZ: ensureAnimatableProperty(c.pointOfInterestZ, 'POI Z', 'number', 0),
+          zoom: ensureAnimatableProperty(c.zoom, 'Zoom', 'number', 1080),
+          dofEnabled: typeof c.dofEnabled === 'boolean' ? c.dofEnabled : false,
+          focusDistance: ensureAnimatableProperty(c.focusDistance, 'Focus Distance', 'number', 1080),
+          aperture: ensureAnimatableProperty(c.aperture, 'Aperture', 'number', 25),
+          blurLevel: ensureAnimatableProperty(c.blurLevel, 'Blur Level', 'number', 1),
+        },
+      } as unknown as Layer;
+    }
     case 'hbox':
     case 'vbox':
     case 'grid': {

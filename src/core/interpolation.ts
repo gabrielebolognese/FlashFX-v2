@@ -33,6 +33,9 @@ import type { ClonerLayer } from '../cloner/types';
 import { rasterizeField, type FieldGrid } from '../field-sampling/fields';
 import { precompLocalFrame, MAX_PRECOMP_DEPTH } from './precomp';
 import type { ResolveContext } from './precomp';
+import type { Mat4, Vec3 } from './mat4';
+import type { CameraLayer } from './types';
+import { defaultCamera, cameraFromParams, localModelMatrix, composeWorldMatrix, forwardVector, type ResolvedCamera } from './camera3d';
 import { resolveStyleColor, type StyleLookup } from './styles';
 import type { PrecompLayer } from './types';
 import { resolveDominantColor, resolveShapeFill, resolveShapePattern, hexToVec4 } from './material';
@@ -82,6 +85,7 @@ interface StructuralCache {
   soloTrackIds: Set<string>;
   soloing: boolean;
   hasLayoutLayers: boolean;
+  hasThreeDLayers: boolean;
 }
 const _structCacheByLayers = new WeakMap<Layer[], StructuralCache>();
 
@@ -107,6 +111,8 @@ function getStructuralCache(layers: Layer[], tracks: Track[]): StructuralCache {
     hasLayoutLayers: layers.some(
       (l) => l.type === 'hbox' || l.type === 'vbox' || l.type === 'grid' || l.type === 'layoutContainer',
     ),
+    // 2.5D — skip the per-frame world-matrix pass entirely for all-2D comps (the common case).
+    hasThreeDLayers: layers.some((l) => l.is3D === true),
   };
   _structCacheByLayers.set(layers, cache);
   return cache;
@@ -825,6 +831,56 @@ function resolveClonerField(fieldRef: string, layers: Layer[]): FieldGrid | unde
 
 const EMPTY_VISITED: ReadonlySet<string> = new Set();
 
+// 2.5D (M1) — resolve the frame's active camera. AE model: the active camera is the topmost
+// enabled camera layer active at this frame; with none, a default camera frames the comp 1:1.
+// `sortedLayers` is in render order (topmost drawn last), so the last matching camera wins.
+function resolveActiveCamera(composition: Composition, sortedLayers: Layer[], frame: number): ResolvedCamera {
+  const { width, height } = composition.settings;
+  let chosen: CameraLayer | null = null;
+  for (const l of sortedLayers) {
+    if (l.type !== 'camera') continue;
+    if (!l.visible) continue;
+    if (frame < l.inPoint || frame >= l.outPoint) continue;
+    chosen = l;
+  }
+  if (!chosen) return defaultCamera(width, height);
+  const t = resolveTransform(chosen.transform, frame);
+  const eye: Vec3 = [t.positionX, t.positionY, t.positionZ];
+  const zoom = evaluateNumber(chosen.camera.zoom, frame);
+  let target: Vec3;
+  if (chosen.camera.mode === 'two-node') {
+    const poi = evaluateVec2(chosen.camera.pointOfInterest, frame);
+    target = [poi[0], poi[1], evaluateNumber(chosen.camera.pointOfInterestZ, frame)];
+  } else {
+    const fwd = forwardVector(t.rotationX, t.rotationY, t.rotation);
+    target = [eye[0] + fwd[0], eye[1] + fwd[1], eye[2] + fwd[2]];
+  }
+  const dof = chosen.camera.dofEnabled
+    ? {
+        focusDistance: evaluateNumber(chosen.camera.focusDistance, frame),
+        aperture: evaluateNumber(chosen.camera.aperture, frame),
+        blurLevel: evaluateNumber(chosen.camera.blurLevel, frame),
+      }
+    : null;
+  return cameraFromParams({ eye, target, zoom, compW: width, compH: height, dof });
+}
+
+// 2.5D (M1) — a 3D layer's world model matrix: compose local model matrices down the parent
+// chain (root→leaf). Uses the module-level `_layerById` populated by resolveFrame. Dormant
+// until the M3 `is3D` UI + M2 renderer consume it; harness-tested via camera3d directly.
+function worldMatrixFor(layerId: string, frame: number): Mat4 {
+  const chain: Layer[] = [];
+  const guard = new Set<string>();
+  let cur: Layer | undefined = _layerById.get(layerId);
+  while (cur && !guard.has(cur.id)) {
+    guard.add(cur.id);
+    chain.push(cur);
+    cur = cur.parentId ? _layerById.get(cur.parentId) : undefined;
+  }
+  chain.reverse();
+  return composeWorldMatrix(chain.map((l) => localModelMatrix(resolveTransform(l.transform, frame))));
+}
+
 export function resolveFrame(composition: Composition, frame: number, ctx?: ResolveContext): RenderFrame {
   const { settings, layers } = composition;
   const getStyle = ctx?.getStyle; // M21 — linked-style lookup, read through by shape/text fill+stroke
@@ -907,6 +963,7 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
     const layer = sortedLayers[i];
     if (layer.type === 'group') continue;
     if (layer.type === 'audio') continue;
+    if (layer.type === 'camera') continue; // 2.5D: cameras resolve to matrices, not a drawn quad
     if (!layer.visible) continue;
     if (layer.trackId && hiddenTrackIds.has(layer.trackId)) continue;
     if (soloing && (!layer.trackId || !soloTrackIds.has(layer.trackId))) continue;
@@ -1367,6 +1424,15 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
     }
   }
 
+  // 2.5D (M1): attach world matrices to any 3D layers (renderer consumes them in M2). Dormant
+  // until the M3 is3D toggle exists; safe no-op for all-2D comps (the common case).
+  if (struct.hasThreeDLayers) {
+    for (const rl of resolvedLayers) {
+      const src = _layerById.get(rl.id);
+      if (src?.is3D) rl.worldMatrix = worldMatrixFor(rl.id, frame);
+    }
+  }
+
   return {
     frameNumber: frame,
     totalFrames: settings.durationFrames,
@@ -1376,6 +1442,8 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
     backgroundColor: settings.backgroundColor,
     background: composition.background,
     layers: resolvedLayers,
+    // The active camera (topmost enabled camera layer, else a comp-framing default).
+    camera: resolveActiveCamera(composition, sortedLayers, frame),
   };
 }
 

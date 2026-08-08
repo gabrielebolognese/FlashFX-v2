@@ -27,13 +27,14 @@ import {
   Columns3,
   LayoutGrid,
   Container,
+  Video,
 } from 'lucide-react';
 
 type ToolAction =
   | { kind: 'select' }
   | { kind: 'shape'; shape: ShapeToolType }
   | { kind: 'vector'; tool: VectorToolType }
-  | { kind: 'instant'; action: 'addText' | 'importVideo' | 'importImage' | 'addParticle' | 'addAnimationItem' | 'addFieldSampled' | 'addPattern' | 'addCloner' | 'addHBox' | 'addVBox' | 'addGrid' | 'addLayoutContainer' }
+  | { kind: 'instant'; action: 'addText' | 'importVideo' | 'importImage' | 'addParticle' | 'addAnimationItem' | 'addFieldSampled' | 'addPattern' | 'addCloner' | 'addCamera' | 'addHBox' | 'addVBox' | 'addGrid' | 'addLayoutContainer' }
   | { kind: 'placeholder' };
 
 interface ToolDef {
@@ -65,6 +66,7 @@ const TOOLS: ToolDef[] = [
   { icon: Grid3x3, label: 'Field Sampled', action: { kind: 'instant', action: 'addFieldSampled' }, group: 'advanced' },
   { icon: Waves, label: 'Pattern', action: { kind: 'instant', action: 'addPattern' }, group: 'advanced' },
   { icon: Boxes, label: 'Cloner', action: { kind: 'instant', action: 'addCloner' }, group: 'advanced' },
+  { icon: Video, label: 'Camera (3D)', action: { kind: 'instant', action: 'addCamera' }, group: 'advanced' },
   { icon: Columns3, label: 'HBox', action: { kind: 'instant', action: 'addHBox' }, group: 'layout' },
   { icon: Rows3, label: 'VBox', action: { kind: 'instant', action: 'addVBox' }, group: 'layout' },
   { icon: LayoutGrid, label: 'Grid', action: { kind: 'instant', action: 'addGrid' }, group: 'layout' },
@@ -79,6 +81,7 @@ export function CanvasToolbar() {
   const addFieldSampledLayer = useEditorStore((s) => s.addFieldSampledLayer);
   const addGenerativePatternLayer = useEditorStore((s) => s.addGenerativePatternLayer);
   const addCloner = useEditorStore((s) => s.addCloner);
+  const addCameraLayer = useEditorStore((s) => s.addCameraLayer);
   const addAnimationItem = useEditorStore((s) => s.addAnimationItem);
   const addLayoutObject = useEditorStore((s) => s.addLayoutObject);
   const addLayoutContainer = useEditorStore((s) => s.addLayoutContainer);
@@ -126,6 +129,7 @@ export function CanvasToolbar() {
         else if (tool.action.action === 'addFieldSampled') addFieldSampledLayer();
         else if (tool.action.action === 'addPattern') addGenerativePatternLayer();
         else if (tool.action.action === 'addCloner') addCloner();
+        else if (tool.action.action === 'addCamera') addCameraLayer();
         else if (tool.action.action === 'addHBox') addLayoutObject('hbox');
         else if (tool.action.action === 'addVBox') addLayoutObject('vbox');
         else if (tool.action.action === 'addGrid') addLayoutObject('grid');
