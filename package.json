@@ -26,6 +26,7 @@
     "verify:pattern": "node scripts/verify-pattern.mjs",
     "verify:mat4": "node scripts/verify-mat4.mjs",
     "verify:camera3d": "node scripts/verify-camera3d.mjs",
+    "verify:scene3d": "node scripts/verify-scene3d.mjs",
     "verify:audioschedule": "node scripts/verify-audioschedule.mjs",
     "verify:transformhud": "node scripts/verify-transformhud.mjs",
     "verify:measure": "node scripts/verify-measure.mjs",
