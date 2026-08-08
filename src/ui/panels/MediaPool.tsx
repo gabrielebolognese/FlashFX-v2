@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import { useEditorStore } from '../../store/editor';
 import { useProjectStore } from '../../project-system/hooks/useProjectStore';
 import { mediaAssetManager } from '../../engine/media/assetManager';
-import { Search, Upload, Image, Film, GripVertical, Music, Sparkles, BookOpen, Loader2, Palette, Bookmark } from 'lucide-react';
+import { Search, Upload, Image, Film, GripVertical, Music, Sparkles, BookOpen, Loader2, Palette, Bookmark, Clapperboard } from 'lucide-react';
 import { useIconSearch } from '../../components/icons/useIconSearch';
 import { VirtualGrid } from '../../components/icons/VirtualGrid';
 import { SvgIcon } from '../../components/icons/SvgIcon';
@@ -16,10 +16,11 @@ import { useContextMenu } from '../context-menu';
 import { buildMediaPoolEmptyMenu, buildMediaAssetMenu } from '../context-menu/menuDefinitions';
 import { BrandsTab } from './BrandsTab';
 import { SavedAssetsTab } from './SavedAssetsTab';
+import { AnimationTemplatesTab } from './AnimationTemplatesTab';
 import { LibraryTab } from '../../library/LibraryTab';
 import { FolderBrowser } from '../../library/FolderBrowser';
 
-type PoolTab = 'images' | 'videos' | 'audio' | 'icons' | 'brands' | 'saved' | 'library';
+type PoolTab = 'images' | 'videos' | 'audio' | 'icons' | 'brands' | 'saved' | 'library' | 'animations';
 
 interface PoolAsset {
   id: string;
@@ -49,6 +50,7 @@ const TABS: { id: PoolTab; label: string; icon: React.ReactNode; disabled?: bool
   { id: 'images', label: 'Images', icon: <Image size={13} /> },
   { id: 'videos', label: 'Videos', icon: <Film size={13} /> },
   { id: 'audio', label: 'Audio', icon: <Music size={13} /> },
+  { id: 'animations', label: 'Animations', icon: <Clapperboard size={13} /> },
   { id: 'icons', label: 'Icons', icon: <Sparkles size={13} /> },
   { id: 'brands', label: 'Brands', icon: <Palette size={13} /> },
   { id: 'saved', label: 'Saved', icon: <Bookmark size={13} /> },
@@ -323,6 +325,10 @@ export function MediaPool() {
 
         {tab === 'library' && (
           <LibraryTab />
+        )}
+
+        {tab === 'animations' && (
+          <AnimationTemplatesTab />
         )}
       </div>
     </div>

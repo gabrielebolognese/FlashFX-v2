@@ -14,6 +14,8 @@ import { extractLayerProperties, applyLayerProperties, type LayerPropertyBundle 
 import { selectSameLayers, type SameAttr } from '../core/selection';
 import { applyReplaceSource, sourceFromLayer, sourceKindForLayer, type ReplaceSource } from '../core/replaceSource';
 import { computeReframe, applyAxisPosition, applyAxisScale, DEFAULT_CONSTRAINTS, type LayerConstraints, type ReframeInput } from '../core/reframe';
+import { getTemplate as getAnimationTemplate } from '../animation-templates/catalog';
+import { instantiateTemplate as instantiateAnimationTemplate } from '../animation-templates/instantiate';
 import { getLayerRect } from '../core/snap/bbox';
 import { createDefaultCloner, createEffector } from '../cloner/factory';
 import type { ClonerEffector } from '../cloner/types';
@@ -291,6 +293,8 @@ interface EditorState {
   /** M16 — move the effector at `index` up/down in the ordered stack. */
   reorderClonerEffector: (layerId: string, index: number, dir: 'up' | 'down') => void;
   addAnimationItem: (presetName: string) => void;
+  /** Insert a pre-built animation template (group + keyframed children) at the playhead. */
+  insertAnimationTemplate: (id: string, center?: Vec2) => void;
   addLottieIcon: (jsonPath: string, jsonData: string, totalFrames: number, frameRate: number, sourceWidth: number, sourceHeight: number, name: string) => void;
   addLayoutObject: (layoutType: 'hbox' | 'vbox' | 'grid') => void;
   addLayoutContainer: (shapeType?: ContainerShapeType) => void;
@@ -3967,6 +3971,34 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
     exec({
       label: 'Create Group',
+      execute: () => { set({ composition: newComp, selection: newSel }); },
+      undo: () => { set({ composition: oldComp, selection: oldSel }); },
+    });
+  },
+
+  insertAnimationTemplate: (id, center) => {
+    const tpl = getAnimationTemplate(id);
+    if (!tpl) return;
+    const { composition, selection } = get();
+    const oldComp = composition;
+    const oldSel = selection;
+    const playhead = useTimelineStore.getState().currentFrame;
+    const c: Vec2 = center ?? [composition.settings.width / 2, composition.settings.height / 2];
+
+    // Pure build → keyframes rebased to the playhead → ready-to-insert layers (group first).
+    const layers = instantiateAnimationTemplate(tpl, { playhead, frameRate: composition.settings.frameRate, center: c });
+    if (layers.length === 0) return;
+
+    let working = composition;
+    for (const l of layers) {
+      working = ensureLayerHasTrack({ ...working, layers: [...working.layers, l] }, l);
+    }
+    const newComp = settleComposition(working);
+    const groupId = layers[0].id;
+    const newSel: SelectionState = sel(layers.map((l) => l.id), groupId);
+
+    exec({
+      label: `Insert “${tpl.name}”`,
       execute: () => { set({ composition: newComp, selection: newSel }); },
       undo: () => { set({ composition: oldComp, selection: oldSel }); },
     });
