@@ -28,6 +28,8 @@ import { useShapeToolStore, isVectorTool } from './store/shapeTool';
 import { usePathEditStore } from './store/pathEdit';
 import { resolveExitStep } from './core/selection';
 import { OnboardingFlow, useOnboardingStore } from './onboarding';
+import { TutorialRunner } from './tutorial/TutorialRunner';
+import { launchTutorial } from './tutorial/launch';
 
 const LazyIntroPopup = lazy(() => import('@/components/ui/IntroPopup').then(m => ({ default: m.IntroPopup })));
 
@@ -430,6 +432,7 @@ function Editor() {
       <SettingsPanel />
       <SettingsCssInjector />
       <CommandPalette />
+      <TutorialRunner />
       <Suspense fallback={null}>
         <LazyIntroPopup />
       </Suspense>
@@ -537,15 +540,15 @@ function App() {
     <ContextMenuProvider>
       <ProjectApp editorComponent={Editor} />
       <ContextMenuRenderer />
-      {/* Onboarding is hidden by default; this small corner button re-launches the tour. */}
+      {/* Small corner button re-launches the guided tutorial (from a fresh project). */}
       <button
-        onClick={() => useOnboardingStore.getState().start()}
-        title="Start onboarding"
-        aria-label="Start onboarding"
+        onClick={() => { void launchTutorial(); }}
+        title="Replay the tutorial"
+        aria-label="Replay the tutorial"
         className="fixed bottom-3 left-3 z-50 flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-[#0a1628]/90 border border-[#1a2a42] text-slate-400 hover:text-slate-100 hover:border-[#2a3a52] shadow-lg backdrop-blur-sm transition-colors"
       >
         <GraduationCap size={14} />
-        <span className="text-[11px] font-medium">Onboarding</span>
+        <span className="text-[11px] font-medium">Tutorial</span>
       </button>
     </ContextMenuProvider>
   );

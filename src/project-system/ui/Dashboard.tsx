@@ -4,14 +4,20 @@ import { ProjectGrid } from './ProjectGrid';
 import { DashboardHeader } from './DashboardHeader';
 import { CreateProjectModal } from './CreateProjectModal';
 import { Clock, FolderOpen, Star, Trash2, Film } from 'lucide-react';
+import { TutorialLaunch } from '../../tutorial/TutorialLaunch';
+import { hasSeenTutorial } from '../../tutorial/launch';
 
 type NavSection = 'recents' | 'all' | 'starred' | 'trash';
 
 export function Dashboard() {
   const loadProjects = useProjectStore((s) => s.loadProjects);
   const loading = useProjectStore((s) => s.loading);
+  const projects = useProjectStore((s) => s.projects);
   const [showCreate, setShowCreate] = useState(false);
   const [activeNav, setActiveNav] = useState<NavSection>('recents');
+  const [launchDismissed, setLaunchDismissed] = useState(false);
+  // First-open hero: never seen the tutorial and no projects yet.
+  const showLaunch = !launchDismissed && !loading && projects.length === 0 && !hasSeenTutorial();
 
   useEffect(() => {
     loadProjects();
@@ -81,6 +87,8 @@ export function Dashboard() {
       {showCreate && (
         <CreateProjectModal onClose={() => setShowCreate(false)} />
       )}
+
+      {showLaunch && <TutorialLaunch onDismiss={() => setLaunchDismissed(true)} />}
     </div>
   );
 }
