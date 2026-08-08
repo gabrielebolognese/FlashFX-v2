@@ -9,7 +9,8 @@ import { useTimelineStore } from './store/timeline';
 import { usePanelStore } from './store/panels';
 import { ProjectApp, useProjectStore } from './project-system';
 import { useAnimationBuilderStore } from './animation-builder';
-import { ArrowLeft, LayoutGrid, Workflow, Settings2, GraduationCap } from 'lucide-react';
+import { ArrowLeft, LayoutGrid, Workflow, Settings2, GraduationCap, Sparkles } from 'lucide-react';
+import { AiChatPanel } from './ui/panels/AiChatPanel';
 import { ResetEditorDialog } from './ui/recovery/ResetEditorDialog';
 import { EmergencyRecoveryOverlay } from './ui/recovery/EmergencyRecoveryOverlay';
 import { CaptionGenerationModal } from './ui/panels/CaptionGenerationModal';
@@ -51,6 +52,11 @@ function Editor() {
   const closeProject = useProjectStore((s) => s.closeProject);
   const workspace = useAnimationBuilderStore((s) => s.workspace);
   const setWorkspace = useAnimationBuilderStore((s) => s.setWorkspace);
+  const aiChatOpen = usePanelStore((s) => s.aiChatOpen);
+  const toggleAiChat = usePanelStore((s) => s.toggleAiChat);
+  const aiEditorWorkspace = usePanelStore((s) => s.editorWorkspace);
+  // AI chat works in every mode except preview/review (that mode is a full-screen player).
+  const showAiChat = aiChatOpen && !(workspace === 'editor' && aiEditorWorkspace === 'review');
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -420,9 +426,24 @@ function Editor() {
           <Workflow size={13} />
           <span className="text-[11px] font-medium">Builder</span>
         </button>
+        <button
+          onClick={toggleAiChat}
+          className={`flex items-center gap-1.5 px-3 transition-colors border-l border-[#1a2a42] ${
+            aiChatOpen
+              ? 'bg-[#f7b500]/8 text-[#f7b500] border-b-2 border-b-[#f7b500]'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.03]'
+          }`}
+          title="Toggle AI Assistant"
+        >
+          <Sparkles size={13} />
+          <span className="text-[11px] font-medium">AI</span>
+        </button>
         {workspace === 'editor' && <PanelsMenu />}
       </div>
-      {workspace === 'editor' ? <PanelLayout /> : <BuilderLayout />}
+      <div className="flex-1 flex flex-row min-h-0 min-w-0">
+        {workspace === 'editor' ? <PanelLayout /> : <BuilderLayout />}
+        {showAiChat && <AiChatPanel />}
+      </div>
       <ResetEditorDialog />
       <EmergencyRecoveryOverlay />
       <ClipContextMenu />
