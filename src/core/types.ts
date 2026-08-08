@@ -632,6 +632,30 @@ export interface FieldSampledLayer {
   outPoint: number;
 }
 
+// GPU-style procedural pattern generator (waves / plasma / kaleidoscope / mosaic). Config is an
+// opaque JSON blob (src/patterns/); the layer rasterizes to a full-frame texture composited through
+// the image pipeline (like fieldSampled). Frame-pure: the pattern is a function of localFrame only.
+export interface GenerativePatternLayer {
+  id: string;
+  type: 'generativePattern';
+  name: string;
+  parentId: string | null;
+  trackId: string | null;
+  visible: boolean;
+  locked: boolean;
+  effectsEnabled?: boolean;
+  motionBlur?: boolean;
+  motionBlurShutter?: number;
+  is3D?: boolean;
+  blendMode: BlendMode;
+  transform: Transform;
+  generativePattern: {
+    configJSON: string;
+  };
+  inPoint: number;
+  outPoint: number;
+}
+
 export interface LottieIconLayer {
   id: string;
   type: 'lottieIcon';
@@ -851,10 +875,10 @@ export interface LayerDecorations {
   constraints?: LayerConstraints;
 }
 
-export type Layer = (ShapeLayer | TextLayer | GroupLayer | VideoLayer | ImageLayer | AudioLayer | ParticleLayer | AnimationItemLayer | FieldSampledLayer | LottieIconLayer | LayoutObjectLayer | LayoutContainerLayer | ClonerLayer | PrecompLayer) & LayerDecorations;
+export type Layer = (ShapeLayer | TextLayer | GroupLayer | VideoLayer | ImageLayer | AudioLayer | ParticleLayer | AnimationItemLayer | FieldSampledLayer | GenerativePatternLayer | LottieIconLayer | LayoutObjectLayer | LayoutContainerLayer | ClonerLayer | PrecompLayer) & LayerDecorations;
 
 // Track system
-export type TrackType = 'video' | 'image' | 'text' | 'shape' | 'group' | 'audio' | 'particle' | 'animationItem' | 'fieldSampled' | 'lottieIcon' | 'hbox' | 'vbox' | 'grid' | 'layoutContainer' | 'cloner' | 'precomp' | 'mixed';
+export type TrackType = 'video' | 'image' | 'text' | 'shape' | 'group' | 'audio' | 'particle' | 'animationItem' | 'fieldSampled' | 'generativePattern' | 'lottieIcon' | 'hbox' | 'vbox' | 'grid' | 'layoutContainer' | 'cloner' | 'precomp' | 'mixed';
 
 export interface Track {
   id: string;
@@ -1342,6 +1366,11 @@ export interface ResolvedFieldSampled {
   localFrame: number;
 }
 
+export interface ResolvedGenerativePattern {
+  configJSON: string;
+  localFrame: number;
+}
+
 export interface ResolvedLottieIcon {
   jsonPath: string;
   jsonData: string;
@@ -1380,6 +1409,7 @@ export interface ResolvedLayer {
   image?: ResolvedImage;
   particle?: ResolvedParticle;
   fieldSampled?: ResolvedFieldSampled;
+  generativePattern?: ResolvedGenerativePattern;
   lottieIcon?: ResolvedLottieIcon;
   proceduralLoop?: ResolvedProceduralLoop;
   mask?: ResolvedMask;
@@ -1390,7 +1420,7 @@ export interface ResolvedLayer {
   blur?: ResolvedBlur;
   cloner?: ResolvedCloner;
   precomp?: ResolvedPrecomp;
-  layerType: 'shape' | 'text' | 'video' | 'image' | 'audio' | 'particle' | 'fieldSampled' | 'lottieIcon' | 'cloner' | 'precomp';
+  layerType: 'shape' | 'text' | 'video' | 'image' | 'audio' | 'particle' | 'fieldSampled' | 'generativePattern' | 'lottieIcon' | 'cloner' | 'precomp';
 }
 
 export interface RenderFrame {

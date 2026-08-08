@@ -61,6 +61,7 @@ function getClipColor(layer: Layer): string {
     case 'particle': return '#e879f9';
     case 'animationItem': return '#f97316';
     case 'fieldSampled': return '#06b6d4';
+    case 'generativePattern': return '#8b5cf6';
     case 'lottieIcon': return '#a78bfa';
     case 'shape': {
       const shape = (layer as ShapeLayer).shape;
@@ -92,6 +93,7 @@ function layerTypeToTrack(t: Layer['type']): Track['type'] {
     case 'particle': return 'particle';
     case 'animationItem': return 'animationItem';
     case 'fieldSampled': return 'fieldSampled';
+    case 'generativePattern': return 'generativePattern';
     case 'lottieIcon': return 'lottieIcon';
     default: return 'mixed';
   }

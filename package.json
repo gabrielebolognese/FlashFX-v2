@@ -23,6 +23,7 @@
     "verify:masterclock": "node scripts/verify-masterclock.mjs",
     "verify:presentation": "node scripts/verify-presentation.mjs",
     "verify:anim-templates": "node scripts/verify-anim-templates.mjs",
+    "verify:pattern": "node scripts/verify-pattern.mjs",
     "verify:audioschedule": "node scripts/verify-audioschedule.mjs",
     "verify:transformhud": "node scripts/verify-transformhud.mjs",
     "verify:measure": "node scripts/verify-measure.mjs",

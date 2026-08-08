@@ -7,7 +7,7 @@ import { useMotionPathStore } from '../../store/motionPath';
 import { useMaskStore } from '../../store/mask';
 import { usePathEditStore } from '../../store/pathEdit';
 import { BrandColorPicker } from '../components/BrandColorPicker';
-import type { ShapeLayer, TextLayer, VideoLayer, ImageLayer, AudioLayer, ParticleLayer, AnimationItemLayer, LottieIconLayer, AnimatableProperty, Vec2, Vec4, RectangleShape, CircleShape, StarShape, PolygonShape, MotionPathAnchor, MotionPathLoop, Mask, MaskType, Layer, LayerShadow, LayerGlow, LayerBlur, BlurType, GlowMode, LayoutObjectLayer, LayoutContainerLayer } from '../../core/types';
+import type { ShapeLayer, TextLayer, VideoLayer, ImageLayer, AudioLayer, ParticleLayer, GenerativePatternLayer, AnimationItemLayer, LottieIconLayer, AnimatableProperty, Vec2, Vec4, RectangleShape, CircleShape, StarShape, PolygonShape, MotionPathAnchor, MotionPathLoop, Mask, MaskType, Layer, LayerShadow, LayerGlow, LayerBlur, BlurType, GlowMode, LayoutObjectLayer, LayoutContainerLayer } from '../../core/types';
 import { evaluateProperty } from '../../core/interpolation';
 import { createProperty } from '../../core/factory';
 import { getMotionBlur } from '../../core/layerSwitches';
@@ -23,6 +23,7 @@ import { AnchoringPanel } from './AnchoringPanel';
 import { PhysicsPanel } from './PhysicsPanel';
 import { StaggerPanel } from './StaggerPanel';
 import { FieldSamplingPanel } from './FieldSamplingPanel';
+import { GenerativePatternPanel } from './GenerativePatternPanel';
 import { ClonerInspector } from './ClonerInspector';
 import { AnimatePanel } from './AnimatePanel';
 import { ShapeMaterialPanel } from './ShapeMaterialPanel';
@@ -170,6 +171,7 @@ function InspectorTabContent({ tab, layer }: { tab: InspectorTab; layer: Layer }
   const isImage = layer.type === 'image';
   const isAudio = layer.type === 'audio';
   const isParticle = layer.type === 'particle';
+  const isPattern = layer.type === 'generativePattern';
   const isAnimationItem = layer.type === 'animationItem';
 
   if (tab === 'animate') {
@@ -350,6 +352,10 @@ function InspectorTabContent({ tab, layer }: { tab: InspectorTab; layer: Layer }
 
       {isParticle && (
         <ParticlePanel layer={layer as ParticleLayer} />
+      )}
+
+      {isPattern && (
+        <GenerativePatternPanel layer={layer as GenerativePatternLayer} />
       )}
 
       {isAnimationItem && (

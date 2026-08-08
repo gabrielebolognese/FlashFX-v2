@@ -22,6 +22,7 @@ import {
   Sparkles,
   Activity,
   Grid3x3,
+  Waves,
   Rows3,
   Columns3,
   LayoutGrid,
@@ -32,7 +33,7 @@ type ToolAction =
   | { kind: 'select' }
   | { kind: 'shape'; shape: ShapeToolType }
   | { kind: 'vector'; tool: VectorToolType }
-  | { kind: 'instant'; action: 'addText' | 'importVideo' | 'importImage' | 'addParticle' | 'addAnimationItem' | 'addFieldSampled' | 'addCloner' | 'addHBox' | 'addVBox' | 'addGrid' | 'addLayoutContainer' }
+  | { kind: 'instant'; action: 'addText' | 'importVideo' | 'importImage' | 'addParticle' | 'addAnimationItem' | 'addFieldSampled' | 'addPattern' | 'addCloner' | 'addHBox' | 'addVBox' | 'addGrid' | 'addLayoutContainer' }
   | { kind: 'placeholder' };
 
 interface ToolDef {
@@ -62,6 +63,7 @@ const TOOLS: ToolDef[] = [
   { icon: Sparkles, label: 'Particle', action: { kind: 'instant', action: 'addParticle' }, group: 'advanced' },
   { icon: Activity, label: 'Animation Item', action: { kind: 'instant', action: 'addAnimationItem' }, group: 'advanced' },
   { icon: Grid3x3, label: 'Field Sampled', action: { kind: 'instant', action: 'addFieldSampled' }, group: 'advanced' },
+  { icon: Waves, label: 'Pattern', action: { kind: 'instant', action: 'addPattern' }, group: 'advanced' },
   { icon: Boxes, label: 'Cloner', action: { kind: 'instant', action: 'addCloner' }, group: 'advanced' },
   { icon: Columns3, label: 'HBox', action: { kind: 'instant', action: 'addHBox' }, group: 'layout' },
   { icon: Rows3, label: 'VBox', action: { kind: 'instant', action: 'addVBox' }, group: 'layout' },
@@ -75,6 +77,7 @@ export function CanvasToolbar() {
   const addImage = useEditorStore((s) => s.addImage);
   const addParticleLayer = useEditorStore((s) => s.addParticleLayer);
   const addFieldSampledLayer = useEditorStore((s) => s.addFieldSampledLayer);
+  const addGenerativePatternLayer = useEditorStore((s) => s.addGenerativePatternLayer);
   const addCloner = useEditorStore((s) => s.addCloner);
   const addAnimationItem = useEditorStore((s) => s.addAnimationItem);
   const addLayoutObject = useEditorStore((s) => s.addLayoutObject);
@@ -121,6 +124,7 @@ export function CanvasToolbar() {
         else if (tool.action.action === 'addParticle') addParticleLayer();
         else if (tool.action.action === 'addAnimationItem') addAnimationItem('Progress Bar');
         else if (tool.action.action === 'addFieldSampled') addFieldSampledLayer();
+        else if (tool.action.action === 'addPattern') addGenerativePatternLayer();
         else if (tool.action.action === 'addCloner') addCloner();
         else if (tool.action.action === 'addHBox') addLayoutObject('hbox');
         else if (tool.action.action === 'addVBox') addLayoutObject('vbox');

@@ -17,6 +17,7 @@ import { LruCache } from './cache/lruCache';
 import { RenderTree, type RenderTreeStats } from './cache/renderTree';
 import { particleRenderer } from './particleRenderer';
 import { fieldSampledRenderer } from '../field-sampling/renderer';
+import { patternRenderer } from '../patterns/renderer';
 import { lottieRendererEngine } from './lottieRenderer';
 import { videoTextureCache } from './video/videoTextureCache';
 import { frameScheduler } from './video/frameScheduler';
@@ -3398,7 +3399,7 @@ export class WebGPURenderer {
         textLayers.push({ index: i, layer });
       } else if (layer.layerType === 'video') {
         videoLayers.push({ index: i, layer });
-      } else if (layer.layerType === 'image' || layer.layerType === 'particle' || layer.layerType === 'fieldSampled' || layer.layerType === 'lottieIcon' || layer.layerType === 'precomp') {
+      } else if (layer.layerType === 'image' || layer.layerType === 'particle' || layer.layerType === 'fieldSampled' || layer.layerType === 'generativePattern' || layer.layerType === 'lottieIcon' || layer.layerType === 'precomp') {
         // A precomp composites like an image: its pre-rendered texture as a
         // transformed, opacity-scaled quad through the image pipeline.
         imageLayers.push({ index: i, layer });
@@ -3599,6 +3600,23 @@ export class WebGPURenderer {
           sourceWidth = frame.width;
           sourceHeight = frame.height;
           textureKey = `__fieldSampled_${imgLayer.id}`;
+        } else if (imgLayer.layerType === 'generativePattern' && imgLayer.generativePattern) {
+          const patCanvas = patternRenderer.renderPatternLayer(
+            imgLayer.id,
+            imgLayer.generativePattern.configJSON,
+            imgLayer.generativePattern.localFrame,
+            frame.frameRate ?? 30,
+            frame.width,
+            frame.height,
+          );
+          if (!patCanvas) {
+            imageBindGroups.push(null);
+            continue;
+          }
+          bitmap = patCanvas;
+          sourceWidth = frame.width;
+          sourceHeight = frame.height;
+          textureKey = `__pattern_${imgLayer.id}_${imgLayer.generativePattern.localFrame}`;
         } else if (imgLayer.layerType === 'lottieIcon' && imgLayer.lottieIcon) {
           const lottieCanvas = lottieRendererEngine.renderLottieFrame(imgLayer.id, imgLayer.lottieIcon);
           if (!lottieCanvas) {

@@ -13,6 +13,7 @@ import type {
   ParticleLayer,
   AnimationItemLayer,
   FieldSampledLayer,
+  GenerativePatternLayer,
   LottieIconLayer,
   LayoutObjectLayer,
   LayoutContainerLayer,
@@ -620,6 +621,31 @@ export function createFieldSampledLayer(
     blendMode: 'normal',
     transform: createTransform(x, y),
     fieldSampled: {
+      configJSON,
+    },
+    inPoint: 0,
+    outPoint: durationFrames,
+  };
+}
+
+export function createGenerativePatternLayer(
+  name: string,
+  x: number,
+  y: number,
+  configJSON: string,
+  durationFrames: number,
+): GenerativePatternLayer {
+  return {
+    id: uid(),
+    type: 'generativePattern',
+    name,
+    parentId: null,
+    trackId: null,
+    visible: true,
+    locked: false,
+    blendMode: 'normal',
+    transform: createTransform(x, y),
+    generativePattern: {
       configJSON,
     },
     inPoint: 0,

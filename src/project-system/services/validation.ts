@@ -486,6 +486,10 @@ function validateLayer(raw: unknown): Layer | null {
       if (!isObject(r.animationItem)) return null;
       return { ...baseFields, type: 'animationItem', animationItem: r.animationItem } as unknown as Layer;
     }
+    case 'generativePattern': {
+      if (!isObject(r.generativePattern)) return null;
+      return { ...baseFields, type: 'generativePattern', generativePattern: r.generativePattern } as unknown as Layer;
+    }
     case 'fieldSampled': {
       if (!isObject(r.fieldSampled)) return null;
       return { ...baseFields, type: 'fieldSampled', fieldSampled: r.fieldSampled } as unknown as Layer;

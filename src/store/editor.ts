@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { Composition, SceneDocument, Layer, AnimatableProperty, Keyframe, Vec2, Vec4, InterpolationType, BackgroundLayer, Track, TrackType, VideoPlaybackMode, PathVertex, VertexType, Mask, MaskType, AnchorEdge, PhysicsBindingDef, PhysicsWorldDef, StaggerBindingDef, LayoutObjectLayer, LayoutContainerLayer, ContainerShapeType, Marker, ShapeLayer, PolygonShape } from '../core/types';
-import { createComposition, createRectangleLayer, createCircleLayer, createStarLayer, createPolygonLayer, createDefaultPolygonVertices, createTextLayer, createVideoLayer, createImageLayer, createAudioLayer, createGroupLayer, createKeyframe, createBackgroundLayer, createMask, createParticleLayer, createAnimationItemLayer, createFieldSampledLayer, createLottieIconLayer, createLayoutObjectLayer, createLayoutContainerLayer, createDefaultChildOverride, createProperty, uid } from '../core/factory';
+import { createComposition, createRectangleLayer, createCircleLayer, createStarLayer, createPolygonLayer, createDefaultPolygonVertices, createTextLayer, createVideoLayer, createImageLayer, createAudioLayer, createGroupLayer, createKeyframe, createBackgroundLayer, createMask, createParticleLayer, createAnimationItemLayer, createFieldSampledLayer, createGenerativePatternLayer, createLottieIconLayer, createLayoutObjectLayer, createLayoutContainerLayer, createDefaultChildOverride, createProperty, uid } from '../core/factory';
 import { outlineText, canOutlineFont } from '../text/outlineText';
 import { computeBatchNames, type RenamePattern } from '../core/batchRename';
 import { detachStyleValue, type SharedStyle } from '../core/styles';
@@ -14,6 +14,8 @@ import { extractLayerProperties, applyLayerProperties, type LayerPropertyBundle 
 import { selectSameLayers, type SameAttr } from '../core/selection';
 import { applyReplaceSource, sourceFromLayer, sourceKindForLayer, type ReplaceSource } from '../core/replaceSource';
 import { computeReframe, applyAxisPosition, applyAxisScale, DEFAULT_CONSTRAINTS, type LayerConstraints, type ReframeInput } from '../core/reframe';
+import { serializePatternConfig } from '../patterns/config';
+import { DEFAULT_PATTERN } from '../patterns/presets';
 import { getTemplate as getAnimationTemplate, ANIMATION_TEMPLATES } from '../animation-templates/catalog';
 import { instantiateTemplate as instantiateAnimationTemplate } from '../animation-templates/instantiate';
 import { getLayerRect } from '../core/snap/bbox';
@@ -282,6 +284,7 @@ interface EditorState {
   addText: (content?: string) => void;
   addParticleLayer: () => void;
   addFieldSampledLayer: (configJSON?: string) => void;
+  addGenerativePatternLayer: (configJSON?: string) => void;
   /** M16 — add a Cloner. Clones the single selected eligible layer, or a placeholder circle. */
   addCloner: () => void;
   /** M16 — wrap the active selected layer as a Cloner's source. */
@@ -558,6 +561,7 @@ function layerTypeToTrackType(type: Layer['type']): TrackType {
     case 'particle': return 'particle';
     case 'animationItem': return 'animationItem';
     case 'fieldSampled': return 'fieldSampled';
+    case 'generativePattern': return 'generativePattern';
     case 'lottieIcon': return 'lottieIcon';
     case 'cloner': return 'cloner';
     case 'precomp': return 'precomp';
@@ -1883,6 +1887,27 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
     exec({
       label: 'Add Field Sampled Layer',
+      execute: () => { set({ composition: newComp, selection: newSel }); },
+      undo: () => { set({ composition: oldComp, selection: oldSel }); },
+    });
+  },
+
+  addGenerativePatternLayer: (configJSON) => {
+    const { composition, selection } = get();
+    const oldComp = composition;
+    const oldSel = selection;
+    const x = composition.settings.width / 2;
+    const y = composition.settings.height / 2;
+    const count = composition.layers.filter((l) => l.type === 'generativePattern').length;
+    const config = configJSON || serializePatternConfig(DEFAULT_PATTERN);
+    const layer = createGenerativePatternLayer(
+      `Pattern ${count + 1}`, x, y, config,
+      defaultClipFrames(composition)
+    );
+    const newComp = settleComposition(ensureLayerHasTrack({ ...composition, layers: [...composition.layers, layer] }, layer));
+    const newSel: SelectionState = sel([layer.id], layer.id);
+    exec({
+      label: 'Add Pattern Layer',
       execute: () => { set({ composition: newComp, selection: newSel }); },
       undo: () => { set({ composition: oldComp, selection: oldSel }); },
     });

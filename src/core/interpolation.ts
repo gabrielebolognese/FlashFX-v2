@@ -1140,6 +1140,19 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
           },
           layerType: 'fieldSampled',
         });
+      } else if (layer.type === 'generativePattern') {
+        const localFrame = frame - layer.inPoint;
+        resolvedLayers.push({
+          id: layer.id,
+          visible: true,
+          blendMode: layer.blendMode,
+          transform: worldTransform,
+          generativePattern: {
+            configJSON: layer.generativePattern.configJSON,
+            localFrame,
+          },
+          layerType: 'generativePattern',
+        });
       } else if (layer.type === 'lottieIcon') {
         const lottieLayer = layer as LottieIconLayer;
         const localFrame = frame - layer.inPoint + lottieLayer.lottieIcon.startFrame;
