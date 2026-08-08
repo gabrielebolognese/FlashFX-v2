@@ -85,13 +85,15 @@ try {
     assert.deepEqual(samplePalette(stops, 2, false), stops[stops.length - 1].color);
   });
 
-  check('generativePattern layer survives the validation whitelist round-trip', () => {
-    const layer = createGenerativePatternLayer('Pattern 1', 960, 540, serializePatternConfig(DEFAULT_PATTERN), 90);
+  check('generativePattern layer survives the validation whitelist round-trip (config + bounds)', () => {
+    const layer = createGenerativePatternLayer('Pattern 1', 960, 540, 800, 500, serializePatternConfig(DEFAULT_PATTERN), 90);
     const validated = validateComposition({ layers: [layer] });
     assert.equal(validated.layers.length, 1, 'layer not stripped');
     const out = validated.layers[0];
     assert.equal(out.type, 'generativePattern');
     assert.equal(out.generativePattern.configJSON, layer.generativePattern.configJSON, 'config preserved');
+    assert.equal(out.width.defaultValue, 800, 'width preserved');
+    assert.equal(out.height.defaultValue, 500, 'height preserved');
   });
 
   console.log(`\n✅ ${passed} checks passed`);

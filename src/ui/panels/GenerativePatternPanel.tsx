@@ -36,6 +36,19 @@ export function GenerativePatternPanel({ layer }: { layer: GenerativePatternLaye
         </div>
       </div>
 
+      {/* Size (the pattern is generated only inside these bounds; move/resize on the canvas too) */}
+      <Row label="Size">
+        <div className="flex items-center gap-1.5">
+          <input type="number" value={Math.round(layer.width.defaultValue as number)} min={2}
+            onChange={(e) => updateLayerProperty(layer.id, 'width.defaultValue', Math.max(2, parseInt(e.target.value) || 2))}
+            className="w-full h-6 px-1.5 rounded bg-[#0b1220] border border-[#1a2a42] text-[11px] text-slate-200 focus:outline-none" />
+          <span className="text-slate-600 text-[11px]">×</span>
+          <input type="number" value={Math.round(layer.height.defaultValue as number)} min={2}
+            onChange={(e) => updateLayerProperty(layer.id, 'height.defaultValue', Math.max(2, parseInt(e.target.value) || 2))}
+            className="w-full h-6 px-1.5 rounded bg-[#0b1220] border border-[#1a2a42] text-[11px] text-slate-200 focus:outline-none" />
+        </div>
+      </Row>
+
       {/* Type */}
       <Row label="Type">
         <select value={cfg.type} onChange={(e) => set('type', e.target.value as PatternType)}

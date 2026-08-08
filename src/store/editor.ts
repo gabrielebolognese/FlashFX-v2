@@ -1900,8 +1900,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const y = composition.settings.height / 2;
     const count = composition.layers.filter((l) => l.type === 'generativePattern').length;
     const config = configJSON || serializePatternConfig(DEFAULT_PATTERN);
+    const w = Math.round(composition.settings.width * 0.6);
+    const h = Math.round(composition.settings.height * 0.6);
     const layer = createGenerativePatternLayer(
-      `Pattern ${count + 1}`, x, y, config,
+      `Pattern ${count + 1}`, x, y, w, h, config,
       defaultClipFrames(composition)
     );
     const newComp = settleComposition(ensureLayerHasTrack({ ...composition, layers: [...composition.layers, layer] }, layer));

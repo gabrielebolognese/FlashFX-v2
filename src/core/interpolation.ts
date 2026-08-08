@@ -1150,7 +1150,10 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
           generativePattern: {
             configJSON: layer.generativePattern.configJSON,
             localFrame,
+            width: evaluateNumber(layer.width, frame),
+            height: evaluateNumber(layer.height, frame),
           },
+          masks: resolveMasks(layer.masks, frame),
           layerType: 'generativePattern',
         });
       } else if (layer.type === 'lottieIcon') {

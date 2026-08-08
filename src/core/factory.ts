@@ -632,6 +632,8 @@ export function createGenerativePatternLayer(
   name: string,
   x: number,
   y: number,
+  width: number,
+  height: number,
   configJSON: string,
   durationFrames: number,
 ): GenerativePatternLayer {
@@ -645,6 +647,8 @@ export function createGenerativePatternLayer(
     locked: false,
     blendMode: 'normal',
     transform: createTransform(x, y),
+    width: createProperty('Width', 'number', width),
+    height: createProperty('Height', 'number', height),
     generativePattern: {
       configJSON,
     },

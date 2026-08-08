@@ -647,8 +647,16 @@ export interface GenerativePatternLayer {
   motionBlur?: boolean;
   motionBlurShutter?: number;
   is3D?: boolean;
+  shadow?: LayerShadow;
+  glow?: LayerGlow;
+  blur?: LayerBlur;
   blendMode: BlendMode;
   transform: Transform;
+  // Bounded like a rectangle: the pattern is generated only inside width×height (movable via the
+  // transform, resizable via the bounding box, maskable via `masks`).
+  width: AnimatableProperty;
+  height: AnimatableProperty;
+  masks?: Mask[];
   generativePattern: {
     configJSON: string;
   };
@@ -1369,6 +1377,8 @@ export interface ResolvedFieldSampled {
 export interface ResolvedGenerativePattern {
   configJSON: string;
   localFrame: number;
+  width: number;
+  height: number;
 }
 
 export interface ResolvedLottieIcon {

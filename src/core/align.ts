@@ -21,6 +21,9 @@ function getLayerSize(layer: Layer, frame: number): { w: number; h: number } | n
     const il = layer as any;
     return { w: il.image.sourceWidth, h: il.image.sourceHeight };
   }
+  if (layer.type === 'generativePattern') {
+    return { w: evaluateProperty(layer.width, frame) as number, h: evaluateProperty(layer.height, frame) as number };
+  }
   if (layer.type === 'shape') {
     const sl = layer as any;
     if (!sl.shape) return null;

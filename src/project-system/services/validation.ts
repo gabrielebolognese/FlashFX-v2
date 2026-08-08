@@ -488,7 +488,13 @@ function validateLayer(raw: unknown): Layer | null {
     }
     case 'generativePattern': {
       if (!isObject(r.generativePattern)) return null;
-      return { ...baseFields, type: 'generativePattern', generativePattern: r.generativePattern } as unknown as Layer;
+      return {
+        ...baseFields,
+        type: 'generativePattern',
+        generativePattern: r.generativePattern,
+        width: ensureAnimatableProperty(r.width, 'Width', 'number', 800),
+        height: ensureAnimatableProperty(r.height, 'Height', 'number', 500),
+      } as unknown as Layer;
     }
     case 'fieldSampled': {
       if (!isObject(r.fieldSampled)) return null;

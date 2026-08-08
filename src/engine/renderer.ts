@@ -824,7 +824,7 @@ fn pworley(g: vec2f, sp: f32) -> vec2f {
   return vec2f(best, bh);
 }
 fn patternValue(uv: vec2f) -> f32 {
-  var p = (uv - vec2f(0.5)) * vec2f(u.resolution.x / u.resolution.y, 1.0);
+  var p = (uv - vec2f(0.5)) * vec2f(u.quadSize.x / max(1.0, u.quadSize.y), 1.0);
   p = rot2(p, u.patRot);
   let s = max(0.05, u.scale) * 4.0; let sp = u.time * u.speed;
   if (u.warp > 0.0) { let wx = p.x; p.x = p.x + u.warp*0.3*sin(p.y*3.0 + sp); p.y = p.y + u.warp*0.3*cos(wx*3.0 + sp); }
@@ -3565,8 +3565,9 @@ export class WebGPURenderer {
         textLayers.push({ index: i, layer });
       } else if (layer.layerType === 'video') {
         videoLayers.push({ index: i, layer });
-      } else if (layer.layerType === 'generativePattern' && gpu.patternPipeline) {
-        // GPU pattern path (Phase 1.5). Without the pipeline it falls through to the image bucket (CPU).
+      } else if (layer.layerType === 'generativePattern' && gpu.patternPipeline && !(layer.masks && layer.masks.length > 0)) {
+        // GPU pattern path (Phase 1.5), used for un-masked patterns. Masked patterns (and the
+        // no-pipeline fallback) go through the image bucket, which applies masks + transform.
         patternLayers.push({ index: i, layer });
       } else if (layer.layerType === 'image' || layer.layerType === 'particle' || layer.layerType === 'fieldSampled' || layer.layerType === 'generativePattern' || layer.layerType === 'lottieIcon' || layer.layerType === 'precomp') {
         // A precomp composites like an image: its pre-rendered texture as a
@@ -3770,22 +3771,17 @@ export class WebGPURenderer {
           sourceHeight = frame.height;
           textureKey = `__fieldSampled_${imgLayer.id}`;
         } else if (imgLayer.layerType === 'generativePattern' && imgLayer.generativePattern) {
-          const patCanvas = patternRenderer.renderPatternLayer(
-            imgLayer.id,
-            imgLayer.generativePattern.configJSON,
-            imgLayer.generativePattern.localFrame,
-            frame.frameRate ?? 30,
-            frame.width,
-            frame.height,
-          );
+          const gp = imgLayer.generativePattern;
+          const pw = Math.max(2, Math.round(gp.width)), ph = Math.max(2, Math.round(gp.height));
+          const patCanvas = patternRenderer.renderPatternLayer(imgLayer.id, gp.configJSON, gp.localFrame, frame.frameRate ?? 30, pw, ph);
           if (!patCanvas) {
             imageBindGroups.push(null);
             continue;
           }
           bitmap = patCanvas;
-          sourceWidth = frame.width;
-          sourceHeight = frame.height;
-          textureKey = `__pattern_${imgLayer.id}_${imgLayer.generativePattern.localFrame}`;
+          sourceWidth = pw;   // bounded texture → the image quad sizes to width×height × transform scale
+          sourceHeight = ph;
+          textureKey = `__pattern_${imgLayer.id}_${gp.localFrame}_${pw}x${ph}`;
         } else if (imgLayer.layerType === 'lottieIcon' && imgLayer.lottieIcon) {
           const lottieCanvas = lottieRendererEngine.renderLottieFrame(imgLayer.id, imgLayer.lottieIcon);
           if (!lottieCanvas) {
@@ -3966,7 +3962,7 @@ export class WebGPURenderer {
         const d = new Float32Array(patBuf, PATTERN_UNIFORM_ALIGN * pi, PATTERN_UNIFORM_FLOATS);
         d[0] = frame.width; d[1] = frame.height;
         d[2] = t.positionX; d[3] = t.positionY;
-        d[4] = frame.width * t.scaleX; d[5] = frame.height * t.scaleY;
+        d[4] = gp.width * t.scaleX; d[5] = gp.height * t.scaleY; // bounded to the layer's width×height
         d[6] = t.anchorX; d[7] = t.anchorY;
         d[8] = t.rotation * (Math.PI / 180); d[9] = t.opacity;
         d[10] = gp.localFrame / (frame.frameRate ?? 30);
