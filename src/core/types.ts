@@ -79,6 +79,11 @@ export interface Transform {
   scale: AnimatableProperty;
   anchorPoint: AnimatableProperty;
   opacity: AnimatableProperty;
+  // --- 2.5D (optional, default 0; present only on 3D-enabled layers). `rotation` above stays
+  // the Z rotation (screen-plane spin) for full backward compatibility; these add depth. ---
+  positionZ?: AnimatableProperty; // depth offset along the camera's -Z (into the screen)
+  rotationX?: AnimatableProperty; // pitch (degrees)
+  rotationY?: AnimatableProperty; // yaw (degrees)
 }
 
 export type TextAlign = 'left' | 'center' | 'right';
@@ -1187,6 +1192,11 @@ export interface ResolvedTransform {
   anchorX: number;
   anchorY: number;
   opacity: number;
+  // --- 2.5D: resolved depth + out-of-plane rotations (degrees). Default 0, so a 2D layer's
+  // resolved transform is numerically identical to before. is3D gates whether these are used. ---
+  positionZ: number;
+  rotationX: number;
+  rotationY: number;
 }
 
 export type ShapeRenderType = 'rectangle' | 'circle' | 'star' | 'polygon';

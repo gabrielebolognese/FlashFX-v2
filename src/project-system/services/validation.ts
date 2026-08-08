@@ -71,6 +71,11 @@ function ensureTransform(val: unknown): Transform {
     scale: ensureAnimatableProperty(t.scale, 'Scale', 'vec2', [1, 1]),
     anchorPoint: ensureAnimatableProperty(t.anchorPoint, 'Anchor Point', 'vec2', [0, 0]),
     opacity: ensureAnimatableProperty(t.opacity, 'Opacity', 'number', 1),
+    // 2.5D depth props: whitelisted through the round-trip only when present, so a pure-2D
+    // layer serializes byte-identically (were being silently stripped otherwise).
+    ...(isObject(t.positionZ) ? { positionZ: ensureAnimatableProperty(t.positionZ, 'Z Position', 'number', 0) } : {}),
+    ...(isObject(t.rotationX) ? { rotationX: ensureAnimatableProperty(t.rotationX, 'X Rotation', 'number', 0) } : {}),
+    ...(isObject(t.rotationY) ? { rotationY: ensureAnimatableProperty(t.rotationY, 'Y Rotation', 'number', 0) } : {}),
   };
 }
 

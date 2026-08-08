@@ -15,6 +15,9 @@ export function resolveXform(layer: Layer, frame: number): ResolvedTransform {
     anchorY: anchor[1],
     rotation: evaluateNumber(layer.transform.rotation, frame),
     opacity: evaluateNumber(layer.transform.opacity, frame),
+    positionZ: layer.transform.positionZ ? evaluateNumber(layer.transform.positionZ, frame) : 0,
+    rotationX: layer.transform.rotationX ? evaluateNumber(layer.transform.rotationX, frame) : 0,
+    rotationY: layer.transform.rotationY ? evaluateNumber(layer.transform.rotationY, frame) : 0,
   };
 }
 

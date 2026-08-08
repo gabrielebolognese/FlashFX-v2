@@ -318,6 +318,10 @@ function resolveTransform(transform: Transform, frame: number): ResolvedTransfor
     anchorX: anchor[0],
     anchorY: anchor[1],
     opacity: clamp(evaluateNumber(transform.opacity, frame), 0, 1),
+    // 2.5D: absent props resolve to 0, so a pure-2D layer is byte-identical to before.
+    positionZ: transform.positionZ ? evaluateNumber(transform.positionZ, frame) : 0,
+    rotationX: transform.rotationX ? evaluateNumber(transform.rotationX, frame) : 0,
+    rotationY: transform.rotationY ? evaluateNumber(transform.rotationY, frame) : 0,
   };
 }
 
@@ -441,13 +445,13 @@ function getParentTransform(layerId: string, layers: Layer[], frame: number): Re
   if (!layer || !layer.parentId) {
     const layoutOffset = _layoutOffsets.get(layerId);
     if (layoutOffset) {
-      return { positionX: layoutOffset.x, positionY: layoutOffset.y, rotation: layoutOffset.rotation ?? 0, scaleX: 1, scaleY: 1, anchorX: 0, anchorY: 0, opacity: 1 };
+      return { positionX: layoutOffset.x, positionY: layoutOffset.y, rotation: layoutOffset.rotation ?? 0, scaleX: 1, scaleY: 1, anchorX: 0, anchorY: 0, opacity: 1, positionZ: 0, rotationX: 0, rotationY: 0 };
     }
-    return { positionX: 0, positionY: 0, rotation: 0, scaleX: 1, scaleY: 1, anchorX: 0, anchorY: 0, opacity: 1 };
+    return { positionX: 0, positionY: 0, rotation: 0, scaleX: 1, scaleY: 1, anchorX: 0, anchorY: 0, opacity: 1, positionZ: 0, rotationX: 0, rotationY: 0 };
   }
   const parent = _layerById.get(layer.parentId);
   if (!parent) {
-    return { positionX: 0, positionY: 0, rotation: 0, scaleX: 1, scaleY: 1, anchorX: 0, anchorY: 0, opacity: 1 };
+    return { positionX: 0, positionY: 0, rotation: 0, scaleX: 1, scaleY: 1, anchorX: 0, anchorY: 0, opacity: 1, positionZ: 0, rotationX: 0, rotationY: 0 };
   }
 
   const parentLocal = resolveTransform(parent.transform, frame);
@@ -485,6 +489,11 @@ function composeTransforms(parent: ResolvedTransform, child: ResolvedTransform):
     anchorX: child.anchorX,
     anchorY: child.anchorY,
     opacity: parent.opacity * child.opacity,
+    // 2.5D depth propagates additively like rotation. 0 for all pure-2D content, so this
+    // 2D affine path stays byte-identical; the true 3D compose lives in the M2 render path.
+    positionZ: parent.positionZ + child.positionZ,
+    rotationX: parent.rotationX + child.rotationX,
+    rotationY: parent.rotationY + child.rotationY,
   };
 }
 
@@ -1062,6 +1071,9 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
               anchorX: el.transform.anchorX * (el.shape?.width ?? 0),
               anchorY: el.transform.anchorY * (el.shape?.height ?? 0),
               opacity: worldTransform.opacity * el.transform.opacity,
+              positionZ: worldTransform.positionZ,
+              rotationX: worldTransform.rotationX,
+              rotationY: worldTransform.rotationY,
             };
             if (el.kind === 'shape' && el.shape) {
               resolvedLayers.push({
