@@ -1,6 +1,7 @@
 import type { AnimationTemplate, TemplateCategory } from './types';
 import { chainReaction } from './categories/machine';
 import { departureBoard } from './categories/board';
+import { barChartRace } from './categories/barRace';
 import { beachScene, forestScene, nightScene } from './categories/scenes';
 import { sunsetScene, rainScene, cityScene, snowScene } from './categories/weather';
 import { galaxyScene } from './categories/galaxy';
@@ -18,6 +19,7 @@ import { logoPop } from './categories/logo';
 export const ANIMATION_TEMPLATES: AnimationTemplate[] = [
   chainReaction,
   departureBoard,
+  barChartRace,
   beachScene,
   forestScene,
   nightScene,
