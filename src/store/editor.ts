@@ -14,7 +14,7 @@ import { extractLayerProperties, applyLayerProperties, type LayerPropertyBundle 
 import { selectSameLayers, type SameAttr } from '../core/selection';
 import { applyReplaceSource, sourceFromLayer, sourceKindForLayer, type ReplaceSource } from '../core/replaceSource';
 import { computeReframe, applyAxisPosition, applyAxisScale, DEFAULT_CONSTRAINTS, type LayerConstraints, type ReframeInput } from '../core/reframe';
-import { getTemplate as getAnimationTemplate } from '../animation-templates/catalog';
+import { getTemplate as getAnimationTemplate, ANIMATION_TEMPLATES } from '../animation-templates/catalog';
 import { instantiateTemplate as instantiateAnimationTemplate } from '../animation-templates/instantiate';
 import { getLayerRect } from '../core/snap/bbox';
 import { createDefaultCloner, createEffector } from '../cloner/factory';
@@ -295,6 +295,8 @@ interface EditorState {
   addAnimationItem: (presetName: string) => void;
   /** Insert a pre-built animation template (group + keyframed children) at the playhead. */
   insertAnimationTemplate: (id: string, center?: Vec2) => void;
+  /** Insert every animation template back-to-back in sequence, starting at the playhead. */
+  insertAllAnimationTemplates: () => void;
   addLottieIcon: (jsonPath: string, jsonData: string, totalFrames: number, frameRate: number, sourceWidth: number, sourceHeight: number, name: string) => void;
   addLayoutObject: (layoutType: 'hbox' | 'vbox' | 'grid') => void;
   addLayoutContainer: (shapeType?: ContainerShapeType) => void;
@@ -3999,6 +4001,38 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
     exec({
       label: `Insert “${tpl.name}”`,
+      execute: () => { set({ composition: newComp, selection: newSel }); },
+      undo: () => { set({ composition: oldComp, selection: oldSel }); },
+    });
+  },
+
+  insertAllAnimationTemplates: () => {
+    const { composition, selection } = get();
+    if (ANIMATION_TEMPLATES.length === 0) return;
+    const oldComp = composition;
+    const oldSel = selection;
+    const fps = composition.settings.frameRate;
+    const center: Vec2 = [composition.settings.width / 2, composition.settings.height / 2];
+
+    // Place each template right after the previous one ends (in comp frames).
+    let start = useTimelineStore.getState().currentFrame;
+    let working = composition;
+    const allIds: string[] = [];
+    let firstGroupId: string | null = null;
+    for (const tpl of ANIMATION_TEMPLATES) {
+      const layers = instantiateAnimationTemplate(tpl, { playhead: start, frameRate: fps, center });
+      for (const l of layers) {
+        working = ensureLayerHasTrack({ ...working, layers: [...working.layers, l] }, l);
+        allIds.push(l.id);
+      }
+      if (!firstGroupId && layers.length > 0) firstGroupId = layers[0].id;
+      start += Math.round(tpl.durationFrames * (fps / tpl.authorFps));
+    }
+    const newComp = settleComposition(working);
+    const newSel: SelectionState = sel(allIds, firstGroupId);
+
+    exec({
+      label: 'Insert All Animations',
       execute: () => { set({ composition: newComp, selection: newSel }); },
       undo: () => { set({ composition: oldComp, selection: oldSel }); },
     });

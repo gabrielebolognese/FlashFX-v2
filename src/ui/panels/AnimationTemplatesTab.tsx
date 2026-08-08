@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Plus, Sparkles } from 'lucide-react';
+import { Plus, Sparkles, ListVideo } from 'lucide-react';
 import { useEditorStore } from '../../store/editor';
 import { ANIMATION_TEMPLATES, CATEGORY_LABELS } from '../../animation-templates/catalog';
 import type { TemplateCategory } from '../../animation-templates/types';
@@ -12,6 +12,7 @@ type Filter = 'all' | TemplateCategory;
 
 export function AnimationTemplatesTab() {
   const insert = useEditorStore((s) => s.insertAnimationTemplate);
+  const insertAll = useEditorStore((s) => s.insertAllAnimationTemplates);
   const [filter, setFilter] = useState<Filter>('all');
   const [query, setQuery] = useState('');
 
@@ -81,6 +82,17 @@ export function AnimationTemplatesTab() {
             </div>
           </div>
         ))}
+      </div>
+
+      {/* Always-visible footer: drop every animation onto the timeline back-to-back. */}
+      <div className="flex-shrink-0 p-2 border-t border-[#1a2a42] bg-[#0b1220]">
+        <button
+          onClick={() => insertAll()}
+          title="Insert all animations in sequence, one after another"
+          className="w-full h-8 flex items-center justify-center gap-1.5 rounded-md bg-[#122240] hover:bg-[#1a2f52] text-slate-100 text-[12px] font-semibold border border-[#26405f] transition-colors"
+        >
+          <ListVideo size={14} /> All ({ANIMATION_TEMPLATES.length}) → timeline
+        </button>
       </div>
     </div>
   );
