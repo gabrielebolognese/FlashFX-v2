@@ -209,6 +209,14 @@ Authored as `categories/*.ts`. First-wave targets in **bold**; the rest are the 
 - **`bar-chart-grow`** (bars scaleY from 0, staggered), **`donut-sweep`** (arc draw-on + center
   counter), `line-draw` (polyline draw-on), `progress-ring`, `rating-stars` (stars pop + fill).
 
+**Showcase** (marquee demos — BUILT: `chain-reaction`, `split-flap-board`)
+- **`chain-reaction`** (Rube Goldberg: dominoes → marble → lever → weight → bucket → string → **200
+  balls** funnel; the 200 generated-not-keyframed balls are the "impossible in AE" flex), and
+  **`split-flap-board`** (airport departure board resolving in a per-character flip wave — cell-squash
+  reveal, grid stagger — with parallax planes taxiing behind rain-streaked terminal glass). Backlog:
+  `valley-day-cycle` (needs the real particle + expression systems — a scene-seed, not a pure
+  keyframe template).
+
 **Scenes** (looping illustrated backdrops — BUILT: `beach-waves`, `forest`, `night-sky`, `galaxy`,
 `sunset`, `rain`, `city-skyline`, `snow`)
 - Nature/weather scenes from shape layers + ambient loops. `rain`/`snow` use the `fallLoop` helper
