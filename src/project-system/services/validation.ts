@@ -534,6 +534,12 @@ function validateLayer(raw: unknown): Layer | null {
           lockToZoom: typeof c.lockToZoom === 'boolean' ? c.lockToZoom : true,
           aperture: ensureAnimatableProperty(c.aperture, 'Aperture', 'number', 25),
           blurLevel: ensureAnimatableProperty(c.blurLevel, 'Blur Level', 'number', 1),
+          // Smooth spatial-bezier path tangents (optional). Keep only well-formed {frame, tangent[3]}.
+          ...(Array.isArray(c.spatialTangents)
+            ? { spatialTangents: (c.spatialTangents as unknown[]).filter((t): t is { frame: number; tangent: [number, number, number] } =>
+                isObject(t) && typeof (t as Record<string, unknown>).frame === 'number' &&
+                Array.isArray((t as Record<string, unknown>).tangent) && ((t as Record<string, unknown>).tangent as unknown[]).length === 3) }
+            : {}),
         },
       } as unknown as Layer;
     }

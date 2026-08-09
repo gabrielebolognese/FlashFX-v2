@@ -894,6 +894,15 @@ export interface CameraSettings {
   lockToZoom?: boolean;
   aperture: AnimatableProperty; // number, px (F-Stop = zoom / aperture)
   blurLevel: AnimatableProperty; // number, fraction (1 = 100%)
+  // Optional smooth spatial-bezier path: one OUT tangent (world x/y/z, relative to the node) per
+  // camera position keyframe frame. The incoming side mirrors it (−tangent) for C1 continuity.
+  // Absent / no entry for a frame ⇒ that segment is a straight line (byte-identical to before).
+  spatialTangents?: CameraSpatialTangent[];
+}
+
+export interface CameraSpatialTangent {
+  frame: number;
+  tangent: [number, number, number]; // world-space out direction, relative to the keyframe point
 }
 
 // A camera is a first-class layer but resolves to View/Projection matrices, not a drawn quad.

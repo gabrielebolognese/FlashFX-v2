@@ -56,6 +56,19 @@ export function zoomForFovY(fovY: number, compH: number): number {
   return compH / 2 / Math.tan(fovY / 2);
 }
 
+/** Cubic Bezier through P0..P3 at parameter u∈[0,1] (component-wise, in world space). Used for the
+ *  camera's smooth spatial path. With control points at the 1/3 / 2/3 points it collapses to the
+ *  straight lerp P0→P3, so a path with no tangents is byte-identical to a linear one. */
+export function cubicBezierVec3(p0: Vec3, p1: Vec3, p2: Vec3, p3: Vec3, u: number): Vec3 {
+  const mt = 1 - u;
+  const a = mt * mt * mt, b = 3 * mt * mt * u, c = 3 * mt * u * u, d = u * u * u;
+  return [
+    a * p0[0] + b * p1[0] + c * p2[0] + d * p3[0],
+    a * p0[1] + b * p1[1] + c * p2[1] + d * p3[1],
+    a * p0[2] + b * p1[2] + c * p2[2] + d * p3[2],
+  ];
+}
+
 // ── After Effects lens algebra ──────────────────────────────────────────────────────────────
 // One master identity ties the four coupled Camera-Settings fields (Adobe's model):
 //     f / F = C / Z      ⟺  Z = f·C/F  ⟺  f = Z·F/C

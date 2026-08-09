@@ -35,7 +35,7 @@ import { precompLocalFrame, MAX_PRECOMP_DEPTH } from './precomp';
 import type { ResolveContext } from './precomp';
 import type { Mat4, Vec3 } from './mat4';
 import type { CameraLayer } from './types';
-import { defaultCamera, cameraFromParams, localModelMatrix, composeWorldMatrix, forwardVector, type ResolvedCamera } from './camera3d';
+import { defaultCamera, cameraFromParams, localModelMatrix, composeWorldMatrix, forwardVector, cubicBezierVec3, type ResolvedCamera } from './camera3d';
 import { resolveStyleColor, type StyleLookup } from './styles';
 import type { PrecompLayer } from './types';
 import { resolveDominantColor, resolveShapeFill, resolveShapePattern, hexToVec4 } from './material';
@@ -834,6 +834,53 @@ const EMPTY_VISITED: ReadonlySet<string> = new Set();
 // 2.5D (M1) — resolve the frame's active camera. AE model: the active camera is the topmost
 // enabled camera layer active at this frame; with none, a default camera frames the comp 1:1.
 // `sortedLayers` is in render order (topmost drawn last), so the last matching camera wins.
+/**
+ * The camera eye position at `frame`, honouring the optional smooth spatial-bezier path
+ * (`camera.spatialTangents`). When a segment's endpoints carry no tangent the control points fall
+ * on the 1/3–2/3 line, so the result is byte-identical to the plain evaluated position — this is a
+ * strict, opt-in generalisation. Timing (the along-path parameter `u`) is extracted from the REAL
+ * keyframe interpolation of the dominant axis, so easing/hold on the position keys still applies.
+ * Exported so the 3D-view schematic can draw exactly what the renderer will show.
+ */
+export function resolveCameraEye(cam: CameraLayer, frame: number): Vec3 {
+  const posP = cam.transform.position;
+  const zP = cam.transform.positionZ;
+  const point = (f: number): Vec3 => {
+    const xy = evaluateVec2(posP, f);
+    return [xy[0], xy[1], zP ? evaluateNumber(zP, f) : 0];
+  };
+  const tans = cam.camera.spatialTangents;
+  if (!tans || tans.length === 0) return point(frame);
+
+  const frames = Array.from(new Set([
+    ...posP.keyframes.map((k) => k.frame),
+    ...(zP ? zP.keyframes.map((k) => k.frame) : []),
+  ])).sort((a, b) => a - b);
+  if (frames.length < 2) return point(frame);
+  if (frame <= frames[0]) return point(frames[0]);
+  if (frame >= frames[frames.length - 1]) return point(frames[frames.length - 1]);
+
+  let i = 0;
+  while (i < frames.length - 1 && frame >= frames[i + 1]) i++;
+  const fa = frames[i], fb = frames[i + 1];
+  const A = point(fa), B = point(fb);
+  const dx = B[0] - A[0], dy = B[1] - A[1], dz = B[2] - A[2];
+
+  // Along-path parameter from the true interpolation of whichever axis moves most.
+  const adx = Math.abs(dx), ady = Math.abs(dy), adz = Math.abs(dz);
+  let u: number;
+  if (Math.max(adx, ady, adz) < 1e-6) u = (frame - fa) / (fb - fa);
+  else if (adx >= ady && adx >= adz) u = (evaluateVec2(posP, frame)[0] - A[0]) / dx;
+  else if (ady >= adz) u = (evaluateVec2(posP, frame)[1] - A[1]) / dy;
+  else u = ((zP ? evaluateNumber(zP, frame) : 0) - A[2]) / dz;
+
+  const tanOut = tans.find((t) => t.frame === fa)?.tangent ?? null;
+  const tanIn = tans.find((t) => t.frame === fb)?.tangent ?? null; // node's OUT dir; incoming is −it
+  const c1: Vec3 = tanOut ? [A[0] + tanOut[0], A[1] + tanOut[1], A[2] + tanOut[2]] : [A[0] + dx / 3, A[1] + dy / 3, A[2] + dz / 3];
+  const c2: Vec3 = tanIn ? [B[0] - tanIn[0], B[1] - tanIn[1], B[2] - tanIn[2]] : [B[0] - dx / 3, B[1] - dy / 3, B[2] - dz / 3];
+  return cubicBezierVec3(A, c1, c2, B, u);
+}
+
 function resolveActiveCamera(composition: Composition, sortedLayers: Layer[], frame: number): ResolvedCamera {
   const { width, height } = composition.settings;
   let chosen: CameraLayer | null = null;
@@ -845,7 +892,9 @@ function resolveActiveCamera(composition: Composition, sortedLayers: Layer[], fr
   }
   if (!chosen) return defaultCamera(width, height);
   const t = resolveTransform(chosen.transform, frame);
-  const eye: Vec3 = [t.positionX, t.positionY, t.positionZ];
+  // Eye honours the optional smooth spatial-bezier path; falls back to the plain transform when
+  // there are no tangents (byte-identical). rotationX/Y/rotation still come from `t` (one-node aim).
+  const eye: Vec3 = resolveCameraEye(chosen, frame);
   const zoom = evaluateNumber(chosen.camera.zoom, frame);
   let target: Vec3;
   if (chosen.camera.mode === 'two-node') {
