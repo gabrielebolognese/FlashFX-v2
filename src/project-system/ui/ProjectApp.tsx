@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useProjectStore } from '../hooks/useProjectStore';
 import { useAutoSave } from '../hooks/useAutoSave';
 import { useEditorStore } from '../../store/editor';
@@ -9,6 +9,7 @@ import { playbackController } from '../../store/timeline';
 import { resolveFrame } from '../../core/interpolation';
 import { useTemplateBoot } from '../../templates/useTemplateBoot';
 import { TemplateSplash } from '../../templates/TemplateSplash';
+import { ProjectLoadingSplash } from './ProjectLoadingSplash';
 
 interface Props {
   editorComponent: React.ComponentType;
@@ -19,12 +20,16 @@ export function ProjectApp({ editorComponent: EditorComponent }: Props) {
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
   const loadDocument = useEditorStore((s) => s.loadDocument);
   const loadedRef = useRef<string | null>(null);
+  // True from the moment a project opens until its scene + assets + first frame have loaded,
+  // so a loader page covers the brief main-thread jank of deserialize/resolve/first-render.
+  const [projectLoading, setProjectLoading] = useState(false);
   // Deep-link boot: `/?template=<id>` creates + seeds a project and drops the user into the editor.
   const templateBooting = useTemplateBoot();
 
   useEffect(() => {
     if (view === 'editor' && activeProjectId && loadedRef.current !== activeProjectId) {
       loadedRef.current = activeProjectId;
+      setProjectLoading(true);
 
       // Isolate caches across projects.
       playbackController.getRenderer()?.flushTextureCaches();
@@ -34,19 +39,26 @@ export function ProjectApp({ editorComponent: EditorComponent }: Props) {
         await mediaAssetManager.loadProjectAssets(activeProjectId);
         if (comp) {
           loadDocument(comp);
+          // Drop the loader only after the first (heavy) frame has actually rendered: render on
+          // the next frame, then lift the splash on the frame after so the editor is painted
+          // with content underneath before it's revealed.
           requestAnimationFrame(() => {
             playbackController.renderCurrentFrame();
+            requestAnimationFrame(() => setProjectLoading(false));
           });
           // Refresh the project-card thumbnail with a random frame from this scene so tens of
           // projects stay visually distinguishable. Runs a couple seconds after open (renderer
           // warm, media loaded) and replaces the old preview blob (IDB put overwrites → the old
           // one is freed).
           captureRandomThumbnail(activeProjectId);
+        } else {
+          setProjectLoading(false);
         }
       })();
     }
     if (view === 'dashboard') {
       loadedRef.current = null;
+      setProjectLoading(false);
     }
   }, [view, activeProjectId, loadDocument]);
 
@@ -58,6 +70,8 @@ export function ProjectApp({ editorComponent: EditorComponent }: Props) {
       {view === 'dashboard'
         ? <Dashboard />
         : <EditorWithAutoSave EditorComponent={EditorComponent} />}
+      {/* Loader while the opened project's scene/assets/first frame load (main-thread jank). */}
+      {view === 'editor' && projectLoading && <ProjectLoadingSplash />}
       {templateBooting && <TemplateSplash />}
     </>
   );

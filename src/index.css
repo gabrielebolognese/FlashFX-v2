@@ -134,3 +134,14 @@ input[type="number"] {
   to { opacity: 1; transform: scale(1); }
 }
 
+/* Indeterminate load bar for the project-open splash. Transform-only so it keeps animating
+   on the compositor thread even while the main thread is janked by scene deserialization. */
+@keyframes ffxLoadbar {
+  0%   { transform: translateX(-120%); }
+  100% { transform: translateX(320%); }
+}
+.animate-ffx-loadbar {
+  animation: ffxLoadbar 1.1s ease-in-out infinite;
+  will-change: transform;
+}
+
