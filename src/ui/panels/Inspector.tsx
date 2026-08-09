@@ -25,6 +25,7 @@ import { StaggerPanel } from './StaggerPanel';
 import { FieldSamplingPanel } from './FieldSamplingPanel';
 import { GenerativePatternPanel } from './GenerativePatternPanel';
 import { CameraPanel } from './CameraPanel';
+import { Camera3DView } from './Camera3DView';
 import { ClonerInspector } from './ClonerInspector';
 import { AnimatePanel } from './AnimatePanel';
 import { ShapeMaterialPanel } from './ShapeMaterialPanel';
@@ -247,18 +248,16 @@ function InspectorTabContent({ tab, layer }: { tab: InspectorTab; layer: Layer }
     return null;
   }
 
-  // Camera: a custom object — it doesn't use the standard transform/effect properties. It's
-  // placed in the 3D View (the canvas) and its lens/DOF are in the Camera Settings dialog.
+  // Camera: a custom object — no standard transform/effect properties. The inspector shows only
+  // the Camera Settings button + a live 3D View (alongside the normal canvas) for placing it.
   if (layer.type === 'camera') {
     return (
       <>
-        <Section title="Layer">
+        <div className="p-2 border-b border-[#1c2433] space-y-2">
           <StringInput label="Name" value={layer.name} onChange={(v) => updateLayerProperty(layer.id, 'name', v)} />
-        </Section>
-        <div className="px-3 pt-2 text-[11px] text-slate-500 leading-relaxed">
-          Placed in the <span className="text-slate-300 font-medium">3D View</span> — drag the camera and its target in the canvas.
+          <CameraPanel layer={layer as CameraLayer} />
         </div>
-        <CameraPanel layer={layer as CameraLayer} />
+        <Camera3DView layer={layer as CameraLayer} />
       </>
     );
   }

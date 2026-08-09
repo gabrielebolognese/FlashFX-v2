@@ -60,17 +60,21 @@ export function Camera3DView({ layer }: { layer: CameraLayer }) {
   };
 
   return (
-    <div className="absolute inset-0 bg-[#0b1017] flex flex-col z-20">
-      <div className="h-8 flex-shrink-0 flex items-center gap-2 px-3 border-b border-[#1c2433] bg-[#0d1219]">
-        <Video size={13} className="text-amber-400" />
-        <span className="text-[12px] font-medium text-slate-200">3D View</span>
-        <span className="text-[11px] text-slate-500 truncate">— {layer.name}. Drag the camera or its target to place it in the scene.</span>
+    <div className="flex flex-col">
+      <div className="flex items-center gap-1.5 px-2.5 py-1.5 border-b border-[#1c2433]">
+        <Video size={12} className="text-amber-400" />
+        <span className="text-[11px] font-medium text-slate-300">3D View</span>
+        <span className="text-[9px] text-slate-600 truncate">— drag the camera or its target</span>
       </div>
-      <div className="flex-1 grid grid-cols-2 gap-px bg-[#1c2433] min-h-0">
-        <OrthoView label="Top · X→Z" hAxis="x" vAxis="z" W={W} H={H} eye={eye} poi={poi} fov={fov} layers={layers}
-          onDrag={(who, h, v) => { const set = who === 'cam' ? setEye : setPoi; set('x', h); set('z', v); }} />
-        <OrthoView label="Side · Z→Y" hAxis="z" vAxis="y" W={W} H={H} eye={eye} poi={poi} fov={fov} layers={layers}
-          onDrag={(who, h, v) => { const set = who === 'cam' ? setEye : setPoi; set('z', h); set('y', v); }} />
+      <div className="flex flex-col gap-px bg-[#1c2433]">
+        <div className="relative h-[220px] bg-[#0e1420]">
+          <OrthoView label="Top · X→Z" hAxis="x" vAxis="z" W={W} H={H} eye={eye} poi={poi} fov={fov} layers={layers}
+            onDrag={(who, h, v) => { const set = who === 'cam' ? setEye : setPoi; set('x', h); set('z', v); }} />
+        </div>
+        <div className="relative h-[220px] bg-[#0e1420]">
+          <OrthoView label="Side · Z→Y" hAxis="z" vAxis="y" W={W} H={H} eye={eye} poi={poi} fov={fov} layers={layers}
+            onDrag={(who, h, v) => { const set = who === 'cam' ? setEye : setPoi; set('z', h); set('y', v); }} />
+        </div>
       </div>
     </div>
   );
@@ -142,7 +146,7 @@ function OrthoView({ label, hAxis, vAxis, W, H, eye, poi, fov, layers, onDrag }:
   const up = () => { if (drag.current) { drag.current = null; useHistoryStore.getState().setBatching(false); } };
 
   return (
-    <div className="relative bg-[#0e1420] overflow-hidden">
+    <div className="absolute inset-0 overflow-hidden">
       <span className="absolute top-1.5 left-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wider z-10 pointer-events-none">{label}</span>
       <svg ref={svgRef} viewBox={`0 0 ${VB} ${VB}`} className="w-full h-full cursor-crosshair" style={{ touchAction: 'none' }}
         onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerLeave={up}>

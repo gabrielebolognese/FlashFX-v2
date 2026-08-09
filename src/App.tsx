@@ -9,7 +9,7 @@ import { useTimelineStore } from './store/timeline';
 import { usePanelStore } from './store/panels';
 import { ProjectApp, useProjectStore } from './project-system';
 import { useAnimationBuilderStore } from './animation-builder';
-import { ArrowLeft, LayoutGrid, Workflow, Settings2, GraduationCap, Sparkles, Download } from 'lucide-react';
+import { ArrowLeft, LayoutGrid, Settings2, GraduationCap, Sparkles, Download } from 'lucide-react';
 import { ExportModal } from './ui/panels/ExportModal';
 import { AiChatPanel } from './ui/panels/AiChatPanel';
 import { ResetEditorDialog } from './ui/recovery/ResetEditorDialog';
@@ -52,7 +52,6 @@ function Editor() {
   const redo = useHistoryStore((s) => s.redo);
   const closeProject = useProjectStore((s) => s.closeProject);
   const workspace = useAnimationBuilderStore((s) => s.workspace);
-  const setWorkspace = useAnimationBuilderStore((s) => s.setWorkspace);
   const aiChatOpen = usePanelStore((s) => s.aiChatOpen);
   const toggleAiChat = usePanelStore((s) => s.toggleAiChat);
   const [showExport, setShowExport] = useState(false);
@@ -442,19 +441,9 @@ function Editor() {
           <Toolbar />
         </div>
         {workspace === 'editor' && <SceneSwitcher />}
-        {/* Animation Builder Mode Toggle */}
-        <button
-          onClick={() => setWorkspace(workspace === 'editor' ? 'builder' : 'editor')}
-          className={`flex items-center gap-1.5 px-3 transition-colors border-l border-[#1a2a42] ${
-            workspace === 'builder'
-              ? 'bg-[#f7b500]/8 text-[#f7b500] border-b-2 border-b-[#f7b500]'
-              : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.03]'
-          }`}
-          title="Animation Builder Mode"
-        >
-          <Workflow size={13} />
-          <span className="text-[11px] font-medium">Builder</span>
-        </button>
+        {/* Animation Builder mode toggle — HIDDEN from the public UI (the builder is not
+            production-ready). The BuilderLayout + setWorkspace path is kept intact so it can be
+            re-exposed by restoring this button. */}
         <button
           onClick={toggleAiChat}
           className={`flex items-center gap-1.5 px-3 transition-colors border-l border-[#1a2a42] ${
