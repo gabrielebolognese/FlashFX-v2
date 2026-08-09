@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Video, X } from 'lucide-react';
+import { Video, X, Play } from 'lucide-react';
 import { useEditorStore } from '../../store/editor';
 import type { CameraLayer, FilmSizeAxis, CameraUnits } from '../../core/types';
 import {
@@ -75,14 +75,29 @@ export function CameraSettingsDialog({ layer, onClose }: { layer: CameraLayer; o
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
-      <div className="w-[440px] max-w-[94vw] max-h-[92vh] overflow-y-auto bg-[#111821] border border-[#2a3a50] rounded-lg shadow-2xl shadow-black/50" onClick={(e) => e.stopPropagation()}>
+      <div className="w-[880px] max-w-[94vw] max-h-[92vh] overflow-y-auto bg-[#111821] border border-[#2a3a50] rounded-lg shadow-2xl shadow-black/50" onClick={(e) => e.stopPropagation()}>
         <div className="px-4 py-3 border-b border-[#1c2433] flex items-center gap-2">
           <Video size={15} className="text-amber-400" />
           <h2 className="text-[13px] font-semibold text-slate-100 flex-1">Camera Settings</h2>
           <button onClick={onClose} className="p-1 rounded text-slate-500 hover:text-slate-200 hover:bg-[#1a2233]"><X size={14} /></button>
         </div>
 
-        <div className="p-4 space-y-2.5">
+        <div className="flex items-stretch">
+          {/* Left: tutorial video placeholder (no video yet — just the placeholder). */}
+          <div className="w-1/2 p-4 border-r border-[#1c2433] flex flex-col gap-3">
+            <p className="text-[12px] text-slate-300 font-medium leading-snug">Confused on how to use the camera? Watch this quick tutorial</p>
+            <div className="flex-1 min-h-[240px] rounded-lg border border-[#1a2a42] relative overflow-hidden flex items-center justify-center">
+              <div className="absolute inset-0 bg-gradient-to-br from-[#122240] to-[#0a0f16]" />
+              <div className="relative flex flex-col items-center gap-2 text-slate-500">
+                <div className="w-16 h-16 rounded-full bg-black/40 border border-[#2a3a50] flex items-center justify-center">
+                  <Play size={24} className="text-slate-300 ml-1" fill="currentColor" />
+                </div>
+                <span className="text-[10px] uppercase tracking-wider">Video coming soon</span>
+              </div>
+            </div>
+          </div>
+          {/* Right: the camera settings. */}
+          <div className="w-1/2 p-4 space-y-2.5">
           <Row label="Preset">
             <Select value={preset} onChange={applyPreset} options={[...CAMERA_PRESETS.map((p) => p.label), 'Custom']} />
           </Row>
@@ -123,6 +138,7 @@ export function CameraSettingsDialog({ layer, onClose }: { layer: CameraLayer; o
             <Row label="Aperture"><Num value={toDisp(aperture)} onChange={(v) => setAperture(fromDisp(v))} suffix={unitLabel} /></Row>
             <Row label="F-Stop"><Num value={fStop} onChange={setFStop} prefix="f/" step={0.1} /></Row>
             <Row label="Blur Level"><Num value={blurPercent} onChange={(v) => set('camera.blurLevel.defaultValue', Math.max(0, v) / 100)} suffix="%" /></Row>
+          </div>
           </div>
         </div>
 
