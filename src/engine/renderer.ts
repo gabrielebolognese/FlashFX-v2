@@ -2,7 +2,7 @@ import type { RenderFrame, ResolvedLayer, ResolvedMask, ResolvedFill, ResolvedPa
 import { MAX_PRECOMP_DEPTH } from '../core/precomp';
 // 2.5D (M2): per-3D-layer MVP + painter's depth sort. cardMVP/cameraSpaceDepth are pure and
 // harness-verified (verify:camera3d); the renderer just packs the matrix + reorders draws.
-import { cardMVP, cameraSpaceDepth, painterOrder, type ResolvedCamera } from '../core/camera3d';
+import { cardMVP, cameraSpaceDepth, painterOrder, cocRadius, type ResolvedCamera } from '../core/camera3d';
 
 /** Options for a recursive precomp render into an offscreen target texture. */
 interface PrecompRenderOpts {
@@ -4097,6 +4097,16 @@ export class WebGPURenderer {
         const rl3d = expandedLayers[i];
         const is3DLayer = !!rl3d.is3D;
         const layerDepth = is3DLayer && frame.camera && rl3d.worldMatrix ? cameraSpaceDepth(frame.camera, rl3d.worldMatrix) : 0;
+        // 2.5D DOF: a 3D layer off the camera's focus plane gets a camera depth-of-field blur,
+        // synthesized as a per-layer gaussian from the circle-of-confusion radius and pushed
+        // through the existing blur pipeline. Only when the layer has no blur of its own. The
+        // blur is per-layer-uniform (one CoC from the card's depth) — the 2.5D painter model has
+        // no intra-layer depth, so this is the correct approximation.
+        let dofBlurFx: ResolvedLayer['blur'] | undefined;
+        if (fx && is3DLayer && frame.camera?.dof && rl3d.worldMatrix) {
+          const r = cocRadius(Math.abs(layerDepth), frame.camera.dof.focusDistance, frame.camera.dof.aperture, frame.camera.zoom, frame.camera.dof.blurLevel);
+          if (r > 0.5) dofBlurFx = { type: 'gaussian', radius: r, angle: 0, centerX: 0.5, centerY: 0.5, strength: 1, passes: 1 };
+        }
         if (shapeIdx < shapeLayers.length && shapeLayers[shapeIdx].index === i) {
           const slot = shapeIdx;
           draws.push({ blur, shadow, glow, blurFx, fn: (p) => {
@@ -4164,7 +4174,11 @@ export class WebGPURenderer {
           }
           imageIdx++;
         }
-        for (let k = drawStart; k < draws.length; k++) { draws[k].is3D = is3DLayer; draws[k].depth = layerDepth; }
+        for (let k = drawStart; k < draws.length; k++) {
+          draws[k].is3D = is3DLayer;
+          draws[k].depth = layerDepth;
+          if (dofBlurFx && !draws[k].blurFx) draws[k].blurFx = dofBlurFx; // camera depth of field
+        }
       }
     }
 

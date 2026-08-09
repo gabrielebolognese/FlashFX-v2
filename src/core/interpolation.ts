@@ -857,11 +857,15 @@ function resolveActiveCamera(composition: Composition, sortedLayers: Layer[], fr
   }
   const dof = chosen.camera.dofEnabled
     ? {
-        focusDistance: evaluateNumber(chosen.camera.focusDistance, frame),
+        // Lock to Zoom (AE): focus distance tracks Zoom live, ignoring the stored property.
+        // Undefined lockToZoom ⇒ off (legacy cameras read their stored focusDistance).
+        focusDistance: chosen.camera.lockToZoom ? zoom : evaluateNumber(chosen.camera.focusDistance, frame),
         aperture: evaluateNumber(chosen.camera.aperture, frame),
         blurLevel: evaluateNumber(chosen.camera.blurLevel, frame),
       }
     : null;
+  // Note: filmSize/measureFilmSize/units are deliberately NOT read here — they affect only the
+  // dialog's derived-field display, never the render (zoom is the sole render-affecting field).
   return cameraFromParams({ eye, target, zoom, compW: width, compH: height, dof });
 }
 

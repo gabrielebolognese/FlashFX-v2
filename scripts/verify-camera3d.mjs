@@ -28,7 +28,8 @@ try {
   await build({ entryPoints: ['src/core/mat4.ts'], bundle: true, format: 'esm', platform: 'node', outfile: mfile, logLevel: 'silent' });
   const { transformPoint } = await import(pathToFileURL(mfile).href);
 
-  const { defaultCamera, cameraFromParams, fovYForZoom, zoomForFovY, localModelMatrix, composeWorldMatrix, forwardVector, mvp, cameraSpaceDepth, painterOrder, cardMVP } = m;
+  const { defaultCamera, cameraFromParams, fovYForZoom, zoomForFovY, localModelMatrix, composeWorldMatrix, forwardVector, mvp, cameraSpaceDepth, painterOrder, cardMVP,
+    compMeasureDim, zoomForFocalLength, focalLengthForZoom, aovForZoom, zoomForAov, fStopForAperture, apertureForFStop, cocRadius, presetForFocalLength } = m;
 
   console.log('2.5D camera + world-matrix core — acceptance\n');
 
@@ -188,6 +189,61 @@ try {
   check('painterOrder is stable for equal depths and identity for all-2D', () => {
     assert.deepEqual(painterOrder([{ is3D: true, depth: -5 }, { is3D: true, depth: -5 }]), [0, 1]);
     assert.deepEqual(painterOrder([{ is3D: false, depth: 0 }, { is3D: false, depth: 0 }, { is3D: false, depth: 0 }]), [0, 1, 2]);
+  });
+
+  // ── AE lens algebra (Camera Settings) ──
+  check('AE worked default: 1920×1080, 50mm, film 36mm, horizontal → zoom 2666.67, AOV 39.6°', () => {
+    const C = compMeasureDim('horizontal', 1920, 1080);
+    assert.equal(C, 1920);
+    const zoom = zoomForFocalLength(50, 36, C);
+    assert.ok(near(zoom, 2666.6667, 1e-3), `zoom ${zoom}`);
+    assert.ok(near(focalLengthForZoom(zoom, 36, C), 50, 1e-6), 'focal length round-trips');
+    const aovDeg = (aovForZoom(zoom, C) * 180) / Math.PI;
+    assert.ok(near(aovDeg, 39.6, 0.1), `AOV ${aovDeg}° ≈ 39.6°`);
+  });
+
+  check('measure-film-size axis picks the comp dimension', () => {
+    assert.equal(compMeasureDim('horizontal', 1920, 1080), 1920);
+    assert.equal(compMeasureDim('vertical', 1920, 1080), 1080);
+    assert.ok(near(compMeasureDim('diagonal', 1920, 1080), Math.hypot(1920, 1080), 1e-6));
+  });
+
+  check('zoom↔focal-length and AOV↔zoom are exact inverses (master identity Z=f·C/F)', () => {
+    const C = 1440;
+    for (const f of [15, 35, 50, 135]) {
+      const z = zoomForFocalLength(f, 36, C);
+      assert.ok(near(focalLengthForZoom(z, 36, C), f, 1e-9), `f=${f}`);
+      assert.ok(near(zoomForAov(aovForZoom(z, C), C), z, 1e-6), `aov inverse f=${f}`);
+    }
+  });
+
+  check('presets: 50mm labels "50mm"; an off-list focal length is "Custom"', () => {
+    assert.equal(presetForFocalLength(50), '50mm');
+    assert.equal(presetForFocalLength(15), '15mm');
+    assert.equal(presetForFocalLength(51), 'Custom');
+  });
+
+  // ── Depth of field ──
+  check('F-Stop ↔ aperture couple through zoom (N = zoom/aperture)', () => {
+    const zoom = 2666.67;
+    assert.ok(near(fStopForAperture(zoom, apertureForFStop(zoom, 5.6)), 5.6, 1e-9));
+    assert.ok(near(apertureForFStop(zoom, 2.8), zoom / 2.8, 1e-9));
+  });
+
+  check('circle-of-confusion: zero at focus, grows off it, scales with aperture + blur level', () => {
+    const S = 1000, A = 400, f = 2666.67;
+    assert.equal(cocRadius(S, S, A, f, 1), 0, 'sharp at the focus plane');
+    const near0 = cocRadius(1100, S, A, f, 1);
+    const far = cocRadius(2000, S, A, f, 1);
+    assert.ok(near0 > 0 && far > near0, 'more defocus → more blur');
+    assert.ok(near(cocRadius(2000, S, 2 * A, f, 1), 2 * far, 1e-6), 'linear in aperture');
+    assert.ok(near(cocRadius(2000, S, A, f, 0.5), 0.5 * far, 1e-6), 'linear in blur level');
+  });
+
+  check('CoC guards: behind camera / no focus → 0 (2D layers never blur)', () => {
+    assert.equal(cocRadius(0, 1000, 400, 2666, 1), 0, 'D=0 (2D / comp plane)');
+    assert.equal(cocRadius(-500, 1000, 400, 2666, 1), 0, 'behind camera');
+    assert.equal(cocRadius(1500, 0, 400, 2666, 1), 0, 'no focus distance');
   });
 
   console.log(`\n✅ ${passed} checks passed`);

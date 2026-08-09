@@ -869,18 +869,31 @@ export interface PrecompTimeRemap {
 // now and consumed by the renderer in M5.
 export type CameraMode = 'one-node' | 'two-node';
 
+export type FilmSizeAxis = 'horizontal' | 'vertical' | 'diagonal';
+export type CameraUnits = 'pixels' | 'inches' | 'millimeters';
+
 export interface CameraSettings {
   mode: CameraMode;
   // Two-node aim target in composition space (x,y from `pointOfInterest`, z from `…Z`).
   pointOfInterest: AnimatableProperty; // vec2
   pointOfInterestZ: AnimatableProperty; // number
-  // Lens: AE-style zoom in pixels. fovY = 2·atan((compH/2)/zoom).
+  // Lens: AE-style zoom in pixels — the SOLE render-affecting lens field (frame-pure).
+  // Focal Length / Angle of View / F-Stop are DERIVED from (zoom, filmSize, comp size) in the
+  // dialog + camera3d converters; storing them too would desync under keyframing. See camera3d.ts.
   zoom: AnimatableProperty; // number
-  // Depth of field (M5).
+  // Static lens paperwork (AE "Camera Settings"): affect only the derived-field DISPLAY, never
+  // the render. Optional for back-compat — resolve/validation default them (36 / horizontal / …).
+  filmSize?: number; // mm, default 36
+  measureFilmSize?: FilmSizeAxis; // which comp dimension the film size maps to; default horizontal
+  units?: CameraUnits; // display-only re-expression; default pixels
+  // Depth of field.
   dofEnabled: boolean;
   focusDistance: AnimatableProperty; // number, px
-  aperture: AnimatableProperty; // number
-  blurLevel: AnimatableProperty; // number
+  // When true, Focus Distance tracks Zoom (AE "Lock to Zoom") — resolved live, ignoring the
+  // stored focusDistance. Default true. Undefined ⇒ off (safe for legacy cameras).
+  lockToZoom?: boolean;
+  aperture: AnimatableProperty; // number, px (F-Stop = zoom / aperture)
+  blurLevel: AnimatableProperty; // number, fraction (1 = 100%)
 }
 
 // A camera is a first-class layer but resolves to View/Projection matrices, not a drawn quad.

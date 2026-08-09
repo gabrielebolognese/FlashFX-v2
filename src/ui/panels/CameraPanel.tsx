@@ -1,7 +1,9 @@
-import { Diamond, Video } from 'lucide-react';
+import { useState } from 'react';
+import { Diamond, Video, SlidersHorizontal } from 'lucide-react';
 import { useEditorStore } from '../../store/editor';
 import { useTimelineStore } from '../../store/timeline';
 import type { CameraLayer } from '../../core/types';
+import { CameraSettingsDialog } from './CameraSettingsDialog';
 
 // 2.5D camera inspector (M1 baseline). Lens zoom, one/two-node mode, and depth-of-field
 // settings. The full X/Y/Z transform rows, FOV/focal-length coupling and the Camera Settings
@@ -10,6 +12,7 @@ export function CameraPanel({ layer }: { layer: CameraLayer }) {
   const updateLayerProperty = useEditorStore((s) => s.updateLayerProperty);
   const addKeyframe = useEditorStore((s) => s.addKeyframe);
   const currentFrame = useTimelineStore((s) => s.currentFrame);
+  const [showDialog, setShowDialog] = useState(false);
   const cam = layer.camera;
 
   const zoom = cam.zoom.defaultValue as number;
@@ -22,6 +25,15 @@ export function CameraPanel({ layer }: { layer: CameraLayer }) {
         <Video size={13} className="text-amber-400" />
         <span>2.5D Camera — layers with the 3D switch are viewed through this camera.</span>
       </div>
+
+      {/* Full AE-style Camera Settings dialog (presets, coupled lens fields, depth of field). */}
+      <button
+        onClick={() => setShowDialog(true)}
+        className="w-full flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded bg-[#122240] hover:bg-[#1a2f52] border border-[#1a2a42] text-[11px] font-medium text-slate-200 transition-colors"
+      >
+        <SlidersHorizontal size={12} /> Camera Settings…
+      </button>
+      {showDialog && <CameraSettingsDialog layer={layer} onClose={() => setShowDialog(false)} />}
 
       <Row label="Mode">
         <select value={cam.mode} onChange={(e) => updateLayerProperty(layer.id, 'camera.mode', e.target.value)}

@@ -56,6 +56,82 @@ export function zoomForFovY(fovY: number, compH: number): number {
   return compH / 2 / Math.tan(fovY / 2);
 }
 
+// ── After Effects lens algebra ──────────────────────────────────────────────────────────────
+// One master identity ties the four coupled Camera-Settings fields (Adobe's model):
+//     f / F = C / Z      ⟺  Z = f·C/F  ⟺  f = Z·F/C
+// where f = Focal Length (mm), F = Film Size (mm), Z = Zoom (px), C = comp size (px) along the
+// "Measure Film Size" axis. Angle of View bridges them: θ = 2·atan(C/(2Z)) = 2·atan(F/(2f)).
+// Zoom is the only stored render field; the rest are derived here for the dialog display, so they
+// can never desync. Worked default: 1920×1080, 50mm, horizontal → Z=2666.67px, θ≈39.6°.
+
+/** Comp size (px) along the Measure-Film-Size axis — the `C` anchor. */
+export function compMeasureDim(axis: 'horizontal' | 'vertical' | 'diagonal', compW: number, compH: number): number {
+  if (axis === 'vertical') return compH;
+  if (axis === 'diagonal') return Math.hypot(compW, compH);
+  return compW; // horizontal (AE default)
+}
+
+export const AE_FILM_SIZE_MM = 36; // AE default film size
+
+/** AE camera lens presets (focal length in mm). Selecting one sets Focal Length and forces
+ *  Film Size back to 36mm; the dialog shows "Custom" when the derived focal length is off-list. */
+export const CAMERA_PRESETS: { label: string; focalLengthMm: number }[] = [
+  { label: '15mm', focalLengthMm: 15 },
+  { label: '20mm', focalLengthMm: 20 },
+  { label: '24mm', focalLengthMm: 24 },
+  { label: '28mm', focalLengthMm: 28 },
+  { label: '35mm', focalLengthMm: 35 },
+  { label: '50mm', focalLengthMm: 50 },
+  { label: '80mm', focalLengthMm: 80 },
+  { label: '135mm', focalLengthMm: 135 },
+  { label: '200mm', focalLengthMm: 200 },
+];
+/** The preset label matching a focal length (within 0.5mm), or 'Custom'. */
+export function presetForFocalLength(focalLengthMm: number): string {
+  const hit = CAMERA_PRESETS.find((p) => Math.abs(p.focalLengthMm - focalLengthMm) < 0.5);
+  return hit ? hit.label : 'Custom';
+}
+
+/** Zoom (px) from Focal Length (mm): Z = f·C/F. */
+export function zoomForFocalLength(focalLengthMm: number, filmSizeMm: number, compDim: number): number {
+  return (focalLengthMm * compDim) / Math.max(1e-6, filmSizeMm);
+}
+/** Focal Length (mm) from Zoom (px): f = Z·F/C. */
+export function focalLengthForZoom(zoom: number, filmSizeMm: number, compDim: number): number {
+  return (zoom * filmSizeMm) / Math.max(1e-6, compDim);
+}
+/** Angle of View (radians) from Zoom (px): θ = 2·atan(C/(2Z)). */
+export function aovForZoom(zoom: number, compDim: number): number {
+  return 2 * Math.atan(compDim / (2 * Math.max(1e-6, zoom)));
+}
+/** Zoom (px) from Angle of View (radians): Z = C/(2·tan(θ/2)). */
+export function zoomForAov(aov: number, compDim: number): number {
+  return compDim / (2 * Math.tan(aov / 2));
+}
+
+// ── Depth of field ──
+// AE's "Lock to Zoom" identity makes focal length in pixels == Zoom, so F-Stop couples through
+// zoom: N = zoom/aperture (aperture in px). Only Aperture is stored; F-Stop is a view.
+export function fStopForAperture(zoom: number, aperturePx: number): number {
+  return zoom / Math.max(1e-6, aperturePx);
+}
+export function apertureForFStop(zoom: number, fStop: number): number {
+  return zoom / Math.max(1e-6, fStop);
+}
+
+/**
+ * Per-layer circle-of-confusion BLUR RADIUS (px) for a 3D card at camera-space depth `D` (px,
+ * pass abs — depth is negative in front). Thin-lens projection: CoC = A·(|D−S|/D)·(f/S)·blurLevel
+ * (A=aperture px, S=focus distance px, f=zoom px, blurLevel a fraction where 1=100%); radius is
+ * half the CoC. Zero at the focus plane (D==S); grows with defocus and aperture; saturates in the
+ * far field. Guarded: D≤0 or S≤0 → 0 (2D layers / behind camera never blur).
+ */
+export function cocRadius(D: number, focusDistance: number, aperturePx: number, zoom: number, blurLevel: number): number {
+  if (D <= 0 || focusDistance <= 0) return 0;
+  const coc = aperturePx * (Math.abs(D - focusDistance) / D) * (zoom / focusDistance) * blurLevel;
+  return Math.max(0, coc * 0.5);
+}
+
 /**
  * Build a resolved camera from concrete params. `zoom` drives the FOV only; the eye/target are
  * the camera position and look-at point in composition space. Any zoom keeps a card at z=0 at

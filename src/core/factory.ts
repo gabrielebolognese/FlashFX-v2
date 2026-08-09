@@ -149,11 +149,18 @@ export function createCameraLayer(
       mode: 'two-node',
       pointOfInterest: createProperty('Point of Interest', 'vec2', [cx, cy]),
       pointOfInterestZ: createProperty('POI Z', 'number', 0),
-      zoom: createProperty('Zoom', 'number', compH),
+      // AE 50mm default: Zoom = 50·compW/36 (film size 36mm, measured horizontally).
+      zoom: createProperty('Zoom', 'number', (50 * compW) / 36),
+      filmSize: 36,
+      measureFilmSize: 'horizontal',
+      units: 'pixels',
       dofEnabled: false,
-      focusDistance: createProperty('Focus Distance', 'number', compH),
-      aperture: createProperty('Aperture', 'number', 25),
-      blurLevel: createProperty('Blur Level', 'number', 1),
+      // Focus tracks Zoom by default (Lock to Zoom); seed the stored value to match.
+      focusDistance: createProperty('Focus Distance', 'number', (50 * compW) / 36),
+      lockToZoom: true,
+      // Aperture from a default f/5.6 at the default zoom (F-Stop = zoom/aperture).
+      aperture: createProperty('Aperture', 'number', (50 * compW) / 36 / 5.6),
+      blurLevel: createProperty('Blur Level', 'number', 1), // fraction, 1 = 100%
     },
   };
 }

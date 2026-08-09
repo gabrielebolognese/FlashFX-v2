@@ -38,6 +38,9 @@ try {
   camera.camera.zoom.defaultValue = 2200;
   camera.camera.dofEnabled = true;
   camera.camera.focusDistance.defaultValue = 1500;
+  camera.camera.filmSize = 50;
+  camera.camera.measureFilmSize = 'diagonal';
+  camera.camera.lockToZoom = false;
 
   const shape3d = createRectangleLayer('Card', 400, 300, 200, 120, [1, 0, 0, 1], DUR);
   shape3d.is3D = true;
@@ -60,6 +63,10 @@ try {
     assert.equal(c.camera.dofEnabled, true);
     assert.ok(near(c.camera.focusDistance.defaultValue, 1500));
     assert.ok(c.camera.pointOfInterest && c.camera.blurLevel, 'aim + DOF props present');
+    // AE lens paperwork must survive too (else stripped → dialog resets on reload).
+    assert.equal(c.camera.filmSize, 50, 'film size round-trips');
+    assert.equal(c.camera.measureFilmSize, 'diagonal', 'measure axis round-trips');
+    assert.equal(c.camera.lockToZoom, false, 'lock-to-zoom round-trips');
   });
 
   check('camera eye position (transform + positionZ) round-trips', () => {

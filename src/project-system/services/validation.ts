@@ -524,8 +524,14 @@ function validateLayer(raw: unknown): Layer | null {
           pointOfInterest: ensureAnimatableProperty(c.pointOfInterest, 'Point of Interest', 'vec2', [0, 0]),
           pointOfInterestZ: ensureAnimatableProperty(c.pointOfInterestZ, 'POI Z', 'number', 0),
           zoom: ensureAnimatableProperty(c.zoom, 'Zoom', 'number', 1080),
+          // AE lens paperwork (static). Default to AE's 36mm/horizontal/pixels + lock-to-zoom
+          // so legacy cameras that predate these fields behave like a fresh AE camera.
+          filmSize: typeof c.filmSize === 'number' ? c.filmSize : 36,
+          measureFilmSize: c.measureFilmSize === 'vertical' || c.measureFilmSize === 'diagonal' ? c.measureFilmSize : 'horizontal',
+          units: c.units === 'inches' || c.units === 'millimeters' ? c.units : 'pixels',
           dofEnabled: typeof c.dofEnabled === 'boolean' ? c.dofEnabled : false,
           focusDistance: ensureAnimatableProperty(c.focusDistance, 'Focus Distance', 'number', 1080),
+          lockToZoom: typeof c.lockToZoom === 'boolean' ? c.lockToZoom : true,
           aperture: ensureAnimatableProperty(c.aperture, 'Aperture', 'number', 25),
           blurLevel: ensureAnimatableProperty(c.blurLevel, 'Blur Level', 'number', 1),
         },
