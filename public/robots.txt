@@ -1,0 +1,8 @@
+# FlashFX editor — https://editor.flashfx.app
+# Part of FlashFX (https://flashfx.app). The marketing site hosts the content pages;
+# this subdomain is the single-page WebGPU app.
+User-agent: *
+Allow: /
+
+# Block nothing that matters for SEO; the app is one indexable page.
+Sitemap: https://editor.flashfx.app/sitemap.xml

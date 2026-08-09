@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef, lazy, Suspense } from 'react';
 import { Toolbar } from './ui/panels/Toolbar';
+import { FlashFXLogo } from './ui/components/FlashFXLogo';
 import { SceneSwitcher } from './ui/panels/SceneSwitcher';
 import { PanelLayout } from './ui/layout/PanelLayout';
 import { BuilderLayout } from './ui/layout/BuilderLayout';
@@ -428,6 +429,14 @@ function Editor() {
   return (
     <div className="h-screen w-screen flex flex-col bg-[#06101a] text-slate-300 overflow-hidden select-none" onContextMenu={(e) => e.preventDefault()}>
       <div className="flex items-stretch bg-[#0a1628] border-b border-[#1a2a42] shadow-[0_1px_3px_rgba(0,0,0,0.4)]">
+        {/* Brand — links back to the FlashFX marketing site. */}
+        <a
+          href="https://flashfx.app"
+          className="flex items-center px-3 border-r border-[#1a2a42] hover:bg-white/[0.03] transition-colors"
+          title="FlashFX — flashfx.app"
+        >
+          <FlashFXLogo size={18} />
+        </a>
         <button
           onClick={closeProject}
           className="flex items-center gap-1.5 px-3 text-slate-400 hover:text-slate-200 hover:bg-white/[0.03] transition-colors border-r border-[#1a2a42]"

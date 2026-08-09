@@ -1,0 +1,14 @@
+{
+  "name": "FlashFX — WebGPU Motion Graphics & Video Editor",
+  "short_name": "FlashFX",
+  "description": "Browser-based WebGPU motion-graphics and short-form video editor. Animate text, shapes, particles, 2.5D cameras and effects, then export — no install.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0a0f16",
+  "theme_color": "#0a0f16",
+  "icons": [
+    { "src": "/flashfx-mark.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/favicon.ico", "sizes": "48x48 32x32 16x16", "type": "image/x-icon" }
+  ]
+}

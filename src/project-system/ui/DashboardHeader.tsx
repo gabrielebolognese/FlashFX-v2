@@ -3,6 +3,7 @@ import { Search, Plus, ArrowUpDown, Upload } from 'lucide-react';
 import { useProjectStore } from '../hooks/useProjectStore';
 import type { SortField } from '../hooks/useProjectStore';
 import { FFX_EXTENSION } from '../services/ffx';
+import { FlashFXLogo } from '../../ui/components/FlashFXLogo';
 
 interface Props {
   onCreateNew: () => void;
@@ -38,6 +39,11 @@ export function DashboardHeader({ onCreateNew }: Props) {
 
   return (
     <header className="flex-shrink-0 h-11 border-b border-[#1c2433] bg-[#0d1219] flex items-center px-4 gap-3">
+      {/* Brand */}
+      <a href="https://flashfx.app" title="FlashFX — flashfx.app" className="mr-1 flex items-center">
+        <FlashFXLogo size={20} />
+      </a>
+      <span className="text-slate-700">/</span>
       {/* Page title */}
       <span className="text-[13px] font-medium text-slate-200 mr-2">Recents</span>
 

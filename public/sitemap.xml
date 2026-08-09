@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- FlashFX editor sitemap. The editor is a single-page WebGPU app: one canonical URL.
+     Deep-link template states (e.g. /?template=particles) render the same document and
+     canonicalize to the root, so they are intentionally NOT listed as separate URLs.
+     The content pages (features, pricing, blog) live on https://flashfx.app with their
+     own sitemap. Update <lastmod> on each release. -->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://editor.flashfx.app/</loc>
+    <lastmod>2026-08-09</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+  </url>
+</urlset>

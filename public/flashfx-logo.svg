@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 190 40" width="190" height="40" role="img" aria-label="FlashFX">
+  <defs>
+    <linearGradient id="ffxg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffc83d"/>
+      <stop offset="1" stop-color="#f7b500"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="8" width="24" height="24" rx="6.5" fill="url(#ffxg)"/>
+  <polygon points="15 11.5 8 22 13.2 22 12.3 28.5 20 18 14.3 18" fill="#0a0f16"/>
+  <text x="36" y="27.5" font-family="Inter, Segoe UI, system-ui, -apple-system, sans-serif" font-size="20" font-weight="700" letter-spacing="-0.3">
+    <tspan fill="#f1f5f9">Flash</tspan><tspan fill="#f7b500">FX</tspan>
+  </text>
+</svg>
