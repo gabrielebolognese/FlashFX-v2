@@ -24,7 +24,6 @@ import { PhysicsPanel } from './PhysicsPanel';
 import { StaggerPanel } from './StaggerPanel';
 import { FieldSamplingPanel } from './FieldSamplingPanel';
 import { GenerativePatternPanel } from './GenerativePatternPanel';
-import { CameraPanel } from './CameraPanel';
 import { Camera3DView } from './Camera3DView';
 import { ClonerInspector } from './ClonerInspector';
 import { AnimatePanel } from './AnimatePanel';
@@ -251,14 +250,13 @@ function InspectorTabContent({ tab, layer }: { tab: InspectorTab; layer: Layer }
     return null;
   }
 
-  // Camera: a custom object — no standard transform/effect properties. The inspector shows only
-  // the Camera Settings button + a live 3D View (alongside the normal canvas) for placing it.
+  // Camera: a custom object — no standard transform/effect properties. The inspector shows a live
+  // 3D View (alongside the normal canvas) for placing it; double-click the camera opens Settings.
   if (layer.type === 'camera') {
     return (
       <>
-        <div className="p-2 border-b border-[#1c2433] space-y-2">
+        <div className="p-2 border-b border-[#1c2433]">
           <StringInput label="Name" value={layer.name} onChange={(v) => updateLayerProperty(layer.id, 'name', v)} />
-          <CameraPanel layer={layer as CameraLayer} />
         </div>
         <Camera3DView layer={layer as CameraLayer} />
       </>
