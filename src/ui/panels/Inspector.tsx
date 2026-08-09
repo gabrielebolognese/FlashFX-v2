@@ -112,17 +112,20 @@ export function Inspector() {
       <div tabIndex={0} className="flex-1 overflow-y-auto min-h-0 outline-none focus:outline-none">
         <InspectorTabContent tab={activeTab} layer={layer} />
       </div>
-      <nav className="flex-shrink-0 w-[116px] flex flex-col py-1 border-l border-[#1a2a42] bg-[#0b0e15] overflow-y-auto">
-        {visibleTabs.map((t) => (
-          <NavItem
-            key={t.id}
-            active={activeTab === t.id}
-            onClick={() => setTab(t.id)}
-            icon={t.icon}
-            label={t.label}
-          />
-        ))}
-      </nav>
+      {/* A camera has no standard tabs — hide the sidebar so the 3D View gets the full width. */}
+      {layer.type !== 'camera' && (
+        <nav className="flex-shrink-0 w-[116px] flex flex-col py-1 border-l border-[#1a2a42] bg-[#0b0e15] overflow-y-auto">
+          {visibleTabs.map((t) => (
+            <NavItem
+              key={t.id}
+              active={activeTab === t.id}
+              onClick={() => setTab(t.id)}
+              icon={t.icon}
+              label={t.label}
+            />
+          ))}
+        </nav>
+      )}
     </div>
   );
 }
