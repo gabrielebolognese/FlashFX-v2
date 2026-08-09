@@ -4746,6 +4746,61 @@ export class WebGPURenderer {
     await gpu.device.queue.onSubmittedWorkDone();
   }
 
+  /**
+   * Render a one-off resolved frame off-screen (on the LIVE device, reusing this renderer's
+   * warmed-up texture/text/video caches) and return it as a small WebP blob — used for
+   * project-card thumbnails. Never touches the visible canvas, so there's no flash. Renders
+   * at full comp resolution for correctness, then downscales to `maxDim` for storage.
+   * Returns null if capture isn't possible. The camera is always kept (unlike the "disable
+   * camera" screen toggle) so the thumbnail reflects the real scene.
+   */
+  async captureThumbnail(
+    frame: RenderFrame,
+    width: number,
+    height: number,
+    maxDim = 480
+  ): Promise<Blob | null> {
+    const device = this.gpu?.device;
+    if (!device || this.deviceLost || width <= 0 || height <= 0) return null;
+    try {
+      // (Re)build the offscreen capture target when missing, resized, or bound to a stale
+      // device (device-loss recovery swaps this.gpu.device out from under us).
+      const stale =
+        !this.offscreenGpu ||
+        !this.offscreenCanvas ||
+        this.offscreenCanvas.width !== width ||
+        this.offscreenCanvas.height !== height ||
+        this.offscreenGpu.device !== device;
+      if (stale) {
+        const canvas = new OffscreenCanvas(width, height);
+        const ctx = canvas.getContext('webgpu');
+        if (!ctx) return null;
+        const format = navigator.gpu.getPreferredCanvasFormat();
+        ctx.configure({ device, format, alphaMode: 'premultiplied' });
+        this.offscreenCanvas = canvas;
+        this.offscreenGpu = this.createPipeline(device, ctx as GPUCanvasContext, format);
+        this.offscreenReady = true;
+      }
+
+      await this.renderFrameAsync(frame, 'offscreen');
+      const src = this.offscreenCanvas;
+      if (!src) return null;
+
+      // Downscale to a card-sized thumbnail (preserve aspect) via a 2D canvas.
+      const scale = Math.min(1, maxDim / Math.max(width, height));
+      const tw = Math.max(1, Math.round(width * scale));
+      const th = Math.max(1, Math.round(height * scale));
+      const small = new OffscreenCanvas(tw, th);
+      const c2 = small.getContext('2d');
+      if (!c2) return null;
+      c2.drawImage(src, 0, 0, tw, th);
+      return await small.convertToBlob({ type: 'image/webp', quality: 0.72 });
+    } catch (e) {
+      console.warn('[renderer] thumbnail capture failed:', e);
+      return null;
+    }
+  }
+
   private fillLayerData(
     data: Float32Array,
     layer: ResolvedLayer,

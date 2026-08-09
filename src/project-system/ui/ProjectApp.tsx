@@ -6,6 +6,7 @@ import { Dashboard } from './Dashboard';
 import { loadProjectScene, saveProjectPreview } from '../services/projects';
 import { mediaAssetManager } from '../../engine/media/assetManager';
 import { playbackController } from '../../store/timeline';
+import { resolveFrame } from '../../core/interpolation';
 import { useTemplateBoot } from '../../templates/useTemplateBoot';
 import { TemplateSplash } from '../../templates/TemplateSplash';
 
@@ -36,6 +37,11 @@ export function ProjectApp({ editorComponent: EditorComponent }: Props) {
           requestAnimationFrame(() => {
             playbackController.renderCurrentFrame();
           });
+          // Refresh the project-card thumbnail with a random frame from this scene so tens of
+          // projects stay visually distinguishable. Runs a couple seconds after open (renderer
+          // warm, media loaded) and replaces the old preview blob (IDB put overwrites → the old
+          // one is freed).
+          captureRandomThumbnail(activeProjectId);
         }
       })();
     }
@@ -57,26 +63,46 @@ export function ProjectApp({ editorComponent: EditorComponent }: Props) {
   );
 }
 
+// Grab a random frame from the just-opened scene and save it as the project-card thumbnail.
+// Renders off-screen on the live renderer (no flash on the visible canvas) and replaces the
+// previous preview. Fire-and-forget; a couple seconds' delay lets the renderer warm up and
+// media load so the captured frame isn't blank.
+function captureRandomThumbnail(projectId: string): void {
+  window.setTimeout(() => {
+    void (async () => {
+      // Bail if the user already navigated away from this project.
+      if (useProjectStore.getState().activeProjectId !== projectId) return;
+      const renderer = playbackController.getRenderer();
+      if (!renderer) return;
+      const editor = useEditorStore.getState();
+      const comp = editor.composition;
+      if (!comp) return;
+      const dur = Math.max(1, comp.settings.durationFrames);
+      const randomFrame = Math.floor(Math.random() * dur);
+      try {
+        const frameData = resolveFrame(comp, randomFrame, {
+          getComposition: (id) => editor.getComposition(id),
+          getStyle: (id) => editor.styles[id],
+          depth: 0,
+          visited: new Set(),
+        });
+        const blob = await renderer.captureThumbnail(
+          frameData,
+          comp.settings.width,
+          comp.settings.height
+        );
+        // Guard again — the async render may have outlived the project being open.
+        if (blob && useProjectStore.getState().activeProjectId === projectId) {
+          await saveProjectPreview(projectId, blob);
+        }
+      } catch (e) {
+        console.warn('[thumbnail] random-frame capture failed:', e);
+      }
+    })();
+  }, 2000);
+}
+
 function EditorWithAutoSave({ EditorComponent }: { EditorComponent: React.ComponentType }) {
   useAutoSave();
-  const activeProjectId = useProjectStore((s) => s.activeProjectId);
-
-  // Capture preview on unmount (when leaving editor)
-  useEffect(() => {
-    return () => {
-      if (!activeProjectId) return;
-      const canvas = document.querySelector('canvas') as HTMLCanvasElement | null;
-      if (!canvas) return;
-
-      try {
-        canvas.toBlob((blob) => {
-          if (blob) saveProjectPreview(activeProjectId, blob);
-        }, 'image/webp', 0.7);
-      } catch {
-        // Canvas may be tainted or WebGPU canvas - skip preview
-      }
-    };
-  }, [activeProjectId]);
-
   return <EditorComponent />;
 }
