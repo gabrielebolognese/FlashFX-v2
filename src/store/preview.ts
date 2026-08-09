@@ -27,6 +27,9 @@ interface PreviewState {
   fastDraft: boolean;
   /** Skip layer effects (shadow/glow/blur) in the interactive preview only. */
   disableEffects: boolean;
+  /** "Disable camera": render the screen flat 2D (ignore the active camera) so a 2.5D/3D
+   *  comp can be edited as if no camera existed. Preview-only — export keeps the camera. */
+  cameraDisabled: boolean;
   /** Experimental: drive playback from the audio (Web Audio) master clock instead
    *  of the wall clock — CapCut/Canva-style A/V sync. Off = the current wall-clock
    *  path (zero change). A runtime A/B flag while the rework is browser-verified. */
@@ -39,6 +42,7 @@ interface PreviewState {
   toggleRegionOfInterest: () => void;
   toggleFastDraft: () => void;
   toggleDisableEffects: () => void;
+  toggleCameraDisabled: () => void;
   toggleAudioMasterClock: () => void;
 }
 
@@ -50,6 +54,7 @@ export const usePreviewStore = create<PreviewState>((set) => ({
   regionOfInterest: false,
   fastDraft: false,
   disableEffects: false,
+  cameraDisabled: false,
   audioMasterClock: false,
 
   setQuality: (quality) => set({ quality }),
@@ -59,6 +64,7 @@ export const usePreviewStore = create<PreviewState>((set) => ({
   toggleRegionOfInterest: () => set((s) => ({ regionOfInterest: !s.regionOfInterest })),
   toggleFastDraft: () => set((s) => ({ fastDraft: !s.fastDraft })),
   toggleDisableEffects: () => set((s) => ({ disableEffects: !s.disableEffects })),
+  toggleCameraDisabled: () => set((s) => ({ cameraDisabled: !s.cameraDisabled })),
   toggleAudioMasterClock: () => set((s) => ({ audioMasterClock: !s.audioMasterClock })),
 }));
 

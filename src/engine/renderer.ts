@@ -2813,6 +2813,9 @@ export class WebGPURenderer {
   // skipped for speed. An INSTANCE flag (not global) so the export renderer — a
   // separate WebGPURenderer — always renders effects regardless of this preview toggle.
   private effectsPreviewDisabled = false;
+  // "Disable camera" preview toggle: render the SCREEN as if no camera exists (flat 2D), so a
+  // 3D/2.5D comp can be edited normally. Never affects the offscreen (export) render.
+  private cameraDisabled = false;
 
   setMotionBlurSamples(n: number): void {
     this.motionBlurSamples = Math.max(2, Math.round(n));
@@ -2820,6 +2823,10 @@ export class WebGPURenderer {
 
   setEffectsPreviewDisabled(disabled: boolean): void {
     this.effectsPreviewDisabled = disabled;
+  }
+
+  setCameraDisabled(disabled: boolean): void {
+    this.cameraDisabled = disabled;
   }
 
   async initialize(canvas: HTMLCanvasElement): Promise<boolean> {
@@ -3508,13 +3515,17 @@ export class WebGPURenderer {
     // the newest decoded frame ≤ their target and drop the rest, rather than
     // requesting the exact frame and holding on a decode miss (framePresentation).
     this.presentLatest = presentLatest;
+    // "Disable camera" (screen only): drop the frame's active camera so every layer takes the
+    // flat 2D vertex path — the whole M2 3D/MVP path is gated on frame.camera, so this renders
+    // exactly as if no camera existed. Export (offscreen) always keeps the camera.
+    const f = this.cameraDisabled && target === 'screen' ? { ...frame, camera: undefined } : frame;
     // Capture WebGPU validation errors for the screen render. Without a scope they are
     // "uncaptured" and some drivers escalate them to a lost device (the 2.5D crash). Capturing
     // keeps the device alive and logs the exact message (first few only).
     const dev = target === 'screen' ? this.gpu?.device : undefined;
     dev?.pushErrorScope('validation');
     try {
-      this.renderFrameUnsafe(frame, target);
+      this.renderFrameUnsafe(f, target);
     } catch (err) {
       if (target === 'screen') this.handleRenderError(err);
       else throw err;

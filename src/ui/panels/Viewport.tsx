@@ -22,7 +22,7 @@ import { MultiFieldWarning } from './MultiFieldWarning';
 import { useShapeToolStore, isShapeTool } from '../../store/shapeTool';
 import { useRecoveryStore } from '../../store/recovery';
 import { editorRecovery } from '../../engine/recovery';
-import { ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
+import { ZoomIn, ZoomOut, Maximize2, Video, VideoOff } from 'lucide-react';
 import { useContextMenu } from '../context-menu';
 import { buildCanvasMenu } from '../context-menu/menuDefinitions';
 
@@ -66,6 +66,8 @@ export function Viewport() {
   const pixelPreview = usePreviewStore((s) => s.pixelPreview);
   const globalMotionBlur = usePreviewStore((s) => s.globalMotionBlur);
   const disableEffects = usePreviewStore((s) => s.disableEffects);
+  const cameraDisabled = usePreviewStore((s) => s.cameraDisabled);
+  const toggleCameraDisabled = usePreviewStore((s) => s.toggleCameraDisabled);
   const qualityScale = getQualityScale(previewQuality);
 
   const rendererEpoch = useRecoveryStore((s) => s.rendererEpoch);
@@ -173,8 +175,9 @@ export function Viewport() {
     if (!renderer) return;
     renderer.setMotionBlurSamples(globalMotionBlur ? getMotionBlurSamples(previewQuality) : 1);
     renderer.setEffectsPreviewDisabled(disableEffects);
+    renderer.setCameraDisabled(cameraDisabled);
     playbackController.renderCurrentFrame();
-  }, [globalMotionBlur, previewQuality, disableEffects, rendererEpoch]);
+  }, [globalMotionBlur, previewQuality, disableEffects, cameraDisabled, rendererEpoch]);
 
   // Wheel zoom - cursor-centered (native listener for passive:false)
   useEffect(() => {
@@ -305,6 +308,10 @@ export function Viewport() {
 
   const zoomPercent = Math.round(zoom * 100);
 
+  // Only surface the "disable camera" toggle when the comp actually has a camera — otherwise
+  // the screen is already flat 2D and the control would be meaningless.
+  const hasCamera = composition.layers.some((l) => l.type === 'camera');
+
   return (
     <div
       ref={containerRef}
@@ -355,6 +362,25 @@ export function Viewport() {
       <div className="absolute top-2 left-2 right-2 z-10 pointer-events-auto">
         <MultiFieldWarning />
       </div>
+
+      {/* Disable-camera toggle (top-right) — flattens the 3D/2.5D camera view to 2D so a
+          camera-driven comp can be edited "as if the camera isn't there". Preview-only. */}
+      {hasCamera && (
+        <button
+          onClick={toggleCameraDisabled}
+          title={cameraDisabled
+            ? 'Camera view is off — editing flat 2D. Click to re-enable the camera.'
+            : 'Disable the camera view and edit in flat 2D (does not affect export).'}
+          className={`absolute top-2 right-2 z-20 flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-medium border shadow-sm transition-colors pointer-events-auto ${
+            cameraDisabled
+              ? 'bg-[#f7b500] hover:bg-[#ffc21f] border-[#f7b500] text-[#1a1200]'
+              : 'bg-[#0a1628]/85 hover:bg-[#122240] border-[#1a2a42] text-slate-200'
+          }`}
+        >
+          {cameraDisabled ? <VideoOff size={13} /> : <Video size={13} />}
+          {cameraDisabled ? 'Camera Off' : 'Disable Camera'}
+        </button>
+      )}
       {dragOver && (
         <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none bg-[#0a1628]/80 backdrop-blur-sm border-2 border-dashed border-[#f7b500] rounded-lg m-2">
           <div className="flex flex-col items-center gap-3">
