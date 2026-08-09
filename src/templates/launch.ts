@@ -2,6 +2,7 @@ import { useProjectStore } from '../project-system/hooks/useProjectStore';
 import { useEditorStore } from '../store/editor';
 import { useTimelineStore, playbackController } from '../store/timeline';
 import { TEMPLATES, type TemplateId } from './registry';
+import { getTemplate as getAnimationTemplate } from '../animation-templates/catalog';
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
@@ -59,4 +60,31 @@ export async function launchTemplate(id: TemplateId): Promise<void> {
   if (tpl.autoplay) {
     await warmUpAndPlay();
   }
+}
+
+/**
+ * Open a NEW project seeded from one of the animation-template library entries (the dashboard
+ * "Templates" tab), then autoplay it. Same create→wait→seed→warm-up flow as the deep-link
+ * templates, but the scene is built by the animation-template (inserted at the playhead) rather
+ * than a deep-link `apply`. The project persists, so it shows up under Recents like any project.
+ */
+export async function launchAnimationTemplate(animationTemplateId: string): Promise<void> {
+  const tpl = getAnimationTemplate(animationTemplateId);
+  if (!tpl) return;
+
+  const before = useEditorStore.getState().composition;
+  await useProjectStore.getState().createAndOpenProject({
+    name: tpl.name,
+    width: 1920,
+    height: 1080,
+    videoFormat: 'long',
+    durationFrames: tpl.durationFrames,
+  });
+
+  await waitForSceneLoad(before);
+  await sleep(60);
+
+  useEditorStore.getState().insertAnimationTemplate(tpl.id);
+
+  await warmUpAndPlay();
 }

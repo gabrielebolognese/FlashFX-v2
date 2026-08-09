@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
 import { useProjectStore } from '../hooks/useProjectStore';
 import { ProjectGrid } from './ProjectGrid';
+import { TemplatesGallery } from './TemplatesGallery';
 import { DashboardHeader } from './DashboardHeader';
 import { CreateProjectModal } from './CreateProjectModal';
-import { Clock, FolderOpen, Star, Trash2, Film } from 'lucide-react';
+import { Clock, FolderOpen, Star, Trash2, Film, LayoutTemplate } from 'lucide-react';
 import { TutorialLaunch } from '../../tutorial/TutorialLaunch';
 import { hasSeenTutorial } from '../../tutorial/launch';
 
-type NavSection = 'recents' | 'all' | 'starred' | 'trash';
+type NavSection = 'recents' | 'all' | 'templates' | 'starred' | 'trash';
 
 export function Dashboard() {
   const loadProjects = useProjectStore((s) => s.loadProjects);
@@ -26,9 +27,11 @@ export function Dashboard() {
   const navItems: { id: NavSection; label: string; icon: React.ReactNode }[] = [
     { id: 'recents', label: 'Recents', icon: <Clock size={14} /> },
     { id: 'all', label: 'All Projects', icon: <FolderOpen size={14} /> },
+    { id: 'templates', label: 'Templates', icon: <LayoutTemplate size={14} /> },
     { id: 'starred', label: 'Starred', icon: <Star size={14} /> },
     { id: 'trash', label: 'Trash', icon: <Trash2 size={14} /> },
   ];
+  const activeLabel = navItems.find((n) => n.id === activeNav)?.label ?? 'Recents';
 
   return (
     <div className="h-screen w-screen bg-[#0a0f16] text-slate-200 flex overflow-hidden">
@@ -71,10 +74,12 @@ export function Dashboard() {
 
       {/* Main content */}
       <div className="flex-1 flex flex-col min-w-0">
-        <DashboardHeader onCreateNew={() => setShowCreate(true)} />
+        <DashboardHeader onCreateNew={() => setShowCreate(true)} title={activeLabel} showSort={activeNav !== 'templates'} />
 
         <main className="flex-1 overflow-y-auto px-6 pb-6">
-          {loading ? (
+          {activeNav === 'templates' ? (
+            <TemplatesGallery />
+          ) : loading ? (
             <div className="flex items-center justify-center h-64">
               <div className="w-5 h-5 border-[1.5px] border-[#f7b500]/30 border-t-[#f7b500] rounded-full animate-spin" />
             </div>

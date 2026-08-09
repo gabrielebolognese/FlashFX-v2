@@ -7,9 +7,13 @@ import { FlashFXLogo } from '../../ui/components/FlashFXLogo';
 
 interface Props {
   onCreateNew: () => void;
+  /** Section title shown at the left (defaults to "Recents"). */
+  title?: string;
+  /** Hide the project sort controls (e.g. on the Templates tab). */
+  showSort?: boolean;
 }
 
-export function DashboardHeader({ onCreateNew }: Props) {
+export function DashboardHeader({ onCreateNew, title = 'Recents', showSort = true }: Props) {
   const searchQuery = useProjectStore((s) => s.searchQuery);
   const setSearchQuery = useProjectStore((s) => s.setSearchQuery);
   const sortField = useProjectStore((s) => s.sortField);
@@ -45,7 +49,7 @@ export function DashboardHeader({ onCreateNew }: Props) {
       </a>
       <span className="text-slate-700">/</span>
       {/* Page title */}
-      <span className="text-[13px] font-medium text-slate-200 mr-2">Recents</span>
+      <span className="text-[13px] font-medium text-slate-200 mr-2">{title}</span>
 
       {/* Search */}
       <div className="flex-1 max-w-xs relative">
@@ -62,24 +66,26 @@ export function DashboardHeader({ onCreateNew }: Props) {
       <div className="flex-1" />
 
       {/* Sort controls */}
-      <div className="flex items-center gap-1.5">
-        <ArrowUpDown size={11} className="text-slate-500" />
-        <select
-          value={sortField}
-          onChange={(e) => setSortField(e.target.value as SortField)}
-          className="bg-[#141c28] border border-[#1c2433] rounded text-[10px] text-slate-400 px-1.5 py-1 focus:outline-none cursor-pointer"
-        >
-          <option value="modifiedAt">Last viewed</option>
-          <option value="createdAt">Created</option>
-          <option value="name">Name</option>
-        </select>
-        <button
-          onClick={() => setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')}
-          className="px-1.5 py-1 bg-[#141c28] border border-[#1c2433] rounded text-[10px] text-slate-400 hover:text-slate-200 transition-colors"
-        >
-          {sortDirection === 'asc' ? 'Asc' : 'Desc'}
-        </button>
-      </div>
+      {showSort && (
+        <div className="flex items-center gap-1.5">
+          <ArrowUpDown size={11} className="text-slate-500" />
+          <select
+            value={sortField}
+            onChange={(e) => setSortField(e.target.value as SortField)}
+            className="bg-[#141c28] border border-[#1c2433] rounded text-[10px] text-slate-400 px-1.5 py-1 focus:outline-none cursor-pointer"
+          >
+            <option value="modifiedAt">Last viewed</option>
+            <option value="createdAt">Created</option>
+            <option value="name">Name</option>
+          </select>
+          <button
+            onClick={() => setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')}
+            className="px-1.5 py-1 bg-[#141c28] border border-[#1c2433] rounded text-[10px] text-slate-400 hover:text-slate-200 transition-colors"
+          >
+            {sortDirection === 'asc' ? 'Asc' : 'Desc'}
+          </button>
+        </div>
+      )}
 
       {/* Import button */}
       <input
