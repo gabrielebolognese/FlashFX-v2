@@ -1,5 +1,126 @@
 # Devlog
 
+## 2026-08-09
+
+A launch-polish day, then a deep dive into the 2.5D camera. 24 commits (+ one empty one I
+pushed by accident), 52 files changed, +2777/−323. Roughly two halves: the morning cleared
+launch blockers (a crash, SEO, the dashboard, the AE camera dialog); the afternoon built the
+camera into something you can actually *fly* — a world-space 3D view, a keyframe editor, and
+a true smooth spatial-bezier path. typecheck stayed at 0 and lint at the 127 baseline through
+every commit. Everything that touches WebGPU or pointer behaviour is Node-harness-verified
+only, so it still needs a browser to *feel*.
+
+### Launch blockers (morning)
+
+- The Cloner no longer crashes the editor — and now actually draws its instances.
+  - Number: verify:cloner-render, 8 checks.
+  - Hard part: it wasn't skipping the cloner, it was mis-bucketing it. A resolved cloner has
+    no drawable payload of its own, and the renderer's catch-all `else` filed it as a *shape*,
+    so the shape packer dereferenced `layer.shape` and threw every single frame. The real fix
+    was upstream: `resolveFrame` now expands a cloner into per-instance stamps of its source
+    layer (and hides the source, C4D-style), and the bucketing skips any payload-less resolved
+    layer. Corrected the CLAUDE.md note that had claimed the if-chain "safely skipped" it.
+
+- Space plays the video even while a number field is focused; Esc and click-outside deselect.
+  - Hard part: a focused `<input>` swallows Space as a literal character, so "press space to
+    play" silently typed a space instead. Play now wins over the field (except while actually
+    editing text), and deselect had to clear both the canvas and the timeline selection.
+
+- Multi-select outlines now sit on parented objects instead of up-and-left of them.
+  - Internal: `getLayerWorldBounds` was reading the layer's *local* `transform.position`
+    rather than its world position through the parent chain — swapped to `getWorldPosition`.
+
+- Full SEO pass + the FlashFX mark now appears in the site/app headers.
+  - Number: rewrote `index.html` head, added robots.txt, sitemap.xml, web manifest, an inline
+    brand logo, and a rasterised OG image + apple-touch icon (PNG).
+  - Hard part: a raw `&` inside the OG SVG's aria-label broke librsvg (strict XML) and produced
+    a blank PNG — had to escape it to `&amp;`. Sitemap lives at `editor.flashfx.app/sitemap.xml`.
+
+- The dashboard tabs work: Recents / All / Starred / Trash / Templates, plus starring and a
+  real trash lifecycle (7-day purge, 30 if starred, and a permanent-delete that asks you to
+  type the project name GitHub-style).
+  - Number: verify:trash, 5 checks (retention math). Four scene deep-links added to a new
+    Templates tab (galaxy, city skyline, rocket launch, forest).
+  - Hard part: keeping the retention math pure so it could be proven in Node — purge time is
+    derived (`trashedAt + retentionDays`), and "starred gets longer" had to survive the
+    round-trip without a background job to lean on.
+
+### After Effects camera settings + depth of field
+
+- A real AE-style Camera Settings dialog: coupled lens fields (Zoom / Angle of View / Focal
+  Length / Film Size / Comp Size) and working depth of field, in a two-column layout with a
+  tutorial-video placeholder.
+  - Number: verify:camera3d, 24 checks. Researched AE's actual behaviour with a multi-agent
+    workflow first, then implemented the algebra exactly.
+  - Hard part: the four lens fields are *one* identity — `Z = f·C/F` — so storing all of them
+    would desync the moment you keyframe. Only Zoom (px) is stored and render-affecting; Focal
+    Length / AOV / F-Stop are derived for display, so they can never drift. DOF is a per-3D-layer
+    circle-of-confusion routed through the existing blur pipeline, honouring AE's "lock to zoom".
+
+### Editor chrome + a camera parallax template
+
+- Dropped the FlashFX brand button from the editor top bar (just "Projects" now), removed the
+  em-dash separator from the dashboard header, collapsed "Render" + a small "Export" into one
+  prominent **Export** button, and fully hid the Animation Builder (kept the code, not the button).
+- A "2.5D Camera Parallax" template that uses the camera meaningfully — cards at varying depth
+  with a keyframed truck + push — reachable by deep link.
+
+### The camera you can fly (afternoon)
+
+- A 3D View in the inspector: an orthographic, AE-style schematic of the world where the camera
+  and 3D layers live, shown *alongside* the live canvas when a camera is selected (the tab
+  sidebar hides for space). Drag the camera and its point-of-interest to place them; the main
+  canvas updates live. Plus crash mitigation — a WebGPU validation-error scope that captures and
+  logs instead of letting a validation error escalate to a lost device.
+  - Hard part: the Side view wouldn't drag. The SVG used a fixed square viewBox with the default
+    `preserveAspectRatio`, which letterboxes, but the pointer math assumed a linear stretch — so
+    clicks skewed on the letterboxed axis. Fixed by tracking the element's real pixel size as the
+    viewBox with `preserveAspectRatio="none"`, giving a 1:1 pointer mapping on both views.
+
+- A "Disable Camera" toggle in the canvas top-right: renders the screen flat 2D, as if no camera
+  existed, so a 2.5D comp can be edited without fighting the perspective. Screen-only — export
+  always keeps the camera.
+  - Internal: the entire M2 3D/MVP path is already gated on `frame.camera` existing, so dropping
+    the camera for the screen render yields the exact 2D result with no other change.
+
+- Camera UX polish: full-width Top/Side tabs, double-click the camera for Settings (the inline
+  button is gone), a precision drag mode (world moves at 40% of pointer speed), and aperture (mm)
+  iris handles that mirror each other.
+
+- A camera-path keyframe editor in the 3D view: a rhombus that follows the camera to key its
+  position, world-anchored keyframe markers (click to seek, right-click to delete), a dotted
+  "possible path" that becomes a solid line at 2+ keys, and a right-click menu per segment.
+  - Hard part: the drawn path is *sampled from the real evaluated eye*, not a guess — so what you
+    see is exactly what renders, for any interpolation.
+
+- Smooth spatial-bezier camera path with draggable tangent handles.
+  - Number: verify:camera-path, 4 checks (collapse-to-lerp, byte-identity, bow, u-tracking).
+  - Hard part: making it a *strict, opt-in generalisation*. A cubic Bezier whose control points
+    sit on the 1/3–2/3 line collapses to a straight lerp, so a path with no tangents is
+    byte-identical to the old linear one (proven, so the existing harnesses can't regress). And
+    timing had to keep coming from the real keyframes: the along-path parameter `u` is extracted
+    from the actual interpolation of whichever axis moves most, so easing/hold on the position
+    keys still drives the fly-through. Right-click a segment for Smooth (auto Catmull-Rom
+    tangents) / Straight / Hold; the mirrored handles bow the curve in 3D.
+
+### Project open
+
+- Project cards now show a *random frame* from the scene, refreshed on every open, so tens of
+  projects stay distinguishable.
+  - Hard part: the old capture did `canvas.toBlob()` on the WebGPU canvas at teardown, which
+    hands back a blank or stale frame. The new one renders a random frame to an *offscreen*
+    target on the live device — reusing the warmed-up texture caches, never touching the visible
+    canvas (no flash) — then downscales to a small WebP and overwrites the old blob in place.
+
+- A loading splash covers the editor on open until the scene, assets, and first frame are ready.
+  - Hard part: opening a project janks the main thread for a couple seconds (deserialize +
+    resolve + first WebGPU render), which would freeze a normal JS-driven loader too. The spinner
+    and progress bar are pure CSS transform animations, so they run on the compositor thread and
+    keep moving *through* the freeze.
+
+- A revert-to-default (↺) button on every Transform property row — Position → comp centre,
+  Scale → 1, rotations/Z → 0, Opacity → 1 — keyframe-aware, and dimmed when already at default.
+
 ## 2026-08-08
 
 The biggest day so far: 40 commits, +9917/−362, ~253 file-changes. Six arcs — the last
