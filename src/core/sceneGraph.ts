@@ -61,7 +61,7 @@ export function getDisplayOrder(layers: Layer[]): Layer[] {
   return result;
 }
 
-function getWorldPosition(layer: Layer, layers: Layer[], frame: number): Vec2 {
+export function getWorldPosition(layer: Layer, layers: Layer[], frame: number): Vec2 {
   const localPos = evaluateVec2(layer.transform.position, frame);
   if (!layer.parentId) return localPos;
 

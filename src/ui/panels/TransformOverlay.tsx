@@ -8,7 +8,7 @@ import { useViewportNavStore } from '../../store/viewportNav';
 import type { ShapeLayer, TextLayer, GroupLayer, VideoLayer, ImageLayer, Layer, Vec2, ShapeGeometry, LayoutObjectLayer, LayoutContainerLayer } from '../../core/types';
 import { evaluateProperty, evaluateNumber, evaluateVec2 } from '../../core/interpolation';
 import { measureText } from '../../engine/textAtlas';
-import { computeGroupBounds } from '../../core/sceneGraph';
+import { computeGroupBounds, getWorldPosition } from '../../core/sceneGraph';
 import { resolveCanvasClick, resolveDoubleClick } from '../../core/selection';
 import { snap, buildTargets, getSelectionRect, getLayerRect, getOtherRects, type Rect, type SnapLine, type SnapTarget } from '../../core/snap';
 import { measureGaps, fmtGap } from '../../core/snap/measure';
@@ -103,13 +103,16 @@ function useElementSize(ref: React.RefObject<HTMLDivElement | null>) {
   return size;
 }
 
-function getLayerWorldBounds(layer: Layer, currentFrame: number, compW?: number, compH?: number): { x: number; y: number; w: number; h: number } | null {
+function getLayerWorldBounds(layer: Layer, layers: Layer[], currentFrame: number, compW?: number, compH?: number): { x: number; y: number; w: number; h: number } | null {
   if (layer.type === 'group' || layer.type === 'audio') return null;
   if (currentFrame < layer.inPoint || currentFrame >= layer.outPoint) return null;
-  let pos = evaluateProperty(layer.transform.position, currentFrame) as Vec2;
+  // Parent-composed WORLD position — a parented layer (e.g. every template child, which
+  // `assemble` parents to its group) renders at its world position, NOT its local one. Using the
+  // local position drew the selection outline shifted toward the group's origin (up-left).
+  let pos = getWorldPosition(layer, layers, currentFrame);
   const baked = sampleBakedFrame(layer.id, currentFrame);
   if (baked) {
-    pos = [baked.x, baked.y] as Vec2;
+    pos = [baked.x, baked.y] as Vec2; // physics bake is already world-space
   }
   let w: number, h: number;
   if (layer.type === 'video') {
@@ -330,7 +333,7 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
     for (const l of layers) {
       if (!l.visible) continue;
       if (l.type === 'group') continue;
-      const bounds = getLayerWorldBounds(l, currentFrame, compW, compH);
+      const bounds = getLayerWorldBounds(l, composition.layers, currentFrame, compW, compH);
       if (!bounds) continue;
       const left = bounds.x - bounds.w / 2;
       const top = bounds.y - bounds.h / 2;
@@ -366,7 +369,7 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
       // If the hit layer is already part of a multi-selection, start a multi-drag
       if (selection.selectedIds.length > 1 && selection.selectedIds.includes(hit.id) && !additive && !deepSelect) {
         // Compute transform state for the hit layer directly
-        const hitBounds = getLayerWorldBounds(hit, currentFrame, compW, compH);
+        const hitBounds = getLayerWorldBounds(hit, composition.layers, currentFrame, compW, compH);
         if (!hitBounds) return;
         const hitPos = evaluateProperty(hit.transform.position, currentFrame) as Vec2;
         const hitRot = evaluateProperty(hit.transform.rotation, currentFrame) as number;
@@ -455,7 +458,7 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
     for (const l of composition.layers) {
       if (!l.visible || l.type === 'group') continue;
       if (currentFrame < l.inPoint || currentFrame >= l.outPoint) continue;
-      const bounds = getLayerWorldBounds(l, currentFrame, compW, compH);
+      const bounds = getLayerWorldBounds(l, composition.layers, currentFrame, compW, compH);
       if (!bounds) continue;
       const lx = bounds.x - bounds.w / 2;
       const ly = bounds.y - bounds.h / 2;
@@ -1003,7 +1006,10 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
           currentFrame={currentFrame}
           sX={sX}
           sY={sY}
-          activeId={activeLayer.id}
+          // In a multi-selection the single-layer gizmo is hidden (below), so give EVERY selected
+          // layer a world-correct outline (activeId=null excludes none). Single-select keeps the
+          // gizmo and excludes the active layer from the plain outlines.
+          activeId={selection.selectedIds.length > 1 ? null : activeLayer.id}
           compW={compW}
           compH={compH}
         />
@@ -1047,7 +1053,11 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
       })(), document.body)}
 
 
-      {showLayerControls && (
+      {/* Single-layer transform gizmo (box + handles). Hidden for a multi-selection — those show
+          as world-correct outlines above; a multi-move is started by dragging any selected object.
+          (The gizmo's position uses the active layer's LOCAL transform, which the drag math needs;
+          drawing it for a parented multi-selection is what looked shifted.) */}
+      {showLayerControls && selection.selectedIds.length <= 1 && (
       <div
         className="absolute"
         style={{ left: centerSX, top: centerSY, width: 0, height: 0 }}
@@ -1265,7 +1275,7 @@ function HoverAndSelectionOutlines({ layers, selection, hoveredLayerId, currentF
       continue;
     }
 
-    const bounds = getLayerWorldBounds(l, currentFrame, compW, compH);
+    const bounds = getLayerWorldBounds(l, layers, currentFrame, compW, compH);
     if (!bounds) continue;
 
     outlines.push({ id: l.id, x: bounds.x, y: bounds.y, w: bounds.w, h: bounds.h, type: isSelected ? 'selected' : 'hover' });
