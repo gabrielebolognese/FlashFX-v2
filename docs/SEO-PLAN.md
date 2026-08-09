@@ -58,18 +58,29 @@ they are deliberately not separate indexable URLs.
 - Editor top bar (`App.tsx`) — brand at the far left, links to flashfx.app.
 - Project dashboard (`DashboardHeader.tsx`) — brand before the "Recents" title.
 
-## 3. ⚠️ Required follow-up: raster OG image
+## 3. Raster OG image — ✅ done
 
-`og-image.svg` renders on Google/Slack/Discord, but **Twitter/X, Facebook and LinkedIn do NOT
-render SVG Open Graph images** — they'll show no preview. **Export a raster:**
+Twitter/X, Facebook and LinkedIn don't render SVG Open Graph images, so the SVGs were
+rasterized with `sharp` (installed locally):
 
-1. Open `public/og-image.svg`, export **`public/og-image.png`** at **1200×630**.
-2. In `index.html`, switch `og:image`, `og:image:type` (→ `image/png`) and `twitter:image` to
-   `/og-image.png`.
+- **`public/og-image.png`** (1200×630) — `og:image` / `twitter:image` / JSON-LD `image` now
+  point at it; `og:image:type` is `image/png`.
+- **`public/apple-touch-icon.png`** (180×180, dark background) — `apple-touch-icon` link.
 
-(Ask and I can render the PNG via the browser tool, or you can export from any design app.)
-Same applies to a **180×180 `apple-touch-icon.png`** for best iOS home-screen fidelity (Safari
-may ignore an SVG apple-touch icon).
+To regenerate after editing the SVGs (needs `sharp`):
+
+```js
+// node from the repo root
+import sharp from 'sharp'; import { readFileSync } from 'node:fs';
+await sharp(readFileSync('public/og-image.svg'), { density: 200 })
+  .resize(1200, 630, { fit: 'fill' }).png({ compressionLevel: 9 }).toFile('public/og-image.png');
+await sharp(readFileSync('public/flashfx-mark.svg'), { density: 400 })
+  .resize(180, 180, { fit: 'contain', background: { r: 10, g: 15, b: 22, alpha: 1 } })
+  .png({ compressionLevel: 9 }).toFile('public/apple-touch-icon.png');
+```
+
+Note: `sharp`/librsvg is strict XML — escape `&` as `&amp;` in the SVGs (the browser is lenient,
+the rasterizer is not).
 
 ## 4. Verification checklist (after deploy)
 
