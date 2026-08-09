@@ -3656,9 +3656,13 @@ export class WebGPURenderer {
         imageLayers.push({ index: i, layer });
       } else if (layer.shape && layer.shape.renderType === 'polygon') {
         pathLayers.push({ index: i, layer });
-      } else {
+      } else if (layer.shape) {
         shapeLayers.push({ index: i, layer });
       }
+      // else: an undrawable resolved layer (no recognized payload — e.g. a cloner meta that
+      // slipped through, or a future layer type) is SKIPPED, not force-bucketed as a shape.
+      // The shape packer dereferences layer.shape, so bucketing a shape-less layer crashed the
+      // whole frame (this was the cloner editor-crash).
     }
 
     if (shapeLayers.length > 0) {

@@ -13,6 +13,7 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.app.json",
     "verify:cloner": "node scripts/verify-cloner.mjs",
+    "verify:cloner-render": "node scripts/verify-cloner-render.mjs",
     "verify:precomp": "node scripts/verify-precomp.mjs",
     "verify:pathops": "node scripts/verify-pathops.mjs",
     "verify:beats": "node scripts/verify-beats.mjs",

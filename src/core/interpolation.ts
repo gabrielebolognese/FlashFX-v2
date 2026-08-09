@@ -1424,6 +1424,66 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
     }
   }
 
+  // ── Cloner expansion ──────────────────────────────────────────────────────────────────────
+  // Turn each resolved cloner into per-instance STAMPS of its (already-resolved) source layer,
+  // in the cloner's z-position, and hide the source (it lives inside the cloner, C4D-style). The
+  // pure engine already produced `cloner.instances` (final per-instance position/rotation/scale/
+  // opacity/tint, incl. the source's own animation + effectors); here we just clone the source's
+  // resolved content payload at each instance transform. Reusing the resolved source means no
+  // re-resolution and no cloner-specific code in the renderer (which previously mis-bucketed the
+  // undrawable cloner layer as a shape and crashed).
+  if (resolvedLayers.some((l) => l.layerType === 'cloner')) {
+    const stampsByCloner = new Map<string, ResolvedLayer[]>();
+    const hiddenSourceIds = new Set<string>();
+    for (const cl of resolvedLayers) {
+      if (cl.layerType !== 'cloner' || !cl.cloner) continue;
+      const srcId = cl.cloner.sourceLayerId;
+      const src = srcId ? resolvedLayers.find((l) => l.id === srcId && l.layerType !== 'cloner') : undefined;
+      const stamps: ResolvedLayer[] = [];
+      if (src && srcId) {
+        hiddenSourceIds.add(srcId);
+        for (const inst of cl.cloner.instances) {
+          // Instance transform (relative to the cloner), composed under the cloner's world
+          // transform. anchor 0 → the instance position IS the stamp centre.
+          const child: ResolvedTransform = {
+            positionX: inst.position.x, positionY: inst.position.y,
+            rotation: inst.rotationDegrees.z,
+            scaleX: inst.scale.x, scaleY: inst.scale.y,
+            anchorX: 0, anchorY: 0,
+            opacity: inst.opacity,
+            positionZ: 0, rotationX: 0, rotationY: 0,
+          };
+          const stamp: ResolvedLayer = {
+            ...src,
+            id: `${cl.id}#${inst.index}`,
+            transform: composeTransforms(cl.transform, child),
+            // instances don't inherit the source's masks (mask coords are absolute — they'd
+            // pin every clone to the source's spot). Default sources have none anyway.
+            mask: undefined,
+            masks: undefined,
+          };
+          // Multiplicative colour tint on shape fills (effectors can drive it; identity = no-op).
+          const t = inst.colorTint;
+          if (src.shape && (t.r !== 1 || t.g !== 1 || t.b !== 1)) {
+            const f = src.shape.fillColor;
+            stamp.shape = { ...src.shape, fillColor: [f[0] * t.r, f[1] * t.g, f[2] * t.b, f[3]] as Vec4 };
+          }
+          stamps.push(stamp);
+        }
+      }
+      stampsByCloner.set(cl.id, stamps);
+    }
+    // Rebuild in place, preserving z-order: each cloner → its stamps; sources removed.
+    const rebuilt: ResolvedLayer[] = [];
+    for (const rl of resolvedLayers) {
+      if (hiddenSourceIds.has(rl.id) && rl.layerType !== 'cloner') continue;
+      if (rl.layerType === 'cloner') { rebuilt.push(...(stampsByCloner.get(rl.id) ?? [])); continue; }
+      rebuilt.push(rl);
+    }
+    resolvedLayers.length = 0;
+    resolvedLayers.push(...rebuilt);
+  }
+
   // 2.5D (M1): attach world matrices to any 3D layers (renderer consumes them in M2). Dormant
   // until the M3 is3D toggle exists; safe no-op for all-2D comps (the common case).
   if (struct.hasThreeDLayers) {
