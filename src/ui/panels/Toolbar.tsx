@@ -15,7 +15,7 @@ import { AlignPanel } from './AlignPanel';
 import { TransformDialog } from './TransformDialog';
 import {
   FilePlus, FolderOpen, Save, Download, Upload,
-  Cog, MonitorPlay, FileCode, SlidersHorizontal,
+  MonitorPlay, SlidersHorizontal,
   Square, Paintbrush, Grid3x3, Sparkles, Shuffle, Settings2, Scissors,
 } from 'lucide-react';
 import { useInspectorStore, type InspectorTab } from '../../store/inspector';
@@ -442,9 +442,7 @@ export function Toolbar() {
         <ToolbarButton icon={Upload} label="Import" onClick={() => ffxInputRef.current?.click()} />
         <ToolbarButton icon={Download} label="Download" onClick={handleDownloadProject} />
         <ToolbarSep />
-        <ToolbarButton icon={Cog} label="Render" onClick={() => setShowExport(true)} />
         <ToolbarButton icon={MonitorPlay} label="Preview" tutorialId="transport" onClick={() => { const t = useTimelineStore.getState(); if (t.isPlaying) t.pause(); else t.play(); }} />
-        <ToolbarButton icon={FileCode} label="Export" tutorialId="export" onClick={() => setShowExport(true)} />
         <ToolbarSep />
         <ToolbarButton icon={SlidersHorizontal} label="Settings" onClick={() => setShowSettings(!showSettings)} />
         <ToolbarButton icon={Settings2} label="Preferences" onClick={() => useSettingsStore.getState().openSettings()} />

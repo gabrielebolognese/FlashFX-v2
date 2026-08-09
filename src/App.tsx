@@ -9,7 +9,8 @@ import { useTimelineStore } from './store/timeline';
 import { usePanelStore } from './store/panels';
 import { ProjectApp, useProjectStore } from './project-system';
 import { useAnimationBuilderStore } from './animation-builder';
-import { ArrowLeft, LayoutGrid, Workflow, Settings2, GraduationCap, Sparkles } from 'lucide-react';
+import { ArrowLeft, LayoutGrid, Workflow, Settings2, GraduationCap, Sparkles, Download } from 'lucide-react';
+import { ExportModal } from './ui/panels/ExportModal';
 import { AiChatPanel } from './ui/panels/AiChatPanel';
 import { ResetEditorDialog } from './ui/recovery/ResetEditorDialog';
 import { EmergencyRecoveryOverlay } from './ui/recovery/EmergencyRecoveryOverlay';
@@ -54,6 +55,7 @@ function Editor() {
   const setWorkspace = useAnimationBuilderStore((s) => s.setWorkspace);
   const aiChatOpen = usePanelStore((s) => s.aiChatOpen);
   const toggleAiChat = usePanelStore((s) => s.toggleAiChat);
+  const [showExport, setShowExport] = useState(false);
   const aiEditorWorkspace = usePanelStore((s) => s.editorWorkspace);
   // AI chat works in every mode except preview/review (that mode is a full-screen player).
   const showAiChat = aiChatOpen && !(workspace === 'editor' && aiEditorWorkspace === 'review');
@@ -465,12 +467,25 @@ function Editor() {
           <Sparkles size={13} />
           <span className="text-[11px] font-medium">AI</span>
         </button>
+        {/* Prominent single Export entry point (replaces the old Render + Export toolbar buttons). */}
+        {workspace === 'editor' && (
+          <button
+            onClick={() => setShowExport(true)}
+            data-tutorial-id="export"
+            className="flex items-center gap-1.5 px-4 border-l border-[#1a2a42] bg-[#f7b500] hover:bg-[#ffc83d] text-[#0a0f16] text-[11px] font-semibold transition-colors"
+            title="Export video"
+          >
+            <Download size={13} strokeWidth={2.5} />
+            <span>Export</span>
+          </button>
+        )}
         {workspace === 'editor' && <PanelsMenu />}
       </div>
       <div className="flex-1 flex flex-row min-h-0 min-w-0">
         {workspace === 'editor' ? <PanelLayout /> : <BuilderLayout />}
         {showAiChat && <AiChatPanel />}
       </div>
+      {showExport && <ExportModal onClose={() => setShowExport(false)} />}
       <ResetEditorDialog />
       <EmergencyRecoveryOverlay />
       <ClipContextMenu />
