@@ -1,5 +1,5 @@
 import type { ProjectMetadata, CreateProjectOptions } from '../types';
-import { deriveOrientation } from '../types';
+import { deriveOrientation, isTrashExpired } from '../types';
 import {
   getAllMetadata,
   getMetadata,
@@ -96,12 +96,52 @@ export async function saveProjectScene(id: string, document: SceneDocument): Pro
   }
 }
 
+/** Permanent, irreversible erase (metadata + scene + preview + all assets). */
 export async function deleteProject(id: string): Promise<void> {
   await deleteMetadata(id);
   await deleteScene(id);
   await deletePreview(id);
   await deleteAssetsByProject(id);
   await videoAssetStore.deleteProjectAssets(id);
+}
+
+/** Star / unstar (changes the trash-retention window). */
+export async function setProjectStarred(id: string, starred: boolean): Promise<void> {
+  const metadata = await getMetadata(id);
+  if (!metadata) return;
+  metadata.starred = starred;
+  await putMetadata(metadata);
+}
+
+/** Move to Trash (soft delete). Recoverable until the retention window elapses. */
+export async function trashProject(id: string): Promise<void> {
+  const metadata = await getMetadata(id);
+  if (!metadata) return;
+  metadata.trashedAt = Date.now();
+  await putMetadata(metadata);
+}
+
+/** Restore from Trash. */
+export async function restoreProject(id: string): Promise<void> {
+  const metadata = await getMetadata(id);
+  if (!metadata) return;
+  metadata.trashedAt = null;
+  await putMetadata(metadata);
+}
+
+/** Permanently erase every trashed project whose retention window has elapsed. Returns the
+ *  purged ids (run on dashboard load). */
+export async function purgeExpiredTrash(): Promise<string[]> {
+  const all = await getAllMetadata();
+  const now = Date.now();
+  const purged: string[] = [];
+  for (const m of all) {
+    if (isTrashExpired(m, now)) {
+      await deleteProject(m.id);
+      purged.push(m.id);
+    }
+  }
+  return purged;
 }
 
 export async function renameProject(id: string, newName: string): Promise<void> {
@@ -129,6 +169,8 @@ export async function duplicateProject(id: string): Promise<ProjectMetadata | nu
     createdAt: now,
     modifiedAt: now,
     version: 1,
+    starred: false,
+    trashedAt: null,
   };
 
   const newScene: ProjectScene = {

@@ -11,6 +11,10 @@ import {
   saveProjectPreview,
   getProjectPreviewUrl,
   getProjectMetadata,
+  setProjectStarred,
+  trashProject as trashProjectService,
+  restoreProject as restoreProjectService,
+  purgeExpiredTrash,
 } from '../services/projects';
 import { exportProjectToFile, importProjectFromFile } from '../services/ffx';
 import type { Composition, SceneDocument } from '../../core/types';
@@ -35,7 +39,14 @@ interface ProjectState {
   createAndOpenProject: (options: CreateProjectOptions) => Promise<void>;
   openProject: (id: string) => Promise<SceneDocument | null>;
   closeProject: () => Promise<void>;
-  deleteProject: (id: string) => Promise<void>;
+  /** Move to Trash (soft delete, recoverable). The card menu uses this. */
+  trashProject: (id: string) => Promise<void>;
+  /** Restore a project from Trash. */
+  restoreProject: (id: string) => Promise<void>;
+  /** Permanent, irreversible erase (Trash → "Delete permanently"). */
+  deletePermanently: (id: string) => Promise<void>;
+  /** Star / unstar (starred projects get a 30-day trash window vs 7). */
+  toggleStar: (id: string) => Promise<void>;
   renameProject: (id: string, name: string) => Promise<void>;
   duplicateProject: (id: string) => Promise<void>;
   // Save the current project's state as a NEW project under `name`, then switch to it.
@@ -60,6 +71,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   loadProjects: async () => {
     set({ loading: true });
+    // Erase any trashed projects whose retention window (7d, or 30d if starred) has elapsed.
+    try { await purgeExpiredTrash(); } catch (err) { console.error('Trash purge failed:', err); }
     const metadataList = await listProjects();
 
     const cards: ProjectCard[] = await Promise.all(
@@ -106,13 +119,43 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     set({ activeProjectId: null, view: 'dashboard' });
   },
 
-  deleteProject: async (id) => {
+  trashProject: async (id) => {
+    await trashProjectService(id);
+    const now = Date.now();
+    // Keep the card (it moves to the Trash section); stamp trashedAt locally.
+    set({
+      projects: get().projects.map((p) =>
+        p.metadata.id === id ? { ...p, metadata: { ...p.metadata, trashedAt: now } } : p
+      ),
+    });
+  },
+
+  restoreProject: async (id) => {
+    await restoreProjectService(id);
+    set({
+      projects: get().projects.map((p) =>
+        p.metadata.id === id ? { ...p, metadata: { ...p.metadata, trashedAt: null } } : p
+      ),
+    });
+  },
+
+  deletePermanently: async (id) => {
     const { projects } = get();
     const card = projects.find((p) => p.metadata.id === id);
     if (card?.previewUrl) URL.revokeObjectURL(card.previewUrl);
-
     await deleteProject(id);
     set({ projects: projects.filter((p) => p.metadata.id !== id) });
+  },
+
+  toggleStar: async (id) => {
+    const card = get().projects.find((p) => p.metadata.id === id);
+    const next = !card?.metadata.starred;
+    await setProjectStarred(id, next);
+    set({
+      projects: get().projects.map((p) =>
+        p.metadata.id === id ? { ...p, metadata: { ...p.metadata, starred: next } } : p
+      ),
+    });
   },
 
   renameProject: async (id, name) => {

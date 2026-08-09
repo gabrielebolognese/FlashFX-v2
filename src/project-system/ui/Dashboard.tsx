@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useProjectStore } from '../hooks/useProjectStore';
-import { ProjectGrid } from './ProjectGrid';
+import { ProjectGrid, type ProjectSection } from './ProjectGrid';
 import { TemplatesGallery } from './TemplatesGallery';
 import { DashboardHeader } from './DashboardHeader';
 import { CreateProjectModal } from './CreateProjectModal';
@@ -10,12 +10,24 @@ import { hasSeenTutorial } from '../../tutorial/launch';
 
 type NavSection = 'recents' | 'all' | 'templates' | 'starred' | 'trash';
 
+// Deep-link the dashboard to a tab: /?view=templates (also starred/trash/all/recents).
+function initialNav(): NavSection {
+  try {
+    const v = new URLSearchParams(window.location.search).get('view');
+    if (v === 'templates' || v === 'starred' || v === 'trash' || v === 'all' || v === 'recents') return v;
+  } catch { /* no URL — fall through */ }
+  return 'recents';
+}
+
 export function Dashboard() {
   const loadProjects = useProjectStore((s) => s.loadProjects);
   const loading = useProjectStore((s) => s.loading);
   const projects = useProjectStore((s) => s.projects);
   const [showCreate, setShowCreate] = useState(false);
-  const [activeNav, setActiveNav] = useState<NavSection>('recents');
+  const [activeNav, setActiveNav] = useState<NavSection>(initialNav);
+
+  const trashCount = projects.filter((p) => p.metadata.trashedAt).length;
+  const starredCount = projects.filter((p) => p.metadata.starred && !p.metadata.trashedAt).length;
   const [launchDismissed, setLaunchDismissed] = useState(false);
   // First-open hero: never seen the tutorial and no projects yet.
   const showLaunch = !launchDismissed && !loading && projects.length === 0 && !hasSeenTutorial();
@@ -24,12 +36,12 @@ export function Dashboard() {
     loadProjects();
   }, [loadProjects]);
 
-  const navItems: { id: NavSection; label: string; icon: React.ReactNode }[] = [
+  const navItems: { id: NavSection; label: string; icon: React.ReactNode; count?: number }[] = [
     { id: 'recents', label: 'Recents', icon: <Clock size={14} /> },
     { id: 'all', label: 'All Projects', icon: <FolderOpen size={14} /> },
     { id: 'templates', label: 'Templates', icon: <LayoutTemplate size={14} /> },
-    { id: 'starred', label: 'Starred', icon: <Star size={14} /> },
-    { id: 'trash', label: 'Trash', icon: <Trash2 size={14} /> },
+    { id: 'starred', label: 'Starred', icon: <Star size={14} />, count: starredCount || undefined },
+    { id: 'trash', label: 'Trash', icon: <Trash2 size={14} />, count: trashCount || undefined },
   ];
   const activeLabel = navItems.find((n) => n.id === activeNav)?.label ?? 'Recents';
 
@@ -58,7 +70,10 @@ export function Dashboard() {
               }`}
             >
               <span className={activeNav === item.id ? 'text-[#f7b500]' : 'text-slate-500'}>{item.icon}</span>
-              {item.label}
+              <span className="flex-1 text-left">{item.label}</span>
+              {item.count ? (
+                <span className="text-[10px] font-semibold text-slate-400 bg-[#1a2233] rounded-full px-1.5 min-w-[18px] text-center">{item.count}</span>
+              ) : null}
             </button>
           ))}
         </nav>
@@ -84,7 +99,7 @@ export function Dashboard() {
               <div className="w-5 h-5 border-[1.5px] border-[#f7b500]/30 border-t-[#f7b500] rounded-full animate-spin" />
             </div>
           ) : (
-            <ProjectGrid onCreateNew={() => setShowCreate(true)} />
+            <ProjectGrid section={activeNav as ProjectSection} onCreateNew={() => setShowCreate(true)} />
           )}
         </main>
       </div>

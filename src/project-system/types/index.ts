@@ -13,6 +13,34 @@ export interface ProjectMetadata {
   createdAt: number;
   modifiedAt: number;
   version: number;
+  /** Starred by the user. A starred project gets a longer trash-retention window. */
+  starred?: boolean;
+  /** When the project was moved to Trash (ms epoch). Absent/null = not trashed. */
+  trashedAt?: number | null;
+}
+
+// ── Trash retention ──
+// A trashed project is fully erased after this many days; starred projects get longer, so a
+// favourite you deleted by accident is recoverable for a month.
+export const TRASH_RETENTION_DAYS = 7;
+export const TRASH_RETENTION_DAYS_STARRED = 30;
+const DAY_MS = 86_400_000;
+
+export function trashRetentionDays(m: Pick<ProjectMetadata, 'starred'>): number {
+  return m.starred ? TRASH_RETENTION_DAYS_STARRED : TRASH_RETENTION_DAYS;
+}
+/** Absolute purge time (ms epoch), or null when the project isn't in the trash. */
+export function trashPurgeAt(m: Pick<ProjectMetadata, 'starred' | 'trashedAt'>): number | null {
+  return m.trashedAt ? m.trashedAt + trashRetentionDays(m) * DAY_MS : null;
+}
+export function isTrashExpired(m: Pick<ProjectMetadata, 'starred' | 'trashedAt'>, now: number): boolean {
+  const at = trashPurgeAt(m);
+  return at !== null && now >= at;
+}
+/** Whole days left before permanent erase (≥0), for the Trash UI. */
+export function trashDaysRemaining(m: Pick<ProjectMetadata, 'starred' | 'trashedAt'>, now: number): number {
+  const at = trashPurgeAt(m);
+  return at === null ? 0 : Math.max(0, Math.ceil((at - now) / DAY_MS));
 }
 
 export interface ProjectScene {
