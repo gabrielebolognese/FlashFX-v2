@@ -3500,12 +3500,19 @@ export class WebGPURenderer {
     gpu.pathVertexCapacity = cap;
   }
 
+  private gpuValidationLogged = 0;
+
   renderFrame(frame: RenderFrame, target: 'screen' | 'offscreen' = 'screen', presentLatest = false): void {
     if (target === 'screen' && this.deviceLost) return;
     // Scoped to this call: when set (audio-master playback), video layers display
     // the newest decoded frame ≤ their target and drop the rest, rather than
     // requesting the exact frame and holding on a decode miss (framePresentation).
     this.presentLatest = presentLatest;
+    // Capture WebGPU validation errors for the screen render. Without a scope they are
+    // "uncaptured" and some drivers escalate them to a lost device (the 2.5D crash). Capturing
+    // keeps the device alive and logs the exact message (first few only).
+    const dev = target === 'screen' ? this.gpu?.device : undefined;
+    dev?.pushErrorScope('validation');
     try {
       this.renderFrameUnsafe(frame, target);
     } catch (err) {
@@ -3513,6 +3520,14 @@ export class WebGPURenderer {
       else throw err;
     } finally {
       this.presentLatest = false;
+      if (dev) {
+        dev.popErrorScope().then((e) => {
+          if (e && this.gpuValidationLogged < 5) {
+            this.gpuValidationLogged++;
+            console.error('[renderer] WebGPU validation error (captured — not fatal):', e.message);
+          }
+        }).catch(() => { /* scope stack imbalance under device loss — ignore */ });
+      }
     }
   }
 

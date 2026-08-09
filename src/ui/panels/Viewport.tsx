@@ -8,6 +8,8 @@ import { useEditorStore } from '../../store/editor';
 import { useGridStore } from '../../store/grid';
 import { usePreviewStore, getQualityScale, getMotionBlurSamples } from '../../store/preview';
 import { useViewportNavStore } from '../../store/viewportNav';
+import { Camera3DView } from './Camera3DView';
+import type { CameraLayer } from '../../core/types';
 import { useProjectStore } from '../../project-system/hooks/useProjectStore';
 import { TransformOverlay } from './TransformOverlay';
 import { MotionPathOverlay } from './MotionPathOverlay';
@@ -34,6 +36,10 @@ export function Viewport() {
 
   const composition = useEditorStore((s) => s.composition);
   const activeGroupId = useEditorStore((s) => s.activeGroupId);
+  const selectionActiveId = useEditorStore((s) => s.selection.activeId);
+  // When a camera is selected, the viewport becomes a 3D editing view (below) instead of the
+  // flat camera-through preview — you place the camera in the world there.
+  const activeCamera = composition.layers.find((l) => l.id === selectionActiveId && l.type === 'camera') as CameraLayer | undefined;
   const addImageFromAsset = useEditorStore((s) => s.addImageFromAsset);
   const addVideoFromAsset = useEditorStore((s) => s.addVideoFromAsset);
   const addImage = useEditorStore((s) => s.addImage);
@@ -471,6 +477,9 @@ export function Viewport() {
           <span className="text-slate-500 ml-1">-- click outside or Esc to exit</span>
         </div>
       )}
+
+      {/* Camera selected → the 3D editing view (covers the flat preview). */}
+      {activeCamera && <Camera3DView layer={activeCamera} />}
     </div>
   );
 }

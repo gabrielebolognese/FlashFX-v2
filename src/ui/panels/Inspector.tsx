@@ -247,6 +247,22 @@ function InspectorTabContent({ tab, layer }: { tab: InspectorTab; layer: Layer }
     return null;
   }
 
+  // Camera: a custom object — it doesn't use the standard transform/effect properties. It's
+  // placed in the 3D View (the canvas) and its lens/DOF are in the Camera Settings dialog.
+  if (layer.type === 'camera') {
+    return (
+      <>
+        <Section title="Layer">
+          <StringInput label="Name" value={layer.name} onChange={(v) => updateLayerProperty(layer.id, 'name', v)} />
+        </Section>
+        <div className="px-3 pt-2 text-[11px] text-slate-500 leading-relaxed">
+          Placed in the <span className="text-slate-300 font-medium">3D View</span> — drag the camera and its target in the canvas.
+        </div>
+        <CameraPanel layer={layer as CameraLayer} />
+      </>
+    );
+  }
+
   // Default: Properties (basic).
   return (
     <>
@@ -263,8 +279,8 @@ function InspectorTabContent({ tab, layer }: { tab: InspectorTab; layer: Layer }
       </Section>
 
       <Section title="Transform">
-        {/* 2.5D — 3D layer switch. Off for cameras (always 3D), groups, audio. */}
-        {layer.type !== 'camera' && layer.type !== 'group' && layer.type !== 'audio' && (
+        {/* 2.5D — 3D layer switch. Off for groups, audio (cameras render their own panel above). */}
+        {layer.type !== 'group' && layer.type !== 'audio' && (
           <button
             onClick={() => toggleLayer3D(layer.id)}
             title="Toggle 3D layer (adds Z position + X/Y/Z rotation)"
@@ -411,9 +427,6 @@ function InspectorTabContent({ tab, layer }: { tab: InspectorTab; layer: Layer }
         <GenerativePatternPanel layer={layer as GenerativePatternLayer} />
       )}
 
-      {layer.type === 'camera' && (
-        <CameraPanel layer={layer as CameraLayer} />
-      )}
 
       {isAnimationItem && (
         <AnimationItemPanel layer={layer as AnimationItemLayer} />
