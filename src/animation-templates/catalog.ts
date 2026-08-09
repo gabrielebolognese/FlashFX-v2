@@ -1,5 +1,6 @@
 import type { AnimationTemplate, TemplateCategory } from './types';
 import { chainReaction } from './categories/machine';
+import { parallaxDepth } from './categories/parallax';
 import { departureBoard } from './categories/board';
 import { barChartRace } from './categories/barRace';
 import { recursiveEditor } from './categories/editor';
@@ -18,6 +19,7 @@ import { logoPop } from './categories/logo';
 // The animation-template library. Add a template = author a builder in categories/ and list it here.
 
 export const ANIMATION_TEMPLATES: AnimationTemplate[] = [
+  parallaxDepth,
   chainReaction,
   recursiveEditor,
   departureBoard,
