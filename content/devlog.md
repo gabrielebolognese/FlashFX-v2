@@ -1,5 +1,104 @@
 # Devlog
 
+## 2026-08-08
+
+The biggest day so far: 40 commits, +9917/−362, ~253 file-changes. Six arcs — the last
+Figma "time-saver" milestones (M17–M22), a self-driving tutorial, landing-page deep-links,
+a 24-template animation library, a toggleable AI-chat mockup, a GPU procedural-pattern
+engine, and the start of a 2.5D system (camera + 3D layers). typecheck stayed at 0 and lint
+at the 127 baseline through every commit; anything with WebGPU/pointer behaviour is
+structurally verified only (Node harnesses + guards), so it needs a browser to feel.
+
+### Figma finishers (M17–M22, 6 commits)
+
+- Convert a text layer to editable vector glyph paths (Outline Text, M17).
+- Batch-rename a multi-selection with tokens + numbering + regex (M19, Ctrl+R).
+- Freehand pencil/draw tool (M18, Shift+P).
+- Rulers with ticks/labels + live snap-to-pixel (M20).
+- Shared linked color styles — edit once, everything linked updates (M21). Shape/text
+  fill+stroke read through the style before the material overlay.
+- Outline stroke + holes-preserving compound booleans (M22).
+  - Hard part: preserving holes through a boolean means tracking even-odd winding, not just
+    unioning outer rings.
+
+### Self-driving tutorial (Phases 1–5, 4 commits)
+
+- A tutorial that builds a full title-card scene by driving the *real* editor store
+  (chapters 1–10), with a UI spotlight overlay and a first-open CTA.
+  - Hard part: it runs the actual store actions rather than a scripted fake, so each step
+    has to tolerate real state and undo — a canned animation would drift from the editor.
+
+### Landing-page deep-links (3 commits)
+
+- Landing CTAs open the editor via `/?template=<id>`, seeding a fresh, editable, autoplaying
+  project (first one: a tuned "magic" particle hero).
+  - Hard part: the splash overlays the app while WebGPU warms and pre-rolls ~8 frames before
+    playing, so the first (heaviest) frames happen behind it. And seeding has to wait until
+    the async scene-load actually swaps the composition reference, or it lands on the wrong
+    doc and gets overwritten.
+
+### Animation-template library (9 commits)
+
+- "Use this" inserts a real animation — graphics *plus* keyframes and interpolation — at the
+  playhead, not just static shapes. 24+ templates: scenes (beach/forest/night), weather
+  (sunset/rain/city/snow), creative (galaxy/phone-chat/pen/clock/fireworks/rocket/coffee/
+  confetti/spinner), and four showcases — Chain Reaction (Rube Goldberg, 200 balls),
+  Departure Board (split-flap flip-wave + parallax planes + rain matte), Bar Chart Race
+  (baked reordering), Recursive Editor (FlashFX animating a video editor). Plus an "All"
+  button that inserts every template back-to-back.
+  - Number: verify:anim-templates, 132 checks.
+  - Hard parts: templates are authored 0-based and rebased to the playhead (rescaled if the
+    comp fps differs from the authoring fps). The Recursive Editor lives or dies on cursor
+    believability — the cursor engine is a bezier arc + ballistic velocity + overshoot +
+    dwell + sub-pixel noise + icon swaps. The bar-race reorder is *baked* because a live
+    reorder needs a per-frame sort the keyframe model can't express.
+
+### AI chat panel (mockup, 2 commits)
+
+- Toggleable VS Code / Copilot-style side panel: occupies the right 20% and compresses the
+  layout in every mode except preview. Borderless assistant responses with a thinking loader,
+  streaming, and a response timer; composer mockup buttons (add file, from Drive, image, …).
+  - Internal: a `streamResponse()` seam and canned reply now, so a real model drops in later
+    with no UI change.
+
+### GPU procedural-pattern engine (Phases 1 → 3, 6 commits)
+
+- A new `generativePattern` layer: full-resolution fragment-shader patterns (waves, plasma,
+  kaleidoscope, mosaic + 7 more = 11 types) with a palette editor. Bounded/movable/resizable/
+  maskable like a rectangle, with keyframeable knobs (scale/rotation/warp/contrast) and
+  blend-with-below.
+  - Number: verify:pattern, 16 checks; blend-with-below is 4 GPU pipeline variants
+    (normal/add/multiply/screen).
+  - Hard parts: the config's type whitelist was hard-coded to the original 4 types, so every
+    new type silently parsed back to plasma (caught by the harness: `'plasma' !== 'clouds'`).
+    Blend can't read the scene texture progressively, so each mode is a separate pipeline
+    whose fragment output form is matched to its blend state.
+
+### Timeline layer-name column (2 commits)
+
+- The layer-name column doubles in Edit mode, then sizes dynamically — grows to fit the
+  busiest track up to a cap.
+  - Number: clip counts computed O(N) via a Map, not per-track-per-render.
+
+### 2.5D system — camera + 3D layers (M0–M3 + M6 + M2, 8 commits)
+
+The start of After-Effects-style cards-in-space. Built so that a 2D comp stays byte-identical
+at every step (the depth fields default to 0; the GPU path is gated on an `is3D` flag).
+
+- M0: a pure column-major mat4 core + `Transform` gains optional positionZ/rotationX/rotationY.
+- M1: a first-class camera layer resolving to View/Projection each frame; the default camera
+  frames the comp 1:1 for *any* zoom (AE parity — a lone layer toggled 3D doesn't jump).
+- M3: the 3D-layer toggle + inspector X/Y/Z position/rotation rows.
+- M2: the renderer — per-3D-layer MVP projection in WGSL (appended to the image/shape/text/
+  pattern uniforms) + painter's z-sort (3D layers far→near, 2D layers pin the order).
+  - Numbers: verify:mat4 9, verify:camera3d 17, verify:scene3d 5.
+  - Hard part: the y-down handedness trap. The default camera was flipping *both* screen axes
+    versus the renderer's y-down convention, and the first harness only checked magnitudes so
+    it passed anyway. Fixed with a −Y comp-up vector and pinned with signed-parity assertions
+    (top-left → (−1,+1), etc.). The GPU projection itself is browser-unverifiable, so it's
+    additive + guarded (zero-init `is3D` flag → 2D layers can't be affected) and all the hard
+    math — parity, foreshortening, painter order — is proven in Node.
+
 ## 2026-08-07
 
 Nine Figma "time-saver" milestones in one day (M2–M10, 8 commits), plus M1 which
