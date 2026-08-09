@@ -12,7 +12,7 @@ import { evaluateProperty } from '../../core/interpolation';
 import { createProperty } from '../../core/factory';
 import { getMotionBlur } from '../../core/layerSwitches';
 import { DEFAULT_CONSTRAINTS, type ReframeAxisMode } from '../../core/reframe';
-import { Diamond, Route, Trash2, Wand2, Sliders, Sparkles, Square, Circle, Star, Hexagon, Zap, Scissors, Moon, Layers, Type, Frame, Copy, ChevronUp, ChevronDown, Eye, EyeOff, Plus, Repeat, Link2, Atom, Grid3x3, Aperture, Code2, SlidersHorizontal, Palette, Loader2, Boxes, Box } from 'lucide-react';
+import { Diamond, Route, Trash2, Wand2, Sliders, Sparkles, Square, Circle, Star, Hexagon, Zap, Scissors, Moon, Layers, Type, Frame, Copy, ChevronUp, ChevronDown, Eye, EyeOff, Plus, Repeat, Link2, Atom, Grid3x3, Aperture, Code2, SlidersHorizontal, Palette, Loader2, Boxes, Box, RotateCcw } from 'lucide-react';
 import { DragInput } from '../components/DragInput';
 import { useSilenceStore } from '../../store/silenceStripper';
 import { BackgroundPanel } from './BackgroundPanel';
@@ -166,6 +166,8 @@ function InspectorTabContent({ tab, layer }: { tab: InspectorTab; layer: Layer }
   const updateLayerProperty = useEditorStore((s) => s.updateLayerProperty);
   const addKeyframe = useEditorStore((s) => s.addKeyframe);
   const toggleLayer3D = useEditorStore((s) => s.toggleLayer3D);
+  const compW = useEditorStore((s) => s.composition.settings.width);
+  const compH = useEditorStore((s) => s.composition.settings.height);
 
   const hasKeyframeAt = (prop: AnimatableProperty) =>
     prop.keyframes.some((k) => k.frame === currentFrame);
@@ -302,6 +304,7 @@ function InspectorTabContent({ tab, layer }: { tab: InspectorTab; layer: Layer }
           onKeyframe={(v) => addKeyframe(layer.id, 'transform.position', currentFrame, v)}
           hasKeyframe={hasKeyframeAt(layer.transform.position)}
           labels={['X', 'Y']}
+          defaultValue={[compW / 2, compH / 2]}
         />
         {/* 2.5D depth: Z position (present once the layer is 3D). */}
         {layer.is3D && layer.transform.positionZ && (
@@ -313,6 +316,7 @@ function InspectorTabContent({ tab, layer }: { tab: InspectorTab; layer: Layer }
             onKeyframe={(v) => addKeyframe(layer.id, 'transform.positionZ', currentFrame, v)}
             hasKeyframe={hasKeyframeAt(layer.transform.positionZ)}
             step={1}
+            defaultValue={0}
           />
         )}
         {layer.is3D && layer.transform.rotationX && (
@@ -325,6 +329,7 @@ function InspectorTabContent({ tab, layer }: { tab: InspectorTab; layer: Layer }
             hasKeyframe={hasKeyframeAt(layer.transform.rotationX)}
             suffix="deg"
             step={0.5}
+            defaultValue={0}
           />
         )}
         {layer.is3D && layer.transform.rotationY && (
@@ -337,6 +342,7 @@ function InspectorTabContent({ tab, layer }: { tab: InspectorTab; layer: Layer }
             hasKeyframe={hasKeyframeAt(layer.transform.rotationY)}
             suffix="deg"
             step={0.5}
+            defaultValue={0}
           />
         )}
         <NumberDragInput
@@ -348,6 +354,7 @@ function InspectorTabContent({ tab, layer }: { tab: InspectorTab; layer: Layer }
           hasKeyframe={hasKeyframeAt(layer.transform.rotation)}
           suffix="deg"
           step={0.5}
+          defaultValue={0}
         />
         <Vec2DragInput
           label="Scale"
@@ -359,6 +366,7 @@ function InspectorTabContent({ tab, layer }: { tab: InspectorTab; layer: Layer }
           step={0.01}
           precision={2}
           labels={['X', 'Y']}
+          defaultValue={[1, 1]}
         />
         <NumberDragInput
           label="Opacity"
@@ -371,6 +379,7 @@ function InspectorTabContent({ tab, layer }: { tab: InspectorTab; layer: Layer }
           max={1}
           step={0.01}
           precision={2}
+          defaultValue={1}
         />
       </Section>
 
@@ -1915,7 +1924,7 @@ function StringInput({ label, value, onChange }: { label: string; value: string;
 }
 
 function NumberDragInput({
-  label, prop, frame, onChange, onKeyframe, hasKeyframe, min, max, step, precision, suffix,
+  label, prop, frame, onChange, onKeyframe, hasKeyframe, min, max, step, precision, suffix, defaultValue,
 }: {
   label: string;
   prop: AnimatableProperty;
@@ -1928,6 +1937,8 @@ function NumberDragInput({
   step?: number;
   precision?: number;
   suffix?: string;
+  /** When provided, shows a revert-to-default button (active only when the value differs). */
+  defaultValue?: number;
 }) {
   const val = evaluateProperty(prop, frame) as number;
 
@@ -1935,6 +1946,8 @@ function NumberDragInput({
     if (prop.keyframes.length > 0) onKeyframe(v);
     else onChange(v);
   };
+
+  const canRevert = defaultValue !== undefined && Math.abs(val - defaultValue) > 1e-6;
 
   return (
     <div className="flex items-center gap-0.5">
@@ -1949,6 +1962,9 @@ function NumberDragInput({
         suffix={suffix}
         className="flex-1"
       />
+      {defaultValue !== undefined && (
+        <RevertButton canRevert={canRevert} onRevert={() => handleChange(defaultValue)} />
+      )}
       <button
         onClick={() => onKeyframe(val)}
         className={`p-0.5 rounded transition-colors flex-shrink-0 ${hasKeyframe ? 'text-yellow-400' : 'text-slate-600 hover:text-slate-400'}`}
@@ -1960,8 +1976,22 @@ function NumberDragInput({
   );
 }
 
+// Small revert-to-default control shared by the transform inputs. Dimmed when already at default.
+function RevertButton({ canRevert, onRevert }: { canRevert: boolean; onRevert: () => void }) {
+  return (
+    <button
+      onClick={canRevert ? onRevert : undefined}
+      disabled={!canRevert}
+      className={`p-0.5 rounded transition-colors flex-shrink-0 ${canRevert ? 'text-slate-500 hover:text-amber-400' : 'text-slate-700 cursor-default'}`}
+      title={canRevert ? 'Revert to default' : 'Already at default'}
+    >
+      <RotateCcw size={10} />
+    </button>
+  );
+}
+
 function Vec2DragInput({
-  label, prop, frame, onChangeValue, onKeyframe, hasKeyframe, step, precision, labels,
+  label, prop, frame, onChangeValue, onKeyframe, hasKeyframe, step, precision, labels, defaultValue,
 }: {
   label: string;
   prop: AnimatableProperty;
@@ -1972,6 +2002,8 @@ function Vec2DragInput({
   step?: number;
   precision?: number;
   labels?: [string, string];
+  /** When provided, shows a revert-to-default button (active only when the value differs). */
+  defaultValue?: Vec2;
 }) {
   const raw = evaluateProperty(prop, frame) as Vec2 | null;
   const val: Vec2 = raw ?? [0, 0];
@@ -1982,6 +2014,13 @@ function Vec2DragInput({
     if (prop.keyframes.length > 0) onKeyframe(newVal);
     else onChangeValue(newVal);
   };
+
+  const revert = () => {
+    if (!defaultValue) return;
+    if (prop.keyframes.length > 0) onKeyframe([...defaultValue]);
+    else onChangeValue([...defaultValue]);
+  };
+  const canRevert = !!defaultValue && (Math.abs(val[0] - defaultValue[0]) > 1e-6 || Math.abs(val[1] - defaultValue[1]) > 1e-6);
 
   return (
     <div className="flex items-center gap-0.5">
@@ -1996,6 +2035,7 @@ function Vec2DragInput({
           <DragInput value={val[1]} onChange={(v) => handleChange(1, v)} step={step} precision={precision} className="flex-1" />
         </div>
       </div>
+      {defaultValue && <RevertButton canRevert={canRevert} onRevert={revert} />}
       <button
         onClick={() => onKeyframe(val)}
         className={`p-0.5 rounded transition-colors flex-shrink-0 ${hasKeyframe ? 'text-yellow-400' : 'text-slate-600 hover:text-slate-400'}`}
