@@ -61,10 +61,19 @@ function Editor() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
-      const isTextInput =
+      const inputType = target.tagName === 'INPUT' ? (target.getAttribute('type') || 'text').toLowerCase() : '';
+      // A numeric "data box" (DragInput scrubby field, or a number/range input): NOT free text.
+      // Space should play the video here, not type a space (the user's complaint).
+      const isDataField = target.tagName === 'INPUT' && (target.dataset.scrubby === 'true' || inputType === 'number' || inputType === 'range');
+      // Genuine text entry — where a space is a real character and Esc exits the field. This is the
+      // "text editing mode" exception (e.g. the text-layer content textarea, name/search fields).
+      const isTextEntry =
         target.tagName === 'TEXTAREA' ||
         target.isContentEditable ||
-        (target.tagName === 'INPUT' && (!target.getAttribute('type') || ['text', 'search', 'url', 'email', 'password', 'number', 'tel'].includes(target.getAttribute('type')!)));
+        (target.tagName === 'INPUT' && !isDataField && ['text', 'search', 'url', 'email', 'password'].includes(inputType));
+      // Any focused input/textarea/contenteditable — used to gate letter-key shortcuts so they
+      // don't fire while a field (data OR text) is focused.
+      const isTextInput = isTextEntry || isDataField || target.tagName === 'TEXTAREA' || target.isContentEditable;
 
       // Ctrl/Cmd+S → save (works from anywhere, incl. text inputs). Without this,
       // the reflex to save opens the browser's Save-Page dialog and persists nothing.
@@ -159,7 +168,14 @@ function Editor() {
           return;
         }
       }
-      if (e.key === 'Escape' && !isTextInput) {
+      if (e.key === 'Escape') {
+        // In a field (text OR data): Esc exits the field first. In text editing this is the only
+        // way out; in a data box it commits/cancels the edit. A SECOND Esc (nothing focused) then
+        // deselects. Don't preventDefault — let the field's own Esc-cancel run too.
+        if (isTextEntry || isDataField) {
+          target.blur();
+          return;
+        }
         // Exit group isolation first (before the tool reset), matching Figma's Esc-pops-out.
         if (useEditorStore.getState().activeGroupId) {
           e.preventDefault();
@@ -171,6 +187,14 @@ function Editor() {
           useShapeToolStore.getState().setActiveTool('select');
           return;
         }
+        // Nothing else claimed Esc → deselect everything (canvas + timeline), any count.
+        const st = useEditorStore.getState();
+        const sel = st.selection;
+        if (sel.selectedIds.length > 0 || sel.activeId || (sel.selectedKeyframes?.length ?? 0) > 0 || (sel.selectedCurvePoints?.length ?? 0) > 0) {
+          e.preventDefault();
+          st.deselectAll();
+        }
+        return;
       }
 
       // Trim operations
@@ -354,13 +378,16 @@ function Editor() {
         }
       }
 
-      // Spacebar always toggles playback unless actively typing text.
+      // Spacebar toggles playback everywhere EXCEPT genuine text entry (text-layer content,
+      // name/search fields). In a numeric data box (DragInput/number/range) Space plays too —
+      // preventDefault stops the stray space char the user was seeing.
       if (e.key === ' ') {
-        if (isTextInput) return;
+        if (isTextEntry) return;
         e.preventDefault();
         const ts = useTimelineStore.getState();
         if (ts.isPlaying) ts.pause();
         else ts.play();
+        return;
       }
       // Vector edit: Delete/Backspace on selected anchors deletes the points, not the
       // layer. Shift = delete-and-heal (refit the neighbours' curve); plain = break

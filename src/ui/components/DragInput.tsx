@@ -172,6 +172,10 @@ export function DragInput({
         <input
           ref={inputRef}
           type="text"
+          inputMode="decimal"
+          // Marks this as a numeric "data box" (not free text): the global key handler lets
+          // Space play the video here instead of typing a space. See App.tsx keydown.
+          data-scrubby="true"
           value={editValue}
           onChange={(e) => setEditValue(e.target.value)}
           onBlur={commitEdit}

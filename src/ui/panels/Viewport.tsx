@@ -200,6 +200,13 @@ export function Viewport() {
       panStartRef.current = { x: e.clientX, y: e.clientY };
       setIsPanning(true);
       (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      return;
+    }
+    // Left-click on the empty viewport area OUTSIDE the canvas (the letterbox) deselects
+    // everything — canvas + timeline — matching clicking empty canvas and pressing Esc. The
+    // target is the container itself only when no layer/overlay/control was hit.
+    if (e.button === 0 && e.target === containerRef.current) {
+      useEditorStore.getState().deselectAll();
     }
   }, [setIsPanning]);
 
