@@ -44,10 +44,9 @@ export function DashboardHeader({ onCreateNew, title = 'Recents', showSort = tru
   return (
     <header className="flex-shrink-0 h-11 border-b border-[#1c2433] bg-[#0d1219] flex items-center px-4 gap-3">
       {/* Brand */}
-      <a href="https://flashfx.app" title="FlashFX — flashfx.app" className="mr-1 flex items-center">
+      <a href="https://flashfx.app" title="FlashFX" className="mr-2 flex items-center">
         <FlashFXLogo size={20} />
       </a>
-      <span className="text-slate-700">/</span>
       {/* Page title */}
       <span className="text-[13px] font-medium text-slate-200 mr-2">{title}</span>
 
