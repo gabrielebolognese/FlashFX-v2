@@ -1,9 +1,11 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import {
   Sparkles, X, Plus, Send, Paperclip, HardDrive, Image as ImageIcon, Hash, AtSign,
-  Copy, ThumbsUp, ThumbsDown, RotateCcw, ChevronDown, Square,
+  Copy, ThumbsUp, ThumbsDown, RotateCcw, ChevronDown, Square, Loader2, Check, Circle,
 } from 'lucide-react';
 import { usePanelStore } from '../../store/panels';
+import { useEditorStore } from '../../store/editor';
+import { runBlackjackDemo, type Step } from './aiChatDemo';
 
 // VS Code / Copilot-style AI assistant — MOCKUP (no model). Assistant responses are borderless plain
 // text with a thinking loader → streaming → a response timer; the user turn sits in a subtle box.
@@ -12,7 +14,7 @@ import { usePanelStore } from '../../store/panels';
 
 type AttachKind = 'file' | 'drive' | 'image';
 interface Attachment { id: string; name: string; kind: AttachKind }
-interface Msg { id: string; role: 'user' | 'assistant'; text: string; streaming?: boolean; ms?: number; attachments?: Attachment[] }
+interface Msg { id: string; role: 'user' | 'assistant'; text: string; streaming?: boolean; ms?: number; attachments?: Attachment[]; steps?: Step[] }
 
 let uid = 0;
 const nextId = () => `m${++uid}`;
@@ -73,6 +75,7 @@ export function AiChatPanel() {
   const send = useCallback(() => {
     const text = draft.trim();
     if (!text || generating) return;
+    const isFirst = messages.length === 0; // the first message runs the scripted "generate" demo
     const userMsg: Msg = { id: nextId(), role: 'user', text, attachments: attachments.length ? attachments : undefined };
     const asstId = nextId();
     setMessages((m) => [...m, userMsg, { id: asstId, role: 'assistant', text: '', streaming: true }]);
@@ -80,11 +83,22 @@ export function AiChatPanel() {
     setGenerating(true); setElapsed(0);
     const start = Date.now();
     tickRef.current = window.setInterval(() => setElapsed(Date.now() - start), 100);
-    genRef.current = streamResponse(text, {
-      onToken: (t) => setMessages((m) => m.map((x) => (x.id === asstId ? { ...x, text: x.text + t } : x))),
-      onDone: (ms) => { stopTick(); setGenerating(false); genRef.current = null; setMessages((m) => m.map((x) => (x.id === asstId ? { ...x, streaming: false, ms } : x))); },
-    });
-  }, [draft, generating, attachments, stopTick]);
+    const patch = (fn: (x: Msg) => Msg) => setMessages((m) => m.map((x) => (x.id === asstId ? fn(x) : x)));
+    const finish = (ms: number) => { stopTick(); setGenerating(false); genRef.current = null; patch((x) => ({ ...x, streaming: false, ms })); };
+    if (isFirst) {
+      genRef.current = runBlackjackDemo({
+        appendToken: (t) => patch((x) => ({ ...x, text: x.text + t })),
+        setSteps: (steps) => patch((x) => ({ ...x, steps })),
+        insert: () => { try { useEditorStore.getState().insertAnimationTemplate('blackjack'); } catch { /* no active comp */ } },
+        done: finish,
+      });
+    } else {
+      genRef.current = streamResponse(text, {
+        onToken: (t) => patch((x) => ({ ...x, text: x.text + t })),
+        onDone: finish,
+      });
+    }
+  }, [draft, generating, attachments, messages.length, stopTick]);
 
   const attach = (kind: AttachKind) => {
     const names: Record<AttachKind, string> = { file: 'timeline.ffx', drive: 'brand_kit.zip', image: 'reference.png' };
@@ -135,6 +149,17 @@ export function AiChatPanel() {
               <p className="text-[12.5px] leading-relaxed text-slate-300 whitespace-pre-wrap">
                 {m.text}{m.streaming && <span className="inline-block w-[6px] h-[13px] -mb-[2px] ml-[1px] bg-slate-400 animate-pulse" />}
               </p>
+            )}
+            {m.steps && m.steps.length > 0 && (
+              <div className="mt-2 rounded-md border border-[#1a2a42] bg-[#0e1726] px-2.5 py-2 space-y-1.5">
+                {m.steps.map((s) => (
+                  <div key={s.key} className="flex items-center gap-2 text-[11px]">
+                    <StepIcon status={s.status} />
+                    <span className={s.status === 'pending' ? 'text-slate-600' : s.status === 'running' ? 'text-slate-200' : 'text-slate-400'}>{s.label}</span>
+                    {s.detail && <span className="ml-auto text-[10px] font-mono text-slate-500">{s.detail}</span>}
+                  </div>
+                ))}
+              </div>
             )}
             {!m.streaming && m.ms != null && (
               <div className="flex items-center gap-1 mt-1.5 text-slate-600">
@@ -190,6 +215,12 @@ export function AiChatPanel() {
       </div>
     </aside>
   );
+}
+
+function StepIcon({ status }: { status: Step['status'] }) {
+  if (status === 'done') return <Check size={12} className="text-emerald-400 flex-shrink-0" />;
+  if (status === 'running') return <Loader2 size={12} className="text-[#f7b500] flex-shrink-0 animate-spin" />;
+  return <Circle size={12} className="text-slate-700 flex-shrink-0" />;
 }
 
 function ThinkingDots({ elapsed }: { elapsed: number }) {

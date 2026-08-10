@@ -81,6 +81,13 @@ export const TEMPLATES: Record<string, Template> = {
   },
 
   // ── Illustrated scene demos (reuse the animation-template library) ──
+  blackjack: sceneTemplate({
+    name: 'Blackjack Deal', templateId: 'blackjack', durationFrames: 390, // 13s @ 30fps
+    backdrop: { angle: 90, stops: [
+      { color: [0.04, 0.11, 0.07], position: 0 },
+      { color: [0.01, 0.04, 0.025], position: 1 },
+    ] },
+  }),
   parallax: sceneTemplate({
     name: '2.5D Camera Parallax', templateId: 'parallax', durationFrames: 180,
     backdrop: { angle: 90, stops: [

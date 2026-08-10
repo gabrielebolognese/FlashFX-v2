@@ -15,10 +15,12 @@ import { titleRise, lowerThirdSlide } from './categories/titles';
 import { bulletList } from './categories/lists';
 import { barChartGrow } from './categories/charts';
 import { logoPop } from './categories/logo';
+import { blackjack } from './categories/blackjack';
 
 // The animation-template library. Add a template = author a builder in categories/ and list it here.
 
 export const ANIMATION_TEMPLATES: AnimationTemplate[] = [
+  blackjack,
   parallaxDepth,
   chainReaction,
   recursiveEditor,
