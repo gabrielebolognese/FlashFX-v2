@@ -19,6 +19,7 @@
     "verify:pathops": "node scripts/verify-pathops.mjs",
     "verify:beats": "node scripts/verify-beats.mjs",
     "verify:scenes": "node scripts/verify-scenes.mjs",
+    "verify:groupbounds": "node scripts/verify-groupbounds.mjs",
     "verify:waveform": "node scripts/verify-waveform.mjs",
     "verify:resolve-cache": "node scripts/verify-resolve-cache.mjs",
     "verify:framecap": "node scripts/verify-framecap.mjs",

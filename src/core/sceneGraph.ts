@@ -145,8 +145,11 @@ function getLeafWorldSize(layer: Layer, layers: Layer[], frame: number): { w: nu
         break;
       }
     }
-  } else {
+  } else if (layer.type === 'text') {
     const tl = layer as TextLayer;
+    // A text layer can be missing content/layoutConfig/animOverrides (e.g. malformed or freshly
+    // programmatic). Bail to a null size rather than crashing the whole overlay/bounds pass.
+    if (!tl.content?.spans || !tl.layoutConfig || !tl.animOverrides) return null;
     const span = tl.content.spans[0]?.style;
     const bb = tl.layoutConfig.boundingBox;
     const measured = measureText({
@@ -171,6 +174,12 @@ function getLeafWorldSize(layer: Layer, layers: Layer[], frame: number): { w: nu
     });
     w = measured.width;
     h = measured.height;
+  } else {
+    // Camera / audio / cloner / precomp / particle / layout containers etc. have no simple leaf
+    // rectangle to contribute to a group's bounds. Previously these fell through and were cast to
+    // TextLayer, so a camera in a template group (blackjack parents its camera into the group)
+    // crashed with "cannot read property 'spans'". Skip them instead.
+    return null;
   }
 
   return { w: w * Math.abs(scale[0]), h: h * Math.abs(scale[1]) };
