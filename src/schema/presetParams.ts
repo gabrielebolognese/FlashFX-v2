@@ -42,8 +42,14 @@ export const PRESET_PARAMS = {
   staggerReveal: z.strictObject({
     /** Which entrance to apply to each child of the group. */
     childPreset: z.enum(['fadeIn', 'slideIn', 'popIn']).default('fadeIn'),
-    /** Frames of delay added per successive child. */
-    stepFrames: z.int().min(1).max(60).default(4),
+    /** Override the per-child delay (frames). Omit to use styleContract.staggerDoctrine.gapMs. */
+    stepFrames: z.int().min(1).max(60).optional(),
+    order: z.enum(['forward', 'reverse']).default('forward'),
+  }),
+  staggerExit: z.strictObject({
+    /** Which exit to apply to each child of the group. */
+    childPreset: z.enum(['fadeOut', 'slideOut', 'scaleOut']).default('fadeOut'),
+    stepFrames: z.int().min(1).max(60).optional(),
     order: z.enum(['forward', 'reverse']).default('forward'),
   }),
 } as const;
@@ -58,13 +64,15 @@ const A = {
   scaleOut: z.strictObject({ preset: z.literal('scaleOut'), ...timing, params: PRESET_PARAMS.scaleOut.prefault({}) }),
   emphasisPulse: z.strictObject({ preset: z.literal('emphasisPulse'), ...timing, params: PRESET_PARAMS.emphasisPulse.prefault({}) }),
   staggerReveal: z.strictObject({ preset: z.literal('staggerReveal'), ...timing, params: PRESET_PARAMS.staggerReveal.prefault({}) }),
+  staggerExit: z.strictObject({ preset: z.literal('staggerExit'), ...timing, params: PRESET_PARAMS.staggerExit.prefault({}) }),
 };
 
-/** A layer-level motion-preset attachment: closed per-name params, absolute start + duration (frames). */
+/** A layer-level motion-preset attachment: closed per-name params. `start` is PANEL-LOCAL (0 = the
+ *  panel's start); assembly adds the panel's frame offset. */
 export const zMotionPresetAttachment = z
   .discriminatedUnion('preset', [
-    A.fadeIn, A.slideIn, A.popIn, A.fadeOut, A.slideOut, A.scaleOut, A.emphasisPulse, A.staggerReveal,
+    A.fadeIn, A.slideIn, A.popIn, A.fadeOut, A.slideOut, A.scaleOut, A.emphasisPulse, A.staggerReveal, A.staggerExit,
   ])
-  .describe('a named motion preset applied at the layer (closed params per preset)');
+  .describe('a named motion preset applied at the layer (closed params per preset; start is panel-local)');
 
 export type MotionPresetAttachment = z.infer<typeof zMotionPresetAttachment>;

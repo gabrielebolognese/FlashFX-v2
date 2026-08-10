@@ -91,5 +91,31 @@ export function validateDirectorPlan(director: DirectorOutput, opts: { canvas?: 
     }
   }
 
+  // 6. element ids are namespaced to the owning (declaring) panel: `p<order>:...`. Carried elements
+  //    keep their original namespace, so this only checks each panel's OWN `elements` declarations.
+  for (const p of panels) {
+    const prefix = `p${p.order}:`;
+    for (const el of p.elements) {
+      if (!el.id.startsWith(prefix)) {
+        err('id-namespace', `element '${el.id}' declared in panel '${p.id}' must be namespaced '${prefix}…'`, { panelId: p.id, elementId: el.id });
+      }
+    }
+  }
+
+  // 7. boundary reconciliation: panel 0 inbound empty; each panel's outbound present-set equals the
+  //    next panel's inbound present-set exactly (same shape the assembler reconciles on frames).
+  if (panels.length && panels[0].inboundPresent.length) {
+    err('boundary-inbound-nonempty', `first panel '${panels[0].id}' inboundPresent must be empty`, { panelId: panels[0].id });
+  }
+  for (let i = 0; i < panels.length - 1; i++) {
+    const out = new Set(panels[i].outboundPresent);
+    const inn = new Set(panels[i + 1].inboundPresent);
+    const onlyOut = [...out].filter((x) => !inn.has(x));
+    const onlyIn = [...inn].filter((x) => !out.has(x));
+    if (onlyOut.length || onlyIn.length) {
+      err('boundary-mismatch', `seam '${panels[i].id}'→'${panels[i + 1].id}': outbound-only [${onlyOut.join(',')}], inbound-only [${onlyIn.join(',')}] — the two lists must be the same set`, { panelId: panels[i].id });
+    }
+  }
+
   return issues;
 }

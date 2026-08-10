@@ -44,7 +44,10 @@ export function deserializeDocument(data: string): SceneDocument {
   // single scene (the root). The store guarantees the root is always a scene.
   const rawScenes = Array.isArray(raw?.scenes) ? (raw.scenes as unknown[]).filter((id): id is string => typeof id === 'string' && !!compositions[id]) : [];
   const scenes = rawScenes.length > 0 ? rawScenes : [rootCompositionId];
-  return { version: SCENE_DOCUMENT_VERSION, rootCompositionId, scenes, compositions, styles: validateStyles(raw?.styles) };
+  // AI metadata is preserved as an opaque blob (the schema owns its shape); dropping it would break
+  // the edit path, which regenerates from it. No validation here beyond "is an object".
+  const aiMeta = raw && typeof raw.aiMeta === 'object' && raw.aiMeta ? (raw.aiMeta as Record<string, unknown>) : undefined;
+  return { version: SCENE_DOCUMENT_VERSION, rootCompositionId, scenes, compositions, styles: validateStyles(raw?.styles), ...(aiMeta ? { aiMeta } : {}) };
 }
 
 // M21 — preserve the shared-style registry through the round-trip (else it vanishes on load).

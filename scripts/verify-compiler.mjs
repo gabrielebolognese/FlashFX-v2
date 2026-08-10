@@ -48,9 +48,9 @@ try {
   console.log('Deterministic compiler — acceptance\n');
 
   // Catalog / schema agreement.
-  ok('preset catalog covers exactly the 8 named presets', () => {
+  ok('preset catalog covers exactly the 9 named presets', () => {
     const names = Object.keys(PRESET_CATALOG).sort();
-    assert.deepEqual(names, ['emphasisPulse', 'fadeIn', 'fadeOut', 'popIn', 'scaleOut', 'slideIn', 'slideOut', 'staggerReveal']);
+    assert.deepEqual(names, ['emphasisPulse', 'fadeIn', 'fadeOut', 'popIn', 'scaleOut', 'slideIn', 'slideOut', 'staggerExit', 'staggerReveal']);
   });
 
   const r = compile(FIXTURES.showreel.director, FIXTURES.showreel.fragments, { fps: 30, tier: 'pro', seed: 1 });
@@ -128,18 +128,27 @@ try {
     assert.equal(cl.sourceRef.layerId, 'p1:src');
   });
 
-  ok('staggerReveal staggers: each chip enters later than the previous', () => {
+  ok('staggerReveal staggers by the doctrine gap, panel-local from the panel start', () => {
     const starts = ['p1:chip1', 'p1:chip2', 'p1:chip3'].map((id) => {
       const chip = comp.layers.find((l) => l.id === id);
       return chip.transform.scale.keyframes[0].frame;
     });
-    assert.deepEqual(starts, [0, 6, 12], `expected staggered starts, got ${starts}`);
+    // panel-1 starts at frame 64; staggerDoctrine.gapMs 60 @ 30fps → 2-frame step; preset start 0.
+    assert.deepEqual(starts, [64, 66, 68], `expected [64,66,68], got ${starts}`);
   });
 
   ok('parenting preserved (chips reference the group)', () => {
     for (const id of ['p1:chip1', 'p1:chip2', 'p1:chip3']) {
       assert.equal(comp.layers.find((l) => l.id === id).parentId, 'p1:row');
     }
+  });
+
+  ok('membership written to document layers (panelId), and AI groups are identity', () => {
+    assert.equal(comp.layers.find((l) => l.id === 'p0:card').panelId, 'panel-0');
+    assert.equal(comp.layers.find((l) => l.id === 'p1:chip1').panelId, 'panel-1');
+    const grp = comp.layers.find((l) => l.id === 'p1:row');
+    assert.deepEqual(grp.transform.position.defaultValue, [0, 0], 'group must be identity');
+    assert.deepEqual(grp.transform.scale.defaultValue, [1, 1]);
   });
 
   ok('the compiled composition resolves at multiple frames without throwing (renderable)', () => {

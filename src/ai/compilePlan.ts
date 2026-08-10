@@ -5,6 +5,9 @@ import type { DirectorOutput, Panel, Job, StyleContractT as StyleContract } from
 // frames, express every panel boundary as an integer number of beats, and multiply. Converting each
 // timestamp independently would accumulate rounding drift and could land a deliberately-chosen beat
 // off the frame grid. After this stage NOTHING downstream sees milliseconds.
+//
+// Boundary contracts are UNIFIED present-lists (`inboundPresent`/`outboundPresent`) — the same shape
+// the Director emits — so nothing has to invent per-layer opacity/position defaults here.
 
 export interface PlanResult {
   beatFrames: number;
@@ -12,8 +15,6 @@ export interface PlanResult {
   panels: Panel[];
   jobs: Job[];
 }
-
-type BoundaryState = Panel['inbound']['states'][number];
 
 export function compilePlan(director: DirectorOutput, opts: { fps: number; layerBudget: number }): PlanResult {
   const { fps, layerBudget } = opts;
@@ -25,11 +26,6 @@ export function compilePlan(director: DirectorOutput, opts: { fps: number; layer
   // multiples, so a contiguous ms plan stays contiguous in frames with zero drift.
   const toFrames = (ms: number): number => Math.round(ms / beatMs) * beatFrames;
 
-  const states = (ids: string[], atFrame: number): { atFrame: number; states: BoundaryState[] } => ({
-    atFrame,
-    states: ids.map((layerId) => ({ layerId, present: true, opacity: 1 })),
-  });
-
   const ordered = [...director.panelPlan].sort((a, b) => a.order - b.order);
   const panels: Panel[] = ordered.map((dp) => {
     const start = toFrames(dp.startMs);
@@ -40,13 +36,11 @@ export function compilePlan(director: DirectorOutput, opts: { fps: number; layer
       order: dp.order,
       start,
       end,
-      inbound: states(dp.inboundPresent, start),
-      outbound: states(dp.outboundPresent, end),
+      inboundPresent: dp.inboundPresent,
+      outboundPresent: dp.outboundPresent,
     };
     if (dp.focalPoint) panel.focalPoint = dp.focalPoint;
-    if (dp.transitionIn) {
-      panel.transitionIn = { ...dp.transitionIn, duration: toFrames(dp.transitionIn.duration) };
-    }
+    if (dp.transitionIn) panel.transitionIn = { ...dp.transitionIn, duration: toFrames(dp.transitionIn.duration) };
     return panel;
   });
 
@@ -58,8 +52,8 @@ export function compilePlan(director: DirectorOutput, opts: { fps: number; layer
     styleContract: style,
     panel,
     neighbors: {
-      ...(i > 0 ? { prevOutbound: panels[i - 1].outbound } : {}),
-      ...(i < panels.length - 1 ? { nextInbound: panels[i + 1].inbound } : {}),
+      ...(i > 0 ? { prevOutbound: panels[i - 1].outboundPresent } : {}),
+      ...(i < panels.length - 1 ? { nextInbound: panels[i + 1].inboundPresent } : {}),
     },
     idNamespace: `p${panel.order}:`,
     layerBudget,

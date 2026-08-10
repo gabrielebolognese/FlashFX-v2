@@ -1,5 +1,5 @@
 import { z } from 'zod/v4';
-import { PALETTE_ROLES, EASING_NAMES } from './enums';
+import { PALETTE_ROLES, EASING_NAMES, SHAPE_LANGUAGES, STAGGER_MODES } from './enums';
 import { zHexColor, zMs } from './primitives';
 
 // The STYLE CONTRACT the Director commits to. This is a PLANNING artifact (its beat is in ms) and
@@ -13,8 +13,8 @@ export const zPaletteEntry = z
   .describe('binds a semantic role to a concrete color');
 
 export const zStaggerDoctrine = z.strictObject({
-  mode: z.enum(['none', 'perLayer', 'perGroup', 'spatial']),
-  /** Base inter-element gap, ms (planning). */
+  mode: z.enum(STAGGER_MODES),
+  /** Base inter-element gap, ms (planning). Wired through to staggerReveal/staggerExit at assembly. */
   gapMs: zMs,
   curve: z.enum(EASING_NAMES).optional(),
 });
@@ -29,7 +29,7 @@ export function makeStyleContract(caps: Caps) {
       easings: z.array(z.enum(EASING_NAMES)).min(3).max(6),
       /** Base timing beat, ms. All durations in the plan are integer multiples of this. */
       beatMs: zMs.refine((v) => v > 0, 'beat must be > 0'),
-      shapeLanguage: z.enum(['rounded', 'sharp', 'geometric', 'organic', 'mixed']),
+      shapeLanguage: z.enum(SHAPE_LANGUAGES),
       staggerDoctrine: zStaggerDoctrine,
     })
     .describe('the style contract (palette roles, allowed easings, timing beat, doctrine)');

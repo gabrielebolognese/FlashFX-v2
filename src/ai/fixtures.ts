@@ -36,15 +36,15 @@ const showreel: Fixture = {
     {
       panelId: 'panel-0',
       layers: [
-        { id: 'p0:card', name: 'hero-card', panelId: 'panel-0', type: 'shape',
+        { id: 'p0:card', name: 'hero-card', type: 'shape',
           shape: { type: 'rectangle', width: 900, height: 460, borderRadius: 28 }, fill: { role: 'primary' },
           transform: { position: [960, 540] },
           presets: [{ preset: 'popIn', start: 0, duration: 18, params: { overshoot: 1.12 } }] },
-        { id: 'p0:title', name: 'wordmark', panelId: 'panel-0', type: 'text',
+        { id: 'p0:title', name: 'wordmark', type: 'text',
           spans: [{ text: 'FlashFX', fontSize: 120, fontWeight: 800, color: { role: 'background' } }],
           align: 'center', transform: { position: [960, 500] },
           presets: [{ preset: 'slideIn', start: 6, duration: 18, params: { direction: 'up', distance: 120 } }] },
-        { id: 'p0:sub', name: 'subtitle', panelId: 'panel-0', type: 'text',
+        { id: 'p0:sub', name: 'subtitle', type: 'text',
           spans: [{ text: 'generated, fully editable', fontSize: 44, color: { role: 'background' } }],
           align: 'center', transform: { position: [960, 620] },
           presets: [
@@ -57,22 +57,24 @@ const showreel: Fixture = {
       panelId: 'panel-1',
       layers: [
         // Cloner: a source circle repeated into a row of 7 (the source itself is hidden C4D-style).
-        { id: 'p1:src', name: 'dot-source', panelId: 'panel-1', type: 'shape',
+        { id: 'p1:src', name: 'dot-source', type: 'shape',
           shape: { type: 'circle', radius: 22 }, fill: { role: 'accent' }, transform: { position: [0, 0] } },
-        { id: 'p1:grid', name: 'dot-row', panelId: 'panel-1', type: 'cloner',
+        { id: 'p1:grid', name: 'dot-row', type: 'cloner',
           sourceRef: { type: 'layer', layerId: 'p1:src' },
           distribution: { type: 'grid', countX: 7, countY: 1, countZ: 1, spacing: { x: 90, y: 0, z: 0 }, origin: { x: -270, y: 0, z: 0 }, rowOffset: 0 },
           effectors: [], stagger: { delaySeconds: 0 }, renderCount: 7,
           transform: { position: [960, 320] } },
-        // Group + parenting + staggered reveal of three chips.
-        { id: 'p1:row', name: 'chip-row', panelId: 'panel-1', type: 'group', transform: { position: [960, 640] },
-          presets: [{ preset: 'staggerReveal', start: 0, duration: 12, params: { childPreset: 'popIn', stepFrames: 6, order: 'forward' } }] },
-        { id: 'p1:chip1', name: 'chip-1', panelId: 'panel-1', type: 'shape', parentId: 'p1:row',
-          shape: { type: 'rectangle', width: 160, height: 90, borderRadius: 16 }, fill: { role: 'primary' }, transform: { position: [-200, 0] } },
-        { id: 'p1:chip2', name: 'chip-2', panelId: 'panel-1', type: 'shape', parentId: 'p1:row',
-          shape: { type: 'rectangle', width: 160, height: 90, borderRadius: 16 }, fill: { role: 'accent' }, transform: { position: [0, 0] } },
-        { id: 'p1:chip3', name: 'chip-3', panelId: 'panel-1', type: 'shape', parentId: 'p1:row',
-          shape: { type: 'rectangle', width: 160, height: 90, borderRadius: 16 }, fill: { role: 'textPrimary' }, transform: { position: [200, 0] } },
+        // Group + parenting + staggered reveal of three chips. The group carries NO transform — AI
+        // groups are identity, so children author WORLD coordinates and stepFrames is left to the
+        // staggerDoctrine.gapMs (60ms → 2 frames @ 30fps).
+        { id: 'p1:row', name: 'chip-row', type: 'group',
+          presets: [{ preset: 'staggerReveal', start: 0, duration: 12, params: { childPreset: 'popIn', order: 'forward' } }] },
+        { id: 'p1:chip1', name: 'chip-1', type: 'shape', parentId: 'p1:row',
+          shape: { type: 'rectangle', width: 160, height: 90, borderRadius: 16 }, fill: { role: 'primary' }, transform: { position: [760, 640] } },
+        { id: 'p1:chip2', name: 'chip-2', type: 'shape', parentId: 'p1:row',
+          shape: { type: 'rectangle', width: 160, height: 90, borderRadius: 16 }, fill: { role: 'accent' }, transform: { position: [960, 640] } },
+        { id: 'p1:chip3', name: 'chip-3', type: 'shape', parentId: 'p1:row',
+          shape: { type: 'rectangle', width: 160, height: 90, borderRadius: 16 }, fill: { role: 'textPrimary' }, transform: { position: [1160, 640] } },
       ],
     },
   ],
@@ -93,8 +95,8 @@ const boundaryMismatch: Fixture = {
     ],
   },
   fragments: [
-    { panelId: 'panel-0', layers: [{ id: 'p0:a', name: 'a', panelId: 'panel-0', type: 'shape', shape: { type: 'circle', radius: 40 }, fill: { role: 'primary' } }] },
-    { panelId: 'panel-1', layers: [{ id: 'p1:b', name: 'b', panelId: 'panel-1', type: 'shape', shape: { type: 'circle', radius: 40 }, fill: { role: 'primary' } }] },
+    { panelId: 'panel-0', layers: [{ id: 'p0:a', name: 'a', type: 'shape', shape: { type: 'circle', radius: 40 }, fill: { role: 'primary' } }] },
+    { panelId: 'panel-1', layers: [{ id: 'p1:b', name: 'b', type: 'shape', shape: { type: 'circle', radius: 40 }, fill: { role: 'primary' } }] },
   ],
 };
 

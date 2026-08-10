@@ -24,8 +24,8 @@ function aiBase(caps: Caps) {
   return {
     id: zNamespacedId,
     name: zSemanticName,
-    /** Which panel owns this layer — explicit membership so it can never desync from the plan. */
-    panelId: zId,
+    // Membership is the enclosing fragment — no panelId here (it would be pure drift risk). Assembly
+    // writes panelId onto the DOCUMENT layer, where panels are time ranges in one composition.
     parentId: zNamespacedId.nullable().default(null),
     blendMode: z.enum(BLEND_MODES).default('normal'),
     visible: z.boolean().default(true),
@@ -120,6 +120,9 @@ const zDocLayerCommon = {
   blendMode: z.enum(BLEND_MODES),
   inPoint: zFrame,
   outPoint: z.int().min(0),
+  /** Panel membership on the assembled document (the AI fragment carries it implicitly). Optional so
+   *  hand-authored scenes without panels still round-trip. */
+  panelId: zId.optional(),
 };
 // A single loose object rather than a discriminated union: the common identity/timing fields are
 // validated, `type` must be a known document layer type, and every per-type payload + decoration

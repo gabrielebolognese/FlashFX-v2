@@ -68,6 +68,16 @@ export function makeAiNumberProp(caps: Caps) {
     z.strictObject({ keyframes: z.array(zAiKeyframeNumber).min(1).max(caps.maxKeyframesPerTrack) }),
   ]);
 }
+
+/** Factory: a compact number property bounded to [0,1] — for opacity, so the decoder cannot emit an
+ *  out-of-range value (structural, unlike the earlier assembly-side clamp). */
+export function makeAiUnitProp(caps: Caps) {
+  const kf = z.strictObject({ frame: zFrame, value: zUnit, easing: zEasingName.optional() });
+  return z.union([
+    zUnit,
+    z.strictObject({ keyframes: z.array(kf).min(1).max(caps.maxKeyframesPerTrack) }),
+  ]);
+}
 export function makeAiVec2Prop(caps: Caps) {
   return z.union([
     zVec2,
@@ -85,8 +95,8 @@ export function makeAiTransform(caps: Caps) {
       position: vec.optional(),
       rotation: num.optional(),
       scale: vec.optional(),
-      anchor: vec.optional(),
-      opacity: num.optional(),
+      anchorPoint: vec.optional(),
+      opacity: makeAiUnitProp(caps).optional(),
       // 2.5D (only meaningful with a camera); optional.
       positionZ: num.optional(),
       rotationX: num.optional(),

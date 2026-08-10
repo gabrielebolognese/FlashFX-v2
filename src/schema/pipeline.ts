@@ -2,7 +2,7 @@ import { z } from 'zod/v4';
 import { AI_LAYER_TYPES, OUTPUT_FORMATS, TONES } from './enums';
 import { zId, zNamespacedId, zSemanticName, zMs, zVec2 } from './primitives';
 import { makeStyleContract } from './styleContract';
-import { makePanel, makePanelList, zTransition, zBoundaryContract } from './panels';
+import { makePanel, makePanelList, zTransition } from './panels';
 import { makeAiLayer } from './layers';
 import type { Caps } from './caps';
 
@@ -71,10 +71,10 @@ export function makeJob(caps: Caps) {
       styleContract: makeStyleContract(caps),
       /** This panel, converted to frames. */
       panel: makePanel(caps),
-      /** The neighbouring boundary contracts the Coder must honour (frames). */
+      /** The neighbouring boundary present-lists the Coder must honour (unified present-list shape). */
       neighbors: z.strictObject({
-        prevOutbound: zBoundaryContract.optional(),
-        nextInbound: zBoundaryContract.optional(),
+        prevOutbound: z.array(zId).optional(),
+        nextInbound: z.array(zId).optional(),
       }),
       /** The allocated id namespace prefix, e.g. "p2:". Coder ids MUST start with it and survive
        *  assembly verbatim (never re-minted). */
@@ -91,7 +91,20 @@ export function makeCoderFragment(caps: Caps) {
       panelId: zId,
       layers: z.array(makeAiLayer(caps)).max(caps.maxLayersPerPanel),
     })
-    .describe('the fragment one Coder call emits: this panel\'s layers only');
+    .describe('the fragment one Coder call emits: this panel\'s layers only')
+    // Structural (within-fragment) check: a cloner's layer source must be a SIBLING in this fragment.
+    .superRefine((frag, ctx) => {
+      const ids = new Set(frag.layers.map((l) => l.id));
+      frag.layers.forEach((l, i) => {
+        if (l.type === 'cloner' && l.sourceRef.type === 'layer' && !ids.has(l.sourceRef.layerId)) {
+          ctx.addIssue({
+            code: 'custom',
+            message: `cloner '${l.id}' sourceRef '${l.sourceRef.layerId}' must be a sibling layer in this fragment`,
+            path: ['layers', i, 'sourceRef', 'layerId'],
+          });
+        }
+      });
+    });
 }
 
 export type DirectorOutput = z.infer<ReturnType<typeof makeDirectorOutput>>;

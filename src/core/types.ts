@@ -1135,6 +1135,10 @@ export interface SceneDocument {
   compositions: Record<string, Composition>;
   /** M21 — document-level shared/linked style definitions (id → style), shared across comps. */
   styles?: Record<string, SharedStyle>;
+  /** AI-generation metadata (style contract, panel plan, seed, digest) persisted so the edit path's
+   *  required inputs travel with the file. Opaque to the core/renderer; typed by @/schema (AiMeta).
+   *  Not needed for rendering — preserved through save/load only. */
+  aiMeta?: Record<string, unknown>;
 }
 
 export type StaggerDirectionMode =

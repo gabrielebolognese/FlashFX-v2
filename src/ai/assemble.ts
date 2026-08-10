@@ -86,13 +86,26 @@ function expandTransform(layerId: string, t: AiTransform, compW: number, compH: 
     position: expandVec2(layerId, 'Position', tr.position, [compW / 2, compH / 2]),
     rotation: expandNumber(layerId, 'Rotation', tr.rotation, 0),
     scale: expandVec2(layerId, 'Scale', tr.scale, [1, 1]),
-    anchorPoint: expandVec2(layerId, 'Anchor Point', tr.anchor, [0, 0]),
+    anchorPoint: expandVec2(layerId, 'Anchor Point', tr.anchorPoint, [0, 0]),
     opacity: expandNumber(layerId, 'Opacity', tr.opacity, 1, true), // clamp 0..1 (schema left it looser)
   };
   if (tr.positionZ !== undefined) out.positionZ = expandNumber(layerId, 'Z Position', tr.positionZ, 0);
   if (tr.rotationX !== undefined) out.rotationX = expandNumber(layerId, 'X Rotation', tr.rotationX, 0);
   if (tr.rotationY !== undefined) out.rotationY = expandNumber(layerId, 'Y Rotation', tr.rotationY, 0);
   return out;
+}
+
+/** An IDENTITY transform. AI-created groups always carry this at authoring time so local and world
+ *  coincide — grouping is purely organizational and the model never reasons about coordinate spaces
+ *  (which fixes slideIn/slideOut misbehaving inside groups). */
+function identityTransform(layerId: string): Transform {
+  return {
+    position: prop(layerId, 'Position', 'vec2', [0, 0]),
+    rotation: prop(layerId, 'Rotation', 'number', 0),
+    scale: prop(layerId, 'Scale', 'vec2', [1, 1]),
+    anchorPoint: prop(layerId, 'Anchor Point', 'vec2', [0, 0]),
+    opacity: prop(layerId, 'Opacity', 'number', 1),
+  };
 }
 
 export function assemble(fragments: CoderFragment[], panels: Panel[], style: StyleContract, opts: AssembleOptions): AssembleResult {
@@ -117,8 +130,11 @@ export function assemble(fragments: CoderFragment[], panels: Panel[], style: Sty
   const built: Layer[] = [];
   let presetsExpanded = 0;
   let clonersBuilt = 0;
-  // staggerReveal requests deferred until every child exists.
-  const staggerReqs: { groupId: string; childPreset: string; start: number; duration: number; step: number; order: 'forward' | 'reverse'; panelId: string }[] = [];
+  // staggerReveal/staggerExit requests deferred until every child exists. `start`/`step` are already
+  // in absolute frames (panel offset + panel-local start, doctrine gap or override).
+  const staggerReqs: { groupId: string; childPreset: string; start: number; duration: number; step: number; order: 'forward' | 'reverse' }[] = [];
+  // staggerDoctrine.gapMs wired through to frames — the default per-child delay for staggered presets.
+  const gapFrames = Math.max(1, Math.round((style.staggerDoctrine.gapMs * opts.fps) / 1000));
 
   for (const frag of fragments) {
     const panel = panelById.get(frag.panelId);
@@ -126,7 +142,9 @@ export function assemble(fragments: CoderFragment[], panels: Panel[], style: Sty
 
     for (const ai of frag.layers as unknown as Record<string, unknown>[]) {
       const id = ai.id as string;
-      const transform = expandTransform(id, ai.transform as AiTransform, compW, compH);
+      const type = ai.type as string;
+      // Groups get an identity transform (local == world); everything else expands its compact transform.
+      const transform = type === 'group' ? identityTransform(id) : expandTransform(id, ai.transform as AiTransform, compW, compH);
       const inPoint = typeof ai.in === 'number' ? (ai.in as number) : panel.start;
       const outPoint = typeof ai.out === 'number' ? (ai.out as number) : panel.end;
       const common = {
@@ -134,7 +152,6 @@ export function assemble(fragments: CoderFragment[], panels: Panel[], style: Sty
         visible: ai.visible !== false, locked: false, blendMode: (ai.blendMode as ShapeLayer['blendMode']) ?? 'normal',
         transform, inPoint, outPoint,
       };
-      const type = ai.type as string;
       let layer: Layer | null = null;
 
       if (type === 'shape') {
@@ -161,11 +178,7 @@ export function assemble(fragments: CoderFragment[], panels: Panel[], style: Sty
       } else if (type === 'group') {
         layer = { ...common, type: 'group', collapsed: false } as GroupLayer;
       } else if (type === 'cloner') {
-        const cl = buildCloner(common, ai);
-        if (cl.sourceRef.type === 'layer') {
-          // sourceRef must resolve to another emitted layer (checked after the pass too).
-        }
-        layer = cl;
+        layer = buildCloner(common, ai);
         clonersBuilt++;
       } else if (type === 'camera') {
         layer = buildCamera(common, ai);
@@ -176,31 +189,41 @@ export function assemble(fragments: CoderFragment[], panels: Panel[], style: Sty
         continue;
       }
 
-      // Non-stagger presets → real keyframe tracks merged into the transform.
+      // Presets → real keyframe tracks. `start` is PANEL-LOCAL: add the panel's frame offset.
       const presets = (ai.presets as Record<string, unknown>[] | undefined) ?? [];
+      const written = new Map<string, string>(); // property path → the preset that already wrote it
       for (const p of presets) {
         const name = p.preset as keyof typeof PRESET_CATALOG;
         const entry = PRESET_CATALOG[name];
         if (!entry) { add('error', 'unknown-preset', `layer ${id} names unknown preset ${String(name)}`, { layerId: id }); continue; }
+        const startAbs = panel.start + (p.start as number);
         if (entry.groupStagger) {
-          if (type !== 'group') { add('warn', 'stagger-nongroup', `staggerReveal on non-group layer ${id} ignored`, { layerId: id }); continue; }
+          if (type !== 'group') { add('warn', 'stagger-nongroup', `${String(name)} on non-group layer ${id} ignored`, { layerId: id }); continue; }
           const pr = (p.params as Record<string, unknown>) ?? {};
-          staggerReqs.push({ groupId: id, childPreset: (pr.childPreset as string) ?? 'fadeIn', start: p.start as number, duration: p.duration as number, step: (pr.stepFrames as number) ?? 4, order: ((pr.order as string) ?? 'forward') as 'forward' | 'reverse', panelId: frag.panelId });
+          const childPreset = (pr.childPreset as string) ?? (name === 'staggerExit' ? 'fadeOut' : 'fadeIn');
+          staggerReqs.push({ groupId: id, childPreset, start: startAbs, duration: p.duration as number, step: (pr.stepFrames as number) ?? gapFrames, order: ((pr.order as string) ?? 'forward') as 'forward' | 'reverse' });
           continue;
         }
-        applyPreset(layer, name, (p.params as Record<string, unknown>) ?? {}, p.start as number, p.duration as number, compW, compH);
+        // Data-driven overlap check: reject two presets on one layer whose property sets intersect
+        // (silent last-write-wins would erase an animation with no error).
+        const clash = entry.targets.find((t) => written.has(t));
+        if (clash) { add('error', 'preset-property-overlap', `layer ${id}: preset '${String(name)}' writes ${clash}, already written by '${written.get(clash)}'`, { layerId: id }); continue; }
+        entry.targets.forEach((t) => written.set(t, String(name)));
+        applyPreset(layer, name, (p.params as Record<string, unknown>) ?? {}, startAbs, p.duration as number, compW, compH);
         presetsExpanded++;
       }
+      // Membership on the DOCUMENT layer (the AI fragment carried it implicitly).
+      (layer as Layer & { panelId?: string }).panelId = frag.panelId;
       built.push(layer);
     }
   }
 
-  // ── staggerReveal post-pass: apply the child preset to each group child with a growing offset ──
+  // ── stagger post-pass: apply the child preset to each group child with a growing offset ──
   const childrenOf = (gid: string) => built.filter((l) => l.parentId === gid);
   for (const req of staggerReqs) {
     let kids = childrenOf(req.groupId);
     if (req.order === 'reverse') kids = [...kids].reverse();
-    if (!kids.length) add('warn', 'stagger-empty', `staggerReveal group ${req.groupId} has no children`, { layerId: req.groupId });
+    if (!kids.length) add('warn', 'stagger-empty', `stagger group ${req.groupId} has no children`, { layerId: req.groupId });
     kids.forEach((kid, i) => {
       applyPreset(kid, req.childPreset as keyof typeof PRESET_CATALOG, {}, req.start + i * req.step, req.duration, compW, compH);
       presetsExpanded++;
@@ -222,8 +245,8 @@ export function assemble(fragments: CoderFragment[], panels: Panel[], style: Sty
   const ordered = [...panels].sort((a, b) => a.order - b.order);
   for (let i = 0; i < ordered.length - 1; i++) {
     boundaryChecks++;
-    const out = new Set(ordered[i].outbound.states.filter((s) => s.present).map((s) => s.layerId));
-    const inn = new Set(ordered[i + 1].inbound.states.filter((s) => s.present).map((s) => s.layerId));
+    const out = new Set(ordered[i].outboundPresent);
+    const inn = new Set(ordered[i + 1].inboundPresent);
     const onlyOut = [...out].filter((x) => !inn.has(x));
     const onlyIn = [...inn].filter((x) => !out.has(x));
     if (onlyOut.length || onlyIn.length) {

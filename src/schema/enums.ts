@@ -78,10 +78,18 @@ export const MOTION_PRESET_NAMES = [
   'fadeOut', 'slideOut', 'scaleOut',
   // emphasis
   'emphasisPulse',
-  // staggered group reveal (applies its child preset to each child of a group)
-  'staggerReveal',
+  // staggered group reveal / clear (apply a child entrance/exit to each child of a group)
+  'staggerReveal', 'staggerExit',
 ] as const;
 export type MotionPresetName = (typeof MOTION_PRESET_NAMES)[number];
+
+/** Style-contract shape language (used by StyleContract.shapeLanguage). */
+export const SHAPE_LANGUAGES = ['rounded', 'sharp', 'geometric', 'organic', 'mixed'] as const;
+export type ShapeLanguage = (typeof SHAPE_LANGUAGES)[number];
+
+/** Stagger-doctrine modes (used by StyleContract.staggerDoctrine.mode). */
+export const STAGGER_MODES = ['none', 'perLayer', 'perGroup', 'spatial'] as const;
+export type StaggerMode = (typeof STAGGER_MODES)[number];
 
 /** Semantic palette roles a style contract may name. Layers reference these; assembly resolves a
  *  role to a concrete color where the slot supports role links, else bakes a literal. The list is

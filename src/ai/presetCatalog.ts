@@ -124,6 +124,12 @@ export const PRESET_CATALOG: Record<MotionPresetName, PresetCatalogEntry> = {
     // No tracks on the group itself; the assembler applies childPreset per child.
     expand: () => [],
   },
+  staggerExit: {
+    name: 'staggerExit', category: 'group', targets: ['(children)'],
+    intent: 'Clear the children of a group one after another. The exit mirror of staggerReveal — lists/grids leaving.',
+    groupStagger: { childParamKey: 'childPreset' },
+    expand: () => [],
+  },
 };
 
 /** Expand a non-group preset attachment to keyframe tracks. */

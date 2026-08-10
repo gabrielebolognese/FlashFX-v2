@@ -29,7 +29,7 @@ export type {
 // Individual builders, for callers that need one schema at a specific tier.
 export { makeAiLayer, zDocumentLayer, zMotionPresetAttachment } from './layers';
 export { makeCoderFragment, makeDirectorOutput, makeJob, makeBrief, makeDirectorPanelPlan, MAX_SUBJECTS } from './pipeline';
-export { makePanel, makePanelList, zTransition, zBoundaryContract, zBoundaryState } from './panels';
+export { makePanel, makePanelList, zTransition } from './panels';
 export { makeStyleContract, zPaletteEntry, zStaggerDoctrine } from './styleContract';
 export { makeComposition, makeSceneDocument, makeAiMeta } from './document';
 export { makePatch, zPatchOp } from './patches';

@@ -62,13 +62,13 @@ try {
     accept(s.coderFragment, {
       panelId: 'panel-1',
       layers: [
-        { id: 'p1:box', name: 'hero-box', panelId: 'panel-1', type: 'shape',
+        { id: 'p1:box', name: 'hero-box', type: 'shape',
           shape: { type: 'rectangle', width: 300, height: 200 }, fill: roleFill,
           transform: { position: [960, 540] } },
-        { id: 'p1:title', name: 'title', panelId: 'panel-1', type: 'text',
+        { id: 'p1:title', name: 'title', type: 'text',
           spans: [{ text: 'Hi', color: { role: 'textPrimary' } }],
           transform: { opacity: { keyframes: [ { frame: 0, value: 0, easing: 'easeOut' }, { frame: 30, value: 1 } ] } } },
-        { id: 'p1:dots', name: 'dot-grid', panelId: 'panel-1', type: 'cloner',
+        { id: 'p1:dots', name: 'dot-grid', type: 'cloner',
           sourceRef: { type: 'layer', layerId: 'p1:box' },
           distribution: { type: 'grid', countX: 5, countY: 5, countZ: 1, spacing: { x: 40, y: 40, z: 0 }, origin: { x: 0, y: 0, z: 0 }, rowOffset: 0 },
           effectors: [ { type: 'random', strength: 1, blendMode: 'add', seed: 7, positionAmount: { x: 5, y: 5, z: 0 }, rotationAmount: { x: 0, y: 0, z: 0 }, scaleAmount: 0, opacityAmount: 0 } ],
@@ -92,25 +92,25 @@ try {
   });
 
   // ── Malformed shapes a model would plausibly emit — each REJECTED ──
-  const baseLayer = { id: 'p1:x', name: 'x', panelId: 'panel-1', type: 'shape', shape: { type: 'rectangle', width: 10, height: 10 } };
+  const baseLayer = { id: 'p1:x', name: 'x', type: 'shape', shape: { type: 'rectangle', width: 10, height: 10 } };
   ok('rejects an unexpected key on an AI layer (strict — model misunderstood)', () => {
-    reject(s.coderFragment, { panelId: 'panel-1', layers: [{ ...baseLayer, wobble: true }] }, 'unknown key');
+    reject(s.coderFragment, { panelId: 'p1', layers: [{ ...baseLayer, wobble: true }] }, 'unknown key');
   });
   ok('rejects a color LITERAL where a role is required (AI never picks a color)', () => {
-    reject(s.coderFragment, { panelId: 'panel-1', layers: [{ ...baseLayer, fill: [1, 0, 0, 1] }] }, 'literal color');
+    reject(s.coderFragment, { panelId: 'p1', layers: [{ ...baseLayer, fill: [1, 0, 0, 1] }] }, 'literal color');
   });
   ok('rejects a fractional frame in a keyframe track', () => {
-    reject(s.coderFragment, { panelId: 'panel-1', layers: [{ ...baseLayer, transform: { opacity: { keyframes: [{ frame: 1.5, value: 1 }] } } }] }, 'fractional frame');
+    reject(s.coderFragment, { panelId: 'p1', layers: [{ ...baseLayer, transform: { opacity: { keyframes: [{ frame: 1.5, value: 1 }] } } }] }, 'fractional frame');
   });
   ok('rejects a missing semantic name', () => {
     const { name, ...noName } = baseLayer; void name;
-    reject(s.coderFragment, { panelId: 'panel-1', layers: [noName] }, 'no name');
+    reject(s.coderFragment, { panelId: 'p1', layers: [noName] }, 'no name');
   });
   ok('rejects an unknown easing name', () => {
-    reject(s.coderFragment, { panelId: 'panel-1', layers: [{ ...baseLayer, transform: { opacity: { keyframes: [{ frame: 0, value: 1, easing: 'boing' }] } } }] }, 'bad easing');
+    reject(s.coderFragment, { panelId: 'p1', layers: [{ ...baseLayer, transform: { opacity: { keyframes: [{ frame: 0, value: 1, easing: 'boing' }] } } }] }, 'bad easing');
   });
   ok('rejects a namespaced id with a space', () => {
-    reject(s.coderFragment, { panelId: 'panel-1', layers: [{ ...baseLayer, id: 'p1 box' }] }, 'space in id');
+    reject(s.coderFragment, { panelId: 'p1', layers: [{ ...baseLayer, id: 'p1 box' }] }, 'space in id');
   });
   ok('rejects index-based addressing in a patch (setProperty needs layerId, no stray index key)', () => {
     reject(s.patch, { compositionId: 'c1', ops: [{ op: 'setProperty', index: 0, propertyPath: 'x', value: 1 }] }, 'index addressing / missing layerId');
@@ -119,23 +119,23 @@ try {
   // ── Caps enforced at PARSE time, per tier ──
   ok('renderCount over the tier cap is rejected at parse time', () => {
     const free = makeSchemas(TIER_CAPS.free);
-    const cloner = { id: 'p1:c', name: 'c', panelId: 'panel-1', type: 'cloner', sourceRef: { type: 'layer', layerId: 'p1:x' },
+    const cloner = { id: 'p1:c', name: 'c', type: 'cloner', sourceRef: { type: 'layer', layerId: 'p1:c' },
       distribution: { type: 'radial', count: 10, radius: 100, arcDegrees: 360, center: { x: 0, y: 0, z: 0 }, startAngleDegrees: 0, orientToCenter: false },
       effectors: [], stagger: { delaySeconds: 0 }, renderCount: TIER_CAPS.free.maxClonerInstances + 1 };
-    reject(free.coderFragment, { panelId: 'panel-1', layers: [cloner] }, 'over free-tier instance cap');
+    reject(free.coderFragment, { panelId: 'p1', layers: [cloner] }, 'over free-tier instance cap');
     // same cloner within pro cap is fine
-    accept(makeSchemas(TIER_CAPS.pro).coderFragment, { panelId: 'panel-1', layers: [{ ...cloner, renderCount: 200 }] }, 'within pro cap');
+    accept(makeSchemas(TIER_CAPS.pro).coderFragment, { panelId: 'p1', layers: [{ ...cloner, renderCount: 200 }] }, 'within pro cap');
   });
 
   // ── Panel within-object guard ──
   ok('a panel with end <= start is rejected (within-object refine)', () => {
-    reject(s.panel, { id: 'panel-1', order: 0, start: 60, end: 30, inbound: { atFrame: 60, states: [] }, outbound: { atFrame: 30, states: [] } }, 'end<=start');
-    accept(s.panel, { id: 'panel-1', order: 0, start: 0, end: 60, inbound: { atFrame: 0, states: [] }, outbound: { atFrame: 60, states: [] } }, 'valid panel');
+    reject(s.panel, { id: 'panel-1', order: 0, start: 60, end: 30, inboundPresent: [], outboundPresent: [] }, 'end<=start');
+    accept(s.panel, { id: 'panel-1', order: 0, start: 0, end: 60, inboundPresent: [], outboundPresent: [] }, 'valid panel');
   });
 
   // ── ID preservation ──
   ok('a namespaced Coder id survives parse unchanged (must never be re-minted)', () => {
-    const parsed = accept(s.coderFragment, { panelId: 'panel-1', layers: [{ ...baseLayer, id: 'p2:title' }] }, 'namespaced id');
+    const parsed = accept(s.coderFragment, { panelId: 'p1', layers: [{ ...baseLayer, id: 'p2:title' }] }, 'namespaced id');
     assert.equal(parsed.layers[0].id, 'p2:title');
   });
 
