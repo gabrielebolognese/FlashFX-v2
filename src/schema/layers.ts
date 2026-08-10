@@ -1,15 +1,16 @@
 import { z } from 'zod/v4';
 import {
-  AI_LAYER_TYPES, DOCUMENT_LAYER_TYPES, BLEND_MODES, TEXT_ALIGN, TEXT_VALIGN,
-  VERTEX_TYPES, MOTION_PRESET_NAMES,
+  AI_LAYER_TYPES, DOCUMENT_LAYER_TYPES, BLEND_MODES, TEXT_ALIGN, TEXT_VALIGN, VERTEX_TYPES,
 } from './enums';
 import {
   zNamespacedId, zId, zSemanticName, zFrame, zVec2, zAiColor,
 } from './primitives';
-import { zEasingName } from './easing';
 import { makeAiNumberProp, makeAiVec2Prop, makeAiTransform } from './properties';
 import { makeClonerConfig } from './cloner';
+import { zMotionPresetAttachment } from './presetParams';
 import type { Caps } from './caps';
+
+export { zMotionPresetAttachment };
 
 // LAYERS in two forms (see properties.ts for the same split rationale):
 //   • makeAiLayer(caps) — the STRICT, closed, compact union the Coder emits. Colors are ROLE
@@ -18,18 +19,6 @@ import type { Caps } from './caps';
 //   • zDocumentLayer — the round-trip form. Core identity/timing fields are validated; the rich
 //     per-type payload + decorations (shadow/glow/blur/masks/material/pattern) PASS THROUGH so a
 //     hand-authored scene round-trips LOSSLESSLY. Deliberately preserve-not-lock (see summary).
-
-// ── Layer-level motion preset attachment (channel: 'preset') ──
-export const zMotionPresetAttachment = z
-  .strictObject({
-    preset: z.enum(MOTION_PRESET_NAMES),
-    start: zFrame,
-    duration: z.int().min(1),
-    easing: zEasingName.optional(),
-    /** Bounded numeric parameter bag (e.g. distance, angle). Deterministic; assembly maps it. */
-    params: z.record(z.string(), z.number()).optional(),
-  })
-  .describe('a named motion preset applied at the layer; expands to real keyframe tracks');
 
 function aiBase(caps: Caps) {
   return {

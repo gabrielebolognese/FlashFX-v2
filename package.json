@@ -31,6 +31,7 @@
     "verify:scene3d": "node scripts/verify-scene3d.mjs",
     "verify:camera-path": "node scripts/verify-camera-path.mjs",
     "verify:schema": "node scripts/verify-schema.mjs",
+    "verify:compiler": "node scripts/verify-compiler.mjs",
     "verify:audioschedule": "node scripts/verify-audioschedule.mjs",
     "verify:transformhud": "node scripts/verify-transformhud.mjs",
     "verify:measure": "node scripts/verify-measure.mjs",

@@ -33,6 +33,8 @@ export { makePanel, makePanelList, zTransition, zBoundaryContract, zBoundaryStat
 export { makeStyleContract, zPaletteEntry, zStaggerDoctrine } from './styleContract';
 export { makeComposition, makeSceneDocument, makeAiMeta } from './document';
 export { makePatch, zPatchOp } from './patches';
+export { PRESET_PARAMS } from './presetParams';
+export type { MotionPresetAttachment } from './presetParams';
 export { makeClonerConfig, zClonerDistribution, zClonerEffector } from './cloner';
 export {
   zKeyframeDoc, zAnimatableNumberDoc, zAnimatableVec2Doc, zTransformDoc,

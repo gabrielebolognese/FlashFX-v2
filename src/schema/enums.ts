@@ -70,8 +70,14 @@ export const PRESET_CATEGORIES = ['Position', 'Fade', 'Scale', 'Rotation', 'Comb
  *  Keeping the AI vocabulary here (not mirroring catalog ids) means the catalog can evolve without
  *  changing the model's contract. The name→catalog mapping table is pipeline code (not in this pkg). */
 export const MOTION_PRESET_NAMES = [
-  'fadeIn', 'fadeOut', 'slideInLeft', 'slideInRight', 'slideInUp', 'slideInDown',
-  'popIn', 'scaleIn', 'scaleOut', 'spin', 'wipeIn', 'driftUp',
+  // entrances
+  'fadeIn', 'slideIn', 'popIn',
+  // exits
+  'fadeOut', 'slideOut', 'scaleOut',
+  // emphasis
+  'emphasisPulse',
+  // staggered group reveal (applies its child preset to each child of a group)
+  'staggerReveal',
 ] as const;
 export type MotionPresetName = (typeof MOTION_PRESET_NAMES)[number];
 

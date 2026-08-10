@@ -1,6 +1,6 @@
 import { z } from 'zod/v4';
 import { makeSchemas } from './factory';
-import type { Caps } from './caps';
+import { DECODE_CAPS, type Caps } from './caps';
 
 // JSON Schema export for tool-use CONSTRAINED DECODING. Verified against zod/v4's `toJSONSchema`
 // (see scripts/verify-schema.mjs), not assumed. Findings that shaped this:
@@ -60,8 +60,10 @@ export function assertDecodable(schema: z.ZodType, name: string, opts?: JsonSche
   return js;
 }
 
-/** The three schemas that are actually handed to a model for constrained decoding. */
-export function exportDecodingSchemas(caps: Caps): {
+/** The three schemas handed to a model for constrained decoding. Defaults to the FROZEN DECODE_CAPS
+ *  so the tool definition — and thus the prompt-cache prefix — is stable across tiers. Pass explicit
+ *  caps only for testing; production always uses the frozen ceiling. */
+export function exportDecodingSchemas(caps: Caps = DECODE_CAPS): {
   coderFragment: Record<string, unknown>;
   directorOutput: Record<string, unknown>;
   patch: Record<string, unknown>;

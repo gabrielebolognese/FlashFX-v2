@@ -63,3 +63,22 @@ export const TIER_CAPS: Record<'free' | 'pro' | 'max', Caps> = {
 export function capsForTier(tier: keyof typeof TIER_CAPS): Caps {
   return TIER_CAPS[tier];
 }
+
+// ONE frozen, most-permissive cap set for the CONSTRAINED-DECODING schema (the tool definition).
+// Decision (revised): a per-tier decode schema means a per-tier tool definition, which fragments the
+// prompt cache into separate prefixes — and a cold cache WRITE costs ~10× a read. So decoding always
+// uses this single frozen ceiling; the model can technically emit up to it. Per-TIER budget is
+// enforced elsewhere — in the job spec (layerBudget) and the semantic validator — because an
+// over-budget document is a rare, deterministically fixable failure, unlike an invalid enum which
+// constrained decoding must prevent structurally. Keep this a strict superset of every TIER_CAPS.
+export const DECODE_CAPS: Caps = {
+  maxPanels: 32,
+  maxLayersPerPanel: 120,
+  maxLayersTotal: 1200,
+  maxDurationFrames: 240 * 60,
+  maxKeyframesPerTrack: 256,
+  maxClonerInstances: 20000,
+  maxEffectorsPerCloner: 24,
+  maxPaletteEntries: 32,
+  maxPatchOps: 256,
+};
