@@ -131,7 +131,7 @@ function getLayerWorldBounds(layer: Layer, layers: Layer[], currentFrame: number
     h = dims.h;
   } else if (layer.type === 'text') {
     const tl = layer as TextLayer;
-    if (!tl.content?.spans[0]?.style) return null;
+    if (!tl.content?.spans[0]?.style || !tl.layoutConfig || !tl.animOverrides) return null;
     const span = tl.content.spans[0].style;
     const bb = tl.layoutConfig.boundingBox;
     const measured = measureText({
@@ -268,7 +268,7 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
       w = dims.w;
       h = dims.h;
     } else if (activeLayer.type === 'text') {
-      if (!(activeLayer as TextLayer).content?.spans[0]?.style) return null;
+      if (!(activeLayer as TextLayer).content?.spans[0]?.style || !(activeLayer as TextLayer).layoutConfig || !(activeLayer as TextLayer).animOverrides) return null;
       const tl = activeLayer as TextLayer;
       const span = tl.content.spans[0].style;
       const bb = tl.layoutConfig.boundingBox;

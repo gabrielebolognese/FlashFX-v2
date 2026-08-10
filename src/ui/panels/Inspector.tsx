@@ -7,9 +7,21 @@ import { useMotionPathStore } from '../../store/motionPath';
 import { useMaskStore } from '../../store/mask';
 import { usePathEditStore } from '../../store/pathEdit';
 import { BrandColorPicker } from '../components/BrandColorPicker';
-import type { ShapeLayer, TextLayer, VideoLayer, ImageLayer, AudioLayer, ParticleLayer, GenerativePatternLayer, CameraLayer, AnimationItemLayer, LottieIconLayer, AnimatableProperty, Vec2, Vec4, RectangleShape, CircleShape, StarShape, PolygonShape, MotionPathAnchor, MotionPathLoop, Mask, MaskType, Layer, LayerShadow, LayerGlow, LayerBlur, BlurType, GlowMode, LayoutObjectLayer, LayoutContainerLayer } from '../../core/types';
+import type { ShapeLayer, TextLayer, VideoLayer, ImageLayer, AudioLayer, ParticleLayer, GenerativePatternLayer, CameraLayer, AnimationItemLayer, LottieIconLayer, AnimatableProperty, Vec2, Vec4, RectangleShape, CircleShape, StarShape, PolygonShape, MotionPathAnchor, MotionPathLoop, Mask, MaskType, Layer, LayerShadow, LayerGlow, LayerBlur, BlurType, GlowMode, LayoutObjectLayer, LayoutContainerLayer, TextSpanStyle, TextLayoutConfig } from '../../core/types';
+
+// Safe fallbacks so the Text inspector renders even for a text layer with missing/empty content or
+// layoutConfig (defensive — factory layers set these, but selection must never crash).
+const FALLBACK_SPAN_STYLE: TextSpanStyle = {
+  fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 400, fontStyle: 'normal', fontSize: 48,
+  color: [1, 1, 1, 1], letterSpacing: 0, lineHeight: 1.2, strokeColor: [0, 0, 0, 1], strokeWidth: 0,
+  underline: false, strikethrough: false, textTransform: 'none',
+};
+const FALLBACK_TEXT_LAYOUT: TextLayoutConfig = {
+  boundingBox: { type: 'auto' }, horizontalAlign: 'left', verticalAlign: 'top',
+  overflow: 'visible', baselineShift: 0, perGlyphAnimation: false,
+};
 import { evaluateProperty } from '../../core/interpolation';
-import { createProperty } from '../../core/factory';
+import { createProperty, createTextAnimOverrides } from '../../core/factory';
 import { getMotionBlur } from '../../core/layerSwitches';
 import { DEFAULT_CONSTRAINTS, type ReframeAxisMode } from '../../core/reframe';
 import { Diamond, Route, Trash2, Wand2, Sliders, Sparkles, Square, Circle, Star, Hexagon, Zap, Scissors, Moon, Layers, Type, Frame, Copy, ChevronUp, ChevronDown, Eye, EyeOff, Plus, Repeat, Link2, Atom, Grid3x3, Aperture, Code2, SlidersHorizontal, Palette, Loader2, Boxes, Box, RotateCcw } from 'lucide-react';
@@ -1367,7 +1379,7 @@ function TextMotionControlSection({ layer }: { layer: TextLayer }) {
     ? Math.max(0, amount) * frameRate
     : Math.max(0, amount);
 
-  const canConvert = layer.content.spans.map((s) => s.text).join('').trim().length > 0;
+  const canConvert = (layer.content?.spans ?? []).map((s) => s.text).join('').trim().length > 0;
 
   const MODES: { id: SplitMode; label: string }[] = [
     { id: 'character', label: 'Character' },
@@ -1464,12 +1476,16 @@ function TextProperties({
   addKeyframe: (id: string, path: string, frame: number, value: number | [number, number]) => void;
   hasKeyframeAt: (prop: AnimatableProperty) => boolean;
 }) {
-  const span = layer.content.spans[0];
-  const style = span?.style;
-  const overrides = layer.animOverrides;
-  const lc = layer.layoutConfig;
+  // Guard against a text layer with missing/empty content (some layers arrive without a full
+  // content/spans shape) — reading it unguarded is what crashed the panel on selection. `style`
+  // falls back to a full default so every downstream `style.*` read is safe.
+  const spans = layer.content?.spans ?? [];
+  const span = spans[0];
+  const style = span?.style ?? FALLBACK_SPAN_STYLE;
+  const overrides = layer.animOverrides ?? createTextAnimOverrides();
+  const lc = layer.layoutConfig ?? FALLBACK_TEXT_LAYOUT;
 
-  const fullText = layer.content.spans.map((s) => s.text).join('');
+  const fullText = spans.map((s) => s.text).join('');
 
   return (
     <>

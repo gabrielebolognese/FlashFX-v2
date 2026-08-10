@@ -1,4 +1,4 @@
-import type { Layer, TextLayer, ShapeLayer, VideoLayer, ImageLayer, Vec2 } from '../types';
+import type { Layer, TextLayer, ShapeLayer, VideoLayer, ImageLayer, Vec2, AnimatableProperty } from '../types';
 import { evaluateVec2, evaluateNumber } from '../interpolation';
 import { getDescendants } from '../sceneGraph';
 import { measureText } from '../../engine/textAtlas';
@@ -84,18 +84,22 @@ function getLayerSize(layer: Layer, layers: Layer[], frame: number): { w: number
   }
   if (layer.type === 'text') {
     const tl = layer as TextLayer;
-    const span = tl.content.spans[0]?.style;
-    const bb = tl.layoutConfig.boundingBox;
+    // Guard every optional/possibly-missing text field — this runs on the canvas (bounding-box
+    // overlay + snap during hover/drag), so an unguarded deref crashes the canvas on selection.
+    const span = tl.content?.spans?.[0]?.style;
+    const bb = tl.layoutConfig?.boundingBox ?? { type: 'auto' as const };
+    const ov = tl.animOverrides;
+    const num = (p: AnimatableProperty | undefined, d: number) => (p ? evaluateNumber(p, frame) : d);
     const measured = measureText({
-      content: tl.content.spans.map(s => s.text).join(''), mode: bb.type === 'auto' ? 'point' : 'box',
+      content: tl.content?.spans?.map(s => s.text).join('') ?? '', mode: bb.type === 'auto' ? 'point' : 'box',
       boxWidth: bb.type === 'fixed' ? bb.width : bb.type === 'fixedWidth' ? bb.width : 300, boxHeight: bb.type === 'fixed' ? bb.height : 200,
       fontFamily: span?.fontFamily ?? 'Inter', fontWeight: span?.fontWeight ?? 400, fontStyle: span?.fontStyle ?? 'normal',
-      fontSize: evaluateNumber(tl.animOverrides.fontSize, frame),
-      lineHeight: evaluateNumber(tl.animOverrides.lineHeight, frame),
-      letterSpacing: evaluateNumber(tl.animOverrides.letterSpacing, frame),
+      fontSize: num(ov?.fontSize, 48),
+      lineHeight: num(ov?.lineHeight, 1.2),
+      letterSpacing: num(ov?.letterSpacing, 0),
       fillColor: span?.color ?? [1, 1, 1, 1], strokeColor: span?.strokeColor ?? [0, 0, 0, 0],
-      strokeWidth: evaluateNumber(tl.animOverrides.strokeWidth, frame),
-      textAlign: tl.layoutConfig.horizontalAlign, underline: span?.underline ?? false, strikethrough: span?.strikethrough ?? false,
+      strokeWidth: num(ov?.strokeWidth, 0),
+      textAlign: tl.layoutConfig?.horizontalAlign ?? 'left', underline: span?.underline ?? false, strikethrough: span?.strikethrough ?? false,
       measuredWidth: 0, measuredHeight: 0,
     });
     return { w: measured.width * Math.abs(scale[0]), h: measured.height * Math.abs(scale[1]) };
