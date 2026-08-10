@@ -79,9 +79,9 @@ try {
 
   ok('Director output (ms), Job (frames), Patch parse', () => {
     accept(s.directorOutput, {
-      brief: { durationMs: 6000, format: 'landscape', tone: 'bold', subjects: [{ id: 's1', name: 'logo' }] },
-      styleContract: { palette: [{ role: 'primary', color: '#f7b500' }], easings: ['easeOut', 'linear', 'easeInOut'], beatMs: 250, shapeLanguage: 'geometric', staggerDoctrine: { mode: 'perLayer', gapMs: 80 } },
-      panelPlan: [{ id: 'panel-1', order: 0, startMs: 0, endMs: 6000, elements: [{ id: 'p1:box', name: 'box', kind: 'shape' }], inboundPresent: [], outboundPresent: ['p1:box'] }],
+      brief: { durationMs: 6000, format: 'landscape', tone: 'bold', subjects: [{ id: 's1', name: 'logo' }, { id: 's2', name: 'tagline' }, { id: 's3', name: 'backdrop' }] },
+      styleContract: { palette: [{ role: 'background', color: '#111111' }, { role: 'primary', color: '#f7b500' }, { role: 'textPrimary', color: '#ffffff' }, { role: 'accent', color: '#22d3ee' }], easings: ['easeOut', 'linear', 'easeInOut', 'easeIn'], beatMs: 250, shapeLanguage: 'geometric', staggerDoctrine: { mode: 'perLayer', gapMs: 80 } },
+      panelPlan: [{ id: 'panel-1', order: 0, startMs: 0, endMs: 6000, focalPoint: [960, 540], elements: [{ id: 'p1:box', name: 'box', kind: 'shape' }], inboundPresent: [], outboundPresent: ['p1:box'] }],
     }, 'director output');
     accept(s.patch, { compositionId: 'c1', ops: [
       { op: 'setProperty', layerId: 'p1:box', propertyPath: 'transform.opacity', value: 0.5 },
@@ -125,6 +125,24 @@ try {
     reject(free.coderFragment, { panelId: 'p1', layers: [cloner] }, 'over free-tier instance cap');
     // same cloner within pro cap is fine
     accept(makeSchemas(TIER_CAPS.pro).coderFragment, { panelId: 'p1', layers: [{ ...cloner, renderCount: 200 }] }, 'within pro cap');
+  });
+
+  // ── Style contract enforces the prompt ranges (palette 4–7, easings 4–6) ──
+  ok('style contract enforces palette 4–7 and easings 4–6', () => {
+    const pal = [{ role: 'background', color: '#111' }, { role: 'primary', color: '#f7b500' }, { role: 'textPrimary', color: '#fff' }, { role: 'accent', color: '#22d3ee' }];
+    const good = { palette: pal, easings: ['easeOut', 'linear', 'easeInOut', 'easeIn'], beatMs: 250, shapeLanguage: 'geometric', staggerDoctrine: { mode: 'none', gapMs: 0 } };
+    accept(s.styleContract, good, 'valid style contract');
+    reject(s.styleContract, { ...good, palette: pal.slice(0, 3) }, '3 palette roles (< 4)');
+    reject(s.styleContract, { ...good, easings: ['easeOut', 'linear', 'easeInOut'] }, '3 easings (< 4)');
+  });
+  ok('brief enforces subjects 3–12; a Director panel requires focalPoint', () => {
+    const base = { durationMs: 3000, format: 'landscape', tone: 'bold' };
+    const brief = makeSchemas(TIER_CAPS.pro).directorOutput;
+    const two = { ...base, subjects: [{ id: 'a', name: 'a' }, { id: 'b', name: 'b' }] };
+    const sc = { palette: [{ role: 'background', color: '#111' }, { role: 'primary', color: '#f7b500' }, { role: 'textPrimary', color: '#fff' }, { role: 'accent', color: '#22d3ee' }], easings: ['easeOut', 'linear', 'easeInOut', 'easeIn'], beatMs: 250, shapeLanguage: 'geometric', staggerDoctrine: { mode: 'none', gapMs: 0 } };
+    const panelNoFocal = { id: 'p', order: 0, startMs: 0, endMs: 3000, elements: [], inboundPresent: [], outboundPresent: [] };
+    reject(brief, { brief: two, styleContract: sc, panelPlan: [{ ...panelNoFocal, focalPoint: [0, 0] }] }, '2 subjects');
+    reject(brief, { brief: { ...base, subjects: [{ id: 'a', name: 'a' }, { id: 'b', name: 'b' }, { id: 'c', name: 'c' }] }, styleContract: sc, panelPlan: [panelNoFocal] }, 'panel missing focalPoint');
   });
 
   // ── Panel within-object guard ──

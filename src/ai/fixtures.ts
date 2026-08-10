@@ -14,7 +14,7 @@ type Fixture = { director: unknown; fragments: unknown[] };
 // ── showreel: the main visual fixture (two panels @ beat 250ms) ──
 const showreel: Fixture = {
   director: {
-    brief: { durationMs: 4000, format: 'landscape', tone: 'bold', subjects: [{ id: 's1', name: 'wordmark' }] },
+    brief: { durationMs: 4000, format: 'landscape', tone: 'bold', subjects: [{ id: 's1', name: 'wordmark' }, { id: 's2', name: 'tagline' }, { id: 's3', name: 'accent-dots' }] },
     styleContract: {
       palette: [
         { role: 'background', color: '#0b1220' },
@@ -28,8 +28,8 @@ const showreel: Fixture = {
       staggerDoctrine: { mode: 'perLayer', gapMs: 60 },
     },
     panelPlan: [
-      { id: 'panel-0', order: 0, startMs: 0, endMs: 2000, elements: [], inboundPresent: [], outboundPresent: [] },
-      { id: 'panel-1', order: 1, startMs: 2000, endMs: 4000, transitionIn: { type: 'crossDissolve', duration: 250 }, elements: [], inboundPresent: [], outboundPresent: [] },
+      { id: 'panel-0', order: 0, startMs: 0, endMs: 2000, focalPoint: [960, 540], elements: [], inboundPresent: [], outboundPresent: [] },
+      { id: 'panel-1', order: 1, startMs: 2000, endMs: 4000, focalPoint: [960, 480], transitionIn: { type: 'crossDissolve', duration: 250 }, elements: [], inboundPresent: [], outboundPresent: [] },
     ],
   },
   fragments: [
@@ -84,14 +84,14 @@ const showreel: Fixture = {
 //    disagrees. Assembly must REPORT this (not paper over it). ──
 const boundaryMismatch: Fixture = {
   director: {
-    brief: { durationMs: 2000, format: 'landscape', tone: 'calm', subjects: [{ id: 's1', name: 'x' }] },
+    brief: { durationMs: 2000, format: 'landscape', tone: 'calm', subjects: [{ id: 's1', name: 'a' }, { id: 's2', name: 'b' }, { id: 's3', name: 'c' }] },
     styleContract: {
-      palette: [{ role: 'primary', color: '#f7b500' }],
-      easings: ['linear', 'easeOut', 'easeIn'], beatMs: 250, shapeLanguage: 'geometric', staggerDoctrine: { mode: 'none', gapMs: 0 },
+      palette: [{ role: 'background', color: '#0b1220' }, { role: 'primary', color: '#f7b500' }, { role: 'textPrimary', color: '#ffffff' }, { role: 'accent', color: '#22d3ee' }],
+      easings: ['linear', 'easeOut', 'easeIn', 'easeInOut'], beatMs: 250, shapeLanguage: 'geometric', staggerDoctrine: { mode: 'none', gapMs: 0 },
     },
     panelPlan: [
-      { id: 'panel-0', order: 0, startMs: 0, endMs: 1000, elements: [], inboundPresent: [], outboundPresent: ['ghost'] },
-      { id: 'panel-1', order: 1, startMs: 1000, endMs: 2000, elements: [], inboundPresent: [], outboundPresent: [] },
+      { id: 'panel-0', order: 0, startMs: 0, endMs: 1000, focalPoint: [960, 540], elements: [], inboundPresent: [], outboundPresent: ['ghost'] },
+      { id: 'panel-1', order: 1, startMs: 1000, endMs: 2000, focalPoint: [960, 540], elements: [], inboundPresent: [], outboundPresent: [] },
     ],
   },
   fragments: [

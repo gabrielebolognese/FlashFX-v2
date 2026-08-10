@@ -56,7 +56,7 @@ export function makeAiMeta(caps: Caps) {
   return z
     .strictObject({
       brief: makeBrief(),
-      styleContract: makeStyleContract(caps),
+      styleContract: makeStyleContract(),
       panelPlan: makeDirectorPanelPlan(caps),
       seed: z.int().describe('run seed — generation must be reproducible from it'),
       digest: z.string().min(1).describe('content digest of the generating inputs'),

@@ -21,7 +21,7 @@ export function makeSchemas(caps: Caps) {
     directorOutput: makeDirectorOutput(caps),
     job: makeJob(caps),
     patch: makePatch(caps),
-    styleContract: makeStyleContract(caps),
+    styleContract: makeStyleContract(),
     panel: makePanel(caps),
     panelList: makePanelList(caps),
     aiMeta: makeAiMeta(caps),

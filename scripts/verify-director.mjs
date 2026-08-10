@@ -32,7 +32,7 @@ const validOutput = () => ({
     easings: ['easeOut', 'easeInOut', 'easeIn', 'linear'], beatMs: 375, shapeLanguage: 'geometric',
     staggerDoctrine: { mode: 'none', gapMs: 0 },
   },
-  panelPlan: [{ id: 'panel-0', order: 0, startMs: 0, endMs: 3000, elements: [], inboundPresent: [], outboundPresent: [] }],
+  panelPlan: [{ id: 'panel-0', order: 0, startMs: 0, endMs: 3000, focalPoint: [960, 540], elements: [], inboundPresent: [], outboundPresent: [] }],
 });
 const U = { inputTokens: 1200, cacheReadTokens: 800, cacheWriteTokens: 0, outputTokens: 400 };
 

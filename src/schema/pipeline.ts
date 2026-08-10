@@ -24,7 +24,8 @@ export function makeBrief() {
        *  the prompt and by the semantic validator (validateDirectorPlan, given the canvas). */
       format: z.enum(OUTPUT_FORMATS),
       tone: z.enum(TONES),
-      subjects: z.array(z.strictObject({ id: zNamespacedId, name: zSemanticName })).min(1).max(MAX_SUBJECTS),
+      /** Conceptual inventory — 3 to 12 (matches the prompt), not a layer count. */
+      subjects: z.array(z.strictObject({ id: zNamespacedId, name: zSemanticName })).min(3).max(MAX_SUBJECTS),
     })
     .describe('the Director brief (commits duration/format/subjects/tone; ms)');
 }
@@ -37,7 +38,8 @@ export function makeDirectorPanel(caps: Caps) {
     order: z.int().min(0),
     startMs: zMs,
     endMs: zMs,
-    focalPoint: zVec2.optional(),
+    /** Required — the prompt says "set it for each panel"; a panel with no focal point has no purpose. */
+    focalPoint: zVec2,
     elements: z
       .array(z.strictObject({ id: zNamespacedId, name: zSemanticName, kind: z.enum(AI_LAYER_TYPES) }))
       .max(caps.maxLayersPerPanel),
@@ -56,7 +58,7 @@ export function makeDirectorOutput(caps: Caps) {
   return z
     .strictObject({
       brief: makeBrief(),
-      styleContract: makeStyleContract(caps),
+      styleContract: makeStyleContract(),
       panelPlan: makeDirectorPanelPlan(caps),
     })
     .describe("the Director's combined output (brief + style contract + panel plan; ms)");
@@ -68,7 +70,7 @@ export function makeJob(caps: Caps) {
     .strictObject({
       requestId: zId,
       panelId: zId,
-      styleContract: makeStyleContract(caps),
+      styleContract: makeStyleContract(),
       /** This panel, converted to frames. */
       panel: makePanel(caps),
       /** The neighbouring boundary present-lists the Coder must honour (unified present-list shape). */

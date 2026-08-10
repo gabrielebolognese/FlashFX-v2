@@ -192,6 +192,14 @@ try {
   ok('semantic: format that does not mirror the canvas is caught', () => {
     assert.ok(codes(FIXTURES.showreel.director, { canvas: { width: 1080, height: 1920 } }).includes('format-mismatch'));
   });
+  ok('semantic: a transitionIn on panel 0 is caught', () => {
+    const d = mutate((x) => { x.panelPlan[0].transitionIn = { type: 'fade', duration: 0 }; });
+    assert.ok(codes(d).includes('panel0-transition'), codes(d).join(','));
+  });
+  ok('semantic: a transition longer than half the shorter panel is caught', () => {
+    const d = mutate((x) => { x.panelPlan[1].transitionIn = { type: 'crossDissolve', duration: 1500 }; }); // panels 2000ms → half 1000
+    assert.ok(codes(d).includes('transition-too-long'), codes(d).join(','));
+  });
 
   // Negative: boundary mismatch must be REPORTED, not papered over.
   ok('a boundary mismatch is reported as an error (not silently fixed)', () => {

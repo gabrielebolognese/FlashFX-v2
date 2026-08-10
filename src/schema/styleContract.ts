@@ -19,14 +19,16 @@ export const zStaggerDoctrine = z.strictObject({
   curve: z.enum(EASING_NAMES).optional(),
 });
 
-export function makeStyleContract(caps: Caps) {
+// Palette and easing counts are FIXED design ranges (not tier caps), so makeStyleContract takes no
+// caps — the prompt says "bind 4 to 7 roles" and "choose 4 to 6 easings", and the schema enforces
+// exactly that (both bounds, matching the prompt).
+export function makeStyleContract() {
   return z
     .strictObject({
-      /** Named roles → colors. The AI references roles by name; it never picks a color. */
-      palette: z.array(zPaletteEntry).min(1).max(caps.maxPaletteEntries),
-      /** The closed set of easings the whole piece is allowed to use. Design calls for 4–6 (the
-       *  prompt enforces that); the schema floor is 3 as a structural safety net. */
-      easings: z.array(z.enum(EASING_NAMES)).min(3).max(6),
+      /** Named roles → colors. The AI references roles by name; it never picks a color. 4–7 roles. */
+      palette: z.array(zPaletteEntry).min(4).max(7),
+      /** The closed set of easings the whole piece is allowed to use — 4 to 6. */
+      easings: z.array(z.enum(EASING_NAMES)).min(4).max(6),
       /** Base timing beat, ms. All durations in the plan are integer multiples of this. */
       beatMs: zMs.refine((v) => v > 0, 'beat must be > 0'),
       shapeLanguage: z.enum(SHAPE_LANGUAGES),
@@ -35,5 +37,4 @@ export function makeStyleContract(caps: Caps) {
     .describe('the style contract (palette roles, allowed easings, timing beat, doctrine)');
 }
 
-import type { Caps } from './caps';
 export type StyleContract = z.infer<ReturnType<typeof makeStyleContract>>;

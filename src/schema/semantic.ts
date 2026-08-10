@@ -117,5 +117,19 @@ export function validateDirectorPlan(director: DirectorOutput, opts: { canvas?: 
     }
   }
 
+  // 8. transitions: panel 0 has no transitionIn; a transition's duration ≤ half the shorter of the
+  //    two panels it joins (a transition longer than its content becomes the subject).
+  if (panels.length && panels[0].transitionIn) {
+    err('panel0-transition', `first panel '${panels[0].id}' must not have a transitionIn`, { panelId: panels[0].id });
+  }
+  for (let i = 1; i < panels.length; i++) {
+    const t = panels[i].transitionIn;
+    if (!t) continue;
+    const shorter = Math.min(panels[i - 1].endMs - panels[i - 1].startMs, panels[i].endMs - panels[i].startMs);
+    if (t.duration > shorter / 2) {
+      err('transition-too-long', `panel '${panels[i].id}' transition duration ${t.duration}ms exceeds half the shorter joined panel (${shorter / 2}ms)`, { panelId: panels[i].id });
+    }
+  }
+
   return issues;
 }
