@@ -7,7 +7,7 @@ import { usePanelStore } from '../../store/panels';
 import { useEditorStore } from '../../store/editor';
 import { runBlackjackDemo, runGalaxyDemo, type Step } from './aiChatDemo';
 
-// VS Code / Copilot-style AI assistant — MOCKUP (no model). Assistant responses are borderless plain
+// VS Code / Copilot-style AI assistant - MOCKUP (no model). Assistant responses are borderless plain
 // text with a thinking loader → streaming → a response timer; the user turn sits in a subtle box.
 // The single seam for a real model is streamResponse() below: swap its body for a streaming client and
 // the whole UI (thinking, token streaming, elapsed timer, stop, done state) already works.
@@ -22,7 +22,7 @@ const nextId = () => `m${++uid}`;
 const REPLIES = [
   'Done. I added a position + scale keyframe intro with an ease-out and enabled an outer glow on the title. Scrub the timeline to preview, or tell me to tweak the easing.',
   "Here's what I changed:\n• Split the value text into per-digit odometers\n• Staggered the bars on a 40ms grid index\n• Rescaled the axis from the shared max\nWant motion blur on the reorder swaps too?",
-  'I turned the selection into a data-bound repeater — 40 clips are now two repeaters, so adding rows is just a data change. Ask me to reorder them and they animate live.',
+  'I turned the selection into a data-bound repeater - 40 clips are now two repeaters, so adding rows is just a data change. Ask me to reorder them and they animate live.',
 ];
 
 // The model seam. Currently streams a canned reply word-by-word after a short "thinking" delay.
@@ -225,7 +225,7 @@ export function AiChatPanel() {
             </div>
           </div>
         </div>
-        <p className="mt-1 text-[9px] text-slate-600 text-center">Mockup — no model connected. Enter to send · Shift+Enter for newline</p>
+        <p className="mt-1 text-[9px] text-slate-600 text-center">Mockup - no model connected. Enter to send · Shift+Enter for newline</p>
       </div>
     </aside>
   );

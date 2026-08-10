@@ -1,5 +1,6 @@
-import { useState, useRef, useEffect } from 'react';
-import { MoreHorizontal, Pencil, Copy, Trash2, Monitor, Download, Film, Smartphone, Star, RotateCcw } from 'lucide-react';
+import { useState, useRef, useEffect, useLayoutEffect } from 'react';
+import { createPortal } from 'react-dom';
+import { MoreHorizontal, Pencil, Copy, Trash2, Monitor, Download, Film, Smartphone, Star, RotateCcw, FolderOpen } from 'lucide-react';
 import type { ProjectCard } from '../types';
 import { trashDaysRemaining } from '../types';
 import { useProjectStore } from '../hooks/useProjectStore';
@@ -7,6 +8,63 @@ import { ConfirmDeleteModal } from './ConfirmDeleteModal';
 
 interface Props {
   card: ProjectCard;
+}
+
+interface MenuItem { icon: React.ReactNode; label: string; onClick: () => void; danger?: boolean; sep?: boolean }
+
+const MENU_W = 168;
+
+// The card menu renders in a PORTAL (fixed position, clamped to the viewport) so the card's
+// `overflow-hidden` — needed to clip the rounded preview — never clips or hides the menu. Used by
+// both the ⋯ button (anchored below it) and right-click (at the cursor).
+function CardMenu({ x, y, items, onClose }: { x: number; y: number; items: MenuItem[]; onClose: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState({ left: x, top: y, ready: false });
+
+  useLayoutEffect(() => {
+    const el = ref.current; if (!el) return;
+    const { width, height } = el.getBoundingClientRect();
+    const left = Math.max(8, Math.min(x, window.innerWidth - width - 8));
+    const top = Math.max(8, Math.min(y, window.innerHeight - height - 8));
+    setPos({ left, top, ready: true });
+  }, [x, y]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('mousedown', onClose);
+    document.addEventListener('scroll', onClose, true);
+    window.addEventListener('resize', onClose);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onClose);
+      document.removeEventListener('scroll', onClose, true);
+      window.removeEventListener('resize', onClose);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [onClose]);
+
+  return createPortal(
+    <div
+      ref={ref}
+      onMouseDown={(e) => e.stopPropagation()}
+      onContextMenu={(e) => e.preventDefault()}
+      style={{ position: 'fixed', left: pos.left, top: pos.top, width: MENU_W, visibility: pos.ready ? 'visible' : 'hidden' }}
+      className="bg-[#1a2233] border border-[#2a3a50] rounded-md shadow-xl shadow-black/40 z-[200] py-0.5 overflow-hidden"
+    >
+      {items.map((it, i) => it.sep ? (
+        <div key={i} className="border-t border-[#2a3a50] my-0.5" />
+      ) : (
+        <button
+          key={i}
+          onClick={() => { it.onClick(); onClose(); }}
+          className={`w-full flex items-center gap-2 px-2.5 py-[5px] text-[11px] transition-colors ${it.danger ? 'text-red-400 hover:bg-red-500/10' : 'text-slate-300 hover:bg-[#242f3f]'}`}
+        >
+          {it.icon} {it.label}
+        </button>
+      ))}
+    </div>,
+    document.body,
+  );
 }
 
 export function ProjectCardComponent({ card }: Props) {
@@ -23,21 +81,11 @@ export function ProjectCardComponent({ card }: Props) {
   const duplicateProjectAction = useProjectStore((s) => s.duplicateProject);
   const exportProjectAction = useProjectStore((s) => s.exportProject);
 
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const [renaming, setRenaming] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [nameInput, setNameInput] = useState(metadata.name);
-  const menuRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    const handleClick = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
-    };
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, [menuOpen]);
 
   useEffect(() => {
     if (renaming && inputRef.current) {
@@ -52,6 +100,36 @@ export function ProjectCardComponent({ card }: Props) {
     const trimmed = nameInput.trim();
     if (trimmed && trimmed !== metadata.name) renameProjectAction(metadata.id, trimmed);
     setRenaming(false);
+  };
+
+  const startRename = () => { setRenaming(true); setNameInput(metadata.name); };
+  const doExport = () => exportProjectAction(metadata.id).catch((err) => alert(err instanceof Error ? err.message : 'Failed to download project'));
+
+  const menuItems: MenuItem[] = isTrashed
+    ? [
+        { icon: <RotateCcw size={10} />, label: 'Restore', onClick: () => restoreProjectAction(metadata.id) },
+        { icon: null, label: '', onClick: () => {}, sep: true },
+        { icon: <Trash2 size={10} />, label: 'Delete permanently', onClick: () => setConfirmDelete(true), danger: true },
+      ]
+    : [
+        { icon: <FolderOpen size={10} />, label: 'Open', onClick: () => openProject(metadata.id) },
+        { icon: <Pencil size={10} />, label: 'Rename', onClick: startRename },
+        { icon: <Star size={10} className={starred ? 'text-[#f7b500]' : ''} fill={starred ? 'currentColor' : 'none'} />, label: starred ? 'Unstar' : 'Star', onClick: () => toggleStarAction(metadata.id) },
+        { icon: <Copy size={10} />, label: 'Duplicate', onClick: () => duplicateProjectAction(metadata.id) },
+        { icon: <Download size={10} />, label: 'Download .ffx', onClick: doExport },
+        { icon: null, label: '', onClick: () => {}, sep: true },
+        { icon: <Trash2 size={10} />, label: 'Move to Trash', onClick: () => trashProjectAction(metadata.id), danger: true },
+      ];
+
+  const openMenuAtButton = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setMenu({ x: r.right - MENU_W, y: r.bottom + 4 });
+  };
+  const openMenuAtCursor = (e: React.MouseEvent) => {
+    if (renaming) return;
+    e.preventDefault();
+    setMenu({ x: e.clientX, y: e.clientY });
   };
 
   const daysLeft = isTrashed ? trashDaysRemaining(metadata, Date.now()) : 0;
@@ -70,7 +148,10 @@ export function ProjectCardComponent({ card }: Props) {
   };
 
   return (
-    <div className="group relative flex flex-col rounded-lg overflow-hidden bg-[#111821] border border-[#1c2433] hover:border-[#2a3a50] transition-all duration-150 hover:shadow-[0_4px_24px_rgba(0,0,0,0.3)]">
+    <div
+      className="group relative flex flex-col rounded-lg overflow-hidden bg-[#111821] border border-[#1c2433] hover:border-[#2a3a50] transition-all duration-150 hover:shadow-[0_4px_24px_rgba(0,0,0,0.3)]"
+      onContextMenu={openMenuAtCursor}
+    >
       {/* Preview area */}
       <div
         className={`aspect-[16/10] bg-[#0a0f16] relative overflow-hidden ${isTrashed ? '' : 'cursor-pointer'}`}
@@ -159,37 +240,17 @@ export function ProjectCardComponent({ card }: Props) {
             </button>
           </div>
         ) : (
-          <div className="relative" ref={menuRef}>
-            <button
-              onClick={() => setMenuOpen(!menuOpen)}
-              className="p-1 rounded text-slate-500 hover:text-slate-300 hover:bg-[#1a2233] transition-colors opacity-0 group-hover:opacity-100"
-            >
-              <MoreHorizontal size={13} />
-            </button>
-
-            {menuOpen && (
-              <div className="absolute right-0 top-full mt-1 w-40 bg-[#1a2233] border border-[#2a3a50] rounded-md shadow-xl shadow-black/40 z-50 py-0.5 overflow-hidden">
-                <button onClick={() => { setRenaming(true); setNameInput(metadata.name); setMenuOpen(false); }} className="w-full flex items-center gap-2 px-2.5 py-[5px] text-[11px] text-slate-300 hover:bg-[#242f3f] transition-colors">
-                  <Pencil size={10} /> Rename
-                </button>
-                <button onClick={() => { toggleStarAction(metadata.id); setMenuOpen(false); }} className="w-full flex items-center gap-2 px-2.5 py-[5px] text-[11px] text-slate-300 hover:bg-[#242f3f] transition-colors">
-                  <Star size={10} className={starred ? 'text-[#f7b500]' : ''} fill={starred ? 'currentColor' : 'none'} /> {starred ? 'Unstar' : 'Star'}
-                </button>
-                <button onClick={() => { duplicateProjectAction(metadata.id); setMenuOpen(false); }} className="w-full flex items-center gap-2 px-2.5 py-[5px] text-[11px] text-slate-300 hover:bg-[#242f3f] transition-colors">
-                  <Copy size={10} /> Duplicate
-                </button>
-                <button onClick={() => { setMenuOpen(false); exportProjectAction(metadata.id).catch((err) => alert(err instanceof Error ? err.message : 'Failed to download project')); }} className="w-full flex items-center gap-2 px-2.5 py-[5px] text-[11px] text-slate-300 hover:bg-[#242f3f] transition-colors">
-                  <Download size={10} /> Download .ffx
-                </button>
-                <div className="border-t border-[#2a3a50] my-0.5" />
-                <button onClick={() => { trashProjectAction(metadata.id); setMenuOpen(false); }} className="w-full flex items-center gap-2 px-2.5 py-[5px] text-[11px] text-red-400 hover:bg-red-500/10 transition-colors">
-                  <Trash2 size={10} /> Move to Trash
-                </button>
-              </div>
-            )}
-          </div>
+          <button
+            onClick={openMenuAtButton}
+            title="More"
+            className="p-1 rounded text-slate-500 hover:text-slate-300 hover:bg-[#1a2233] transition-colors opacity-0 group-hover:opacity-100 flex-shrink-0"
+          >
+            <MoreHorizontal size={13} />
+          </button>
         )}
       </div>
+
+      {menu && <CardMenu x={menu.x} y={menu.y} items={menuItems} onClose={() => setMenu(null)} />}
 
       {confirmDelete && (
         <ConfirmDeleteModal

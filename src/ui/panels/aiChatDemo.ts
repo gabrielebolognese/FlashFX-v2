@@ -1,6 +1,6 @@
 // Scripted "generation" for the AI panel MOCKUP. The first message the user sends runs this instead
 // of the canned streamResponse: it streams an intro, walks a real checklist (Director → Coders with a
-// rising layer count → Assembly → Preset expansion → Polish → Commit), then — so it isn't useless —
+// rising layer count → Assembly → Preset expansion → Polish → Commit), then - so it isn't useless -
 // actually builds the Blackjack template on the canvas and streams a summary. Cancelable timers only;
 // no model, no network. This is the seam the real Director → Coder → assembly pipeline replaces.
 
@@ -14,24 +14,24 @@ export interface DemoHandlers {
 }
 
 const INTRO =
-  "I'll create a full blackjack card animation — a top-down casino table where the dealer distributes " +
+  "I'll create a full blackjack card animation - a top-down casino table where the dealer distributes " +
   'two hands, with a slow cinematic camera push-in for energy and a running commentary that types each ' +
   'hand out character by character. Planning it now:';
 
 const SUMMARY =
-  '\n\nDone — a 13-second top-down blackjack scene is on your canvas. The dealer deals two hands ' +
+  '\n\nDone - a 13-second top-down blackjack scene is on your canvas. The dealer deals two hands ' +
   '(Player A♠ 10♥ = 21 · Dealer K♦ 7♣ = 17) with staggered throws, a slow camera push-in and drift for ' +
   'depth, and a monospace commentary that types each hand out character by character. Everything is fully ' +
-  'editable — every card, keyframe, and the camera move sits on the timeline.\n\n' +
+  'editable - every card, keyframe, and the camera move sits on the timeline.\n\n' +
   '(This is a mockup of the generation flow; the real Director → Coder → assembly pipeline is being wired in.)';
 
 const STEP_DEFS: { key: string; label: string }[] = [
-  { key: 'director', label: 'Director — planning the scene' },
-  { key: 'coders', label: 'Coders — building panel layers' },
-  { key: 'assembly', label: 'Assembly — merging layers, z-order & seams' },
-  { key: 'presets', label: 'Preset expansion — deal, camera pan, reveals' },
-  { key: 'polish', label: 'Polish — easing, timing, contrast' },
-  { key: 'commit', label: 'Commit — one undo step' },
+  { key: 'director', label: 'Director - planning the scene' },
+  { key: 'coders', label: 'Coders - building panel layers' },
+  { key: 'assembly', label: 'Assembly - merging layers, z-order & seams' },
+  { key: 'presets', label: 'Preset expansion - deal, camera pan, reveals' },
+  { key: 'polish', label: 'Polish - easing, timing, contrast' },
+  { key: 'commit', label: 'Commit - one undo step' },
 ];
 
 export function runBlackjackDemo(h: DemoHandlers): { cancel: () => void } {
@@ -59,7 +59,7 @@ export function runBlackjackDemo(h: DemoHandlers): { cancel: () => void } {
 
   run(0, 1100, '2 panels · 13.0s · cinematic tone');
 
-  // Coders — the layer count rises as each "coder" reports in.
+  // Coders - the layer count rises as each "coder" reports in.
   at(cur, () => { steps[1].status = 'running'; steps[1].detail = '0 / 6 layers'; push(); });
   const N = 6;
   for (let k = 1; k <= N; k++) at(cur + k * 340, () => { steps[1].detail = `${k} / ${N} layers`; push(); });
@@ -80,30 +80,30 @@ export function runBlackjackDemo(h: DemoHandlers): { cancel: () => void } {
   return { cancel: () => { cancelled = true; timers.forEach(clearTimeout); } };
 }
 
-// ── Second message: "can you create a galaxy too?" — same shape, but the build is ANIMATED on the
+// ── Second message: "can you create a galaxy too?" - same shape, but the build is ANIMATED on the
 // canvas (layers appear one at a time, THEN the keyframes are applied), driven by the store's
 // insertAnimationTemplateAnimated via the `animate` handler.
 
 const GALAXY_INTRO =
-  'Absolutely — a galaxy makes a great companion piece. I\'ll build a deep-space scene: a slow-drifting ' +
+  'Absolutely - a galaxy makes a great companion piece. I\'ll build a deep-space scene: a slow-drifting ' +
   'starfield with parallax layers, a luminous nebula core, and orbiting sparks, tuned to sit in the same ' +
-  'dark, cinematic register as the blackjack table so they read as one set — reusing the timing beat and ' +
+  'dark, cinematic register as the blackjack table so they read as one set - reusing the timing beat and ' +
   'easing vocabulary for consistency. And this time I\'ll assemble it live, so you can watch it come together:';
 
 const GALAXY_SUMMARY =
-  '\n\nDone — the galaxy scene is assembled on your canvas. I brought the layers in one at a time ' +
-  '(starfield → nebula → core → orbiters), then applied the motion — a slow drift, a breathing glow on the ' +
-  'core, and orbiting sparks — so it built rather than popping in all at once. It shares the blackjack ' +
+  '\n\nDone - the galaxy scene is assembled on your canvas. I brought the layers in one at a time ' +
+  '(starfield → nebula → core → orbiters), then applied the motion - a slow drift, a breathing glow on the ' +
+  'core, and orbiting sparks - so it built rather than popping in all at once. It shares the blackjack ' +
   'scene\'s dark palette and easing set. Scrub the timeline to preview; every layer and keyframe is editable.\n\n' +
-  '(Still a mockup of the generation flow — the real Director → Coder → assembly pipeline is being wired in.)';
+  '(Still a mockup of the generation flow - the real Director → Coder → assembly pipeline is being wired in.)';
 
 const GALAXY_STEP_DEFS: { key: string; label: string }[] = [
-  { key: 'director', label: 'Director — planning the companion scene' },
-  { key: 'coders', label: 'Coders — building layer groups' },
-  { key: 'assembly', label: 'Assembly — z-order & parenting' },
-  { key: 'animate', label: 'Animating — reveal layers, then keyframes' },
-  { key: 'polish', label: 'Polish — easing, glow, contrast' },
-  { key: 'commit', label: 'Commit — one undo step' },
+  { key: 'director', label: 'Director - planning the companion scene' },
+  { key: 'coders', label: 'Coders - building layer groups' },
+  { key: 'assembly', label: 'Assembly - z-order & parenting' },
+  { key: 'animate', label: 'Animating - reveal layers, then keyframes' },
+  { key: 'polish', label: 'Polish - easing, glow, contrast' },
+  { key: 'commit', label: 'Commit - one undo step' },
 ];
 
 export interface AnimateHandlers { onLayer: (shown: number, total: number) => void; onKeyframes: () => void; onDone: () => void }
@@ -143,7 +143,7 @@ export function runGalaxyDemo(h: GalaxyHandlers): { cancel: () => void } {
   cur += 150;
   run(2, 850, 'z-order + parenting resolved');
 
-  // 3) the ANIMATED build — layers reveal, then keyframes; the rest of the checklist + summary chain
+  // 3) the ANIMATED build - layers reveal, then keyframes; the rest of the checklist + summary chain
   //    off the build's onDone (its duration depends on the layer count).
   at(cur, () => {
     steps[3].status = 'running'; steps[3].detail = 'revealing layers…'; push();
