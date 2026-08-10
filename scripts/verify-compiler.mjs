@@ -38,10 +38,12 @@ try {
   const fx = await bundle('src/ai/fixtures.ts');
   const interp = await bundle('src/core/interpolation.ts');
   const material = await bundle('src/core/material.ts');
+  const schema = await bundle('src/schema/index.ts');
   const { compile, PRESET_CATALOG } = ai;
   const { FIXTURES } = fx;
   const { resolveFrame } = interp;
   const { hexToVec4 } = material;
+  const { validateDirectorPlan } = schema;
 
   console.log('Deterministic compiler — acceptance\n');
 
@@ -151,6 +153,35 @@ try {
     const r2 = compile(FIXTURES.showreel.director, FIXTURES.showreel.fragments, { fps: 30, tier: 'pro', seed: 1 });
     assert.deepStrictEqual(r2.composition, comp);
     assert.equal(r2.aiMeta.digest, r.aiMeta.digest);
+  });
+
+  // Semantic validator (cross-panel rules Zod cannot express).
+  const codes = (dir, opts) => validateDirectorPlan(dir, opts).map((i) => i.code);
+  const mutate = (fn) => { const d = structuredClone(FIXTURES.showreel.director); fn(d); return d; };
+  ok('semantic validator passes a clean plan (and format mirrors the canvas)', () => {
+    assert.deepEqual(codes(FIXTURES.showreel.director, { canvas: { width: 1920, height: 1080 } }), []);
+  });
+  ok('semantic: off-beat panel boundary is caught', () => {
+    const d = mutate((x) => { x.panelPlan[0].endMs = 2001; x.panelPlan[1].startMs = 2001; });
+    assert.ok(codes(d).includes('panel-off-beat'), codes(d).join(','));
+  });
+  ok('semantic: a gap between panels is caught', () => {
+    const d = mutate((x) => { x.panelPlan[1].startMs = 2250; });
+    assert.ok(codes(d).includes('panel-gap'), codes(d).join(','));
+  });
+  ok('semantic: plan not summing to durationMs is caught', () => {
+    const d = mutate((x) => { x.brief.durationMs = 4250; });
+    assert.ok(codes(d).includes('duration-mismatch'), codes(d).join(','));
+  });
+  ok('semantic: an element declared in two panels is caught', () => {
+    const d = mutate((x) => {
+      x.panelPlan[0].elements = [{ id: 'shared', name: 'x', kind: 'shape' }];
+      x.panelPlan[1].elements = [{ id: 'shared', name: 'x', kind: 'shape' }];
+    });
+    assert.ok(codes(d).includes('element-double-declared'), codes(d).join(','));
+  });
+  ok('semantic: format that does not mirror the canvas is caught', () => {
+    assert.ok(codes(FIXTURES.showreel.director, { canvas: { width: 1080, height: 1920 } }).includes('format-mismatch'));
   });
 
   // Negative: boundary mismatch must be REPORTED, not papered over.

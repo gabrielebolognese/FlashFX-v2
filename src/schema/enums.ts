@@ -8,10 +8,12 @@
 // union (src/core/types.ts): the AI introduces no new layer types, and adding one means editing
 // both render dispatch ladders, so the Coder is constrained to what already draws.
 
-/** Layer types the Coder is allowed to author. A deliberate subset of the app's 18 `type`
- *  literals — precomp/particle/procedural/field/layout/animationItem/lottie are out of the AI
- *  vocabulary for v1 (panels replace precomp nesting; the rest are advanced/unstable to emit). */
-export const AI_LAYER_TYPES = ['shape', 'text', 'group', 'image', 'video', 'audio', 'cloner', 'camera'] as const;
+/** Layer types the Coder is allowed to author, and the only `kind`s a Director panel element may
+ *  take. A deliberate subset of the app's 18 `type` literals. `camera` and `audio` are FORBIDDEN:
+ *  the camera path is minimal (needs 3D layers to matter) and audio needs a registered asset — both
+ *  were flagged unsupported, so the AI never plans or emits them. precomp/particle/procedural/field/
+ *  layout/animationItem/lottie are likewise out of the AI vocabulary for v1. */
+export const AI_LAYER_TYPES = ['shape', 'text', 'group', 'image', 'video', 'cloner'] as const;
 export type AiLayerType = (typeof AI_LAYER_TYPES)[number];
 
 /** Every layer `type` literal the DOCUMENT model can hold (for round-trip). Mirrors the app's

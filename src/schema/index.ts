@@ -28,7 +28,7 @@ export type {
 
 // Individual builders, for callers that need one schema at a specific tier.
 export { makeAiLayer, zDocumentLayer, zMotionPresetAttachment } from './layers';
-export { makeCoderFragment, makeDirectorOutput, makeJob, makeBrief, makeDirectorPanelPlan } from './pipeline';
+export { makeCoderFragment, makeDirectorOutput, makeJob, makeBrief, makeDirectorPanelPlan, MAX_SUBJECTS } from './pipeline';
 export { makePanel, makePanelList, zTransition, zBoundaryContract, zBoundaryState } from './panels';
 export { makeStyleContract, zPaletteEntry, zStaggerDoctrine } from './styleContract';
 export { makeComposition, makeSceneDocument, makeAiMeta } from './document';
@@ -43,3 +43,7 @@ export {
 
 // JSON Schema export for constrained decoding.
 export { toJsonSchema, assertDecodable, exportDecodingSchemas, findRefs } from './jsonSchema';
+
+// Semantic validator (cross-panel / cross-field rules Zod does not express).
+export { validateDirectorPlan, formatForCanvas } from './semantic';
+export type { SemanticIssue, DirectorCanvas } from './semantic';

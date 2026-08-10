@@ -80,7 +80,7 @@ try {
   ok('Director output (ms), Job (frames), Patch parse', () => {
     accept(s.directorOutput, {
       brief: { durationMs: 6000, format: 'landscape', tone: 'bold', subjects: [{ id: 's1', name: 'logo' }] },
-      styleContract: { palette: [{ role: 'primary', color: '#f7b500' }], easings: ['easeOut', 'linear'], beatMs: 250, shapeLanguage: 'geometric', staggerDoctrine: { mode: 'perLayer', gapMs: 80 } },
+      styleContract: { palette: [{ role: 'primary', color: '#f7b500' }], easings: ['easeOut', 'linear', 'easeInOut'], beatMs: 250, shapeLanguage: 'geometric', staggerDoctrine: { mode: 'perLayer', gapMs: 80 } },
       panelPlan: [{ id: 'panel-1', order: 0, startMs: 0, endMs: 6000, elements: [{ id: 'p1:box', name: 'box', kind: 'shape' }], inboundPresent: [], outboundPresent: ['p1:box'] }],
     }, 'director output');
     accept(s.patch, { compositionId: 'c1', ops: [

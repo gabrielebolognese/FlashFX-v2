@@ -85,7 +85,7 @@ const boundaryMismatch: Fixture = {
     brief: { durationMs: 2000, format: 'landscape', tone: 'calm', subjects: [{ id: 's1', name: 'x' }] },
     styleContract: {
       palette: [{ role: 'primary', color: '#f7b500' }],
-      easings: ['linear'], beatMs: 250, shapeLanguage: 'geometric', staggerDoctrine: { mode: 'none', gapMs: 0 },
+      easings: ['linear', 'easeOut', 'easeIn'], beatMs: 250, shapeLanguage: 'geometric', staggerDoctrine: { mode: 'none', gapMs: 0 },
     },
     panelPlan: [
       { id: 'panel-0', order: 0, startMs: 0, endMs: 1000, elements: [], inboundPresent: [], outboundPresent: ['ghost'] },

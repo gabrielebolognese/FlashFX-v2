@@ -5,7 +5,7 @@ import {
 import {
   zNamespacedId, zId, zSemanticName, zFrame, zVec2, zAiColor,
 } from './primitives';
-import { makeAiNumberProp, makeAiVec2Prop, makeAiTransform } from './properties';
+import { makeAiNumberProp, makeAiTransform } from './properties';
 import { makeClonerConfig } from './cloner';
 import { zMotionPresetAttachment } from './presetParams';
 import type { Caps } from './caps';
@@ -39,7 +39,6 @@ function aiBase(caps: Caps) {
 
 export function makeAiLayer(caps: Caps) {
   const num = makeAiNumberProp(caps);
-  const vec = makeAiVec2Prop(caps);
   const base = aiBase(caps);
 
   const aiVertex = z.strictObject({
@@ -95,29 +94,11 @@ export function makeAiLayer(caps: Caps) {
       muted: z.boolean().default(false),
     }),
   });
-  const aiAudio = z.strictObject({
-    ...base, type: z.literal('audio'),
-    audio: z.strictObject({
-      assetId: zId,
-      startOffset: z.int().min(0).default(0),
-      muted: z.boolean().default(false),
-      volume: num.optional(),
-    }),
-  });
-
   const aiCloner = z.strictObject({ ...base, type: z.literal('cloner'), ...makeClonerConfig(caps) });
 
-  const aiCamera = z.strictObject({
-    ...base, type: z.literal('camera'),
-    camera: z.strictObject({
-      mode: z.enum(['one-node', 'two-node']).default('two-node'),
-      zoom: num,
-      pointOfInterest: vec.optional(),
-      dofEnabled: z.boolean().default(false),
-    }),
-  });
-
-  return z.discriminatedUnion('type', [aiShape, aiText, aiGroup, aiImage, aiVideo, aiAudio, aiCloner, aiCamera])
+  // NOTE: camera and audio are intentionally absent — they are forbidden from the AI vocabulary
+  // (see AI_LAYER_TYPES). The document schema still round-trips them; the Coder just never emits them.
+  return z.discriminatedUnion('type', [aiShape, aiText, aiGroup, aiImage, aiVideo, aiCloner])
     .describe('a Coder-authored layer (compact, strict; colors are palette roles)');
 }
 

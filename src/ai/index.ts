@@ -2,7 +2,7 @@
 // ZERO model calls, zero tokens. Node-safe (NO store/React import here — the browser-only commit
 // helper lives in ./commit and is imported separately by the dev hook).
 
-import { makeSchemas, TIER_CAPS, type DirectorOutput, type CoderFragment, type AiMeta } from '../schema';
+import { makeSchemas, TIER_CAPS, validateDirectorPlan, type DirectorOutput, type CoderFragment, type AiMeta, type DirectorCanvas } from '../schema';
 import { compilePlan, type PlanResult } from './compilePlan';
 import { assemble, type AssembleResult } from './assemble';
 
@@ -15,6 +15,8 @@ export interface CompileOptions {
   tier?: keyof typeof TIER_CAPS;
   seed: number;
   name?: string;
+  /** Preflight canvas. When given, the semantic validator also enforces format-mirrors-canvas. */
+  canvas?: DirectorCanvas;
 }
 export interface CompileResult extends AssembleResult {
   plan: PlanResult;
@@ -59,6 +61,11 @@ export function compile(directorRaw: unknown, fragmentsRaw: unknown[], opts: Com
     fps: opts.fps, format: director.brief.format, seed: opts.seed, durationFrames: plan.durationFrames, name: opts.name,
   });
 
+  // Semantic validation of the plan (beat alignment, contiguity, sum-to-duration, element ownership,
+  // and — given a canvas — format-mirror). These are the cross-panel rules Zod cannot express.
+  for (const s of validateDirectorPlan(director, { canvas: opts.canvas })) {
+    result.report.issues.unshift({ severity: s.severity, code: s.code, message: s.message, panelId: s.panelId, layerId: s.elementId });
+  }
   // Surface any fragment parse failures into the report (never silently dropped).
   for (const m of parseIssues) result.report.issues.unshift({ severity: 'error', code: 'fragment-parse', message: m });
   result.report.ok = !result.report.issues.some((i) => i.severity === 'error');

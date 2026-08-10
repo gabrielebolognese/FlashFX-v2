@@ -24,8 +24,9 @@ export function makeStyleContract(caps: Caps) {
     .strictObject({
       /** Named roles → colors. The AI references roles by name; it never picks a color. */
       palette: z.array(zPaletteEntry).min(1).max(caps.maxPaletteEntries),
-      /** The closed set of 4–6 easings the whole piece is allowed to use. */
-      easings: z.array(z.enum(EASING_NAMES)).min(1).max(6),
+      /** The closed set of easings the whole piece is allowed to use. Design calls for 4–6 (the
+       *  prompt enforces that); the schema floor is 3 as a structural safety net. */
+      easings: z.array(z.enum(EASING_NAMES)).min(3).max(6),
       /** Base timing beat, ms. All durations in the plan are integer multiples of this. */
       beatMs: zMs.refine((v) => v > 0, 'beat must be > 0'),
       shapeLanguage: z.enum(['rounded', 'sharp', 'geometric', 'organic', 'mixed']),

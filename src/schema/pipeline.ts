@@ -12,15 +12,19 @@ import type { Caps } from './caps';
 // deriving an integer beat in frames and rebuilding the panel grid from it — the Coder never sees ms.
 
 // ── Director ──
-export function makeBrief(caps: Caps) {
+/** The subject inventory is a brief-level count, NOT a layer count — capped at a small fixed 12
+ *  (the prompt enforces the same), independent of tier layer budgets. */
+export const MAX_SUBJECTS = 12;
+export function makeBrief() {
   return z
     .strictObject({
       /** The Director DECIDES rather than asks; committed total duration in ms (planning). */
       durationMs: zMs.refine((v) => v > 0, 'duration must be > 0'),
+      /** MUST mirror the preflight canvas (landscape/portrait/square) — never invented. Enforced in
+       *  the prompt and by the semantic validator (validateDirectorPlan, given the canvas). */
       format: z.enum(OUTPUT_FORMATS),
       tone: z.enum(TONES),
-      /** The subject inventory it commits to (can't exceed the total layer budget). */
-      subjects: z.array(z.strictObject({ id: zNamespacedId, name: zSemanticName })).min(1).max(caps.maxLayersTotal),
+      subjects: z.array(z.strictObject({ id: zNamespacedId, name: zSemanticName })).min(1).max(MAX_SUBJECTS),
     })
     .describe('the Director brief (commits duration/format/subjects/tone; ms)');
 }
@@ -51,7 +55,7 @@ export function makeDirectorPanelPlan(caps: Caps) {
 export function makeDirectorOutput(caps: Caps) {
   return z
     .strictObject({
-      brief: makeBrief(caps),
+      brief: makeBrief(),
       styleContract: makeStyleContract(caps),
       panelPlan: makeDirectorPanelPlan(caps),
     })

@@ -55,7 +55,7 @@ export function makeComposition(caps: Caps) {
 export function makeAiMeta(caps: Caps) {
   return z
     .strictObject({
-      brief: makeBrief(caps),
+      brief: makeBrief(),
       styleContract: makeStyleContract(caps),
       panelPlan: makeDirectorPanelPlan(caps),
       seed: z.int().describe('run seed — generation must be reproducible from it'),
