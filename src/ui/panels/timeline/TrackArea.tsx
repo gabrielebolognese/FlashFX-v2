@@ -299,35 +299,44 @@ export function TrackArea({ layers, tracks, selectedIds, rulerOnly, ghostRowCoun
     return () => { cancelAnimationFrame(scrubRafRef.current); };
   }, []);
 
-  const handleWheel = useCallback((e: React.WheelEvent) => {
+  // Native (non-passive) wheel handler — see the effect below for WHY it's not `onWheel`. All state
+  // is read FRESH from the store/element so rapid wheel events never use a stale scrollX (which made
+  // scrolling feel like it was fighting itself). Plain wheel ONLY scrolls; zoom is Ctrl/Meta only.
+  const handleWheel = useCallback((e: WheelEvent) => {
     e.preventDefault();
-    e.stopPropagation();
     const el = containerRef.current;
     if (!el) return;
-    const rect = el.getBoundingClientRect();
-    const cursorX = e.clientX - rect.left;
+    const cursorX = e.clientX - el.getBoundingClientRect().left;
+    const { scrollX, zoomLevel, scrollY } = useTimelineStore.getState();
+    const dur = durationFramesRef.current;
+    const cw = el.clientWidth;
 
     if (e.ctrlKey || e.metaKey) {
-      const factor = Math.exp(-e.deltaY * getZoomSensitivity());
-      zoomAtCursor(cursorX, factor);
+      // The ONLY zoom path.
+      zoomAtCursor(cursorX, Math.exp(-e.deltaY * getZoomSensitivity()));
     } else if (e.altKey) {
       const totalH = sortedTracksRef.current.reduce((sum, t) => sum + getTrackHeight(t), 0);
-      const visibleH = el.clientHeight;
-      const maxScrollY = Math.max(0, totalH - visibleH);
-      const dy = e.deltaY * getScrollSpeed();
-      const newScrollY = Math.max(0, Math.min(maxScrollY, useTimelineStore.getState().scrollY + dy));
-      setScrollY(newScrollY);
-    } else if (e.shiftKey) {
-      const maxScroll = getMaxScrollX(durationFrames, zoomLevel, containerWidth);
-      const newScrollX = Math.max(0, Math.min(maxScroll, scrollX + e.deltaY * 2));
-      setScrollX(newScrollX);
+      const maxScrollY = Math.max(0, totalH - el.clientHeight);
+      setScrollY(Math.max(0, Math.min(maxScrollY, scrollY + e.deltaY * getScrollSpeed())));
     } else {
-      const maxScroll = getMaxScrollX(durationFrames, zoomLevel, containerWidth);
-      const dx = e.deltaX !== 0 ? e.deltaX : e.deltaY;
-      const newScrollX = Math.max(0, Math.min(maxScroll, scrollX + dx * 2));
-      setScrollX(newScrollX);
+      // Plain or Shift wheel: scroll the timeline horizontally through time. Prefer the axis with the
+      // larger delta (trackpads send deltaX; a plain mouse wheel sends deltaY).
+      const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+      const maxScroll = getMaxScrollX(dur, zoomLevel, cw);
+      setScrollX(Math.max(0, Math.min(maxScroll, scrollX + delta * 2)));
     }
-  }, [zoomLevel, scrollX, durationFrames, containerWidth, setScrollX, setScrollY, zoomAtCursor]);
+  }, [setScrollX, setScrollY, zoomAtCursor]);
+
+  // Attach the wheel handler NATIVELY with { passive: false }. React's `onWheel` is registered as a
+  // PASSIVE listener, so `e.preventDefault()` there is a no-op and the browser ALSO scrolls the
+  // element — the JS scroll and the native scroll fight, which read as the timeline jumping / seeming
+  // to zoom in and out. A non-passive native listener makes preventDefault actually stick.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    el.addEventListener('wheel', handleWheel, { passive: false });
+    return () => el.removeEventListener('wheel', handleWheel);
+  }, [handleWheel]);
 
   // Drag start handler
   const handleClipPointerDown = useCallback((layerId: string, e: React.PointerEvent) => {
@@ -854,7 +863,6 @@ export function TrackArea({ layers, tracks, selectedIds, rulerOnly, ghostRowCoun
         ref={containerRef}
         className="flex-1 relative bg-[#1a1e28] border-b border-[#243a5c] cursor-col-resize select-none overflow-hidden"
         onMouseDown={handleRulerMouseDown}
-        onWheel={handleWheel}
       >
         {ticks.map((tick, i) => {
           const x = frameToPixel(tick.frame, zoomLevel, scrollX);
@@ -914,7 +922,6 @@ export function TrackArea({ layers, tracks, selectedIds, rulerOnly, ghostRowCoun
       <div
         ref={containerRef}
         className="flex-1 relative overflow-hidden bg-[#16294a] select-none"
-        onWheel={handleWheel}
         onPointerDown={handleTrackAreaPointerDown}
       >
         {/* Vertically scrollable track stack */}

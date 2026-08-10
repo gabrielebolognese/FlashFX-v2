@@ -95,7 +95,11 @@ export function AiChatPanel() {
     if (scene === 'blackjack') {
       genRef.current = runBlackjackDemo({
         ...common,
-        insert: () => { try { useEditorStore.getState().insertAnimationTemplate('blackjack'); } catch { /* no active comp */ } },
+        insert: () => {},
+        animate: (cbs) => {
+          try { return useEditorStore.getState().insertAnimationTemplateAnimated('blackjack', { perLayerMs: 90, ...cbs }); }
+          catch { cbs.onDone(); return { cancel: () => {} }; }
+        },
       });
     } else if (scene === 'galaxy') {
       genRef.current = runGalaxyDemo({
