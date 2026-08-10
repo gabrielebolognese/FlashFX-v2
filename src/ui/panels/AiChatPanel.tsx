@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { usePanelStore } from '../../store/panels';
 import { useEditorStore } from '../../store/editor';
-import { runBlackjackDemo, type Step } from './aiChatDemo';
+import { runBlackjackDemo, runGalaxyDemo, type Step } from './aiChatDemo';
 
 // VS Code / Copilot-style AI assistant — MOCKUP (no model). Assistant responses are borderless plain
 // text with a thinking loader → streaming → a response timer; the user turn sits in a subtle box.
@@ -75,7 +75,9 @@ export function AiChatPanel() {
   const send = useCallback(() => {
     const text = draft.trim();
     if (!text || generating) return;
-    const isFirst = messages.length === 0; // the first message runs the scripted "generate" demo
+    // Scripted demo: the FIRST message builds the blackjack scene; the SECOND builds a galaxy with a
+    // live animated build. (messages length is 0 before the first exchange, 2 before the second.)
+    const scene = messages.length === 0 ? 'blackjack' : messages.length === 2 ? 'galaxy' : null;
     const userMsg: Msg = { id: nextId(), role: 'user', text, attachments: attachments.length ? attachments : undefined };
     const asstId = nextId();
     setMessages((m) => [...m, userMsg, { id: asstId, role: 'assistant', text: '', streaming: true }]);
@@ -85,12 +87,24 @@ export function AiChatPanel() {
     tickRef.current = window.setInterval(() => setElapsed(Date.now() - start), 100);
     const patch = (fn: (x: Msg) => Msg) => setMessages((m) => m.map((x) => (x.id === asstId ? fn(x) : x)));
     const finish = (ms: number) => { stopTick(); setGenerating(false); genRef.current = null; patch((x) => ({ ...x, streaming: false, ms })); };
-    if (isFirst) {
+    const common = {
+      appendToken: (t: string) => patch((x) => ({ ...x, text: x.text + t })),
+      setSteps: (steps: Step[]) => patch((x) => ({ ...x, steps })),
+      done: finish,
+    };
+    if (scene === 'blackjack') {
       genRef.current = runBlackjackDemo({
-        appendToken: (t) => patch((x) => ({ ...x, text: x.text + t })),
-        setSteps: (steps) => patch((x) => ({ ...x, steps })),
+        ...common,
         insert: () => { try { useEditorStore.getState().insertAnimationTemplate('blackjack'); } catch { /* no active comp */ } },
-        done: finish,
+      });
+    } else if (scene === 'galaxy') {
+      genRef.current = runGalaxyDemo({
+        ...common,
+        insert: () => {},
+        animate: (cbs) => {
+          try { return useEditorStore.getState().insertAnimationTemplateAnimated('galaxy', { perLayerMs: 90, ...cbs }); }
+          catch { cbs.onDone(); return { cancel: () => {} }; }
+        },
       });
     } else {
       genRef.current = streamResponse(text, {

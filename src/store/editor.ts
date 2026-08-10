@@ -299,6 +299,9 @@ interface EditorState {
   addAnimationItem: (presetName: string) => void;
   /** Insert a pre-built animation template (group + keyframed children) at the playhead. */
   insertAnimationTemplate: (id: string, center?: Vec2) => void;
+  /** Insert a template with an ANIMATED build: layers appear one at a time (static), then the
+   *  keyframes are applied — used by the AI-panel demo. Committed as one undo step. Returns cancel. */
+  insertAnimationTemplateAnimated: (id: string, opts?: { perLayerMs?: number; onLayer?: (shown: number, total: number) => void; onKeyframes?: () => void; onDone?: () => void }) => { cancel: () => void };
   /** Insert every animation template back-to-back in sequence, starting at the playhead. */
   insertAllAnimationTemplates: () => void;
   addLottieIcon: (jsonPath: string, jsonData: string, totalFrames: number, frameRate: number, sourceWidth: number, sourceHeight: number, name: string) => void;
@@ -645,6 +648,22 @@ function cloneTextLayerForExplode(
     inPoint: source.inPoint + frameShift,
     outPoint: source.outPoint + frameShift,
   };
+}
+
+/** Deep-clone a layer with every AnimatableProperty's keyframes removed, so it renders at its
+ *  resting/default pose. Used by the animated template build to show a layer BEFORE its keyframes. */
+function stripLayerKeyframes(layer: Layer): Layer {
+  const clone = JSON.parse(JSON.stringify(layer)) as Layer;
+  const walk = (node: unknown) => {
+    if (Array.isArray(node)) { for (const v of node) walk(v); return; }
+    if (node && typeof node === 'object') {
+      const o = node as Record<string, unknown>;
+      if (Array.isArray(o.keyframes) && typeof o.valueType === 'string') o.keyframes = [];
+      for (const k of Object.keys(o)) walk(o[k]);
+    }
+  };
+  walk(clone);
+  return clone;
 }
 
 
@@ -4086,6 +4105,53 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       execute: () => { set({ composition: newComp, selection: newSel }); },
       undo: () => { set({ composition: oldComp, selection: oldSel }); },
     });
+  },
+
+  insertAnimationTemplateAnimated: (id, opts = {}) => {
+    const perLayerMs = opts.perLayerMs ?? 90;
+    const tpl = getAnimationTemplate(id);
+    const st = get();
+    const noop = { cancel: () => {} };
+    if (!tpl) { opts.onDone?.(); return noop; }
+    const oldComp = st.composition, oldSel = st.selection;
+    const playhead = useTimelineStore.getState().currentFrame;
+    const c: Vec2 = [oldComp.settings.width / 2, oldComp.settings.height / 2];
+    const built = instantiateAnimationTemplate(tpl, { playhead, frameRate: oldComp.settings.frameRate, center: c });
+    if (built.length === 0) { opts.onDone?.(); return noop; }
+
+    // Full (keyframed) set with tracks — the final committed state.
+    let working = oldComp;
+    for (const l of built) working = ensureLayerHasTrack({ ...working, layers: [...working.layers, l] }, l);
+    const inserted = working.layers.slice(oldComp.layers.length);
+    const tracks = working.tracks;
+    // Static clones (keyframes removed) sit at their resting/default pose so they're visible as they
+    // appear; then the real keyframes are applied so the scene animates.
+    const staticLayers = inserted.map(stripLayerKeyframes);
+
+    const timers: number[] = [];
+    let cancelled = false;
+    const at = (ms: number, fn: () => void) => timers.push(window.setTimeout(() => { if (!cancelled) fn(); }, ms));
+
+    // Stage 1 — reveal the layers one at a time (transient, non-undoable direct sets).
+    for (let k = 1; k <= staticLayers.length; k++) {
+      at((k - 1) * perLayerMs, () => {
+        set({ composition: settleComposition({ ...oldComp, tracks, layers: [...oldComp.layers, ...staticLayers.slice(0, k)] }) });
+        opts.onLayer?.(k, staticLayers.length);
+      });
+    }
+    // Stage 2 — apply the keyframes (swap to the animated layers) as ONE undo command.
+    at(staticLayers.length * perLayerMs + 350, () => {
+      opts.onKeyframes?.();
+      const finalComp = settleComposition(working);
+      const newSel = sel(inserted.map((l) => l.id), inserted[0].id);
+      exec({
+        label: `Insert “${tpl.name}”`,
+        execute: () => { set({ composition: finalComp, selection: newSel }); },
+        undo: () => { set({ composition: oldComp, selection: oldSel }); },
+      });
+      opts.onDone?.();
+    });
+    return { cancel: () => { cancelled = true; timers.forEach(clearTimeout); } };
   },
 
   insertAllAnimationTemplates: () => {

@@ -79,3 +79,91 @@ export function runBlackjackDemo(h: DemoHandlers): { cancel: () => void } {
 
   return { cancel: () => { cancelled = true; timers.forEach(clearTimeout); } };
 }
+
+// ── Second message: "can you create a galaxy too?" — same shape, but the build is ANIMATED on the
+// canvas (layers appear one at a time, THEN the keyframes are applied), driven by the store's
+// insertAnimationTemplateAnimated via the `animate` handler.
+
+const GALAXY_INTRO =
+  'Absolutely — a galaxy makes a great companion piece. I\'ll build a deep-space scene: a slow-drifting ' +
+  'starfield with parallax layers, a luminous nebula core, and orbiting sparks, tuned to sit in the same ' +
+  'dark, cinematic register as the blackjack table so they read as one set — reusing the timing beat and ' +
+  'easing vocabulary for consistency. And this time I\'ll assemble it live, so you can watch it come together:';
+
+const GALAXY_SUMMARY =
+  '\n\nDone — the galaxy scene is assembled on your canvas. I brought the layers in one at a time ' +
+  '(starfield → nebula → core → orbiters), then applied the motion — a slow drift, a breathing glow on the ' +
+  'core, and orbiting sparks — so it built rather than popping in all at once. It shares the blackjack ' +
+  'scene\'s dark palette and easing set. Scrub the timeline to preview; every layer and keyframe is editable.\n\n' +
+  '(Still a mockup of the generation flow — the real Director → Coder → assembly pipeline is being wired in.)';
+
+const GALAXY_STEP_DEFS: { key: string; label: string }[] = [
+  { key: 'director', label: 'Director — planning the companion scene' },
+  { key: 'coders', label: 'Coders — building layer groups' },
+  { key: 'assembly', label: 'Assembly — z-order & parenting' },
+  { key: 'animate', label: 'Animating — reveal layers, then keyframes' },
+  { key: 'polish', label: 'Polish — easing, glow, contrast' },
+  { key: 'commit', label: 'Commit — one undo step' },
+];
+
+export interface AnimateHandlers { onLayer: (shown: number, total: number) => void; onKeyframes: () => void; onDone: () => void }
+export interface GalaxyHandlers extends DemoHandlers {
+  /** Kick off the live animated build; returns a cancel handle. */
+  animate: (cbs: AnimateHandlers) => { cancel: () => void };
+}
+
+export function runGalaxyDemo(h: GalaxyHandlers): { cancel: () => void } {
+  let cancelled = false;
+  const timers: number[] = [];
+  let animCtl: { cancel: () => void } | null = null;
+  const start = Date.now();
+  const at = (ms: number, fn: () => void) => { timers.push(window.setTimeout(() => { if (!cancelled) fn(); }, ms)); };
+
+  // 1) intro.
+  let t = 320;
+  for (const tok of GALAXY_INTRO.split(/(\s+)/)) { const tk = tok; at(t, () => h.appendToken(tk)); t += tk.trim() ? 30 : 12; }
+
+  // 2) checklist up to the animated build.
+  const steps: Step[] = GALAXY_STEP_DEFS.map((s) => ({ ...s, status: 'pending' }));
+  const push = () => h.setSteps(steps.map((s) => ({ ...s })));
+  let cur = t + 250;
+  at(cur, push);
+  const run = (i: number, dur: number, detail: string) => {
+    at(cur, () => { steps[i].status = 'running'; push(); });
+    cur += dur;
+    at(cur, () => { steps[i].status = 'done'; steps[i].detail = detail; push(); });
+    cur += 130;
+  };
+  run(0, 1100, 'reuses the scene palette · 1 panel');
+  at(cur, () => { steps[1].status = 'running'; steps[1].detail = '0 / 5 groups'; push(); });
+  const N = 5;
+  for (let k = 1; k <= N; k++) at(cur + k * 320, () => { steps[1].detail = `${k} / ${N} groups`; push(); });
+  cur += N * 320 + 200;
+  at(cur, () => { steps[1].status = 'done'; steps[1].detail = `${N} / ${N} groups`; push(); });
+  cur += 150;
+  run(2, 850, 'z-order + parenting resolved');
+
+  // 3) the ANIMATED build — layers reveal, then keyframes; the rest of the checklist + summary chain
+  //    off the build's onDone (its duration depends on the layer count).
+  at(cur, () => {
+    steps[3].status = 'running'; steps[3].detail = 'revealing layers…'; push();
+    animCtl = h.animate({
+      onLayer: (shown, total) => { steps[3].detail = `layer ${shown} / ${total}`; push(); },
+      onKeyframes: () => { steps[3].detail = 'applying keyframes…'; push(); },
+      onDone: () => {
+        steps[3].status = 'done'; steps[3].detail = 'drift · glow · orbit'; push();
+        let c2 = 0;
+        const at2 = (ms: number, fn: () => void) => { timers.push(window.setTimeout(() => { if (!cancelled) fn(); }, ms)); };
+        at2((c2 += 200), () => { steps[4].status = 'running'; push(); });
+        at2((c2 += 850), () => { steps[4].status = 'done'; steps[4].detail = 'easing + contrast'; push(); });
+        at2((c2 += 150), () => { steps[5].status = 'running'; push(); });
+        at2((c2 += 480), () => { steps[5].status = 'done'; steps[5].detail = '1 undo step'; push(); });
+        let sst = c2 + 300;
+        for (const tok of GALAXY_SUMMARY.split(/(\s+)/)) { const tk = tok; at2(sst, () => h.appendToken(tk)); sst += 26; }
+        at2(sst + 120, () => h.done(Date.now() - start));
+      },
+    });
+  });
+
+  return { cancel: () => { cancelled = true; animCtl?.cancel(); timers.forEach(clearTimeout); } };
+}
