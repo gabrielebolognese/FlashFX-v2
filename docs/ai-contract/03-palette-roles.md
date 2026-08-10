@@ -39,6 +39,6 @@ export const zAiColor = zColorRole; // AI color slots accept ONLY a role referen
 
 ## Bounds
 
-A style contract's palette holds **at least 1** entry and **≤ `caps.maxPaletteEntries`** (frozen at
-`DECODE_CAPS.maxPaletteEntries = 32` for constrained decoding). Roles are unique by convention; a
-palette need not bind every role, only those it uses.
+A style contract's palette binds **4 to 7** roles (a fixed design range, enforced structurally —
+`z.array(zPaletteEntry).min(4).max(7)`). Not all twelve: a palette with every role bound has no
+point of view. A palette need not bind every role, only those it uses.
