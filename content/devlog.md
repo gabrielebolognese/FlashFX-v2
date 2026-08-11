@@ -1,5 +1,80 @@
 # Devlog
 
+## 2026-08-11
+
+Two big arcs and a long tail of bug-fixing: the cinematic "agent builds your scene" animation, and
+a near-total rewrite of the video pipeline (ending in adopting a real library). 22 commits, net
++1546/−158 across 31 files (the net is small because a mis-diagnosed fix and its revert cancel out,
+and a lot of the video work was replacing code, not adding). typecheck stayed at 0 and lint at the
+127 baseline through every commit. Anything touching WebGPU/WebCodecs is browser-unverifiable here,
+so it ships behind harnesses + guards and needs a real run to feel — several of today's fixes were
+found only after the user tested and reported the actual symptom.
+
+### The cinematic agent build (self-building templates)
+
+- Inserting a template — from the gallery OR the AI chat — now animates the editor assembling the
+  scene: the whole editor border pulses amber, a big custom cursor flies around, layers appear one at
+  a time on a rising-speed (Rush-E) curve, then keyframes get placed while the timeline auto-scrolls
+  to follow and inspector property rows light up.
+  - Hard parts, in order of how they were found: (1) the timeline auto-scroll was paging by the
+    *ruler's* height (~21px) because both TrackArea instances published `containerHeight` — so the
+    active row landed just off the top edge and nothing looked like it moved. (2) Showing all ~170
+    tracks up front made every step re-render the whole timeline, so the rAF steps batched and the
+    reveal collapsed into one jump — fixed by growing the timeline (only revealed layers' tracks) and
+    capping steps/frame. (3) The keyframe sweep only iterated *animated* layers, so if they cluster
+    at the top the view barely scrolled — now it sweeps every row. (4) The cursor clicked at random;
+    now it flies to each shape's real mathematical center (world position → canvas rect) and clicks
+    there. Cursor is a bigger on-brand amber Figma-style arrow.
+- Multi-select gained a "Convert all to 3D" button (under Align) that flips every selected layer to
+  3D in one undo step — prepping a scene for a camera used to be one-layer-at-a-time.
+
+- Space (and other shortcuts) stopped working while the AI panel was open: the composer `<textarea>`
+  kept focus, so the app's global keydown gate swallowed every key. Now `send()` blurs it → focus
+  returns to the editor.
+
+### The video pipeline (a saga, ending in mediabunny)
+
+- **Import stopped crashing on many files.** Footage now imports into the media pool only (Canva-style,
+  bounded concurrency 3), never auto-placing N clips on the timeline; drag from the pool to place.
+  Also serialized the per-import audio-waveform decode so N imports can't run N full-file
+  `decodeAudioData`s at once.
+- A run of crash/lag fixes, each a real bug the user hit: decoder-worker respawn had no cap → a bad
+  file spun `new Worker()` forever → OOM (added a respawn streak + permanent-fail); `videoTextureCache`
+  was an unbounded Map → VRAM grew until device-lost (LRU cap 24); the timeline thumbnail strip
+  re-decoded through the shared playback pool on every zoom tick (quantized to a coarse source grid);
+  project-open OOM'd because it eagerly `decodeAudioData`'d every video + buffered every hidden
+  `<video preload='auto'>` (lazy waveforms + `preload='metadata'`); left-edge trim never compensated
+  `startOffset` so it slid the footage instead of cutting the head (harness-proven, `verify:clip-edit`).
+- **"Audio plays, no frames"** turned out to be my own regression: the respawn cap latched
+  `permanentlyFailed` with no reset, so one transient stall disabled the asset for the session. Made
+  the latch recoverable + surfaced the real decoder error.
+- **"~1 frame every 2-3 seconds"** was *also* a self-inflicted constant regression: I'd lowered the
+  open-frame cap 12→8 without lowering the lookahead (10/18), so the scheduler perpetually decoded
+  leading-edge frames, evicted them, re-requested them, and forced a flush every frame → the 2s
+  watchdog. Fixed by restoring `lookahead < cap` (6/7) + a module-load assertion + `verify:framecap`
+  so it can't silently regress.
+- Then the strategic call: after two research+diagnosis multi-agent workflows confirmed the hand-rolled
+  mp4box+WebCodecs pump was a perpetual liability, **adopted mediabunny** (the lib OpenCut uses) behind
+  the existing `videoDecoderPool` API, feature-flagged with an instant `localStorage` rollback.
+  - Hard part: the first mediabunny cut used `getSample(t)` per frame, and mediabunny's source shows
+    that spins up a fresh decoder and re-walks the whole GOP on *every* call — so playback still
+    froze-then-jumped. Fixed with the OpenCut `VideoCache` pattern: a per-asset pool of long-lived
+    forward `samples()` iterators that advance one `next()` per sequential frame (one decode) and only
+    reseek on a real jump, with a per-cursor seek-generation to cancel superseded scrubs. Bumped
+    TypeScript to 5.9 for mediabunny's types (one TypedArray-generic error to fix).
+
+### Images: transparent PNG blacks out the canvas
+
+- First diagnosis was wrong twice (I blamed the compositing, then the dark default background). The
+  real bug: a >10k-wide image exceeds WebGPU's `maxTextureDimension2D` (guaranteed only 8192), so
+  `createTexture` threw → the render aborted → device-lost → the whole canvas went black. The
+  transparent PNG the user tested just happened to be huge.
+  - Fix: cap decoded images to ≤8192 (aspect-preserved) at import, keeping the true size in
+    `metadata.originalWidth/Height`; a renderer safety net skips any still-oversized source instead of
+    throwing. Plus a non-modal "image is larger than the canvas" banner offering Resize-to-fit (a new
+    undoable `fitLayerToCanvas`) or Keep. Also decode images as straight (non-premultiplied) alpha to
+    match the renderer's straight-alpha shader/blend (a separate latent transparent-edge hazard).
+
 ## 2026-08-10
 
 An AI-authoring day bookended by bug-fixing. 12 commits, net +4808/−97 across 58 files. The bulk
