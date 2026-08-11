@@ -5,6 +5,13 @@ interface TextureRecord {
   frameIndex: number;
 }
 
+// Hard cap on live video textures. Previously this Map was UNBOUNDED and only pruned when a layer was
+// explicitly deleted — so undo-of-add, project load, precompose, split etc. orphaned a full-res
+// texture (~8MB@1080p, ~33MB@4K) per layerId forever, growing VRAM until WebGPU lost the device and
+// took the whole canvas down. Insertion order is the LRU (touch = re-insert at the end); the oldest
+// (least-recently drawn) texture is evicted past the cap, so memory is bounded regardless of edits.
+const MAX_TEXTURES = 24;
+
 class VideoTextureCache {
   private device: GPUDevice | null = null;
   private textures = new Map<string, TextureRecord>();
@@ -13,6 +20,33 @@ class VideoTextureCache {
   /** Store the GPU device reference. Call once after device creation. */
   init(device: GPUDevice): void {
     this.device = device;
+  }
+
+  /** Move a layer to the most-recently-used end of the LRU. */
+  private touch(layerId: string): void {
+    const record = this.textures.get(layerId);
+    if (record) { this.textures.delete(layerId); this.textures.set(layerId, record); }
+  }
+
+  /** Evict least-recently-used textures until at or under the cap (a bounded-VRAM backstop). */
+  private enforceCap(): void {
+    while (this.textures.size > MAX_TEXTURES) {
+      const oldest = this.textures.keys().next().value as string | undefined;
+      if (oldest === undefined) break;
+      this.textures.get(oldest)?.texture.destroy();
+      this.textures.delete(oldest);
+    }
+  }
+
+  /**
+   * Free textures for layers that are no longer present in the current resolved frame — the real fix
+   * for the orphan-on-undo/load/precompose leak. The renderer passes the set of video layer ids it
+   * actually drew this frame; everything else is destroyed immediately (not just eventually via LRU).
+   */
+  retainOnly(liveLayerIds: Set<string>): void {
+    for (const [id, record] of this.textures) {
+      if (!liveLayerIds.has(id)) { record.texture.destroy(); this.textures.delete(id); }
+    }
   }
 
   /**
@@ -33,6 +67,7 @@ class VideoTextureCache {
     const height = source instanceof VideoFrame ? source.displayHeight : source.height;
 
     let record = this.textures.get(layerId);
+    if (record) this.textures.delete(layerId); // re-inserted below → moves to MRU end (LRU touch)
     if (!record || record.width !== width || record.height !== height) {
       if (record) {
         record.texture.destroy();
@@ -46,15 +81,28 @@ class VideoTextureCache {
           GPUTextureUsage.RENDER_ATTACHMENT,
       });
       record = { texture, width, height, frameIndex };
-      this.textures.set(layerId, record);
     }
+    this.textures.set(layerId, record);
 
     this.copyToTexture(record.texture, source, width, height);
     record.frameIndex = frameIndex;
+    this.enforceCap();
   }
+
+  // Cached fallback surface (see fallbackUpload) — reused across frames instead of allocating a fresh
+  // OffscreenCanvas + ImageBitmap every upload once the direct path is known to be unavailable.
+  private fbCanvas: OffscreenCanvas | null = null;
+  private fbCtx: OffscreenCanvasRenderingContext2D | null = null;
 
   private copyToTexture(texture: GPUTexture, source: VideoFrame | ImageBitmap, width: number, height: number): void {
     if (!this.device) return;
+
+    // Sticky: once the direct path has failed on this device, don't keep re-throwing every frame —
+    // go straight to the fallback.
+    if (this.usedDirectUpload === false) {
+      this.fallbackUpload(texture, source, width, height);
+      return;
+    }
 
     try {
       this.device.queue.copyExternalImageToTexture(
@@ -62,13 +110,9 @@ class VideoTextureCache {
         { texture },
         { width, height }
       );
-      if (this.usedDirectUpload === null) {
-        this.usedDirectUpload = true;
-      }
+      this.usedDirectUpload = true;
     } catch {
-      if (this.usedDirectUpload === null) {
-        this.usedDirectUpload = false;
-      }
+      this.usedDirectUpload = false;
       this.fallbackUpload(texture, source, width, height);
     }
   }
@@ -76,25 +120,28 @@ class VideoTextureCache {
   private fallbackUpload(texture: GPUTexture, source: VideoFrame | ImageBitmap, width: number, height: number): void {
     if (!this.device) return;
 
-    const canvas = new OffscreenCanvas(width, height);
-    const ctx = canvas.getContext('2d');
+    if (!this.fbCanvas || this.fbCanvas.width !== width || this.fbCanvas.height !== height) {
+      this.fbCanvas = new OffscreenCanvas(width, height);
+      this.fbCtx = this.fbCanvas.getContext('2d');
+    }
+    const ctx = this.fbCtx;
     if (!ctx) return;
 
     ctx.drawImage(source as any, 0, 0, width, height);
-    const bitmap = canvas.transferToImageBitmap();
-
+    // Copy straight from the canvas — no per-frame transferToImageBitmap allocation.
     this.device.queue.copyExternalImageToTexture(
-      { source: bitmap },
+      { source: this.fbCanvas },
       { texture },
-      { width: bitmap.width, height: bitmap.height }
+      { width, height }
     );
-
-    bitmap.close();
   }
 
   /** Get the current GPU texture for a layer, or null if none uploaded. */
   getTexture(layerId: string): GPUTexture | null {
-    return this.textures.get(layerId)?.texture ?? null;
+    const record = this.textures.get(layerId);
+    if (!record) return null;
+    this.touch(layerId); // drawn this frame → keep it MRU so the cap never evicts a visible clip
+    return record.texture;
   }
 
   /** Get the frame index currently uploaded to a layer's texture. */

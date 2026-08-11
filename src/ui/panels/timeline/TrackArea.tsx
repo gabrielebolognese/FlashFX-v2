@@ -1523,13 +1523,18 @@ function VideoThumbnailStrip({
   const thumbCount = Math.max(1, Math.floor(clipWidth / thumbWidth));
   const durationFrames = outPoint - inPoint;
 
+  // Sample the source at a COARSE fixed grid (~every 0.5s of source), NOT at barWidth-derived frames.
+  // Otherwise every zoom/scroll tick shifts each thumbnail's source frame, misses THUMB_CACHE, and
+  // re-fires a full keyframe-reseek decode per thumb per clip through the shared playback pool — the
+  // "many clips = decode storm / crash" amplifier. Quantizing keeps the sample points stable across
+  // zoom so the cache actually hits and adjacent thumbs collapse onto the same decode.
+  const gridFrames = Math.max(1, Math.round(sourceFrameRate * 0.5));
   const thumbnails: { sourceFrame: number }[] = [];
   for (let i = 0; i < thumbCount; i++) {
     const progress = thumbCount === 1 ? 0 : i / (thumbCount - 1);
     const compFrame = inPoint + progress * durationFrames;
-    const sourceFrame = Math.floor(
-      (compFrame - inPoint + startOffset) * (sourceFrameRate / compositionFrameRate)
-    );
+    const raw = (compFrame - inPoint + startOffset) * (sourceFrameRate / compositionFrameRate);
+    const sourceFrame = Math.max(0, Math.round(raw / gridFrames) * gridFrames);
     thumbnails.push({ sourceFrame });
   }
 
@@ -1616,7 +1621,12 @@ function VideoThumb({ assetId, sourceFrame, width, height }: {
       .catch(() => { /* asset not decodable right now — leave blank */ })
       .finally(() => { THUMB_PENDING.delete(key); });
 
-    return () => { cancelled = true; };
+    // On unmount / re-key (zoom, scroll, edit) cancel the superseded decode so a burst of strip
+    // re-renders doesn't leave a backlog of stale thumbnail decodes clogging the pool.
+    return () => {
+      cancelled = true;
+      if (!THUMB_CACHE.has(key)) videoDecoderPool.cancelFrame(assetId, frameIdx);
+    };
   }, [assetId, sourceFrame, cw, ch]);
 
   return (
