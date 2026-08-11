@@ -62,6 +62,7 @@ export function AiChatPanel() {
   const genRef = useRef<{ cancel: () => void } | null>(null);
   const tickRef = useRef<number | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const stopTick = useCallback(() => { if (tickRef.current) { clearInterval(tickRef.current); tickRef.current = null; } }, []);
   useEffect(() => () => { genRef.current?.cancel(); stopTick(); }, [stopTick]);
@@ -75,6 +76,9 @@ export function AiChatPanel() {
   const send = useCallback(() => {
     const text = draft.trim();
     if (!text || generating) return;
+    // Release focus back to the editor so global shortcuts (Space to play, arrows, etc.) work again
+    // instead of being swallowed by the composer. Sending a message ends the "typing" intent.
+    textareaRef.current?.blur();
     // Scripted demo: the FIRST message builds the blackjack scene; the SECOND builds a galaxy with a
     // live animated build. (messages length is 0 before the first exchange, 2 before the second.)
     const scene = messages.length === 0 ? 'blackjack' : messages.length === 2 ? 'galaxy' : null;
@@ -203,6 +207,7 @@ export function AiChatPanel() {
         )}
         <div className="rounded-lg bg-[#0e1726] border border-[#1a2a42] focus-within:border-[#2a3a52]">
           <textarea
+            ref={textareaRef}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
