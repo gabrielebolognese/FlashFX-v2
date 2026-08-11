@@ -50,6 +50,7 @@ import {
   Check,
   Undo2,
   Zap,
+  Box,
 } from 'lucide-react';
 import { StaggerPanel } from './StaggerPanel';
 
@@ -308,6 +309,11 @@ function AlignContent() {
     { axis: 'bottom', icon: AlignEndHorizontal, label: 'Align Bottom' },
   ];
 
+  // 2.5D prep: how many of the selected layers can still be turned 3D (skips camera/group/audio and
+  // already-3D layers). Placing a camera in a big scene otherwise means toggling each layer by hand.
+  const convertible = selectedLayers.filter((l) => l.type !== 'camera' && l.type !== 'group' && l.type !== 'audio' && !l.is3D);
+  const noneToConvert = convertible.length === 0;
+
   return (
     <div className="p-3">
       <SelectionHeader count={selectedLayers.length} />
@@ -322,6 +328,21 @@ function AlignContent() {
             </button>
           ))}
         </div>
+      </section>
+
+      {/* Prep a whole selection for a camera in one click (2.5D). */}
+      <section className="mt-4">
+        <h3 className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold mb-2">3D</h3>
+        <button
+          onClick={() => useEditorStore.getState().convertSelectionTo3D()}
+          disabled={noneToConvert}
+          title={noneToConvert ? 'Every selected layer is already 3D (or can’t be 3D)' : 'Enable 3D on all selected layers so a camera can move through them'}
+          className="w-full flex items-center justify-center gap-2 px-3 py-3 rounded-md border border-[#f7b500]/40 bg-[#f7b500]/10 text-[#f7b500] font-semibold hover:bg-[#f7b500]/20 hover:border-[#f7b500]/60 active:bg-[#f7b500]/25 transition-all duration-100 disabled:opacity-30 disabled:pointer-events-none"
+        >
+          <Box size={16} strokeWidth={2} />
+          <span className="text-[11px]">Convert all to 3D{noneToConvert ? '' : ` (${convertible.length})`}</span>
+        </button>
+        <p className="mt-1.5 text-[9px] text-slate-600">Makes every selected layer 3D so a camera can move through the scene.</p>
       </section>
     </div>
   );

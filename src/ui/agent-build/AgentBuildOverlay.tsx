@@ -93,30 +93,31 @@ export function AgentBuildOverlay() {
       {/* Pulsing amber border — pure CSS animation so it stays smooth through main-thread jank. */}
       <div className="absolute inset-0" style={{ animation: 'ffxAgentPulse 2.4s ease-in-out infinite' }} />
 
-      {/* Agent cursor — positioned via translate on a ref (see the rAF loop). */}
-      <div ref={cursorRef} className="absolute top-0 left-0 will-change-transform" style={{ transform: 'translate3d(-100px,-100px,0)' }}>
-        <div className="relative -translate-x-1 -translate-y-1">
+      {/* Agent cursor — a deliberately oversized, on-brand AMBER pointer (never the OS cursor), so the
+          user always sees where "the agent" is working. Positioned via translate on a ref (rAF loop). */}
+      <div ref={cursorRef} className="absolute top-0 left-0 will-change-transform" style={{ transform: 'translate3d(-200px,-200px,0)' }}>
+        <div className="relative -translate-x-[3px] -translate-y-[2px]">
           {/* click ripple */}
           {clicking && (
             <span
-              className="absolute left-1 top-1 h-6 w-6 rounded-full"
-              style={{ border: `2px solid ${ACCENT}`, animation: 'ffxAgentClick 0.32s ease-out forwards' }}
+              className="absolute left-2 top-2 h-8 w-8 rounded-full"
+              style={{ border: `2.5px solid ${ACCENT}`, animation: 'ffxAgentClick 0.32s ease-out forwards' }}
             />
           )}
-          {/* cursor sprite */}
+          {/* cursor sprite — big amber pointer / hand, dark outline + amber glow */}
           {cursorIcon === 'hand' ? (
-            <svg width="22" height="24" viewBox="0 0 22 24" fill="none" style={{ filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.6))' }}>
-              <path d="M6 2.5c0-1 1.6-1 1.6 0V10l1.2-.2V4.3c0-1 1.6-1 1.6 0V10l1.2.1V6.1c0-1 1.6-1 1.6 0v5l1.1.4c1 .3 1.4 1 1.4 2.2 0 2.4-1 6.6-3.2 8.3-1 .8-2.2 1-3.6 1-2.6 0-4.2-1.2-5.3-3.4L2 15.4c-.5-1 .9-2.1 1.7-1.2l1.1 1.2V4.3c0-1 1.6-1 1.6 0" fill={ACCENT} stroke="#0a0f16" strokeWidth="0.8" strokeLinejoin="round" />
+            <svg width="30" height="33" viewBox="0 0 22 24" fill="none" style={{ filter: 'drop-shadow(0 2px 3px rgba(0,0,0,0.55)) drop-shadow(0 0 7px #f7b50088)' }}>
+              <path d="M6 2.5c0-1 1.6-1 1.6 0V10l1.2-.2V4.3c0-1 1.6-1 1.6 0V10l1.2.1V6.1c0-1 1.6-1 1.6 0v5l1.1.4c1 .3 1.4 1 1.4 2.2 0 2.4-1 6.6-3.2 8.3-1 .8-2.2 1-3.6 1-2.6 0-4.2-1.2-5.3-3.4L2 15.4c-.5-1 .9-2.1 1.7-1.2l1.1 1.2V4.3c0-1 1.6-1 1.6 0" fill={ACCENT} stroke="#0a0f16" strokeWidth="1" strokeLinejoin="round" />
             </svg>
           ) : (
-            <svg width="20" height="22" viewBox="0 0 20 22" fill="none" style={{ filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.6))' }}>
-              <path d="M2 1.5 L2 17 L6 13.2 L8.6 19.4 L11.2 18.3 L8.6 12.2 L14 12 Z" fill="#fff" stroke="#0a0f16" strokeWidth="1.1" strokeLinejoin="round" />
+            <svg width="30" height="34" viewBox="0 0 24 28" fill="none" style={{ filter: 'drop-shadow(0 2px 3px rgba(0,0,0,0.55)) drop-shadow(0 0 7px #f7b50088)' }}>
+              <path d="M3.5 2 L3.5 22.5 L9 17.4 L12.7 25.6 L16.7 23.8 L13 15.8 L20.5 15.5 Z" fill={ACCENT} stroke="#0a0f16" strokeWidth="1.5" strokeLinejoin="round" />
             </svg>
           )}
           {/* label chip */}
           {label && (
             <div
-              className="absolute left-5 top-4 whitespace-nowrap rounded-md px-2 py-0.5 text-[10px] font-semibold"
+              className="absolute left-7 top-6 whitespace-nowrap rounded-md px-2 py-0.5 text-[10px] font-semibold"
               style={{ background: '#0a0f16e6', color: ACCENT, border: `1px solid ${ACCENT}55` }}
             >
               {label}

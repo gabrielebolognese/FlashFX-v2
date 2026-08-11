@@ -362,6 +362,9 @@ interface EditorState {
   removeLayers: (ids: string[]) => void;
   updateLayerProperty: (layerId: string, path: string, value: unknown) => void;
   toggleLayer3D: (layerId: string) => void;
+  /** Enable 3D on every selected layer that supports it (skips camera/group/audio and already-3D
+   *  layers), as ONE undo step — so a whole scene can be prepped for a camera in a single click. */
+  convertSelectionTo3D: () => void;
   // Image effect-stack actions (see core/effects/effectRegistry). `type` is the
   // frozen numeric effect id; upsert sets one param (creating the effect if
   // absent), remove deletes the whole effect.
@@ -3290,6 +3293,35 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     });
   },
 
+  convertSelectionTo3D: () => {
+    const { composition, selection } = get();
+    const ids = selection.selectedIds.length > 0 ? selection.selectedIds : (selection.activeId ? [selection.activeId] : []);
+    const canBe3D = (l: Layer) => l.type !== 'camera' && l.type !== 'group' && l.type !== 'audio';
+    const targetIds = new Set(composition.layers.filter((l) => ids.includes(l.id) && canBe3D(l) && !l.is3D).map((l) => l.id));
+    if (targetIds.size === 0) return;
+    const oldComp = composition;
+    const newLayers = composition.layers.map((l) => {
+      if (!targetIds.has(l.id)) return l;
+      const t = l.transform;
+      return {
+        ...l,
+        is3D: true,
+        transform: {
+          ...t,
+          positionZ: t.positionZ ?? createProperty('Z Position', 'number', 0),
+          rotationX: t.rotationX ?? createProperty('X Rotation', 'number', 0),
+          rotationY: t.rotationY ?? createProperty('Y Rotation', 'number', 0),
+        },
+      } as Layer;
+    });
+    const newComp = { ...composition, layers: newLayers };
+    exec({
+      label: `Convert ${targetIds.size} Layer${targetIds.size === 1 ? '' : 's'} to 3D`,
+      execute: () => { set({ composition: newComp }); },
+      undo: () => { set({ composition: oldComp }); },
+    });
+  },
+
   setLayerEffectParam: (layerId, type, paramIndex, value, defaults = []) => {
     const applyToLayer = (layer: Layer): Layer => {
       if (layer.type !== 'image') return layer;
@@ -4181,38 +4213,64 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const built = instantiateAnimationTemplate(tpl, { playhead: startPlayhead, frameRate: oldComp.settings.frameRate, center: c });
     if (built.length === 0) { opts.onDone?.(); return noop; }
 
-    // Full (keyframed) set with tracks — the final committed state.
+    // Full (keyframed) set with tracks — the final committed state. `working` is SETTLED, so every
+    // transient frame of the show can reuse its tracks/settings and just swap the `layers` array
+    // WITHOUT re-running settleComposition (that O(N) reflow per frame was the source of the lag).
     let working = oldComp;
     for (const l of built) working = ensureLayerHasTrack({ ...working, layers: [...working.layers, l] }, l);
+    working = settleComposition(working);
     const inserted = working.layers.slice(oldComp.layers.length);   // animated (final)
-    const tracks = working.tracks;
     const staticLayers = inserted.map(stripLayerKeyframes);          // resting-pose clones (same ids/order)
     const idxById = new Map(inserted.map((l, i) => [l.id, i]));
     // `shown[i]` is the version of layer i currently on the canvas: static at first, swapped to its
-    // animated self as the agent "places its keyframes". `revealed` is how many have appeared.
+    // animated self as the agent "places its keyframes". `revealed` is how many have appeared. paint()
+    // is the ONLY hot-path write — a cheap object spread + array slice, no settle.
     const shown: Layer[] = staticLayers.map((s) => s);
     let revealed = 0;
-    const paint = () => set({ composition: settleComposition({ ...oldComp, tracks, layers: [...oldComp.layers, ...shown.slice(0, revealed)] }) });
+    const paint = () => set({ composition: { ...working, layers: [...oldComp.layers, ...shown.slice(0, revealed)] } });
 
-    const timers: number[] = [];
-    let cancelled = false;
-    let committed = false;
-    const at = (ms: number, fn: () => void) => timers.push(window.setTimeout(() => { if (!cancelled) fn(); }, ms));
+    // Vertical track offsets (mirrors TrackArea's getTrackHeight) so we can page the timeline's
+    // vertical scroll to keep the layer being keyframed in view — but only in CHUNKS: we scroll
+    // solely when the target row leaves a comfortable window, and then jump so it sits near the top
+    // (revealing ~a dozen rows below), never a little per layer.
+    const rowH = (type: Track['type']) => (type === 'video' ? 45 : 22);
+    const trackTop = new Map<string, number>();
+    const trackHt = new Map<string, number>();
+    let accH = 0;
+    for (const tr of [...working.tracks].sort((a, b) => a.order - b.order)) {
+      trackTop.set(tr.id, accH); trackHt.set(tr.id, rowH(tr.type)); accH += rowH(tr.type);
+    }
+    const totalTracksH = accH;
+    const pageScrollToTrack = (trackId?: string | null) => {
+      if (!trackId) return;
+      const top = trackTop.get(trackId);
+      if (top == null) return;
+      const h = trackHt.get(trackId) ?? 22;
+      const tl = useTimelineStore.getState();
+      const vh = tl.containerHeight || 300;
+      const maxScroll = Math.max(0, totalTracksH - vh);
+      const margin = 28;
+      if (top >= tl.scrollY + margin && top + h <= tl.scrollY + vh - margin) return; // already visible
+      tl.setScrollY(Math.max(0, Math.min(maxScroll, top - 44)));                     // page: row → near top
+    };
 
-    agent.begin('Planning the scene…');
+    // ── Build the timed step list; a single rAF clock runs it (frame-aligned; if the main thread
+    //    stalls, all steps due that frame apply together and React renders once — no backlog). ──
+    const steps: { at: number; run: () => void }[] = [];
+    const S = (at: number, run: () => void) => steps.push({ at, run });
 
-    // ── Act 1: reveal layers, static, with a rising-speed (Rush-E) cadence ──────────────────────
+    // Act 1 — reveal layers, static, on a rising-speed (Rush-E) cadence.
     const N = staticLayers.length;
     const LEADIN = 620;                 // beat so the user reads "the agent is working"
     let t = LEADIN;
     let gap = 460;                      // first gaps are long/legible…
     for (let k = 0; k < N; k++) {
-      const when = t;
-      at(when, () => {
+      S(t, () => {
         revealed = k + 1; paint();
+        pageScrollToTrack(inserted[k].trackId);
         opts.onLayer?.(k + 1, N);
         agent.moveCursor(wanderTarget(k), 'arrow');
-        if (k % 3 === 0) agent.clickCursor();
+        if (k % 4 === 0) agent.clickCursor();
         if (k === 0) agent.setLabel('Placing layers…');
       });
       gap = Math.max(26, gap * 0.8);   // …then decay geometrically to a rush
@@ -4220,50 +4278,54 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }
     const revealEnd = t + 240;
 
-    // ── Act 2: place keyframes on a handful of hero layers slowly & legibly ──────────────────────
-    // Select each hero so its inspector shows, ring the animated property, jog the playhead to one of
-    // its keyframes (alternating late/early → visible back-and-forth), then swap it to animated.
+    // Act 2 — place keyframes on a handful of hero layers slowly & legibly: select (inspector shows),
+    // ring the animated property, page the timeline to its row, jog the playhead to one of its
+    // keyframes (alternating late/early → visible back-and-forth), then swap it to animated.
     const heroes = pickHeroLayers(inserted, 6);
     let t2 = revealEnd;
-    at(revealEnd, () => { opts.onKeyframes?.(); if (heroes.length > 0) agent.setLabel('Placing keyframes…'); });
+    S(revealEnd, () => { opts.onKeyframes?.(); if (heroes.length > 0) agent.setLabel('Placing keyframes…'); });
     let hpace = 640;
     heroes.forEach((h, i) => {
       const path = heroPropPath(h)!;
       const frames = layerKeyframeFrames(h);
       const scrubFrame = i % 2 === 0 ? Math.max(...frames) : Math.min(...frames);
+      const idx = idxById.get(h.id)!;
       const applyAt = t2 + Math.min(320, hpace * 0.5);
-      at(t2, () => {
+      S(t2, () => {
         set({ selection: sel([h.id], h.id) });          // transient — restored at commit / undo
         agent.highlightProp(path);
         agent.moveCursor({ kind: 'dom', selector: `[data-prop="${path}"]` }, 'hand');
+        pageScrollToTrack(inserted[idx].trackId);
         useTimelineStore.getState().scrubTo(clampFrame(scrubFrame));
       });
-      at(t2 + Math.min(240, hpace * 0.38), () => agent.clickCursor());
-      at(applyAt, () => { const idx = idxById.get(h.id)!; shown[idx] = inserted[idx]; paint(); });
+      S(t2 + Math.min(240, hpace * 0.38), () => agent.clickCursor());
+      S(applyAt, () => { shown[idx] = inserted[idx]; paint(); });
       t2 += hpace;
       hpace = Math.max(300, hpace * 0.84);
     });
 
-    // ── Act 3: rush — apply everyone else's keyframes fast, cursor darting ───────────────────────
+    // Act 3 — rush: apply everyone else's keyframes fast, cursor darting, view paging in chunks.
     const heroIds = new Set(heroes.map((h) => h.id));
     const rest = inserted.filter((l) => !heroIds.has(l.id));
     let t3 = t2 + (heroes.length > 0 ? 200 : 0);
-    if (heroes.length > 0) at(t3 - 100, () => { agent.highlightProp(null); agent.setLabel('Finishing…'); });
+    if (heroes.length > 0) S(t3 - 100, () => { agent.highlightProp(null); agent.setLabel('Finishing…'); });
     rest.forEach((l, i) => {
-      at(t3, () => {
-        const idx = idxById.get(l.id)!; shown[idx] = inserted[idx]; paint();
+      const idx = idxById.get(l.id)!;
+      S(t3, () => {
+        shown[idx] = inserted[idx]; paint();
+        pageScrollToTrack(inserted[idx].trackId);
         if (i % 5 === 0) agent.moveCursor(wanderTarget(i + 7), 'arrow');
       });
       t3 += 22;
     });
 
-    // ── Commit: the whole animated scene as ONE undo step; restore playhead; end the show ────────
-    at(t3 + 320, () => {
-      const finalComp = settleComposition(working);
+    // Commit — the whole animated scene as ONE undo step; restore playhead; end the show.
+    let committed = false;
+    S(t3 + 320, () => {
       const newSel = sel(inserted.map((l) => l.id), inserted[0].id);
       exec({
         label: `Insert “${tpl.name}”`,
-        execute: () => { set({ composition: finalComp, selection: newSel }); },
+        execute: () => { set({ composition: working, selection: newSel }); },
         undo: () => { set({ composition: oldComp, selection: oldSel }); },
       });
       committed = true;
@@ -4272,10 +4334,26 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       opts.onDone?.();
     });
 
+    steps.sort((a, b) => a.at - b.at);
+    agent.begin('Planning the scene…');
+
+    let cancelled = false;
+    let idx = 0;
+    let startT = 0;
+    let raf = 0;
+    const loop = (now: number) => {
+      if (cancelled) return;
+      if (startT === 0) startT = now;
+      const elapsed = now - startT;
+      while (idx < steps.length && steps[idx].at <= elapsed) { steps[idx].run(); idx++; }
+      if (idx < steps.length) raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+
     return {
       cancel: () => {
         cancelled = true;
-        timers.forEach(clearTimeout);
+        cancelAnimationFrame(raf);
         agent.end();
         // If we were interrupted mid-show nothing was committed yet — revert the transient scene.
         if (!committed) {

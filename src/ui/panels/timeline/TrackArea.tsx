@@ -220,8 +220,10 @@ export function TrackArea({ layers, tracks, selectedIds, rulerOnly, ghostRowCoun
     const observer = new ResizeObserver((entries) => {
       const w = entries[0].contentRect.width;
       setContainerWidth(w);
-      // Publish to the store so menu-driven fit/jump actions know the viewport width.
+      // Publish to the store so menu-driven fit/jump actions know the viewport width, and the
+      // cinematic build can page vertical auto-scroll by the real viewport height.
       useTimelineStore.getState().setContainerWidth(w);
+      useTimelineStore.getState().setContainerHeight(entries[0].contentRect.height);
     });
     observer.observe(el);
     return () => observer.disconnect();

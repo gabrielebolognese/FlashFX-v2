@@ -15,6 +15,9 @@ interface TimelineState {
   followPlayhead: boolean;
   /** Reported by TrackArea so the fit/jump actions (driven from menus) know the viewport width. */
   containerWidth: number;
+  /** Reported by TrackArea — the track viewport's pixel height (used to page vertical auto-scroll,
+   *  e.g. the cinematic build keeping the keyframed layer in view). */
+  containerHeight: number;
   /** Timeline view toggle: draw audio/video waveforms on clips. */
   showWaveforms: boolean;
   /** Timeline view toggle: decode & paint video thumbnail strips on clips. */
@@ -30,6 +33,7 @@ interface TimelineState {
   setScrollY: (y: number) => void;
   setFollowPlayhead: (follow: boolean) => void;
   setContainerWidth: (w: number) => void;
+  setContainerHeight: (h: number) => void;
   toggleWaveforms: () => void;
   toggleThumbnails: () => void;
   zoomAtCursor: (cursorX: number, factor: number) => void;
@@ -60,6 +64,7 @@ export const useTimelineStore = create<TimelineState>((set, get) => {
     scrollY: 0,
     followPlayhead: true,
     containerWidth: 600,
+    containerHeight: 300,
     showWaveforms: true,
     showThumbnails: false,
 
@@ -74,6 +79,7 @@ export const useTimelineStore = create<TimelineState>((set, get) => {
     setScrollY: (y) => set({ scrollY: Math.max(0, y) }),
     setFollowPlayhead: (follow) => set({ followPlayhead: follow }),
     setContainerWidth: (w) => { if (w > 0 && w !== get().containerWidth) set({ containerWidth: w }); },
+    setContainerHeight: (h) => { if (h > 0 && h !== get().containerHeight) set({ containerHeight: h }); },
     toggleWaveforms: () => set({ showWaveforms: !get().showWaveforms }),
     toggleThumbnails: () => set({ showThumbnails: !get().showThumbnails }),
 
