@@ -5,6 +5,7 @@ import { timelineEngine } from '../../engine/timeline';
 import { playbackController } from '../../store/timeline';
 import { useTimelineStore } from '../../store/timeline';
 import { useEditorStore } from '../../store/editor';
+import { importFilesToPool } from '../../engine/media/importToPool';
 import { useGridStore } from '../../store/grid';
 import { usePreviewStore, getQualityScale, getMotionBlurSamples } from '../../store/preview';
 import { useViewportNavStore } from '../../store/viewportNav';
@@ -36,8 +37,6 @@ export function Viewport() {
   const activeGroupId = useEditorStore((s) => s.activeGroupId);
   const addImageFromAsset = useEditorStore((s) => s.addImageFromAsset);
   const addVideoFromAsset = useEditorStore((s) => s.addVideoFromAsset);
-  const addImage = useEditorStore((s) => s.addImage);
-  const addVideo = useEditorStore((s) => s.addVideo);
   // NB: currentFrame is intentionally NOT subscribed here — it changes every played
   // frame and would re-render the whole viewport + all overlays. The <FrameCounter>
   // leaf below owns that subscription so only it updates per frame.
@@ -282,18 +281,11 @@ export function Viewport() {
       return;
     }
 
-    // Handle native file drops from desktop
+    // Native OS file drop → import into the media pool only (bounded concurrency, no auto-place, so a
+    // big batch can't crash the app). The user drags pool assets onto the canvas/timeline to use them.
     const files = e.dataTransfer.files;
-    if (!files.length || !activeProjectId) return;
-
-    for (const file of Array.from(files)) {
-      if (file.type.startsWith('image/')) {
-        addImage(file, activeProjectId);
-      } else if (file.type.startsWith('video/')) {
-        addVideo(file, activeProjectId);
-      }
-    }
-  }, [canvasStyle, compW, compH, addImageFromAsset, addVideoFromAsset, addImage, addVideo, activeProjectId]);
+    if (files.length && activeProjectId) void importFilesToPool(files, activeProjectId);
+  }, [canvasStyle, compW, compH, addImageFromAsset, addVideoFromAsset, activeProjectId]);
 
   const activeTool = useShapeToolStore((s) => s.activeTool);
   const shapeToolActive = isShapeTool(activeTool);

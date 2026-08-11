@@ -12,6 +12,7 @@ import type { Track } from '../../core/types';
 import { useContextMenu } from '../context-menu';
 import { buildTimelineEmptyMenu } from '../context-menu/menuDefinitions';
 import { CompositionBreadcrumb } from './CompositionBreadcrumb';
+import { importFilesToPool } from '../../engine/media/importToPool';
 
 const TOOL_SIDEBAR_WIDTH = 32;
 const LABEL_COLUMN_WIDTH = 360;
@@ -103,39 +104,49 @@ export function TimelinePanel() {
     void e;
   };
 
-  // --- File drag-to-import ---
-  const addImage = useEditorStore((s) => s.addImage);
-  const addVideo = useEditorStore((s) => s.addVideo);
+  // --- Drag-and-drop: OS files import into the media pool (never auto-place — that crashed on big
+  //     batches); a media-pool asset dragged in gets placed on the timeline. ---
+  const addImageFromAsset = useEditorStore((s) => s.addImageFromAsset);
+  const addVideoFromAsset = useEditorStore((s) => s.addVideoFromAsset);
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
-  const [fileDragOver, setFileDragOver] = useState(false);
+  const [dragKind, setDragKind] = useState<null | 'files' | 'asset'>(null);
 
   const handleFileDragOver = useCallback((e: React.DragEvent) => {
-    if (e.dataTransfer.types.includes('Files')) {
-      e.preventDefault();
-      e.dataTransfer.dropEffect = 'copy';
-      setFileDragOver(true);
-    }
+    const types = e.dataTransfer.types;
+    const kind = types.includes('application/x-mediapool-asset') ? 'asset' : types.includes('Files') ? 'files' : null;
+    if (!kind) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    setDragKind(kind);
   }, []);
 
   const handleFileDragLeave = useCallback((e: React.DragEvent) => {
     if (e.currentTarget.contains(e.relatedTarget as Node)) return;
-    setFileDragOver(false);
+    setDragKind(null);
   }, []);
 
   const handleFileDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
-    setFileDragOver(false);
-    const files = e.dataTransfer.files;
-    if (!files.length || !activeProjectId) return;
+    setDragKind(null);
+    if (!activeProjectId) return;
 
-    for (const file of Array.from(files)) {
-      if (file.type.startsWith('image/')) {
-        addImage(file, activeProjectId);
-      } else if (file.type.startsWith('video/')) {
-        addVideo(file, activeProjectId);
-      }
+    // A media-pool asset dropped onto the timeline → place it (no re-import).
+    const poolRaw = e.dataTransfer.getData('application/x-mediapool-asset');
+    if (poolRaw) {
+      try {
+        const a = JSON.parse(poolRaw) as { id: string; type: string };
+        const cx = composition.settings.width / 2;
+        const cy = composition.settings.height / 2;
+        if (a.type === 'video') addVideoFromAsset(a.id, cx, cy);
+        else if (a.type === 'image') addImageFromAsset(a.id, cx, cy);
+      } catch { /* malformed payload — ignore */ }
+      return;
     }
-  }, [addImage, addVideo, activeProjectId]);
+
+    // OS files dropped → import into the media pool only (bounded concurrency, no placement).
+    const files = e.dataTransfer.files;
+    if (files.length) void importFilesToPool(files, activeProjectId);
+  }, [activeProjectId, composition.settings.width, composition.settings.height, addVideoFromAsset, addImageFromAsset]);
 
   return (
     <div
@@ -149,7 +160,7 @@ export function TimelinePanel() {
       <div className="absolute top-0 left-0 right-0 z-40">
         <CompositionBreadcrumb />
       </div>
-      {fileDragOver && (
+      {dragKind && (
         <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none bg-[#0a1628]/80 backdrop-blur-sm border-2 border-dashed border-sky-400 rounded-lg m-2">
           <div className="flex flex-col items-center gap-3">
             <div className="w-14 h-14 rounded-full bg-sky-400/10 border border-sky-400/30 flex items-center justify-center">
@@ -159,8 +170,8 @@ export function TimelinePanel() {
                 <line x1="12" y1="15" x2="12" y2="3" />
               </svg>
             </div>
-            <span className="text-base font-semibold text-sky-400">Drop to Timeline</span>
-            <span className="text-xs text-slate-400">Release to add media to the timeline</span>
+            <span className="text-base font-semibold text-sky-400">{dragKind === 'asset' ? 'Drop to place on timeline' : 'Import to Media Pool'}</span>
+            <span className="text-xs text-slate-400">{dragKind === 'asset' ? 'Release to add this clip to the timeline' : 'Files are added to your media pool — drag them onto the timeline when ready'}</span>
           </div>
         </div>
       )}

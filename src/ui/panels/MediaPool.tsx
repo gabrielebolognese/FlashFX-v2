@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import { useEditorStore } from '../../store/editor';
 import { useProjectStore } from '../../project-system/hooks/useProjectStore';
 import { mediaAssetManager } from '../../engine/media/assetManager';
+import { importFilesToPool } from '../../engine/media/importToPool';
 import { Search, Upload, Image, Film, GripVertical, Music, Sparkles, BookOpen, Loader2, Palette, Bookmark, Clapperboard } from 'lucide-react';
 import { useIconSearch } from '../../components/icons/useIconSearch';
 import { VirtualGrid } from '../../components/icons/VirtualGrid';
@@ -34,9 +35,6 @@ interface PoolAsset {
   importedAt: number;
 }
 
-const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp', '.svg'];
-const VIDEO_EXTENSIONS = ['.mp4', '.mov', '.webm'];
-const AUDIO_EXTENSIONS = ['.mp3', '.wav', '.aac', '.m4a', '.ogg'];
 
 type AssetCategory = 'images' | 'videos' | 'audio';
 
@@ -58,9 +56,9 @@ const TABS: { id: PoolTab; label: string; icon: React.ReactNode; disabled?: bool
 ];
 
 export function MediaPool() {
+  // Kept only for the Icons tab (clicking an icon rasterizes it and adds it to the canvas — a single,
+  // intentional placement). Footage import goes through importFilesToPool (pool only, no placement).
   const addImage = useEditorStore((s) => s.addImage);
-  const addAudio = useEditorStore((s) => s.addAudio);
-  const addVideo = useEditorStore((s) => s.addVideo);
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
   const { show: showContextMenu } = useContextMenu();
 
@@ -130,28 +128,18 @@ export function MediaPool() {
     return filtered;
   }, [assets, assetCategory, searchQuery, sortMode, folderAssetIds]);
 
+  // Canva-style: bring files into the media pool only (bounded concurrency, no timeline placement).
+  // The user drags an asset onto the timeline/canvas when they want to use it.
   const handleImport = useCallback(async (files: FileList | null) => {
     if (!files || !activeProjectId) return;
     setImporting(true);
-
-    for (const file of Array.from(files)) {
-      try {
-        const ext = '.' + file.name.split('.').pop()?.toLowerCase();
-        if (IMAGE_EXTENSIONS.includes(ext) || file.type.startsWith('image/')) {
-          await addImage(file, activeProjectId);
-        } else if (VIDEO_EXTENSIONS.includes(ext) || file.type.startsWith('video/')) {
-          await addVideo(file, activeProjectId);
-        } else if (AUDIO_EXTENSIONS.includes(ext) || file.type.startsWith('audio/')) {
-          await addAudio(file, activeProjectId);
-        }
-      } catch (err) {
-        console.error('Import failed:', file.name, err);
-      }
+    try {
+      await importFilesToPool(files, activeProjectId);
+    } finally {
+      refreshAssets();
+      setImporting(false);
     }
-
-    refreshAssets();
-    setImporting(false);
-  }, [activeProjectId, addImage, addVideo, addAudio, refreshAssets]);
+  }, [activeProjectId, refreshAssets]);
 
   const handleImportClick = useCallback(() => {
     fileInputRef.current?.click();

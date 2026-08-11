@@ -59,6 +59,10 @@ class MediaAssetManager {
   private currentProjectId: string | null = null;
   private _persistenceAvailable = true;
   private _storageWarnings: string[] = [];
+  // Serializes background video-audio decodes. `decodeAudioData` transiently holds the ENTIRE file's
+  // PCM (can be >1GB for a long clip), so importing many videos at once — each firing its own decode —
+  // spiked memory and crashed. Chaining them means at most one full-file decode is in flight.
+  private _audioExtractChain: Promise<void> = Promise.resolve();
 
   subscribe(listener: () => void): () => void {
     this.listeners.add(listener);
@@ -189,7 +193,8 @@ class MediaAssetManager {
 
       frameScheduler.registerAsset(assetId, assetId, workerMeta.frameRate, workerMeta.frameCount);
       videoAudioPlayer.initAudio(assetId, file);
-      this.extractVideoAudio(file, assetId);
+      // Queue the waveform decode instead of firing it immediately — one full-file decode at a time.
+      this._audioExtractChain = this._audioExtractChain.then(() => this.extractVideoAudio(file, assetId)).catch(() => {});
 
       // Await persistence if still in progress
       try {
