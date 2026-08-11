@@ -483,8 +483,9 @@ class VideoDecoderController {
   private static readonly DECODE_QUEUE_CAP = 24;
   /** Idle window before flushing the reorder tail (≈2 frames @ 30fps). */
   private static readonly DRAIN_IDLE_MS = 64;
-  /** Watchdog: max wait for a flush() to drain before forcing a decoder rebuild. */
-  private static readonly FLUSH_TIMEOUT_MS = 2000;
+  /** Watchdog: max wait for a flush() to drain before forcing a decoder rebuild. Kept SHORT so a
+   *  genuine output-pool stall recovers in well under a second instead of freezing the picture for 2s. */
+  private static readonly FLUSH_TIMEOUT_MS = 400;
 
   constructor(demuxer: StreamingDemuxer, assetId: string) {
     this.demuxer = demuxer;

@@ -8,8 +8,13 @@ import { selectPresentFrame } from './framePresentation';
 // (~16-24), so decoding 30+ ahead and retaining them chokes the decoder → it
 // stops emitting → getFrame() returns null forever → the picture FREEZES while
 // audio (a separate <video>) keeps playing. See MAX_OPEN_FRAMES_PER_ASSET.
-const LOOKAHEAD_NORMAL = 10;
-const LOOKAHEAD_FAST = 18;
+// INVARIANT: LOOKAHEAD_* MUST be < MAX_OPEN_FRAMES_PER_ASSET. If lookahead exceeds the open-frame
+// cap, prefetch decodes the leading-edge frames and enforceFrameCap immediately evicts them (farthest
+// -ahead first), so they're re-requested next tick with an index <= fedThrough — which forces the
+// worker onto the reseek+flush branch on EVERY frame, and that flush stalls to the 2s watchdog =
+// ~1 frame every 2-3s (the "video is unplayable" bug). Keep the whole window resident at once.
+const LOOKAHEAD_NORMAL = 6;
+const LOOKAHEAD_FAST = 7;
 const MEMORY_BUDGET_BYTES = 512 * 1024 * 1024; // 512 MB
 // Hard cap on decoded frames held OPEN per asset, well under the hardware
 // decoder's output-frame pool. A transferred-but-un-closed VideoFrame still
@@ -18,6 +23,10 @@ const MEMORY_BUDGET_BYTES = 512 * 1024 * 1024; // 512 MB
 // Kept LOW so that (scheduler-held + the worker's decoded cache) stays well under the browser's
 // ~16-frame output-pool ceiling — exceeding it stalls the decoder → flush watchdog → error cascade.
 const MAX_OPEN_FRAMES_PER_ASSET = 8;
+// Fail loudly at module load if the invariant above is ever broken again.
+if (LOOKAHEAD_FAST >= MAX_OPEN_FRAMES_PER_ASSET || LOOKAHEAD_NORMAL >= MAX_OPEN_FRAMES_PER_ASSET) {
+  throw new Error(`frameScheduler invariant violated: LOOKAHEAD (${LOOKAHEAD_NORMAL}/${LOOKAHEAD_FAST}) must be < MAX_OPEN_FRAMES_PER_ASSET (${MAX_OPEN_FRAMES_PER_ASSET})`);
+}
 const PROXY_SETTLE_DELAY_MS = 300;
 const PROXY_THRESHOLD_WIDTH = 1920;
 const PROXY_THRESHOLD_HEIGHT = 1080;

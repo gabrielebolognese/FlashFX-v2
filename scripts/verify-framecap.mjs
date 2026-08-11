@@ -9,7 +9,7 @@
 import { build } from 'esbuild';
 import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -74,6 +74,23 @@ try {
     const evict = selectFramesToEvict(range(0, 20), [], 12).sort((a, b) => a - b);
     assert.equal(evict.length, 9);
     assert.deepEqual(evict, range(0, 8)); // farthest from 0
+  });
+
+  // Guard the SCHEDULER INVARIANT that caused the "~1 frame / 2-3s" freeze: lookahead MUST be < the
+  // open-frame cap, or prefetch decodes leading-edge frames that get evicted and re-requested every
+  // tick, forcing the worker onto the reseek+flush path (2s watchdog) on every frame.
+  check('lookahead < open-frame cap (frameScheduler constants)', () => {
+    const src = readFileSync('src/engine/video/frameScheduler.ts', 'utf8');
+    const num = (name) => {
+      const m = src.match(new RegExp(`const\\s+${name}\\s*=\\s*(\\d+)`));
+      assert.ok(m, `could not find ${name}`);
+      return Number(m[1]);
+    };
+    const normal = num('LOOKAHEAD_NORMAL');
+    const fast = num('LOOKAHEAD_FAST');
+    const cap = num('MAX_OPEN_FRAMES_PER_ASSET');
+    assert.ok(normal < cap, `LOOKAHEAD_NORMAL (${normal}) must be < MAX_OPEN_FRAMES_PER_ASSET (${cap})`);
+    assert.ok(fast < cap, `LOOKAHEAD_FAST (${fast}) must be < MAX_OPEN_FRAMES_PER_ASSET (${cap})`);
   });
 
   console.log(`\n✓ all ${passed} checks passed`);
