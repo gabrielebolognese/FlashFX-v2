@@ -10,10 +10,35 @@ import { videoAssetStore } from '../video/videoAssetStore';
 
 export interface ImageAssetMetadata {
   assetId: string;
-  width: number;
+  width: number;   // usable (GPU-capped) dimensions — what the layer/texture use
   height: number;
   format: string;
   fileSize: number;
+  originalWidth?: number;  // the file's true dimensions before any GPU-limit downscale
+  originalHeight?: number;
+}
+
+// WebGPU guarantees maxTextureDimension2D >= 8192 on every device, so a texture at or below this is
+// always creatable. A larger image would make createTexture() throw → the render aborts → device loss
+// → the whole canvas goes black. Cap the decoded bitmap here so that can never happen.
+const MAX_IMAGE_DIM = 8192;
+
+/** Decode `file` to a straight-alpha bitmap, downscaling (preserving aspect) if it exceeds the GPU
+ *  texture limit. Returns the bitmap plus the file's original dimensions. */
+async function decodeImageCapped(file: Blob): Promise<{ bitmap: ImageBitmap; originalWidth: number; originalHeight: number }> {
+  const opts: ImageBitmapOptions = { premultiplyAlpha: 'none', colorSpaceConversion: 'none' };
+  const probe = await createImageBitmap(file, opts);
+  const originalWidth = probe.width;
+  const originalHeight = probe.height;
+  if (originalWidth <= MAX_IMAGE_DIM && originalHeight <= MAX_IMAGE_DIM) {
+    return { bitmap: probe, originalWidth, originalHeight };
+  }
+  const scale = MAX_IMAGE_DIM / Math.max(originalWidth, originalHeight);
+  const resizeWidth = Math.max(1, Math.round(originalWidth * scale));
+  const resizeHeight = Math.max(1, Math.round(originalHeight * scale));
+  const bitmap = await createImageBitmap(file, { ...opts, resizeWidth, resizeHeight, resizeQuality: 'high' });
+  probe.close();
+  return { bitmap, originalWidth, originalHeight };
 }
 
 export type AssetStatus = 'ready' | 'loading' | 'missing' | 'error' | 'storage-error';
@@ -269,17 +294,17 @@ class MediaAssetManager {
 
     await putAsset(projectAsset);
 
-    // Decode as STRAIGHT (non-premultiplied) alpha to match the renderer's straight-alpha image shader
-    // + over-blend. With the default ('premultiply'), copyExternalImageToTexture has to unpremultiply
-    // into the straight destination, which mishandles transparent PNGs on some browsers (a cut-out
-    // image can upload as an opaque black rectangle). colorSpaceConversion 'none' avoids color shifts.
-    const bitmap = await createImageBitmap(file, { premultiplyAlpha: 'none', colorSpaceConversion: 'none' });
+    // Straight-alpha decode (matches the renderer's straight-alpha shader/blend), capped to the GPU
+    // texture limit so an enormous image can't make createTexture throw → device-loss → black canvas.
+    const { bitmap, originalWidth, originalHeight } = await decodeImageCapped(file);
     const metadata: ImageAssetMetadata = {
       assetId,
       width: bitmap.width,
       height: bitmap.height,
       format: file.type || 'image/png',
       fileSize: file.size,
+      originalWidth,
+      originalHeight,
     };
 
     const objectUrl = URL.createObjectURL(file);
@@ -608,11 +633,13 @@ class MediaAssetManager {
         }
       } else if (asset.type === 'image') {
         try {
-          const bitmap = await createImageBitmap(asset.blob, { premultiplyAlpha: 'none', colorSpaceConversion: 'none' });
+          const { bitmap, originalWidth, originalHeight } = await decodeImageCapped(asset.blob);
           const imageMetadata: ImageAssetMetadata = {
             assetId: asset.id,
             width: bitmap.width,
             height: bitmap.height,
+            originalWidth,
+            originalHeight,
             format: asset.mimeType,
             fileSize: asset.blob.size,
           };

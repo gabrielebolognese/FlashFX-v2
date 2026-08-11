@@ -20,6 +20,7 @@ import { BoundingBoxesOverlay } from './BoundingBoxesOverlay';
 import { SafeAreasOverlay } from './SafeAreasOverlay';
 import { AnimatedPathsOverlay } from './AnimatedPathsOverlay';
 import { MultiFieldWarning } from './MultiFieldWarning';
+import { ImageSizePrompt } from './ImageSizePrompt';
 import { useShapeToolStore, isShapeTool } from '../../store/shapeTool';
 import { useRecoveryStore } from '../../store/recovery';
 import { editorRecovery } from '../../engine/recovery';
@@ -355,6 +356,8 @@ export function Viewport() {
       <div className="absolute top-2 left-2 right-2 z-10 pointer-events-auto">
         <MultiFieldWarning />
       </div>
+
+      <ImageSizePrompt />
 
       {/* Disable-camera toggle (top-right) — flattens the 3D/2.5D camera view to 2D so a
           camera-driven comp can be edited "as if the camera isn't there". Preview-only. */}

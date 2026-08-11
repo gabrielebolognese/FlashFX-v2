@@ -32,7 +32,20 @@ import { getDescendants, getWorldPosition } from '../core/sceneGraph';
 import { buildPrecompose } from '../core/precompose';
 import { createMotionPath } from './motionPath';
 import { useHistoryStore, type Command } from './history';
-import { mediaAssetManager } from '../engine/media/assetManager';
+import { mediaAssetManager, type ImageAssetMetadata } from '../engine/media/assetManager';
+
+// After adding an image, prompt (non-modally) if it doesn't fit the canvas — offering fit-vs-keep.
+function maybePromptImageSize(layerId: string, meta: ImageAssetMetadata, canvasW: number, canvasH: number): void {
+  if (meta.width > canvasW || meta.height > canvasH) {
+    useImageSizePromptStore.getState().show({
+      layerId,
+      imageWidth: meta.originalWidth ?? meta.width,   // report the TRUE file size, not the GPU-capped one
+      imageHeight: meta.originalHeight ?? meta.height,
+      canvasWidth: canvasW,
+      canvasHeight: canvasH,
+    });
+  }
+}
 import { frameScheduler } from '../engine/video/frameScheduler';
 import { videoTextureCache } from '../engine/video/videoTextureCache';
 import { videoAudioPlayer } from '../engine/video/videoAudioPlayer';
@@ -43,6 +56,7 @@ import { AnchorGraph } from '../anchoring/graph';
 import { bakePhysicsWorld, invalidatePhysicsCache } from '../physics/bake';
 import { playbackController, useTimelineStore } from './timeline';
 import { useAgentBuildStore, type AgentCursorTarget } from '../ui/agent-build/agentBuildStore';
+import { useImageSizePromptStore } from './imageSizePrompt';
 import { canParentTo } from '../core/layerSwitches';
 import { recomputeCompositionDuration, withMinimumDuration, getMinimumDuration } from '../core/compositionDuration';
 import { reflowCompressedTracks, isTrackCompressed } from '../core/trackCompression';
@@ -323,6 +337,8 @@ interface EditorState {
   addAudio: (file: File, projectId: string) => Promise<void>;
   addAudioFromAsset: (assetId: string) => void;
   addImageFromAsset: (assetId: string, x: number, y: number) => void;
+  /** Scale an image/video layer so its source fits within the canvas (undoable). */
+  fitLayerToCanvas: (layerId: string) => void;
   addVideoFromAsset: (assetId: string, x: number, y: number, playbackMode?: VideoPlaybackMode) => void;
   // Add an image as a full-canvas, locked background layer (cover-scaled, sent to back).
   addImageAsBackground: (assetId: string) => void;
@@ -2663,6 +2679,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       execute: () => { set({ composition: newComp, selection: newSel }); },
       undo: () => { set({ composition: oldComp, selection: oldSel }); },
     });
+    maybePromptImageSize(layer.id, metadata, composition.settings.width, composition.settings.height);
   },
 
   addImageFromAsset: (assetId, x, y) => {
@@ -2693,6 +2710,30 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       label: 'Add Image',
       execute: () => { set({ composition: newComp, selection: newSel }); },
       undo: () => { set({ composition: oldComp, selection: oldSel }); },
+    });
+    maybePromptImageSize(layer.id, meta, composition.settings.width, composition.settings.height);
+  },
+
+  fitLayerToCanvas: (layerId) => {
+    const { composition } = get();
+    const layer = composition.layers.find((l) => l.id === layerId);
+    if (!layer) return;
+    const cw = composition.settings.width, ch = composition.settings.height;
+    const sw = layer.type === 'image' ? layer.image.sourceWidth : layer.type === 'video' ? layer.video.sourceWidth : 0;
+    const sh = layer.type === 'image' ? layer.image.sourceHeight : layer.type === 'video' ? layer.video.sourceHeight : 0;
+    if (sw <= 0 || sh <= 0) return;
+    const fit = Math.min(cw / sw, ch / sh);
+    const oldComp = composition;
+    const newLayers = composition.layers.map((l) =>
+      l.id === layerId
+        ? { ...l, transform: { ...l.transform, scale: { ...l.transform.scale, defaultValue: [fit, fit] as Vec2, keyframes: [] } } } as Layer
+        : l,
+    );
+    const newComp = settleComposition({ ...composition, layers: newLayers });
+    exec({
+      label: 'Fit Image to Canvas',
+      execute: () => { set({ composition: newComp }); },
+      undo: () => { set({ composition: oldComp }); },
     });
   },
 

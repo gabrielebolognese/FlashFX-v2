@@ -4707,6 +4707,14 @@ export class WebGPURenderer {
     height: number
   ): GPUTexture | null {
     const { device } = gpu;
+
+    // Safety net: a texture larger than the device limit makes createTexture THROW, which aborts the
+    // render and (after a few throws) loses the GPU device → the whole canvas goes black. User images
+    // are already capped at import (assetManager.decodeImageCapped); this guards any other path
+    // (precomp/pattern) so an oversized source is skipped, never a device-lost crash.
+    const maxDim = device.limits.maxTextureDimension2D;
+    if (width > maxDim || height > maxDim) return null;
+
     let entry = this.imageTextures.get(assetId);
 
     const isParticle = assetId.startsWith('__particle_');
