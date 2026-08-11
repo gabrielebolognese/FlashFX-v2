@@ -1,5 +1,90 @@
 # Devlog
 
+## 2026-08-10
+
+An AI-authoring day bookended by bug-fixing. 12 commits, net +4808/−97 across 58 files. The bulk
+was plumbing for prompt→animation — a Zod contract package, a deterministic compiler, and a real
+Director stage that turns a prompt into a validated plan — none of it wired into the browser UI
+yet. On top of that: a scripted AI-chat mockup that actually builds two scenes on the canvas
+(Blackjack, Galaxy), two rounds of crash-fixing around selecting template layers, and dashboard +
+timeline polish. typecheck stayed at 0 and lint at the 127 baseline through every commit. The
+Director talks to a real API but only from Node; nothing calls it from the UI.
+
+### AI animation-authoring pipeline (schema → compiler → Director)
+
+- internal: a strict Zod "contract" package (`@/schema`) describing a whole animation document —
+  layers, properties, easings, cloner, panels, style contract — that exports JSON Schema for a
+  model to target.
+  - Number: verify:schema, 18 checks.
+  - Hard part: Zod v4 is only reachable through the `zod/v4` subpath of the installed v3 build, and
+    `.refine`/`.superRefine` silently drop out of the JSON Schema export (runtime-only) — so every
+    constraint the model must *see* had to be structural (min/max, enums, discriminated unions),
+    leaving only cross-field checks to a separate semantic validator. `.prefault({})` (not
+    `.default({})`) is what makes a defaulted object optional on the input side.
+
+- internal: a deterministic compiler — validated plan → jobs, returned fragments → a committed
+  Composition.
+  - Number: verify:compiler, 23 checks; 9 preset attachments.
+  - Hard part: it must be deterministic (same plan → byte-identical composition), so nothing in it
+    can read a clock or a seed. Defaulted preset params fought the type system (the `.default({})`
+    overload, and generic indexed-access reported "not callable") — resolved by building the
+    attachments explicitly instead of generically.
+
+- internal: a Director stage that sends a prompt + the JSON Schema to a real model and returns a
+  plan that passes the semantic validator (beat contiguity, duration, element ownership,
+  id-namespacing, format, transitions).
+  - Number: verify:director, 9 checks. Reads the key only from `ANTHROPIC_API_KEY`; never written
+    anywhere.
+  - Hard part: the prompt and the schema shipped contradictory numbers (palette size, easing count,
+    subject count, whether `focalPoint` is required). Rather than pick one, I set the schema to the
+    latest intended numbers everywhere and updated the fixtures + the five reference docs to match,
+    so prompt/schema/docs/harness all agree.
+
+### AI chat mockup + two buildable scenes
+
+- The first message in the AI panel runs a scripted "generation" — streamed intro, a live checklist
+  (Director → Coders with a rising layer count → Assembly → …) — then actually builds a Blackjack
+  Deal scene on the canvas. A second message ("can you create a galaxy too?") builds a Galaxy.
+  - Number: Blackjack is a ~13s top-down 2.5D scene (dealt hands, camera push-in, per-glyph
+    commentary); verify:anim-templates, 142 checks (5 for blackjack).
+  - Hard part: both scenes build *animated* — layers reveal one at a time, then the keyframes apply
+    — instead of dumping in at once. That needed a store action (`insertAnimationTemplateAnimated`)
+    that stages the static layers one per tick (keyframes stripped) via non-undoable sets, then
+    commits the keyframed layers as a *single* undo step, driven by the mockup's checklist
+    callbacks.
+
+### Selecting a template layer stopped crashing the canvas (two rounds)
+
+- Round 1: selecting a text layer with missing content/layoutConfig/animOverrides crashed with
+  "cannot read property 'spans'". Guarded those reads in the Inspector, snap bbox, and
+  TransformOverlay, and made the fields readable in the inspector.
+- Round 2 (the one actually firing): a template *group* crashed the same way the moment it was
+  selected. `getLeafWorldSize`'s catch-all `else` cast *any* non-video/image/shape/group layer to a
+  text layer — and Blackjack parents its **camera** into the scene group, so computing the group's
+  bounds dereferenced `camera.content.spans`.
+  - Number: verify:groupbounds, 3 checks (camera-in-group → no throw, shape-derived bounds).
+  - Hard part: round 1 was the right spirit in the wrong file — the live path was
+    `computeGroupBounds → getLeafWorldSize`, not the inspector/overlay. Fixed by handling text
+    explicitly (guarded) and returning null for camera/audio/cloner/precomp/particle/layout: types
+    that don't contribute a leaf rectangle to a group's bounds.
+
+### Dashboard + timeline polish
+
+- The project-card "…" menu is no longer clipped invisible inside the card, and right-clicking a
+  card opens the same menu.
+  - Hard part: the card root is `overflow-hidden` (for its rounded preview), which clipped the
+    absolutely-positioned dropdown. Moved the menu to a `createPortal` at document.body with fixed,
+    viewport-clamped positioning.
+
+- The timeline mouse-wheel no longer feels like it zooms in and out while you scroll back and forth.
+  - Hard part: React registers `onWheel` as a *passive* listener, so the handler's `preventDefault()`
+    was a no-op and the browser co-scrolled the element, fighting the JS scroll. Re-attached the
+    handler natively with `{ passive: false }` and read scroll/zoom fresh from the store each event
+    (the old closure was stale). Zoom is now Ctrl/Meta-only; a plain wheel only scrolls time.
+
+- Removed em dashes from the AI panel's responses, and from the site's `<title>`/social-share
+  headers (the header change is in the working tree, not yet committed).
+
 ## 2026-08-09
 
 A launch-polish day, then a deep dive into the 2.5D camera. 24 commits (+ one empty one I
