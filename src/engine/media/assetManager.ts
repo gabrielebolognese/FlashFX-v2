@@ -51,6 +51,9 @@ function isVideoFormatSupported(file: File): boolean {
   return SUPPORTED_VIDEO_EXTENSIONS.has(ext);
 }
 
+// How many video assets may keep their full decoded PCM resident at once (ensureAudioBuffer).
+const MAX_RESIDENT_VIDEO_PCM = 2;
+
 class MediaAssetManager {
   private assets = new Map<string, RegisteredAsset>();
   private objectUrls = new Map<string, string>();
@@ -63,6 +66,8 @@ class MediaAssetManager {
   // PCM (can be >1GB for a long clip), so importing many videos at once — each firing its own decode —
   // spiked memory and crashed. Chaining them means at most one full-file decode is in flight.
   private _audioExtractChain: Promise<void> = Promise.resolve();
+  // LRU of VIDEO assetIds whose full decoded PCM is currently cached (see ensureAudioBuffer).
+  private residentVideoPcm: string[] = [];
 
   subscribe(listener: () => void): () => void {
     this.listeners.add(listener);
@@ -751,7 +756,24 @@ class MediaAssetManager {
         const arr = await resp.arrayBuffer();
         const buffer = await this.getAudioContext().decodeAudioData(arr);
         const a = this.assets.get(assetId);
-        if (a) a.audioBuffer = buffer;
+        if (a) {
+          a.audioBuffer = buffer;
+          // A VIDEO asset's full PCM (can be >1GB) is only needed transiently by export/silence/
+          // captions — video playback uses the hidden <video>. Bound how many we keep resident so a
+          // session that touches many clips can't accumulate multi-GB of PCM (back-door OOM). The
+          // returned buffer stays alive for the caller; we only drop the manager's cache reference.
+          if (a.mimeType.startsWith('video/')) {
+            this.residentVideoPcm = this.residentVideoPcm.filter((id) => id !== assetId);
+            this.residentVideoPcm.push(assetId);
+            while (this.residentVideoPcm.length > MAX_RESIDENT_VIDEO_PCM) {
+              const evict = this.residentVideoPcm.shift();
+              if (evict && evict !== assetId) {
+                const ea = this.assets.get(evict);
+                if (ea) ea.audioBuffer = null;
+              }
+            }
+          }
+        }
         return buffer;
       } catch {
         return null;

@@ -1406,12 +1406,21 @@ function AudioWaveformStrip({ layer, clipWidth, clipHeight, compositionFrameRate
 }
 
 function VideoAudioWaveformStrip({ layer, clipWidth, clipHeight, compositionFrameRate }: { layer: VideoLayer; clipWidth: number; clipHeight: number; compositionFrameRate: number }) {
+  const assetId = layer.video.assetId;
   const [, forceUpdate] = useState(0);
+  const lastWaveform = useRef<unknown>(undefined);
   useEffect(() => {
-    return mediaAssetManager.subscribe(() => forceUpdate((v) => v + 1));
-  }, []);
+    lastWaveform.current = mediaAssetManager.getWaveform(assetId);
+    // Only re-render when THIS clip's waveform actually changes. The manager's notify() is global, so
+    // an unfiltered subscription re-rendered every waveform strip on every asset event — importing N
+    // clips caused an O(strips × imports) re-render storm.
+    return mediaAssetManager.subscribe(() => {
+      const w = mediaAssetManager.getWaveform(assetId);
+      if (w !== lastWaveform.current) { lastWaveform.current = w; forceUpdate((v) => v + 1); }
+    });
+  }, [assetId]);
 
-  const waveform = mediaAssetManager.getWaveform(layer.video.assetId);
+  const waveform = mediaAssetManager.getWaveform(assetId);
   const canvas = useMemo(() => {
     if (!waveform || clipWidth <= 0) return null;
     const totalDuration = waveform.duration;
