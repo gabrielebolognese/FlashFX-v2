@@ -116,13 +116,16 @@ function getLayerWorldBounds(layer: Layer, layers: Layer[], currentFrame: number
   }
   let w: number, h: number;
   if (layer.type === 'video') {
+    // Include scale — image/video resize by scale, so the hover/selection outline must track it too.
+    const s = evaluateProperty(layer.transform.scale, currentFrame) as Vec2;
     const vl = layer as VideoLayer;
-    w = vl.video.sourceWidth;
-    h = vl.video.sourceHeight;
+    w = vl.video.sourceWidth * s[0];
+    h = vl.video.sourceHeight * s[1];
   } else if (layer.type === 'image') {
+    const s = evaluateProperty(layer.transform.scale, currentFrame) as Vec2;
     const il = layer as ImageLayer;
-    w = il.image.sourceWidth;
-    h = il.image.sourceHeight;
+    w = il.image.sourceWidth * s[0];
+    h = il.image.sourceHeight * s[1];
   } else if (layer.type === 'shape') {
     const sl = layer as ShapeLayer;
     if (!sl.shape) return null;
@@ -257,11 +260,15 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
 
     let w: number, h: number;
     if (activeLayer.type === 'video') {
-      w = (activeLayer as VideoLayer).video.sourceWidth;
-      h = (activeLayer as VideoLayer).video.sourceHeight;
+      // Image/video are resized via transform.scale (their source dims never change), so the selection
+      // box MUST include scale or the handles stay at the un-scaled source size and drift off the clip.
+      const s = evaluateProperty(activeLayer.transform.scale, currentFrame) as Vec2;
+      w = (activeLayer as VideoLayer).video.sourceWidth * s[0];
+      h = (activeLayer as VideoLayer).video.sourceHeight * s[1];
     } else if (activeLayer.type === 'image') {
-      w = (activeLayer as ImageLayer).image.sourceWidth;
-      h = (activeLayer as ImageLayer).image.sourceHeight;
+      const s = evaluateProperty(activeLayer.transform.scale, currentFrame) as Vec2;
+      w = (activeLayer as ImageLayer).image.sourceWidth * s[0];
+      h = (activeLayer as ImageLayer).image.sourceHeight * s[1];
     } else if (activeLayer.type === 'shape') {
       if (!(activeLayer as ShapeLayer).shape) return null;
       const dims = getShapeDimensions((activeLayer as ShapeLayer).shape, currentFrame);
