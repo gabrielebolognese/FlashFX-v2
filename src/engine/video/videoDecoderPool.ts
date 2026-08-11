@@ -18,12 +18,24 @@ interface WorkerState {
   inFlight: Map<string, InFlightRequest>;
   healthy: boolean;
   consecutiveErrors: number;
+  // Respawn backoff: how many times this worker has been recreated in the current
+  // crash streak, and when the last respawn happened. A worker that keeps crashing
+  // (corrupt file, or the browser's hardware-decoder ceiling) must NOT respawn
+  // forever — that infinite `new Worker()` loop is a tab-killing OOM.
+  respawns: number;
+  lastRespawnAt: number;
+  permanentlyFailed: boolean;
   // Current scrub decode scale (1 = full, 0.5 = proxy). Tracked so export can
   // force full-res for a decode and then restore the scrub proxy afterward.
   proxyScale: number;
 }
 
 const MAX_CONSECUTIVE_ERRORS = 3;
+// A worker may respawn at most this many times within RESPAWN_RESET_MS before the
+// asset is permanently disabled (decodes reject fast → black frame, never a loop).
+// A quiet period longer than RESPAWN_RESET_MS resets the streak (genuine recovery).
+const MAX_RESPAWNS = 5;
+const RESPAWN_RESET_MS = 10_000;
 
 let requestIdCounter = 0;
 function nextRequestId(): string {
@@ -100,6 +112,9 @@ class VideoDecoderPool {
       inFlight: new Map(),
       healthy: true,
       consecutiveErrors: 0,
+      respawns: 0,
+      lastRespawnAt: 0,
+      permanentlyFailed: false,
       proxyScale: 1,
     };
 
@@ -152,7 +167,7 @@ class VideoDecoderPool {
   /** Re-init a worker from its retained source if it was LRU-evicted; null if unknown. */
   private async ensureWorker(assetId: string): Promise<WorkerState | null> {
     const existing = this.workers.get(assetId);
-    if (existing) return existing; // present (even if unhealthy — respawn handles that)
+    if (existing) return existing.permanentlyFailed ? null : existing; // don't hand back a dead worker
     const source = this.sources.get(assetId);
     if (!source) return null;
     await this.initAsset(assetId, source);
@@ -315,12 +330,31 @@ class VideoDecoderPool {
       req.reject(new Error('Worker crashed'));
     }
     state.inFlight.clear();
+    if (state.permanentlyFailed) return; // never respawn a known-bad asset — that's the loop
     this.respawnWorker(assetId);
   }
 
   private async respawnWorker(assetId: string): Promise<void> {
     const state = this.workers.get(assetId);
-    if (!state) return;
+    if (!state || state.permanentlyFailed) return;
+
+    // Backoff / cap: reset the streak after a quiet period, otherwise count this respawn and give up
+    // once we exceed MAX_RESPAWNS so a crash-on-init/decode asset can't spin `new Worker()` forever.
+    const now = Date.now();
+    if (now - state.lastRespawnAt > RESPAWN_RESET_MS) state.respawns = 0;
+    state.respawns++;
+    state.lastRespawnAt = now;
+    if (state.respawns > MAX_RESPAWNS) {
+      state.permanentlyFailed = true;
+      state.healthy = false;
+      state.worker.terminate();
+      for (const req of state.inFlight.values()) {
+        req.reject(new Error('Video decoder disabled after repeated crashes.'));
+      }
+      state.inFlight.clear();
+      console.error(`[VideoDecoderPool] Asset ${assetId} disabled after ${MAX_RESPAWNS} respawns (likely unsupported/corrupt or decoder ceiling).`);
+      return;
+    }
 
     state.worker.terminate();
     state.healthy = false;

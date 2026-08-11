@@ -889,9 +889,17 @@ function executeTrim(
   const originalOut = layer.outPoint;
 
   if (mode === 'left') {
-    const newLayers = composition.layers.map((l) =>
-      l.id === layerId ? { ...l, inPoint: playheadFrame } : l
-    );
+    // Trimming the HEAD must advance the media start by the same delta, or the clip just slides
+    // earlier and keeps replaying source-0 (the "left trim loses the tail / doesn't cut the head" bug).
+    // Mirrors the split compensation below and resolveVideoLayer's (inPoint - startOffset) mapping.
+    const trimDelta = playheadFrame - originalIn;
+    const newLayers = composition.layers.map((l) => {
+      if (l.id !== layerId) return l;
+      const updated = { ...l, inPoint: playheadFrame } as Layer;
+      if (updated.type === 'video') updated.video = { ...updated.video, startOffset: Math.max(0, updated.video.startOffset + trimDelta) };
+      else if (updated.type === 'audio') updated.audio = { ...updated.audio, startOffset: Math.max(0, updated.audio.startOffset + trimDelta) };
+      return updated;
+    });
     return { newComp: { ...composition, layers: newLayers }, selectId: layerId };
   }
 
@@ -5644,7 +5652,15 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       const t = applyResizeDelta({ inPoint: l.inPoint, outPoint: l.outPoint }, edge, delta);
       const inPt = Math.max(0, Math.round(t.inPoint));
       const outPt = Math.max(inPt + 1, Math.round(t.outPoint));
-      return { ...l, inPoint: inPt, outPoint: outPt };
+      const updated = { ...l, inPoint: inPt, outPoint: outPt } as Layer;
+      // Dragging the LEFT (head) edge must advance the media start by the same delta, else the footage
+      // slides instead of the head being cut. Mirrors executeTrim 'left' and the split compensation.
+      if (edge === 'left') {
+        const headDelta = inPt - l.inPoint;
+        if (updated.type === 'video') updated.video = { ...updated.video, startOffset: Math.max(0, updated.video.startOffset + headDelta) };
+        else if (updated.type === 'audio') updated.audio = { ...updated.audio, startOffset: Math.max(0, updated.audio.startOffset + headDelta) };
+      }
+      return updated;
     });
     const newComp = settleComposition({ ...composition, layers: newLayers });
 
