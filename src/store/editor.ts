@@ -555,7 +555,7 @@ function getDefaultComposition(): Composition {
     height: 1080,
     frameRate: 30,
     durationFrames: 150,
-    backgroundColor: [0.08, 0.09, 0.12, 1],
+    backgroundColor: [1, 1, 1, 1],
   });
 }
 

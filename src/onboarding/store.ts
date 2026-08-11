@@ -37,7 +37,7 @@ export const useOnboardingStore = create<OnboardingState>((set) => ({
   // Hidden by default — every user starts straight in the editor. Re-openable via start().
   active: false,
   step: 'welcome',
-  bgColor: [0.08, 0.09, 0.12],
+  bgColor: [1, 1, 1],
   shapeMode: null,
   contentType: null,
   wantsTutorial: null,

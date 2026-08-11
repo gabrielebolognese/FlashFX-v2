@@ -533,7 +533,10 @@ export function createTextLayer(
 }
 
 export function createBackgroundLayer(): BackgroundLayer {
-  let bgColor: [number, number, number] = [0.08, 0.09, 0.12];
+  // White by default (Canva-style). A dark default read as "black" through the transparent pixels of
+  // a cut-out PNG — the canvas background is the ONLY thing behind a transparent image, so a dark fill
+  // makes a transparent import look like the canvas turned black. Overridable via localStorage.
+  let bgColor: [number, number, number] = [1, 1, 1];
   try {
     const stored = localStorage.getItem('ffx-default-bg-color');
     if (stored) bgColor = JSON.parse(stored);
