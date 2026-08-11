@@ -21,8 +21,18 @@ const MAX_CACHE_SIZE = 256;
 const POINT_PADDING = 2;
 const DESCENDER_RATIO = 0.25;
 
+// Bumped once the bundled fonts finish loading (see engine/fonts.ts). Folded into the cache
+// key so text rasterized against the sans-serif fallback (pre-load) is re-rasterized against
+// the real face afterwards — both this bitmap cache and the renderer's key-based GPU texture
+// cache miss and rebuild.
+let fontEpoch = 0;
+export function bumpFontEpoch(): void {
+  fontEpoch++;
+  clearTextCache();
+}
+
 export function textCacheKey(text: ResolvedText): string {
-  return `${text.content}|${text.fontFamily}|${text.fontWeight}|${text.fontStyle}|${text.fontSize}|${text.lineHeight}|${text.letterSpacing}|${text.textAlign}|${text.fillColor.join(',')}|${text.strokeColor.join(',')}|${text.strokeWidth}|${text.underline}|${text.strikethrough}|${text.mode}|${text.boxWidth}|${text.boxHeight}`;
+  return `${fontEpoch}|${text.content}|${text.fontFamily}|${text.fontWeight}|${text.fontStyle}|${text.fontSize}|${text.lineHeight}|${text.letterSpacing}|${text.textAlign}|${text.fillColor.join(',')}|${text.strokeColor.join(',')}|${text.strokeWidth}|${text.underline}|${text.strikethrough}|${text.mode}|${text.boxWidth}|${text.boxHeight}`;
 }
 
 export function buildFontString(text: ResolvedText): string {

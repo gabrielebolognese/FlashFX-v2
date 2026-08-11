@@ -1,42 +1,22 @@
 import * as opentype from 'opentype.js';
 import type { PathVertex, Vec2 } from '../core/types';
 import { commandsToContours, recenterContours, type OutlineCommand } from '../core/textOutline';
+import { bundledFontUrl } from '../engine/fonts';
 
 // M17 — Text → vector paths (impure, main-thread: needs fetch + font parsing). Loads a bundled
 // OFL font (public/fonts, parsed by opentype.js), lays the text out with real advances/kerning,
 // and hands each glyph's outline commands to the PURE core (commandsToContours) for the
 // quad→cubic conversion. Bundled woff families only; anything else returns null so the caller
-// can report "no outline available" rather than guess. Fonts are cached per URL.
-
-/** Display family (as in the Inspector font menu) → fontsource slug for the bundled woff. */
-const FONT_SLUGS: Record<string, string> = {
-  'Inter': 'inter',
-  'Roboto': 'roboto',
-  'Montserrat': 'montserrat',
-  'Poppins': 'poppins',
-  'Open Sans': 'open-sans',
-  'Lato': 'lato',
-  'Oswald': 'oswald',
-  'Raleway': 'raleway',
-  'Playfair Display': 'playfair-display',
-  'Bebas Neue': 'bebas-neue',
-  'DM Sans': 'dm-sans',
-  'Space Grotesk': 'space-grotesk',
-  'Manrope': 'manrope',
-  'Plus Jakarta Sans': 'plus-jakarta-sans',
-};
+// can report "no outline available" rather than guess. Fonts are cached per URL. The bundled
+// family/slug/weight list lives in the shared font manifest (engine/fonts.ts).
 
 /** True if "Create Outlines" can run for this family (a bundled font exists). */
 export function canOutlineFont(fontFamily: string): boolean {
-  return fontFamily in FONT_SLUGS;
+  return bundledFontUrl(fontFamily, 400) !== null;
 }
 
 function fontUrl(fontFamily: string, fontWeight: number): string | null {
-  const slug = FONT_SLUGS[fontFamily];
-  if (!slug) return null;
-  const weights = slug === 'bebas-neue' ? [400] : [400, 700]; // bundled weights
-  const w = weights.reduce((best, x) => (Math.abs(x - fontWeight) < Math.abs(best - fontWeight) ? x : best), weights[0]);
-  return `/fonts/${slug}-${w}.woff`;
+  return bundledFontUrl(fontFamily, fontWeight);
 }
 
 const fontCache = new Map<string, Promise<opentype.Font>>();

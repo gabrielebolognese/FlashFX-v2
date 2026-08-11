@@ -21,6 +21,7 @@ const FALLBACK_TEXT_LAYOUT: TextLayoutConfig = {
   overflow: 'visible', baselineShift: 0, perGlyphAnimation: false,
 };
 import { evaluateProperty } from '../../core/interpolation';
+import { FONT_MANIFEST, defaultTrackingPx } from '../../engine/fonts';
 import { createProperty, createTextAnimOverrides } from '../../core/factory';
 import { getMotionBlur } from '../../core/layerSwitches';
 import { DEFAULT_CONSTRAINTS, type ReframeAxisMode } from '../../core/reframe';
@@ -53,12 +54,11 @@ import { mediaAssetManager } from '../../engine/media/assetManager';
 import { useProjectStore } from '../../project-system/hooks/useProjectStore';
 import type { SplitMode } from '../../core/textExplode';
 
-const FONT_OPTIONS = [
-  'Inter', 'Roboto', 'Arial', 'Helvetica', 'Georgia',
-  'Times New Roman', 'Courier New', 'Verdana', 'Montserrat', 'Poppins',
-  'Open Sans', 'Lato', 'Oswald', 'Raleway', 'Playfair Display',
-  'Bebas Neue', 'DM Sans', 'Space Grotesk', 'Manrope', 'Plus Jakarta Sans',
-];
+// Font menu, grouped by category, sourced from the single font manifest (engine/fonts.ts) so
+// the dropdown, the loader and the outline op can't drift apart.
+const FONT_GROUPS: { category: string; families: string[] }[] = (['Sans', 'Display', 'Serif', 'Mono', 'System'] as const)
+  .map((cat) => ({ category: cat, families: FONT_MANIFEST.filter((f) => f.category === cat).map((f) => f.family) }))
+  .filter((g) => g.families.length > 0);
 
 export function Inspector() {
   const composition = useEditorStore((s) => s.composition);
@@ -1584,11 +1584,26 @@ function TextProperties({
               <label className="text-[10px] text-slate-500 w-14 flex-shrink-0">Family</label>
               <select
                 value={style.fontFamily}
-                onChange={(e) => updateLayerProperty(layer.id, 'content.spans[0].style.fontFamily', e.target.value)}
+                onChange={(e) => {
+                  const fam = e.target.value;
+                  updateLayerProperty(layer.id, 'content.spans[0].style.fontFamily', fam);
+                  // Premium touch: apply the face's default tracking, but only if the user
+                  // hasn't set their own (treat 0 as "unset" so we never clobber a choice).
+                  if (overrides.letterSpacing.defaultValue === 0) {
+                    const fsRaw = overrides.fontSize.defaultValue;
+                    const fs = typeof fsRaw === 'number' ? fsRaw : style.fontSize;
+                    const t = defaultTrackingPx(fam, fs);
+                    if (t !== 0) updateLayerProperty(layer.id, 'animOverrides.letterSpacing.defaultValue', t);
+                  }
+                }}
                 className="flex-1 bg-[#122240] text-[10px] text-slate-300 px-1 py-0.5 rounded border border-[#1a2a42] outline-none"
               >
-                {FONT_OPTIONS.map((f) => (
-                  <option key={f} value={f}>{f}</option>
+                {FONT_GROUPS.map((g) => (
+                  <optgroup key={g.category} label={g.category}>
+                    {g.families.map((f) => (
+                      <option key={f} value={f}>{f}</option>
+                    ))}
+                  </optgroup>
                 ))}
               </select>
             </div>
