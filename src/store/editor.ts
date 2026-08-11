@@ -4290,17 +4290,23 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     });
     const revealEnd = t + 300;
 
-    // Act 2 — keyframes, sweeping top→bottom (all rows exist now). A spread of "hero" layers get the
-    // slow, legible treatment (select → ring the property → jog the playhead → place); the rest snap
-    // fast. Each row is paged into view so the keyframe dots are always on screen.
+    // Act 2 — keyframes. Sweep EVERY layer top→bottom by track position (not just the animated ones —
+    // otherwise, if a template's keyframed layers cluster near the top, the view barely scrolls), so
+    // the timeline travels its full height. As the sweep passes each row it pages it into view and,
+    // if that layer animates, places its keyframes — a spread of "hero" layers get the slow, legible
+    // treatment (select → ring the property → jog the playhead), the rest snap fast; static rows are
+    // just scrolled past a little quicker.
     const heroIds = new Set(pickHeroLayers(inserted, 6).map((h) => h.id));
-    const animated = inserted.filter((l) => layerKeyframeFrames(l).length > 0);
+    const sweep = inserted
+      .filter((l) => l.trackId && trackTop.has(l.trackId))
+      .sort((a, b) => trackTop.get(a.trackId!)! - trackTop.get(b.trackId!)!);
     S(revealEnd, () => { opts.onKeyframes?.(); agent.setLabel('Placing keyframes…'); useTimelineStore.getState().setScrollY(0); });
     let tk = revealEnd + 160;
-    let heroPace = 620;
+    let heroPace = 560;
     let heroTurn = 0;
-    animated.forEach((l) => {
-      const isHero = heroIds.has(l.id) && heroPropPath(l) !== null;
+    sweep.forEach((l) => {
+      const hasKf = layerKeyframeFrames(l).length > 0;
+      const isHero = hasKf && heroIds.has(l.id) && heroPropPath(l) !== null;
       if (isHero) {
         const path = heroPropPath(l)!;
         const frames = layerKeyframeFrames(l);
@@ -4311,18 +4317,22 @@ export const useEditorStore = create<EditorState>((set, get) => ({
           agent.moveCursor({ kind: 'dom', selector: `[data-prop="${path}"]` }, 'hand');
           scrollRowIntoView(l.trackId);
           useTimelineStore.getState().scrubTo(clampFrame(scrubFrame));
+          version.set(l.id, l); paint();
         });
         S(tk + 130, () => agent.clickCursor());
-        S(tk + Math.min(300, heroPace * 0.5), () => { version.set(l.id, l); paint(); });
         tk += heroPace;
-        heroPace = Math.max(300, heroPace * 0.86);
+        heroPace = Math.max(280, heroPace * 0.9);
       } else {
-        S(tk, () => { version.set(l.id, l); paint(); scrollRowIntoView(l.trackId); });
-        tk += 26;
+        S(tk, () => {
+          if (hasKf) { version.set(l.id, l); paint(); }
+          scrollRowIntoView(l.trackId);
+          agent.highlightProp(null);
+        });
+        tk += hasKf ? 24 : 12;   // glide past static rows a bit faster
       }
     });
     const t3 = tk;
-    S(Math.max(revealEnd, t3 - 60), () => agent.highlightProp(null));
+    S(Math.max(revealEnd, t3 - 40), () => agent.highlightProp(null));
 
     // Commit — the whole animated scene as ONE undo step; restore playhead; end the show.
     let committed = false;
