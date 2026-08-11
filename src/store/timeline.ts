@@ -66,7 +66,7 @@ export const useTimelineStore = create<TimelineState>((set, get) => {
     containerWidth: 600,
     containerHeight: 300,
     showWaveforms: true,
-    showThumbnails: false,
+    showThumbnails: true,
 
     play: () => playbackController.play(),
     pause: () => playbackController.pause(),

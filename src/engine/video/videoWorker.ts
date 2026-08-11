@@ -472,8 +472,9 @@ class VideoDecoderController {
   private decodedCache = new Map<number, VideoFrame>();
   private decodedCacheBytes = 0;
   // Small: these open frames share the decoder's output pool with the main-thread
-  // frameScheduler buffer, so keep this well clear of the ~16-24 pool limit.
-  private static readonly DECODED_CACHE_MAX_FRAMES = 6;
+  // frameScheduler buffer (now 8), so keep this well clear of the ~16 pool limit —
+  // 8 + 4 = 12 leaves headroom; exceeding the pool stalls the decoder.
+  private static readonly DECODED_CACHE_MAX_FRAMES = 4;
   private static readonly DECODED_CACHE_BYTES = 64 * 1024 * 1024;
 
   /** Max samples fed in a single pass (bounds byte reads + input-queue depth). */

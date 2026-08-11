@@ -15,7 +15,9 @@ const MEMORY_BUDGET_BYTES = 512 * 1024 * 1024; // 512 MB
 // decoder's output-frame pool. A transferred-but-un-closed VideoFrame still
 // occupies the decoder's pool slot, so this — not the byte budget — is what keeps
 // the decoder emitting. Sized to hold the look-ahead window + a small trailing.
-const MAX_OPEN_FRAMES_PER_ASSET = 12;
+// Kept LOW so that (scheduler-held + the worker's decoded cache) stays well under the browser's
+// ~16-frame output-pool ceiling — exceeding it stalls the decoder → flush watchdog → error cascade.
+const MAX_OPEN_FRAMES_PER_ASSET = 8;
 const PROXY_SETTLE_DELAY_MS = 300;
 const PROXY_THRESHOLD_WIDTH = 1920;
 const PROXY_THRESHOLD_HEIGHT = 1080;

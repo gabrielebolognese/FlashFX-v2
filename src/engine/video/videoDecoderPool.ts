@@ -166,8 +166,18 @@ class VideoDecoderPool {
 
   /** Re-init a worker from its retained source if it was LRU-evicted; null if unknown. */
   private async ensureWorker(assetId: string): Promise<WorkerState | null> {
-    const existing = this.workers.get(assetId);
-    if (existing) return existing.permanentlyFailed ? null : existing; // don't hand back a dead worker
+    let existing = this.workers.get(assetId);
+    if (existing?.permanentlyFailed) {
+      // The cap must not disable an asset for the WHOLE SESSION — a transient decoder stall (e.g. the
+      // hardware output pool briefly saturating) would otherwise black the clip out permanently. After
+      // a cool-off, drop the dead state and re-init from the retained source so decoding can recover;
+      // if it's genuinely unplayable it just re-fails and re-cools (throttled retry, never a loop).
+      if (Date.now() - existing.lastRespawnAt < RESPAWN_RESET_MS) return null;
+      existing.worker.terminate();
+      this.workers.delete(assetId);
+      existing = undefined;
+    }
+    if (existing) return existing;
     const source = this.sources.get(assetId);
     if (!source) return null;
     await this.initAsset(assetId, source);
@@ -300,6 +310,9 @@ class VideoDecoderPool {
 
       case 'ERROR': {
         state.consecutiveErrors++;
+        // Surface the real decoder error — it used to be swallowed at every layer, so a decode failure
+        // was undiagnosable (the clip just went black). This is the true underlying message.
+        console.error(`[VideoDecoderPool] decode error for ${assetId} (#${state.consecutiveErrors}):`, msg.message);
         const req = state.inFlight.get(msg.requestId);
         if (req) {
           state.inFlight.delete(msg.requestId);
