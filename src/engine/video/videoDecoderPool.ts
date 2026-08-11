@@ -3,6 +3,15 @@ import type {
   WorkerOutboundMessage,
   VideoMetadata,
 } from './videoWorker.types';
+import { mediabunnyController } from './mediabunnyController';
+
+// Video decode backend. mediabunny (default) replaces the legacy hand-rolled mp4box+WebCodecs worker;
+// the legacy pump stays in-tree for instant rollback — set localStorage.ffx_video_engine='legacy' and
+// reload to fall back if a regression appears. Read once at load so the backend is stable per session.
+const USE_MEDIABUNNY: boolean = (() => {
+  try { return (localStorage.getItem('ffx_video_engine') ?? 'mediabunny') !== 'legacy'; }
+  catch { return true; }
+})();
 
 interface InFlightRequest {
   resolve: (value: any) => void;
@@ -77,6 +86,7 @@ class VideoDecoderPool {
 
   /** Initialize a worker for a video asset. Returns metadata once the moov is parsed. */
   async initAsset(assetId: string, source: File | string): Promise<VideoMetadata> {
+    if (USE_MEDIABUNNY) { this.sources.set(assetId, source); return mediabunnyController.initAsset(assetId, source); }
     this.sources.set(assetId, source);
     const existing = this.workers.get(assetId);
     if (existing?.healthy && existing.metadata) {
@@ -144,6 +154,7 @@ class VideoDecoderPool {
 
   /** Decode a single frame. Returns a transferable VideoFrame. */
   async decodeFrame(assetId: string, frameIndex: number): Promise<VideoFrame> {
+    if (USE_MEDIABUNNY) return mediabunnyController.decodeFrame(assetId, frameIndex);
     const state = await this.ensureWorker(assetId);
     if (!state) {
       return Promise.reject(new Error(`No worker for asset ${assetId}`));
@@ -186,6 +197,7 @@ class VideoDecoderPool {
 
   /** Decode a frame at full resolution for export (bypasses proxy mode). */
   async decodeFrameForExport(assetId: string, frameIndex: number): Promise<VideoFrame> {
+    if (USE_MEDIABUNNY) return mediabunnyController.decodeFrameForExport(assetId, frameIndex);
     const state = await this.ensureWorker(assetId);
     if (!state) {
       return Promise.reject(new Error(`No worker for asset ${assetId}`));
@@ -224,6 +236,7 @@ class VideoDecoderPool {
 
   /** Cancel an in-flight decode request. */
   cancelFrame(assetId: string, frameIndex: number): void {
+    if (USE_MEDIABUNNY) return; // mediabunny getSample has no cancel handle; scrub cancel is Phase 2
     const state = this.workers.get(assetId);
     if (!state) return;
 
@@ -240,6 +253,7 @@ class VideoDecoderPool {
   /** Tear down the worker for an asset. */
   async destroyAsset(assetId: string): Promise<void> {
     this.sources.delete(assetId); // also clears an LRU-evicted asset with no live worker
+    if (USE_MEDIABUNNY) { await mediabunnyController.destroyAsset(assetId); return; }
     const state = this.workers.get(assetId);
     if (!state) return;
 
@@ -263,16 +277,19 @@ class VideoDecoderPool {
 
   /** Get cached metadata synchronously, or null if not initialized. */
   getMetadata(assetId: string): VideoMetadata | null {
+    if (USE_MEDIABUNNY) return mediabunnyController.getMetadata(assetId);
     return this.workers.get(assetId)?.metadata ?? null;
   }
 
   /** Get keyframe indices for an asset. */
   getKeyframes(assetId: string): number[] {
+    if (USE_MEDIABUNNY) return []; // mediabunny seeks by timestamp; keyframe indices aren't used
     return this.workers.get(assetId)?.keyframes ?? [];
   }
 
   /** Set proxy decode scale for an asset. 1 = full, 0.5 = half. */
   setProxyMode(assetId: string, scale: number): void {
+    if (USE_MEDIABUNNY) { mediabunnyController.setProxyMode(assetId, scale); return; }
     const state = this.workers.get(assetId);
     if (!state) return;
     state.proxyScale = scale;

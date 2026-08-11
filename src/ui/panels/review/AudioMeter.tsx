@@ -32,8 +32,10 @@ export const AudioMeter = memo(function AudioMeter() {
   const peakR = useRef({ value: DB_MIN, time: 0 });
   const smoothL = useRef(0);
   const smoothR = useRef(0);
-  const bufferL = useRef<Float32Array | null>(null);
-  const bufferR = useRef<Float32Array | null>(null);
+  // TS 5.7+ made TypedArrays generic over their backing buffer; the Web Audio analyser wants an
+  // ArrayBuffer-backed Float32Array specifically (not SharedArrayBuffer).
+  const bufferL = useRef<Float32Array<ArrayBuffer> | null>(null);
+  const bufferR = useRef<Float32Array<ArrayBuffer> | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
