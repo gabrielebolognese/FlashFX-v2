@@ -258,7 +258,7 @@ function BgColorStep() {
           </div>
           <FadeIn delay={400} className="flex items-center gap-4 mt-10">
             <OnboardingButton onClick={() => setStep('shapeMode')} variant="primary">Done</OnboardingButton>
-            <OnboardingButton onClick={() => { setBgColor([1, 1, 1]); setStep('shapeMode'); }} variant="ghost">
+            <OnboardingButton onClick={() => { setBgColor([0.08, 0.09, 0.12]); setStep('shapeMode'); }} variant="ghost">
               Keep Default
             </OnboardingButton>
           </FadeIn>

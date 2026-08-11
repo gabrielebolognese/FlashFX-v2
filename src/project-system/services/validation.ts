@@ -592,7 +592,7 @@ function ensureBackgroundLayer(val: unknown): BackgroundLayer | null {
           position: typeof s.position === 'number' ? s.position : 0,
           opacity: typeof s.opacity === 'number' ? s.opacity : 1,
         }))
-      : [{ color: [1, 1, 1] as [number, number, number], position: 0, opacity: 1 }, { color: [1, 1, 1] as [number, number, number], position: 1, opacity: 1 }],
+      : [{ color: [0.08, 0.09, 0.12] as [number, number, number], position: 0, opacity: 1 }, { color: [0.08, 0.09, 0.12] as [number, number, number], position: 1, opacity: 1 }],
     angle: typeof l.angle === 'number' ? l.angle : 0,
     centerX: typeof l.centerX === 'number' ? l.centerX : 0.5,
     centerY: typeof l.centerY === 'number' ? l.centerY : 0.5,
@@ -614,8 +614,8 @@ function ensureBackground(val: unknown): Background {
       blendMode: 'normal',
       type: 'solid',
       stops: [
-        { color: [1, 1, 1], position: 0, opacity: 1 },
-        { color: [1, 1, 1], position: 1, opacity: 1 },
+        { color: [0.08, 0.09, 0.12], position: 0, opacity: 1 },
+        { color: [0.08, 0.09, 0.12], position: 1, opacity: 1 },
       ],
       angle: 0,
       centerX: 0.5,
@@ -632,7 +632,7 @@ function ensureSettings(val: unknown): CompositionSettings {
     height: typeof s.height === 'number' ? s.height : 1080,
     frameRate: typeof s.frameRate === 'number' ? s.frameRate : 30,
     durationFrames: typeof s.durationFrames === 'number' ? s.durationFrames : 150,
-    backgroundColor: ensureVec4(s.backgroundColor, [1, 1, 1, 1]),
+    backgroundColor: ensureVec4(s.backgroundColor, [0.08, 0.09, 0.12, 1]),
   };
 }
 

@@ -678,7 +678,7 @@ function ToolbarColorControl({ type }: { type: 'fill' | 'stroke' | 'background' 
   const bgStop = bgLayer?.stops[0];
   const bgColor: [number, number, number, number] = bgStop
     ? [bgStop.color[0], bgStop.color[1], bgStop.color[2], bgStop.opacity]
-    : [1, 1, 1, 1];
+    : [0.08, 0.09, 0.12, 1];
 
   const currentColor = type === 'fill' ? fillColor : type === 'stroke' ? strokeColor : bgColor;
   const hex = rgbaToHex(currentColor);

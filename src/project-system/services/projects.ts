@@ -47,7 +47,7 @@ export async function createProject(options: CreateProjectOptions): Promise<Proj
     height,
     frameRate,
     durationFrames,
-    backgroundColor: [1, 1, 1, 1],
+    backgroundColor: [0.08, 0.09, 0.12, 1],
   });
 
   const scene: ProjectScene = {
