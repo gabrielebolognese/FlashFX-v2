@@ -42,6 +42,7 @@ import { ANIMATION_ITEM_PRESETS } from '../animation-items/presets';
 import { AnchorGraph } from '../anchoring/graph';
 import { bakePhysicsWorld, invalidatePhysicsCache } from '../physics/bake';
 import { playbackController, useTimelineStore } from './timeline';
+import { useAgentBuildStore, type AgentCursorTarget } from '../ui/agent-build/agentBuildStore';
 import { canParentTo } from '../core/layerSwitches';
 import { recomputeCompositionDuration, withMinimumDuration, getMinimumDuration } from '../core/compositionDuration';
 import { reflowCompressedTracks, isTrackCompressed } from '../core/trackCompression';
@@ -664,6 +665,59 @@ function stripLayerKeyframes(layer: Layer): Layer {
   };
   walk(clone);
   return clone;
+}
+
+// ── Cinematic-build helpers (used by insertAnimationTemplateAnimated) ────────────────────────────
+
+/** Every keyframe frame across all of a layer's animatable properties (for playhead scrubbing). */
+function layerKeyframeFrames(layer: Layer): number[] {
+  const frames: number[] = [];
+  const walk = (node: unknown) => {
+    if (Array.isArray(node)) { for (const v of node) walk(v); return; }
+    if (node && typeof node === 'object') {
+      const o = node as Record<string, unknown>;
+      if (Array.isArray(o.keyframes) && typeof o.valueType === 'string') {
+        for (const kf of o.keyframes as { frame?: number }[]) if (typeof kf.frame === 'number') frames.push(kf.frame);
+      }
+      for (const k of Object.keys(o)) walk(o[k]);
+    }
+  };
+  walk(layer);
+  return frames;
+}
+
+/** The first transform property (in a sensible priority) that actually carries keyframes — its
+ *  dotted path drives which inspector row the agent flies to and rings. Null if none animate. */
+function heroPropPath(layer: Layer): string | null {
+  const t = layer.transform;
+  if (!t) return null;
+  const candidates: [string, AnimatableProperty | undefined][] = [
+    ['transform.position', t.position],
+    ['transform.scale', t.scale],
+    ['transform.rotation', t.rotation],
+    ['transform.opacity', t.opacity],
+  ];
+  for (const [path, prop] of candidates) {
+    if (prop && prop.keyframes && prop.keyframes.length > 0) return path;
+  }
+  return null;
+}
+
+/** Pick up to `count` "hero" layers (ones whose keyframes we'll place slowly & legibly), spread
+ *  evenly across the animated set so the show samples the whole scene rather than the first few. */
+function pickHeroLayers(animated: Layer[], count: number): Layer[] {
+  const eligible = animated.filter((l) => heroPropPath(l) !== null && layerKeyframeFrames(l).length > 0);
+  if (eligible.length <= count) return eligible;
+  const out: Layer[] = [];
+  for (let i = 0; i < count; i++) out.push(eligible[Math.round((i * (eligible.length - 1)) / (count - 1))]);
+  return out;
+}
+
+/** A deterministic wander point inside the viewport for cursor motion during the reveal (no RNG so
+ *  a scrub/replay is stable). Golden-ratio + a second irrational keep successive points spread out. */
+function wanderTarget(i: number): AgentCursorTarget {
+  const frac = (x: number) => x - Math.floor(x);
+  return { kind: 'canvasRel', fx: 0.16 + 0.68 * frac(i * 0.6180339887), fy: 0.16 + 0.66 * frac(i * 0.3701962) };
 }
 
 
@@ -4108,40 +4162,103 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   insertAnimationTemplateAnimated: (id, opts = {}) => {
-    const perLayerMs = opts.perLayerMs ?? 90;
+    // The cinematic "agent build": the editor animates itself assembling the template. Three acts,
+    // all on a rising-speed clock (a few slow, legible moves up front so the user registers "the
+    // agent is working", then it rushes) — while the whole editor border pulses amber and a fake
+    // agent cursor flies around (see ui/agent-build). Nothing is undoable until the very end: the
+    // reveal/keyframe steps are transient direct sets; only the final committed scene is one undo
+    // step (so Ctrl+Z removes the whole insert, exactly like the instant path).
     const tpl = getAnimationTemplate(id);
     const st = get();
+    const agent = useAgentBuildStore.getState();
     const noop = { cancel: () => {} };
     if (!tpl) { opts.onDone?.(); return noop; }
     const oldComp = st.composition, oldSel = st.selection;
-    const playhead = useTimelineStore.getState().currentFrame;
+    const startPlayhead = useTimelineStore.getState().currentFrame;
+    const lastFrame = Math.max(0, oldComp.settings.durationFrames - 1);
+    const clampFrame = (f: number) => Math.max(0, Math.min(lastFrame, Math.round(f)));
     const c: Vec2 = [oldComp.settings.width / 2, oldComp.settings.height / 2];
-    const built = instantiateAnimationTemplate(tpl, { playhead, frameRate: oldComp.settings.frameRate, center: c });
+    const built = instantiateAnimationTemplate(tpl, { playhead: startPlayhead, frameRate: oldComp.settings.frameRate, center: c });
     if (built.length === 0) { opts.onDone?.(); return noop; }
 
     // Full (keyframed) set with tracks — the final committed state.
     let working = oldComp;
     for (const l of built) working = ensureLayerHasTrack({ ...working, layers: [...working.layers, l] }, l);
-    const inserted = working.layers.slice(oldComp.layers.length);
+    const inserted = working.layers.slice(oldComp.layers.length);   // animated (final)
     const tracks = working.tracks;
-    // Static clones (keyframes removed) sit at their resting/default pose so they're visible as they
-    // appear; then the real keyframes are applied so the scene animates.
-    const staticLayers = inserted.map(stripLayerKeyframes);
+    const staticLayers = inserted.map(stripLayerKeyframes);          // resting-pose clones (same ids/order)
+    const idxById = new Map(inserted.map((l, i) => [l.id, i]));
+    // `shown[i]` is the version of layer i currently on the canvas: static at first, swapped to its
+    // animated self as the agent "places its keyframes". `revealed` is how many have appeared.
+    const shown: Layer[] = staticLayers.map((s) => s);
+    let revealed = 0;
+    const paint = () => set({ composition: settleComposition({ ...oldComp, tracks, layers: [...oldComp.layers, ...shown.slice(0, revealed)] }) });
 
     const timers: number[] = [];
     let cancelled = false;
+    let committed = false;
     const at = (ms: number, fn: () => void) => timers.push(window.setTimeout(() => { if (!cancelled) fn(); }, ms));
 
-    // Stage 1 — reveal the layers one at a time (transient, non-undoable direct sets).
-    for (let k = 1; k <= staticLayers.length; k++) {
-      at((k - 1) * perLayerMs, () => {
-        set({ composition: settleComposition({ ...oldComp, tracks, layers: [...oldComp.layers, ...staticLayers.slice(0, k)] }) });
-        opts.onLayer?.(k, staticLayers.length);
+    agent.begin('Planning the scene…');
+
+    // ── Act 1: reveal layers, static, with a rising-speed (Rush-E) cadence ──────────────────────
+    const N = staticLayers.length;
+    const LEADIN = 620;                 // beat so the user reads "the agent is working"
+    let t = LEADIN;
+    let gap = 460;                      // first gaps are long/legible…
+    for (let k = 0; k < N; k++) {
+      const when = t;
+      at(when, () => {
+        revealed = k + 1; paint();
+        opts.onLayer?.(k + 1, N);
+        agent.moveCursor(wanderTarget(k), 'arrow');
+        if (k % 3 === 0) agent.clickCursor();
+        if (k === 0) agent.setLabel('Placing layers…');
       });
+      gap = Math.max(26, gap * 0.8);   // …then decay geometrically to a rush
+      t += gap;
     }
-    // Stage 2 — apply the keyframes (swap to the animated layers) as ONE undo command.
-    at(staticLayers.length * perLayerMs + 350, () => {
-      opts.onKeyframes?.();
+    const revealEnd = t + 240;
+
+    // ── Act 2: place keyframes on a handful of hero layers slowly & legibly ──────────────────────
+    // Select each hero so its inspector shows, ring the animated property, jog the playhead to one of
+    // its keyframes (alternating late/early → visible back-and-forth), then swap it to animated.
+    const heroes = pickHeroLayers(inserted, 6);
+    let t2 = revealEnd;
+    at(revealEnd, () => { opts.onKeyframes?.(); if (heroes.length > 0) agent.setLabel('Placing keyframes…'); });
+    let hpace = 640;
+    heroes.forEach((h, i) => {
+      const path = heroPropPath(h)!;
+      const frames = layerKeyframeFrames(h);
+      const scrubFrame = i % 2 === 0 ? Math.max(...frames) : Math.min(...frames);
+      const applyAt = t2 + Math.min(320, hpace * 0.5);
+      at(t2, () => {
+        set({ selection: sel([h.id], h.id) });          // transient — restored at commit / undo
+        agent.highlightProp(path);
+        agent.moveCursor({ kind: 'dom', selector: `[data-prop="${path}"]` }, 'hand');
+        useTimelineStore.getState().scrubTo(clampFrame(scrubFrame));
+      });
+      at(t2 + Math.min(240, hpace * 0.38), () => agent.clickCursor());
+      at(applyAt, () => { const idx = idxById.get(h.id)!; shown[idx] = inserted[idx]; paint(); });
+      t2 += hpace;
+      hpace = Math.max(300, hpace * 0.84);
+    });
+
+    // ── Act 3: rush — apply everyone else's keyframes fast, cursor darting ───────────────────────
+    const heroIds = new Set(heroes.map((h) => h.id));
+    const rest = inserted.filter((l) => !heroIds.has(l.id));
+    let t3 = t2 + (heroes.length > 0 ? 200 : 0);
+    if (heroes.length > 0) at(t3 - 100, () => { agent.highlightProp(null); agent.setLabel('Finishing…'); });
+    rest.forEach((l, i) => {
+      at(t3, () => {
+        const idx = idxById.get(l.id)!; shown[idx] = inserted[idx]; paint();
+        if (i % 5 === 0) agent.moveCursor(wanderTarget(i + 7), 'arrow');
+      });
+      t3 += 22;
+    });
+
+    // ── Commit: the whole animated scene as ONE undo step; restore playhead; end the show ────────
+    at(t3 + 320, () => {
       const finalComp = settleComposition(working);
       const newSel = sel(inserted.map((l) => l.id), inserted[0].id);
       exec({
@@ -4149,9 +4266,24 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         execute: () => { set({ composition: finalComp, selection: newSel }); },
         undo: () => { set({ composition: oldComp, selection: oldSel }); },
       });
+      committed = true;
+      useTimelineStore.getState().scrubTo(startPlayhead);
+      agent.end();
       opts.onDone?.();
     });
-    return { cancel: () => { cancelled = true; timers.forEach(clearTimeout); } };
+
+    return {
+      cancel: () => {
+        cancelled = true;
+        timers.forEach(clearTimeout);
+        agent.end();
+        // If we were interrupted mid-show nothing was committed yet — revert the transient scene.
+        if (!committed) {
+          set({ composition: oldComp, selection: oldSel });
+          useTimelineStore.getState().scrubTo(startPlayhead);
+        }
+      },
+    };
   },
 
   insertAllAnimationTemplates: () => {

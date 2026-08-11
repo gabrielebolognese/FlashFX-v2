@@ -26,6 +26,7 @@ import { getMotionBlur } from '../../core/layerSwitches';
 import { DEFAULT_CONSTRAINTS, type ReframeAxisMode } from '../../core/reframe';
 import { Diamond, Route, Trash2, Wand2, Sliders, Sparkles, Square, Circle, Star, Hexagon, Zap, Scissors, Moon, Layers, Type, Frame, Copy, ChevronUp, ChevronDown, Eye, EyeOff, Plus, Repeat, Link2, Atom, Grid3x3, Aperture, Code2, SlidersHorizontal, Palette, Loader2, Boxes, Box, RotateCcw } from 'lucide-react';
 import { DragInput } from '../components/DragInput';
+import { useAgentBuildStore } from '../agent-build/agentBuildStore';
 import { useSilenceStore } from '../../store/silenceStripper';
 import { BackgroundPanel } from './BackgroundPanel';
 import { ParticlePanel } from './ParticlePanel';
@@ -317,6 +318,7 @@ function InspectorTabContent({ tab, layer }: { tab: InspectorTab; layer: Layer }
           hasKeyframe={hasKeyframeAt(layer.transform.position)}
           labels={['X', 'Y']}
           defaultValue={[compW / 2, compH / 2]}
+          propPath="transform.position"
         />
         {/* 2.5D depth: Z position (present once the layer is 3D). */}
         {layer.is3D && layer.transform.positionZ && (
@@ -367,6 +369,7 @@ function InspectorTabContent({ tab, layer }: { tab: InspectorTab; layer: Layer }
           suffix="deg"
           step={0.5}
           defaultValue={0}
+          propPath="transform.rotation"
         />
         <Vec2DragInput
           label="Scale"
@@ -379,6 +382,7 @@ function InspectorTabContent({ tab, layer }: { tab: InspectorTab; layer: Layer }
           precision={2}
           labels={['X', 'Y']}
           defaultValue={[1, 1]}
+          propPath="transform.scale"
         />
         <NumberDragInput
           label="Opacity"
@@ -392,6 +396,7 @@ function InspectorTabContent({ tab, layer }: { tab: InspectorTab; layer: Layer }
           step={0.01}
           precision={2}
           defaultValue={1}
+          propPath="transform.opacity"
         />
       </Section>
 
@@ -1940,7 +1945,7 @@ function StringInput({ label, value, onChange }: { label: string; value: string;
 }
 
 function NumberDragInput({
-  label, prop, frame, onChange, onKeyframe, hasKeyframe, min, max, step, precision, suffix, defaultValue,
+  label, prop, frame, onChange, onKeyframe, hasKeyframe, min, max, step, precision, suffix, defaultValue, propPath,
 }: {
   label: string;
   prop: AnimatableProperty;
@@ -1955,8 +1960,12 @@ function NumberDragInput({
   suffix?: string;
   /** When provided, shows a revert-to-default button (active only when the value differs). */
   defaultValue?: number;
+  /** Dotted property path (e.g. "transform.opacity") — powers `data-prop` targeting and the
+   *  agent-build highlight ring. */
+  propPath?: string;
 }) {
   const val = evaluateProperty(prop, frame) as number;
+  const highlighted = useAgentBuildStore((s) => s.highlightPropPath) === propPath && !!propPath;
 
   const handleChange = (v: number) => {
     if (prop.keyframes.length > 0) onKeyframe(v);
@@ -1966,7 +1975,10 @@ function NumberDragInput({
   const canRevert = defaultValue !== undefined && Math.abs(val - defaultValue) > 1e-6;
 
   return (
-    <div className="flex items-center gap-0.5">
+    <div
+      data-prop={propPath}
+      className={`flex items-center gap-0.5 rounded transition-shadow ${highlighted ? 'ring-2 ring-[#f7b500] shadow-[0_0_12px_2px_#f7b50055]' : ''}`}
+    >
       <DragInput
         label={label}
         value={val}
@@ -2007,7 +2019,7 @@ function RevertButton({ canRevert, onRevert }: { canRevert: boolean; onRevert: (
 }
 
 function Vec2DragInput({
-  label, prop, frame, onChangeValue, onKeyframe, hasKeyframe, step, precision, labels, defaultValue,
+  label, prop, frame, onChangeValue, onKeyframe, hasKeyframe, step, precision, labels, defaultValue, propPath,
 }: {
   label: string;
   prop: AnimatableProperty;
@@ -2020,9 +2032,13 @@ function Vec2DragInput({
   labels?: [string, string];
   /** When provided, shows a revert-to-default button (active only when the value differs). */
   defaultValue?: Vec2;
+  /** Dotted property path (e.g. "transform.position") — powers `data-prop` targeting and the
+   *  agent-build highlight ring. */
+  propPath?: string;
 }) {
   const raw = evaluateProperty(prop, frame) as Vec2 | null;
   const val: Vec2 = raw ?? [0, 0];
+  const highlighted = useAgentBuildStore((s) => s.highlightPropPath) === propPath && !!propPath;
 
   const handleChange = (idx: number, v: number) => {
     const newVal: Vec2 = [...val];
@@ -2039,7 +2055,10 @@ function Vec2DragInput({
   const canRevert = !!defaultValue && (Math.abs(val[0] - defaultValue[0]) > 1e-6 || Math.abs(val[1] - defaultValue[1]) > 1e-6);
 
   return (
-    <div className="flex items-center gap-0.5">
+    <div
+      data-prop={propPath}
+      className={`flex items-center gap-0.5 rounded transition-shadow ${highlighted ? 'ring-2 ring-[#f7b500] shadow-[0_0_12px_2px_#f7b50055]' : ''}`}
+    >
       <span className="text-[10px] text-slate-500 w-14 flex-shrink-0">{label}</span>
       <div className="flex-1 flex gap-1 min-w-0">
         <div className="flex-1 flex items-center gap-0.5 min-w-0">

@@ -32,6 +32,7 @@ import { resolveExitStep } from './core/selection';
 import { OnboardingFlow, useOnboardingStore } from './onboarding';
 import { TutorialRunner } from './tutorial/TutorialRunner';
 import { launchTutorial } from './tutorial/launch';
+import { AgentBuildOverlay } from './ui/agent-build/AgentBuildOverlay';
 
 const LazyIntroPopup = lazy(() => import('@/components/ui/IntroPopup').then(m => ({ default: m.IntroPopup })));
 
@@ -488,6 +489,7 @@ function Editor() {
       <Suspense fallback={null}>
         <LazyIntroPopup />
       </Suspense>
+      <AgentBuildOverlay />
     </div>
   );
 }

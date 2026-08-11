@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Plus, Sparkles, ListVideo } from 'lucide-react';
 import { useEditorStore } from '../../store/editor';
+import { useAgentBuildStore } from '../agent-build/agentBuildStore';
 import { ANIMATION_TEMPLATES, CATEGORY_LABELS } from '../../animation-templates/catalog';
 import type { TemplateCategory } from '../../animation-templates/types';
 
@@ -11,8 +12,11 @@ import type { TemplateCategory } from '../../animation-templates/types';
 type Filter = 'all' | TemplateCategory;
 
 export function AnimationTemplatesTab() {
-  const insert = useEditorStore((s) => s.insertAnimationTemplate);
+  // Every "Use this" now plays the cinematic agent build (the editor animates itself assembling the
+  // scene) instead of dropping it in instantly.
+  const insertAnimated = useEditorStore((s) => s.insertAnimationTemplateAnimated);
   const insertAll = useEditorStore((s) => s.insertAllAnimationTemplates);
+  const building = useAgentBuildStore((s) => s.active);
   const [filter, setFilter] = useState<Filter>('all');
   const [query, setQuery] = useState('');
 
@@ -74,10 +78,11 @@ export function AnimationTemplatesTab() {
               </div>
               <p className="mt-0.5 text-[10px] leading-snug text-slate-500 line-clamp-2">{t.description}</p>
               <button
-                onClick={() => insert(t.id)}
-                className="mt-2 w-full h-7 flex items-center justify-center gap-1 rounded bg-[#f7b500] hover:bg-[#ffc21a] text-[#0e1c32] text-[11px] font-semibold transition-colors"
+                onClick={() => insertAnimated(t.id)}
+                disabled={building}
+                className="mt-2 w-full h-7 flex items-center justify-center gap-1 rounded bg-[#f7b500] hover:bg-[#ffc21a] disabled:opacity-40 disabled:cursor-not-allowed text-[#0e1c32] text-[11px] font-semibold transition-colors"
               >
-                <Plus size={12} /> Use this
+                <Plus size={12} /> {building ? 'Building…' : 'Use this'}
               </button>
             </div>
           </div>
@@ -88,8 +93,9 @@ export function AnimationTemplatesTab() {
       <div className="flex-shrink-0 p-2 border-t border-[#1a2a42] bg-[#0b1220]">
         <button
           onClick={() => insertAll()}
+          disabled={building}
           title="Insert all animations in sequence, one after another"
-          className="w-full h-8 flex items-center justify-center gap-1.5 rounded-md bg-[#122240] hover:bg-[#1a2f52] text-slate-100 text-[12px] font-semibold border border-[#26405f] transition-colors"
+          className="w-full h-8 flex items-center justify-center gap-1.5 rounded-md bg-[#122240] hover:bg-[#1a2f52] disabled:opacity-40 disabled:cursor-not-allowed text-slate-100 text-[12px] font-semibold border border-[#26405f] transition-colors"
         >
           <ListVideo size={14} /> All ({ANIMATION_TEMPLATES.length}) → timeline
         </button>
