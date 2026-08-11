@@ -4223,16 +4223,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const staticLayers = inserted.map(stripLayerKeyframes);          // resting-pose clones (same ids/order)
 
     // Which VERSION of each inserted layer is on the canvas right now (static → animated once its
-    // keyframes are "placed"), and which ids are visible yet. Reveal/keyframe ORDER is decoupled from
-    // the layers array (the renderer orders by track), so we can climb bottom-up while the rows stay
-    // put. paint() is the only hot-path write — a filter + spread, no settle (working is settled).
+    // keyframes are "placed"), and which ids are visible yet.
     const version = new Map<string, Layer>(inserted.map((l, i) => [l.id, staticLayers[i]]));
     const shownIds = new Set<string>();
-    const paint = () => set({
-      composition: { ...working, layers: [...oldComp.layers, ...inserted.filter((l) => shownIds.has(l.id)).map((l) => version.get(l.id)!)] },
-    });
 
-    // Vertical track offsets (mirrors TrackArea.getTrackHeight) for the auto-scroll.
+    // Track heights / absolute offsets (mirror TrackArea.getTrackHeight) for the auto-scroll.
     const rowHt = (type: Track['type']) => (type === 'video' ? 45 : 22);
     const trackTop = new Map<string, number>();
     const trackHt = new Map<string, number>();
@@ -4240,70 +4235,68 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     for (const tr of [...working.tracks].sort((a, b) => a.order - b.order)) {
       trackTop.set(tr.id, accH); trackHt.set(tr.id, rowHt(tr.type)); accH += rowHt(tr.type);
     }
-    const totalTracksH = accH;
-    // A chunked, bottom-anchored auto-scroll. Big templates (e.g. Departure Board ≈ 170 layers) are far
-    // taller than the timeline viewport, so without this the build happens off-screen. On the FIRST
-    // item this jumps so that row sits near the viewport BOTTOM (where the build begins); then every
-    // random 13–17 items it pages by ~one viewport height to follow the wave UP — whole pages at a
-    // time, never a little per row. One pager per phase (reveal, keyframes).
-    const makePager = () => {
-      let count = 0;
-      let threshold = 13 + Math.floor(Math.random() * 5); // 13..17, re-rolled each page
-      let started = false;
-      return (trackId?: string | null) => {
-        if (!trackId) return;
-        const top = trackTop.get(trackId);
-        if (top == null) return;
-        const h = trackHt.get(trackId) ?? 22;
-        const tl = useTimelineStore.getState();
-        const vh = tl.containerHeight || 300;
-        const maxScroll = Math.max(0, totalTracksH - vh);
-        const goto = () => tl.setScrollY(Math.max(0, Math.min(maxScroll, top - (vh - h - 8)))); // row → viewport bottom
-        if (!started) { started = true; goto(); return; }
-        if (++count >= threshold) { count = 0; threshold = 13 + Math.floor(Math.random() * 5); goto(); }
-      };
+    const fullHeight = accH;
+    const oldTrackIds = new Set(oldComp.layers.map((l) => l.trackId).filter(Boolean) as string[]);
+
+    // paint(): show ONLY the revealed layers and the tracks they use, so the timeline GROWS as the
+    // build proceeds — early frames are cheap and the user watches rows appear, instead of all ~170
+    // empty tracks showing up front (which made every frame re-render the whole timeline, so the rAF
+    // steps batched together and the reveal + scroll collapsed into one jump). Existing pre-insert
+    // tracks are always kept. Returns the shown tracks so the caller can pin the scroll to the bottom.
+    const paint = (): Track[] => {
+      const layers = [...oldComp.layers, ...inserted.filter((l) => shownIds.has(l.id)).map((l) => version.get(l.id)!)];
+      const used = new Set<string>([...oldTrackIds, ...layers.map((l) => l.trackId).filter(Boolean) as string[]]);
+      const tracks = working.tracks.filter((t) => used.has(t.id) || t.keepIfEmpty);
+      set({ composition: { ...working, layers, tracks } });
+      return tracks;
+    };
+    // Reveal: keep the newest row pinned to the bottom of the (growing) timeline.
+    const scrollToBottom = (shownTracks: Track[]) => {
+      const tl = useTimelineStore.getState();
+      const vh = tl.containerHeight || 300;
+      const h = shownTracks.reduce((s, tr) => s + (trackHt.get(tr.id) ?? 22), 0);
+      tl.setScrollY(Math.max(0, h - vh));
+    };
+    // Keyframes: page the row being edited into view (whole timeline exists by then).
+    const scrollRowIntoView = (trackId?: string | null) => {
+      if (!trackId) return;
+      const top = trackTop.get(trackId);
+      if (top == null) return;
+      const tl = useTimelineStore.getState();
+      const vh = tl.containerHeight || 300;
+      const maxScroll = Math.max(0, fullHeight - vh);
+      tl.setScrollY(Math.max(0, Math.min(maxScroll, top - vh * 0.6)));
     };
 
-    // Reveal order: GROUPS first (invisible parents — so children never render parentless), then the
-    // real content BOTTOM-UP (reverse track order) so the build climbs from the bottom of the timeline.
-    const groups = inserted.filter((l) => l.type === 'group');
-    const bottomUp = inserted
-      .filter((l) => l.type !== 'group')
-      .sort((a, b) => (trackTop.get(b.trackId ?? '') ?? 0) - (trackTop.get(a.trackId ?? '') ?? 0));
-
-    // ── Build the timed step list; a single rAF clock runs it (frame-aligned; if the main thread
-    //    stalls, all steps due that frame apply together and React renders once — no backlog). ──
     const steps: { at: number; run: () => void }[] = [];
     const S = (at: number, run: () => void) => steps.push({ at, run });
 
-    // Act 1 — reveal. Groups pop in at the start (invisible), then content climbs bottom-up on a
-    // rising-speed (Rush-E) cadence while the timeline pages up to follow.
-    const revealPager = makePager();
+    // Act 1 — reveal layers in track order (group first → parents exist), the timeline growing and
+    // auto-scrolling to keep the newest row visible, on a rising-speed (Rush-E) cadence.
     const LEADIN = 620;                 // beat so the user reads "the agent is working"
-    S(LEADIN - 120, () => { for (const g of groups) shownIds.add(g.id); paint(); agent.setLabel('Placing layers…'); });
+    S(LEADIN - 120, () => { agent.setLabel('Placing layers…'); useTimelineStore.getState().setScrollY(0); });
     let t = LEADIN;
     let gap = 460;                      // first gaps are long/legible…
-    bottomUp.forEach((l, k) => {
+    inserted.forEach((l, k) => {
       S(t, () => {
-        shownIds.add(l.id); paint();
-        revealPager(l.trackId);
-        opts.onLayer?.(k + 1, bottomUp.length);
+        shownIds.add(l.id);
+        scrollToBottom(paint());
+        opts.onLayer?.(k + 1, inserted.length);
         agent.moveCursor(wanderTarget(k), 'arrow');
         if (k % 4 === 0) agent.clickCursor();
       });
       gap = Math.max(26, gap * 0.8);   // …then decay geometrically to a rush
       t += gap;
     });
-    const revealEnd = t + 240;
+    const revealEnd = t + 300;
 
-    // Act 2 — keyframes, also BOTTOM-UP. Every animated layer gets its keyframes; a spread of "hero"
-    // layers get the slow, legible treatment (select → ring the property → jog the playhead → place),
-    // the rest snap fast. The timeline pages up to follow, exactly like the reveal.
+    // Act 2 — keyframes, sweeping top→bottom (all rows exist now). A spread of "hero" layers get the
+    // slow, legible treatment (select → ring the property → jog the playhead → place); the rest snap
+    // fast. Each row is paged into view so the keyframe dots are always on screen.
     const heroIds = new Set(pickHeroLayers(inserted, 6).map((h) => h.id));
-    const kfPager = makePager();
-    const animated = bottomUp.filter((l) => layerKeyframeFrames(l).length > 0);
-    S(revealEnd, () => { opts.onKeyframes?.(); agent.setLabel('Placing keyframes…'); });
-    let tk = revealEnd + 120;
+    const animated = inserted.filter((l) => layerKeyframeFrames(l).length > 0);
+    S(revealEnd, () => { opts.onKeyframes?.(); agent.setLabel('Placing keyframes…'); useTimelineStore.getState().setScrollY(0); });
+    let tk = revealEnd + 160;
     let heroPace = 620;
     let heroTurn = 0;
     animated.forEach((l) => {
@@ -4316,7 +4309,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
           set({ selection: sel([l.id], l.id) });          // transient — restored at commit / undo
           agent.highlightProp(path);
           agent.moveCursor({ kind: 'dom', selector: `[data-prop="${path}"]` }, 'hand');
-          kfPager(l.trackId);
+          scrollRowIntoView(l.trackId);
           useTimelineStore.getState().scrubTo(clampFrame(scrubFrame));
         });
         S(tk + 130, () => agent.clickCursor());
@@ -4324,8 +4317,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         tk += heroPace;
         heroPace = Math.max(300, heroPace * 0.86);
       } else {
-        S(tk, () => { version.set(l.id, l); paint(); kfPager(l.trackId); });
-        tk += 24;
+        S(tk, () => { version.set(l.id, l); paint(); scrollRowIntoView(l.trackId); });
+        tk += 26;
       }
     });
     const t3 = tk;
@@ -4357,7 +4350,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       if (cancelled) return;
       if (startT === 0) startT = now;
       const elapsed = now - startT;
-      while (idx < steps.length && steps[idx].at <= elapsed) { steps[idx].run(); idx++; }
+      // Cap steps per frame: on a big template each paint re-renders a growing timeline, so a slow
+      // frame could otherwise make dozens of steps come due at once and dump them together (the reveal
+      // and its auto-scroll would collapse into a single jump). A small cap keeps it visibly staged —
+      // the build just takes a touch longer under load instead of skipping.
+      let budget = 4;
+      while (idx < steps.length && steps[idx].at <= elapsed && budget-- > 0) { steps[idx].run(); idx++; }
       if (idx < steps.length) raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
