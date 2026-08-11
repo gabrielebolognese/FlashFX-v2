@@ -221,13 +221,15 @@ export function TrackArea({ layers, tracks, selectedIds, rulerOnly, ghostRowCoun
       const w = entries[0].contentRect.width;
       setContainerWidth(w);
       // Publish to the store so menu-driven fit/jump actions know the viewport width, and the
-      // cinematic build can page vertical auto-scroll by the real viewport height.
+      // cinematic build can page vertical auto-scroll by the real viewport height. ONLY the main
+      // (non-ruler) instance publishes the height — the ruler is ~21px and would clobber it, making
+      // the build's auto-scroll page by the wrong amount (frontier row lands off-screen).
       useTimelineStore.getState().setContainerWidth(w);
-      useTimelineStore.getState().setContainerHeight(entries[0].contentRect.height);
+      if (!rulerOnly) useTimelineStore.getState().setContainerHeight(entries[0].contentRect.height);
     });
     observer.observe(el);
     return () => observer.disconnect();
-  }, []);
+  }, [rulerOnly]);
 
   // Follow-playhead auto-scroll moved to <FollowPlayheadDriver> (owns the per-frame
   // currentFrame subscription so it doesn't re-render this whole component).
