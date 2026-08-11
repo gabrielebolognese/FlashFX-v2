@@ -21,8 +21,10 @@ function resolveTarget(t: AgentCursorTarget | null): { x: number; y: number } | 
     if (r.width === 0 && r.height === 0) return null;
     return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
   }
-  // canvasRel — a fraction inside the viewport/canvas element.
-  const el = document.querySelector('[data-tutorial-id="canvas"]');
+  // canvasRel — a fraction inside the rendered comp. The <canvas> element is sized/positioned to the
+  // fitted composition rect, so its bounding box maps 1:1 to comp coords (no letterbox error). Prefer
+  // it; fall back to the viewport panel if it isn't mounted.
+  const el = document.querySelector('[data-ffx-canvas]') ?? document.querySelector('[data-tutorial-id="canvas"]');
   if (!el) return null;
   const r = el.getBoundingClientRect();
   return { x: r.left + r.width * t.fx, y: r.top + r.height * t.fy };
@@ -32,7 +34,6 @@ export function AgentBuildOverlay() {
   const active = useAgentBuildStore((s) => s.active);
   const label = useAgentBuildStore((s) => s.label);
   const clickPulse = useAgentBuildStore((s) => s.clickPulse);
-  const cursorIcon = useAgentBuildStore((s) => s.cursorIcon);
 
   const cursorRef = useRef<HTMLDivElement>(null);
   const pos = useRef<{ x: number; y: number } | null>(null);
@@ -51,9 +52,10 @@ export function AgentBuildOverlay() {
         const dx = target.x - p.x;
         const dy = target.y - p.y;
         const dist = Math.hypot(dx, dy);
-        // Ease ~18%/frame, but never step more than ~46px so a cross-screen move stays a visible glide.
-        const step = Math.min(dist, Math.max(dist * 0.18, dist > 0.5 ? 1.2 : 0));
-        const capped = Math.min(step, 46);
+        // Ease ~24%/frame, capped so a long jump reads as a fast glide rather than a teleport — snappy
+        // enough to reach a shape's centre before the next one appears during the slow early reveals.
+        const step = Math.min(dist, Math.max(dist * 0.24, dist > 0.5 ? 1.5 : 0));
+        const capped = Math.min(step, 64);
         if (dist > 0.01) {
           p.x += (dx / dist) * capped;
           p.y += (dy / dist) * capped;
@@ -96,24 +98,19 @@ export function AgentBuildOverlay() {
       {/* Agent cursor — a deliberately oversized, on-brand AMBER pointer (never the OS cursor), so the
           user always sees where "the agent" is working. Positioned via translate on a ref (rAF loop). */}
       <div ref={cursorRef} className="absolute top-0 left-0 will-change-transform" style={{ transform: 'translate3d(-200px,-200px,0)' }}>
-        <div className="relative -translate-x-[3px] -translate-y-[2px]">
-          {/* click ripple */}
+        {/* The hotspot (the arrow tip) is at ~(4,3) in the sprite; offset so it sits on the target point. */}
+        <div className="relative -translate-x-[4px] -translate-y-[3px]">
+          {/* click ripple — pops at the tip when the agent "places" something */}
           {clicking && (
             <span
-              className="absolute left-2 top-2 h-8 w-8 rounded-full"
+              className="absolute left-[2px] top-[1px] h-7 w-7 rounded-full"
               style={{ border: `2.5px solid ${ACCENT}`, animation: 'ffxAgentClick 0.32s ease-out forwards' }}
             />
           )}
-          {/* cursor sprite — big amber pointer / hand, dark outline + amber glow */}
-          {cursorIcon === 'hand' ? (
-            <svg width="30" height="33" viewBox="0 0 22 24" fill="none" style={{ filter: 'drop-shadow(0 2px 3px rgba(0,0,0,0.55)) drop-shadow(0 0 7px #f7b50088)' }}>
-              <path d="M6 2.5c0-1 1.6-1 1.6 0V10l1.2-.2V4.3c0-1 1.6-1 1.6 0V10l1.2.1V6.1c0-1 1.6-1 1.6 0v5l1.1.4c1 .3 1.4 1 1.4 2.2 0 2.4-1 6.6-3.2 8.3-1 .8-2.2 1-3.6 1-2.6 0-4.2-1.2-5.3-3.4L2 15.4c-.5-1 .9-2.1 1.7-1.2l1.1 1.2V4.3c0-1 1.6-1 1.6 0" fill={ACCENT} stroke="#0a0f16" strokeWidth="1" strokeLinejoin="round" />
-            </svg>
-          ) : (
-            <svg width="30" height="34" viewBox="0 0 24 28" fill="none" style={{ filter: 'drop-shadow(0 2px 3px rgba(0,0,0,0.55)) drop-shadow(0 0 7px #f7b50088)' }}>
-              <path d="M3.5 2 L3.5 22.5 L9 17.4 L12.7 25.6 L16.7 23.8 L13 15.8 L20.5 15.5 Z" fill={ACCENT} stroke="#0a0f16" strokeWidth="1.5" strokeLinejoin="round" />
-            </svg>
-          )}
+          {/* Figma-style arrow cursor — crisp filled pointer, on-brand amber with a dark outline. */}
+          <svg width="26" height="28" viewBox="0 0 24 26" fill="none" style={{ filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.5)) drop-shadow(0 0 5px #f7b50077)' }}>
+            <path d="M4 3 L4 20.4 L8.8 16.1 L11.7 22.6 L14.8 21.2 L11.9 14.9 L18.6 14.9 Z" fill={ACCENT} stroke="#0a0f16" strokeWidth="1.4" strokeLinejoin="round" strokeLinecap="round" />
+          </svg>
           {/* label chip */}
           {label && (
             <div

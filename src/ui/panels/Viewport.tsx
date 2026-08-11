@@ -328,6 +328,7 @@ export function Viewport() {
     >
       <canvas
         ref={canvasRef}
+        data-ffx-canvas
         className="absolute"
         style={{
           width: canvasStyle.width,

@@ -28,7 +28,7 @@ import {
   type TangentMode,
 } from '../core/keyframeOps';
 import { generatePresetKeyframes, getPresetById, type PresetContext } from '../core/animationPresets';
-import { getDescendants } from '../core/sceneGraph';
+import { getDescendants, getWorldPosition } from '../core/sceneGraph';
 import { buildPrecompose } from '../core/precompose';
 import { createMotionPath } from './motionPath';
 import { useHistoryStore, type Command } from './history';
@@ -715,14 +715,6 @@ function pickHeroLayers(animated: Layer[], count: number): Layer[] {
   for (let i = 0; i < count; i++) out.push(eligible[Math.round((i * (eligible.length - 1)) / (count - 1))]);
   return out;
 }
-
-/** A deterministic wander point inside the viewport for cursor motion during the reveal (no RNG so
- *  a scrub/replay is stable). Golden-ratio + a second irrational keep successive points spread out. */
-function wanderTarget(i: number): AgentCursorTarget {
-  const frac = (x: number) => x - Math.floor(x);
-  return { kind: 'canvasRel', fx: 0.16 + 0.68 * frac(i * 0.6180339887), fy: 0.16 + 0.66 * frac(i * 0.3701962) };
-}
-
 
 function ensureLayerHasTrack(composition: Composition, layer: Layer): Composition {
   if (layer.trackId) return composition;
@@ -4268,22 +4260,37 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       tl.setScrollY(Math.max(0, Math.min(maxScroll, top - vh * 0.6)));
     };
 
+    // The mathematical centre of each layer, in composition space, as a fraction of the comp — so the
+    // agent cursor can fly to the exact spot a shape/box/dot lands and "click" it into place (rather
+    // than clicking at random). Uses the RESTING (static) pose + the parent chain (group offset), so
+    // it targets where the layer actually appears on the reveal. Clamped to stay on the canvas.
+    const compW = oldComp.settings.width, compH = oldComp.settings.height;
+    const staticById = new Map(staticLayers.map((s) => [s.id, s]));
+    const parentLookup = [...oldComp.layers, ...staticLayers];
+    const centerTarget = (layerId: string): AgentCursorTarget => {
+      const s = staticById.get(layerId);
+      if (!s) return { kind: 'canvasRel', fx: 0.5, fy: 0.5 };
+      const [wx, wy] = getWorldPosition(s, parentLookup, startPlayhead);
+      return { kind: 'canvasRel', fx: Math.max(0, Math.min(1, wx / compW)), fy: Math.max(0, Math.min(1, wy / compH)) };
+    };
+
     const steps: { at: number; run: () => void }[] = [];
     const S = (at: number, run: () => void) => steps.push({ at, run });
 
     // Act 1 — reveal layers in track order (group first → parents exist), the timeline growing and
-    // auto-scrolling to keep the newest row visible, on a rising-speed (Rush-E) cadence.
+    // auto-scrolling to keep the newest row visible, on a rising-speed (Rush-E) cadence. The cursor
+    // flies to each shape's centre and clicks it into place as it appears.
     const LEADIN = 620;                 // beat so the user reads "the agent is working"
     S(LEADIN - 120, () => { agent.setLabel('Placing layers…'); useTimelineStore.getState().setScrollY(0); });
     let t = LEADIN;
     let gap = 460;                      // first gaps are long/legible…
     inserted.forEach((l, k) => {
       S(t, () => {
+        agent.moveCursor(centerTarget(l.id), 'arrow');
         shownIds.add(l.id);
         scrollToBottom(paint());
+        agent.clickCursor();
         opts.onLayer?.(k + 1, inserted.length);
-        agent.moveCursor(wanderTarget(k), 'arrow');
-        if (k % 4 === 0) agent.clickCursor();
       });
       gap = Math.max(26, gap * 0.8);   // …then decay geometrically to a rush
       t += gap;
@@ -4324,7 +4331,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         heroPace = Math.max(280, heroPace * 0.9);
       } else {
         S(tk, () => {
-          if (hasKf) { version.set(l.id, l); paint(); }
+          if (hasKf) { version.set(l.id, l); paint(); agent.moveCursor(centerTarget(l.id), 'arrow'); agent.clickCursor(); }
           scrollRowIntoView(l.trackId);
           agent.highlightProp(null);
         });
