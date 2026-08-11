@@ -269,7 +269,11 @@ class MediaAssetManager {
 
     await putAsset(projectAsset);
 
-    const bitmap = await createImageBitmap(file);
+    // Decode as STRAIGHT (non-premultiplied) alpha to match the renderer's straight-alpha image shader
+    // + over-blend. With the default ('premultiply'), copyExternalImageToTexture has to unpremultiply
+    // into the straight destination, which mishandles transparent PNGs on some browsers (a cut-out
+    // image can upload as an opaque black rectangle). colorSpaceConversion 'none' avoids color shifts.
+    const bitmap = await createImageBitmap(file, { premultiplyAlpha: 'none', colorSpaceConversion: 'none' });
     const metadata: ImageAssetMetadata = {
       assetId,
       width: bitmap.width,
@@ -604,7 +608,7 @@ class MediaAssetManager {
         }
       } else if (asset.type === 'image') {
         try {
-          const bitmap = await createImageBitmap(asset.blob);
+          const bitmap = await createImageBitmap(asset.blob, { premultiplyAlpha: 'none', colorSpaceConversion: 'none' });
           const imageMetadata: ImageAssetMetadata = {
             assetId: asset.id,
             width: bitmap.width,
