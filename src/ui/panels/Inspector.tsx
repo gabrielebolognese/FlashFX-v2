@@ -24,7 +24,7 @@ import { evaluateProperty } from '../../core/interpolation';
 import { createProperty, createTextAnimOverrides } from '../../core/factory';
 import { getMotionBlur } from '../../core/layerSwitches';
 import { DEFAULT_CONSTRAINTS, type ReframeAxisMode } from '../../core/reframe';
-import { Diamond, Route, Trash2, Wand2, Sliders, Sparkles, Square, Circle, Star, Hexagon, Zap, Scissors, Moon, Layers, Type, Frame, Copy, ChevronUp, ChevronDown, Eye, EyeOff, Plus, Repeat, Link2, Atom, Grid3x3, Aperture, Code2, SlidersHorizontal, Palette, Loader2, Boxes, Box, RotateCcw } from 'lucide-react';
+import { Diamond, Route, Trash2, Wand2, Sliders, Sparkles, Square, Circle, Star, Hexagon, Zap, Scissors, Moon, Layers, Type, Frame, Copy, ChevronUp, ChevronDown, Eye, EyeOff, Plus, Repeat, Link2, Atom, Grid3x3, Aperture, Code2, SlidersHorizontal, Palette, Loader2, Boxes, Box, RotateCcw, Lock, Unlock } from 'lucide-react';
 import { DragInput } from '../components/DragInput';
 import { useAgentBuildStore } from '../agent-build/agentBuildStore';
 import { useSilenceStore } from '../../store/silenceStripper';
@@ -1107,6 +1107,7 @@ function VideoProperties({
           <label className="text-[10px] text-slate-500 w-14 flex-shrink-0">FPS</label>
           <span className="text-[10px] text-slate-400">{video.sourceFrameRate}</span>
         </div>
+        <LockAspectToggle layer={layer} />
         <div className="flex items-center gap-1">
           <label className="text-[10px] text-slate-500 w-14 flex-shrink-0">Offset</label>
           <DragInput
@@ -1148,6 +1149,25 @@ function VideoProperties({
   );
 }
 
+// Corner-resize aspect lock (default on for media). Shift always temporarily inverts it on the canvas.
+function LockAspectToggle({ layer }: { layer: ImageLayer | VideoLayer }) {
+  const updateLayerProperty = useEditorStore((s) => s.updateLayerProperty);
+  const locked = layer.lockAspect !== false;
+  return (
+    <div className="flex items-center gap-2">
+      <label className="text-[10px] text-slate-500 w-14 flex-shrink-0">Aspect</label>
+      <button
+        onClick={() => updateLayerProperty(layer.id, 'lockAspect', !locked)}
+        title={locked ? 'Corner-resize keeps the aspect ratio (hold Shift to free it)' : 'Corner-resize is free (hold Shift to lock)'}
+        className={`flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-medium transition-colors ${locked ? 'bg-[#f7b500]/15 text-[#f7b500]' : 'bg-[#122240] text-slate-400 hover:text-slate-200'}`}
+      >
+        {locked ? <Lock size={11} /> : <Unlock size={11} />}
+        {locked ? 'Locked' : 'Free'}
+      </button>
+    </div>
+  );
+}
+
 function ImageProperties({
   layer,
 }: {
@@ -1177,6 +1197,7 @@ function ImageProperties({
             <label className="text-[10px] text-slate-500 w-14 flex-shrink-0">File Size</label>
             <span className="text-[10px] text-slate-400">{formatSize(image.fileSize)}</span>
           </div>
+          <LockAspectToggle layer={layer} />
         </div>
       </Section>
 

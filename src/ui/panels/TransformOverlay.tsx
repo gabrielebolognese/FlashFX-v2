@@ -804,7 +804,13 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
             break;
         }
 
-        if (shiftHeld && ['tl', 'tr', 'bl', 'br'].includes(dragging)) {
+        // Aspect constraint on corner handles. Images/videos LOCK aspect by default (their pixels
+        // shouldn't stretch) — Shift temporarily frees it; the properties "Lock aspect" toggle can turn
+        // the default off. Everything else is free by default and Shift constrains (Figma-standard).
+        const isMedia = activeLayer.type === 'image' || activeLayer.type === 'video';
+        const mediaLocked = isMedia && (activeLayer as ImageLayer | VideoLayer).lockAspect !== false;
+        const constrainAspect = isMedia ? (mediaLocked !== shiftHeld) : shiftHeld;
+        if (constrainAspect && ['tl', 'tr', 'bl', 'br'].includes(dragging)) {
           const aspect = state.w / state.h;
           if (newW / newH > aspect) {
             newW = newH * aspect;

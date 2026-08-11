@@ -383,6 +383,7 @@ function validateLayer(raw: unknown): Layer | null {
       return {
         ...baseFields,
         type: 'video',
+        ...(typeof r.lockAspect === 'boolean' ? { lockAspect: r.lockAspect } : {}),
         video: {
           assetId: v.assetId as string,
           sourceWidth: typeof v.sourceWidth === 'number' ? v.sourceWidth : 1920,
@@ -403,6 +404,7 @@ function validateLayer(raw: unknown): Layer | null {
       return {
         ...baseFields,
         type: 'image',
+        ...(typeof r.lockAspect === 'boolean' ? { lockAspect: r.lockAspect } : {}),
         image: {
           assetId: img.assetId as string,
           sourceWidth: typeof img.sourceWidth === 'number' ? img.sourceWidth : 800,

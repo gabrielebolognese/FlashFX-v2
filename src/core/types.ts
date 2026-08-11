@@ -434,6 +434,8 @@ export interface VideoLayer {
   trackId: string | null;
   visible: boolean;
   locked: boolean;
+  /** Corner-resize keeps the source aspect ratio unless this is explicitly false (default: locked). */
+  lockAspect?: boolean;
   effectsEnabled?: boolean;
   motionBlur?: boolean;
   motionBlurShutter?: number;
@@ -519,6 +521,8 @@ export interface ImageLayer {
   trackId: string | null;
   visible: boolean;
   locked: boolean;
+  /** Corner-resize keeps the source aspect ratio unless this is explicitly false (default: locked). */
+  lockAspect?: boolean;
   effectsEnabled?: boolean;
   motionBlur?: boolean;
   motionBlurShutter?: number;
