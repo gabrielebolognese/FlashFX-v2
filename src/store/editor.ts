@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { Composition, SceneDocument, Layer, AnimatableProperty, Keyframe, Vec2, Vec4, InterpolationType, BackgroundLayer, Track, TrackType, VideoPlaybackMode, PathVertex, VertexType, Mask, MaskType, AnchorEdge, PhysicsBindingDef, PhysicsWorldDef, StaggerBindingDef, LayoutObjectLayer, LayoutContainerLayer, ContainerShapeType, Marker, ShapeLayer, PolygonShape } from '../core/types';
-import { createComposition, createRectangleLayer, createCircleLayer, createStarLayer, createPolygonLayer, createDefaultPolygonVertices, createTextLayer, createVideoLayer, createImageLayer, createAudioLayer, createGroupLayer, createKeyframe, createBackgroundLayer, createMask, createParticleLayer, createAnimationItemLayer, createFieldSampledLayer, createGenerativePatternLayer, createCameraLayer, createLottieIconLayer, createLayoutObjectLayer, createLayoutContainerLayer, createDefaultChildOverride, createProperty, uid } from '../core/factory';
+import { createComposition, createRectangleLayer, createCircleLayer, createStarLayer, createPolygonLayer, createDefaultPolygonVertices, createTextLayer, createDefaultTextContent, createVideoLayer, createImageLayer, createAudioLayer, createGroupLayer, createKeyframe, createBackgroundLayer, createMask, createParticleLayer, createAnimationItemLayer, createFieldSampledLayer, createGenerativePatternLayer, createCameraLayer, createLottieIconLayer, createLayoutObjectLayer, createLayoutContainerLayer, createDefaultChildOverride, createProperty, uid } from '../core/factory';
 import { outlineText, canOutlineFont } from '../text/outlineText';
 import { computeBatchNames, type RenamePattern } from '../core/batchRename';
 import { detachStyleValue, type SharedStyle } from '../core/styles';
@@ -87,6 +87,15 @@ function groupTargetFrames(targets: KeyframeTarget[]): Map<string, Set<number>> 
 
 /** Session keyframe clipboard: per-property lists with frames rebased so the earliest is 0. */
 let keyframeClipboard: { propertyPath: string; keyframes: Keyframe[] }[] = [];
+
+/**
+ * On-canvas text edit snapshot: the composition/selection captured the moment editing
+ * began, so the whole create-and-type (or edit-existing) sequence commits as ONE undo
+ * step and abandoning an empty new text reverts cleanly. Live keystrokes update state
+ * directly (non-undoable) between begin and commit.
+ */
+let textEditPreComp: Composition | null = null;
+let textEditPreSel: SelectionState | null = null;
 
 /**
  * Apply a per-property transform to the selected keyframes of one layer, returning
@@ -297,6 +306,22 @@ interface EditorState {
     height: number
   ) => void;
   addText: (content?: string) => void;
+  /**
+   * Text tool: create an empty text layer to be typed directly on the canvas.
+   * `box` (comp units) makes a fixed-size paragraph box; `null` makes an auto (point) text.
+   * Returns the new layer id. Not committed to history until `commitTextEdit` (so an
+   * abandoned empty text leaves no undo entry). Selects the new layer.
+   */
+  createTextAt: (x: number, y: number, box: { width: number; height: number } | null) => string;
+  /** Snapshot pre-edit state so double-click editing an existing text is one undo step. Selects it. */
+  beginTextEditExisting: (layerId: string) => void;
+  /** Live (non-undoable) update of a text layer's content while typing on canvas. */
+  updateTextLive: (layerId: string, text: string) => void;
+  /**
+   * Finish on-canvas editing. If `wasJustCreated` and the text is still empty, the layer is
+   * discarded with no history entry; otherwise the whole create/edit is pushed as one undo step.
+   */
+  commitTextEdit: (layerId: string, wasJustCreated: boolean) => void;
   addParticleLayer: () => void;
   addFieldSampledLayer: (configJSON?: string) => void;
   addGenerativePatternLayer: (configJSON?: string) => void;
@@ -1925,6 +1950,90 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       label: 'Add Text',
       execute: () => { set({ composition: newComp, selection: newSel }); },
       undo: () => { set({ composition: oldComp, selection: oldSel }); },
+    });
+  },
+
+  createTextAt: (x, y, box) => {
+    const { composition, selection } = get();
+    // Snapshot pre-state so commit can push a single undo step (or revert cleanly if abandoned).
+    textEditPreComp = composition;
+    textEditPreSel = selection;
+
+    const textCount = composition.layers.filter((l) => l.type === 'text').length;
+    const layer = createTextLayer(
+      `Text ${textCount + 1}`, x, y, '',
+      defaultClipFrames(composition)
+    );
+    if (box) {
+      // Dragged paragraph box: fixed size, left/top anchored like a text frame.
+      layer.layoutConfig = {
+        ...layer.layoutConfig,
+        boundingBox: { type: 'fixed', width: Math.max(1, box.width), height: Math.max(1, box.height) },
+        horizontalAlign: 'left',
+        verticalAlign: 'top',
+      };
+    }
+
+    const newComp = settleComposition(ensureLayerHasTrack({ ...composition, layers: [...composition.layers, layer] }, layer));
+    // Non-undoable set — history is written once, at commitTextEdit.
+    set({ composition: newComp, selection: sel([layer.id], layer.id) });
+    return layer.id;
+  },
+
+  beginTextEditExisting: (layerId) => {
+    const { composition, selection } = get();
+    textEditPreComp = composition;
+    textEditPreSel = selection;
+    if (selection.activeId !== layerId || selection.selectedIds.length !== 1) {
+      set({ selection: sel([layerId], layerId) });
+    }
+  },
+
+  updateTextLive: (layerId, text) => {
+    const { composition } = get();
+    const layers = composition.layers.map((l) => {
+      if (l.id !== layerId || l.type !== 'text') return l;
+      const spans = l.content.spans.length > 0 ? l.content.spans : createDefaultTextContent('').spans;
+      // Retype only the first span's text; preserve its style. Extra spans are dropped
+      // (on-canvas editing is single-style — mixed-run editing stays in the Inspector).
+      const first = { ...spans[0], text };
+      return { ...l, content: { ...l.content, spans: [first] } };
+    });
+    set({ composition: { ...composition, layers } });
+  },
+
+  commitTextEdit: (layerId, wasJustCreated) => {
+    const pre = textEditPreComp;
+    const preSel = textEditPreSel;
+    textEditPreComp = null;
+    textEditPreSel = null;
+
+    const { composition, selection } = get();
+    const layer = composition.layers.find((l) => l.id === layerId);
+    const text = layer && layer.type === 'text' ? (layer.content.spans[0]?.text ?? '') : '';
+
+    if (wasJustCreated && text.trim() === '') {
+      // Abandoned empty text — discard with no undo entry (revert to pre-edit state).
+      if (pre) set({ composition: pre, selection: preSel ?? selection });
+      else set({ composition: { ...composition, layers: composition.layers.filter((l) => l.id !== layerId) } });
+      return;
+    }
+
+    // Nothing meaningful changed (edited existing text but left it identical) — no history noise.
+    const preText = pre?.layers.find((l) => l.id === layerId && l.type === 'text');
+    const preTextValue = preText && preText.type === 'text' ? (preText.content.spans[0]?.text ?? '') : undefined;
+    if (!wasJustCreated && preTextValue === text) {
+      return;
+    }
+
+    const afterComp = composition;
+    const afterSel = selection;
+    const beforeComp = pre ?? composition;
+    const beforeSel = preSel ?? selection;
+    exec({
+      label: wasJustCreated ? 'Add Text' : 'Edit Text',
+      execute: () => { set({ composition: afterComp, selection: afterSel }); },
+      undo: () => { set({ composition: beforeComp, selection: beforeSel }); },
     });
   },
 

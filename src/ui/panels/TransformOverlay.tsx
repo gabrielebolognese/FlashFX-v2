@@ -1,6 +1,7 @@
 import { useCallback, useRef, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useEditorStore } from '../../store/editor';
+import { useTextEditStore } from '../../store/textEdit';
 import { useTimelineStore } from '../../store/timeline';
 import { useHistoryStore } from '../../store/history';
 import { useGridStore, generateGridLines } from '../../store/grid';
@@ -451,6 +452,16 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
     if (e.target !== overlayRef.current) return;
     const [cx, cy] = toComp(e.clientX, e.clientY);
     const hit = hitTestLayers(cx, cy);
+    // Double-click a text layer → edit it on-canvas (Figma-style).
+    if (hit) {
+      const hitLayer = composition.layers.find((l) => l.id === hit.id);
+      if (hitLayer && hitLayer.type === 'text' && !hitLayer.locked) {
+        selectLayer(hit.id, false, 'canvas');
+        useEditorStore.getState().beginTextEditExisting(hit.id);
+        useTextEditStore.getState().startEditing(hit.id, false);
+        return;
+      }
+    }
     const r = resolveDoubleClick({ leafId: hit?.id ?? null, activeGroupId, layers: composition.layers });
     if (r.selectId) selectLayer(r.selectId, false, 'canvas');
     if (r.activeGroupId !== activeGroupId) setActiveGroup(r.activeGroupId);

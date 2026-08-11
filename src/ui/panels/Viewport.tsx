@@ -15,13 +15,16 @@ import { MotionPathOverlay } from './MotionPathOverlay';
 import { MaskOverlay } from './MaskOverlay';
 import { GridOverlay } from './GridOverlay';
 import { ShapeCreationOverlay } from './ShapeCreationOverlay';
+import { TextCreationOverlay } from './TextCreationOverlay';
+import { TextEditOverlay } from './TextEditOverlay';
 import { PenToolOverlay } from './PenToolOverlay';
 import { BoundingBoxesOverlay } from './BoundingBoxesOverlay';
 import { SafeAreasOverlay } from './SafeAreasOverlay';
 import { AnimatedPathsOverlay } from './AnimatedPathsOverlay';
 import { MultiFieldWarning } from './MultiFieldWarning';
 import { ImageSizePrompt } from './ImageSizePrompt';
-import { useShapeToolStore, isShapeTool } from '../../store/shapeTool';
+import { useShapeToolStore, isShapeTool, isTextTool } from '../../store/shapeTool';
+import { useTextEditStore } from '../../store/textEdit';
 import { useRecoveryStore } from '../../store/recovery';
 import { editorRecovery } from '../../engine/recovery';
 import { ZoomIn, ZoomOut, Maximize2, Video, VideoOff } from 'lucide-react';
@@ -170,6 +173,16 @@ export function Viewport() {
     playbackController.renderCurrentFrame();
   }, [composition]);
 
+  // On-canvas text editing: hide the edited layer's rendered text (the textarea shows it),
+  // then repaint so the change is reflected whether or not playback is running.
+  const editingTextLayerId = useTextEditStore((s) => s.editingLayerId);
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    if (!renderer) return;
+    renderer.setEditingTextLayerId(editingTextLayerId);
+    playbackController.renderCurrentFrame();
+  }, [editingTextLayerId]);
+
   useEffect(() => {
     const renderer = rendererRef.current;
     if (!renderer) return;
@@ -290,6 +303,7 @@ export function Viewport() {
 
   const activeTool = useShapeToolStore((s) => s.activeTool);
   const shapeToolActive = isShapeTool(activeTool);
+  const textToolActive = isTextTool(activeTool);
 
   const overlayStyle: React.CSSProperties = {
     position: 'absolute',
@@ -309,7 +323,7 @@ export function Viewport() {
     <div
       ref={containerRef}
       className={`flex-1 bg-[#1a1a1a] overflow-hidden relative`}
-      style={{ cursor: isPanning ? 'grabbing' : shapeToolActive ? 'crosshair' : undefined }}
+      style={{ cursor: isPanning ? 'grabbing' : shapeToolActive ? 'crosshair' : textToolActive ? 'text' : undefined }}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
@@ -347,6 +361,8 @@ export function Viewport() {
         style={overlayStyle}
       />
       <ShapeCreationOverlay compW={compW} compH={compH} style={overlayStyle} />
+      <TextCreationOverlay compW={compW} compH={compH} style={overlayStyle} />
+      <TextEditOverlay compW={compW} compH={compH} style={overlayStyle} />
       <PenToolOverlay compW={compW} compH={compH} style={overlayStyle} />
       <BoundingBoxesOverlay compW={compW} compH={compH} style={overlayStyle} />
       <AnimatedPathsOverlay compW={compW} compH={compH} style={overlayStyle} />

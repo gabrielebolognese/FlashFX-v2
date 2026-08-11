@@ -2,7 +2,7 @@ import { create } from 'zustand';
 
 export type ShapeToolType = 'rectangle' | 'circle' | 'star' | 'polygon';
 export type VectorToolType = 'pen' | 'pencil' | 'directSelect' | 'addPoint' | 'deletePoint' | 'convertPoint' | 'bend';
-export type ToolMode = 'select' | ShapeToolType | VectorToolType;
+export type ToolMode = 'select' | 'text' | ShapeToolType | VectorToolType;
 
 interface ShapeToolState {
   activeTool: ToolMode;
@@ -15,6 +15,10 @@ export const useShapeToolStore = create<ShapeToolState>((set) => ({
   setActiveTool: (tool) => set({ activeTool: tool }),
   clearTool: () => set({ activeTool: 'select' }),
 }));
+
+export function isTextTool(tool: ToolMode): tool is 'text' {
+  return tool === 'text';
+}
 
 export function isShapeTool(tool: ToolMode): tool is ShapeToolType {
   return tool === 'rectangle' || tool === 'circle' || tool === 'star' || tool === 'polygon';

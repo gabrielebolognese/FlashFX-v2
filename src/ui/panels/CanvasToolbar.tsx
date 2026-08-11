@@ -34,6 +34,7 @@ type ToolAction =
   | { kind: 'select' }
   | { kind: 'shape'; shape: ShapeToolType }
   | { kind: 'vector'; tool: VectorToolType }
+  | { kind: 'texttool' }
   | { kind: 'instant'; action: 'addText' | 'importVideo' | 'importImage' | 'addParticle' | 'addAnimationItem' | 'addFieldSampled' | 'addPattern' | 'addCloner' | 'addCamera' | 'addHBox' | 'addVBox' | 'addGrid' | 'addLayoutContainer' }
   | { kind: 'placeholder' };
 
@@ -58,7 +59,7 @@ const TOOLS: ToolDef[] = [
   { icon: MinusCircle, label: 'Delete Point', action: { kind: 'vector', tool: 'deletePoint' }, group: 'vector' },
   { icon: Spline, label: 'Convert Point', action: { kind: 'vector', tool: 'convertPoint' }, group: 'vector' },
   { icon: Waypoints, label: 'Bend', action: { kind: 'vector', tool: 'bend' }, group: 'vector' },
-  { icon: Type, label: 'Text', action: { kind: 'instant', action: 'addText' }, shortcut: 'T', group: 'media' },
+  { icon: Type, label: 'Text', action: { kind: 'texttool' }, shortcut: 'T', group: 'media' },
   { icon: Image, label: 'Image', action: { kind: 'instant', action: 'importImage' }, group: 'media' },
   { icon: Film, label: 'Video', action: { kind: 'instant', action: 'importVideo' }, group: 'media' },
   { icon: Sparkles, label: 'Particle', action: { kind: 'instant', action: 'addParticle' }, group: 'advanced' },
@@ -74,7 +75,6 @@ const TOOLS: ToolDef[] = [
 ];
 
 export function CanvasToolbar() {
-  const addText = useEditorStore((s) => s.addText);
   const addVideo = useEditorStore((s) => s.addVideo);
   const addImage = useEditorStore((s) => s.addImage);
   const addParticleLayer = useEditorStore((s) => s.addParticleLayer);
@@ -119,10 +119,12 @@ export function CanvasToolbar() {
       case 'vector':
         setActiveTool(tool.action.tool);
         break;
+      case 'texttool':
+        setActiveTool('text');
+        break;
       case 'instant':
         clearTool();
-        if (tool.action.action === 'addText') addText();
-        else if (tool.action.action === 'importVideo') videoInputRef.current?.click();
+        if (tool.action.action === 'importVideo') videoInputRef.current?.click();
         else if (tool.action.action === 'importImage') imageInputRef.current?.click();
         else if (tool.action.action === 'addParticle') addParticleLayer();
         else if (tool.action.action === 'addAnimationItem') addAnimationItem('Progress Bar');
@@ -144,6 +146,7 @@ export function CanvasToolbar() {
     if (tool.action.kind === 'select') return activeTool === 'select';
     if (tool.action.kind === 'shape') return activeTool === tool.action.shape;
     if (tool.action.kind === 'vector') return activeTool === tool.action.tool;
+    if (tool.action.kind === 'texttool') return activeTool === 'text';
     return false;
   };
 

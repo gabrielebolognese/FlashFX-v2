@@ -2803,6 +2803,10 @@ export class WebGPURenderer {
   /** Audio-master presentation mode for the current renderFrame() call (video
    *  layers show the newest decoded frame ≤ target instead of the exact frame). */
   private presentLatest = false;
+  /** Layer currently being edited on-canvas (its text is drawn by the HTML textarea
+   *  overlay instead, so the renderer skips it to avoid a doubled glyph render). */
+  private editingTextLayerId: string | null = null;
+  setEditingTextLayerId(id: string | null): void { this.editingTextLayerId = id; }
   /** Max source frames a displayed frame may lag its target before we'd rather
    *  hold/black than show a stale picture (≈ the per-asset open-frame window). */
   private static readonly PRESENT_MAX_DISTANCE = 12;
@@ -3669,6 +3673,8 @@ export class WebGPURenderer {
     for (let i = 0; i < expandedLayers.length; i++) {
       const layer = expandedLayers[i];
       if (layer.layerType === 'text') {
+        // Skip the layer being edited on-canvas — the textarea overlay renders its text.
+        if (layer.id === this.editingTextLayerId) continue;
         textLayers.push({ index: i, layer });
       } else if (layer.layerType === 'video') {
         videoLayers.push({ index: i, layer });
