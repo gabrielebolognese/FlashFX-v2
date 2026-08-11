@@ -24,7 +24,11 @@ class VideoAudioPlayer {
     const element = document.createElement('video');
     const objectUrl = URL.createObjectURL(file);
     element.src = objectUrl;
-    element.preload = 'auto';
+    // 'metadata', NOT 'auto': 'auto' makes every hidden <video> buffer its ENTIRE file into memory the
+    // moment it's created, so opening a project with N videos loaded N full files at once → OOM. With
+    // 'metadata' the browser fetches only headers and buffers media on demand once the clip actually
+    // plays (still smooth; buffering catches up during playback).
+    element.preload = 'metadata';
     element.muted = false;
     element.volume = 1;
     element.style.display = 'none';

@@ -1411,6 +1411,7 @@ function VideoAudioWaveformStrip({ layer, clipWidth, clipHeight, compositionFram
   const lastWaveform = useRef<unknown>(undefined);
   useEffect(() => {
     lastWaveform.current = mediaAssetManager.getWaveform(assetId);
+    mediaAssetManager.ensureWaveform(assetId); // waveforms are computed lazily now (not eagerly on open)
     // Only re-render when THIS clip's waveform actually changes. The manager's notify() is global, so
     // an unfiltered subscription re-rendered every waveform strip on every asset event — importing N
     // clips caused an O(strips × imports) re-render storm.
@@ -1630,12 +1631,10 @@ function VideoThumb({ assetId, sourceFrame, width, height }: {
       .catch(() => { /* asset not decodable right now — leave blank */ })
       .finally(() => { THUMB_PENDING.delete(key); });
 
-    // On unmount / re-key (zoom, scroll, edit) cancel the superseded decode so a burst of strip
-    // re-renders doesn't leave a backlog of stale thumbnail decodes clogging the pool.
-    return () => {
-      cancelled = true;
-      if (!THUMB_CACHE.has(key)) videoDecoderPool.cancelFrame(assetId, frameIdx);
-    };
+    // NOTE: do NOT cancelFrame here — React runs this cleanup on every dep change (zoom/scroll
+    // recomputes cw/ch), which would cancel the in-flight decode a re-render is about to re-request
+    // and could keep thumbnails from ever completing. Quantized source frames already bound the work.
+    return () => { cancelled = true; };
   }, [assetId, sourceFrame, cw, ch]);
 
   return (

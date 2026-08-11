@@ -415,11 +415,10 @@ class MediaAssetManager {
 
       frameScheduler.registerAsset(assetId, assetId, workerMeta.frameRate, workerMeta.frameCount);
       videoAudioPlayer.initAudio(assetId, file);
-      // Await the audio extraction (restore path only) so the caller can bound how
-      // many full-PCM decodes run at once — parallel restore otherwise spikes memory
-      // to N× a full decode. extractVideoAudio swallows its own errors (audio-less
-      // files are expected), so this never fails the video init.
-      await this.extractVideoAudio(blob, assetId);
+      // Do NOT decode the whole file's audio here. On project OPEN this ran a multi-GB `decodeAudioData`
+      // for EVERY stored video just to build a waveform — the dominant open-time OOM. The waveform is
+      // now computed lazily (ensureWaveform) the first time a clip's strip needs it, serialized so many
+      // strips can't launch parallel full-file decodes.
       this.notify();
     } catch (err) {
       const asset = this.assets.get(assetId);
@@ -741,6 +740,28 @@ class MediaAssetManager {
    * the whole buffer (export mix, silence, captions, audio processing) use this;
    * `getAudioBuffer` stays a synchronous cache read.
    */
+  // Lazily compute a video/audio asset's waveform the first time a clip strip needs it (waveforms are
+  // no longer decoded eagerly on open/import — that was the OOM). Serialized through _audioExtractChain
+  // so many strips mounting at once can't launch parallel full-file decodes; notify() re-renders the
+  // strip when the waveform lands.
+  private waveformInflight = new Set<string>();
+  ensureWaveform(assetId: string): void {
+    const asset = this.assets.get(assetId);
+    if (!asset || asset.waveform || this.waveformInflight.has(assetId)) return;
+    const url = this.getObjectUrl(assetId);
+    if (!url) return;
+    this.waveformInflight.add(assetId);
+    this._audioExtractChain = this._audioExtractChain
+      .then(async () => {
+        if (this.assets.get(assetId)?.waveform) return; // computed while queued
+        const resp = await fetch(url);
+        const blob = await resp.blob();
+        await this.extractVideoAudio(blob, assetId);
+      })
+      .catch(() => {})
+      .finally(() => { this.waveformInflight.delete(assetId); });
+  }
+
   private inflightAudioDecodes = new Map<string, Promise<AudioBuffer | null>>();
   async ensureAudioBuffer(assetId: string): Promise<AudioBuffer | null> {
     const asset = this.assets.get(assetId);
