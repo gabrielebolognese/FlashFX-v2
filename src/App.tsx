@@ -15,6 +15,7 @@ import { AiChatPanel } from './ui/panels/AiChatPanel';
 import { ResetEditorDialog } from './ui/recovery/ResetEditorDialog';
 import { EmergencyRecoveryOverlay } from './ui/recovery/EmergencyRecoveryOverlay';
 import { CaptionGenerationModal } from './ui/panels/CaptionGenerationModal';
+import { AutoCaptionProgress } from './ui/panels/AutoCaptionProgress';
 import { SilenceStripperModal } from './ui/panels/SilenceStripperModal';
 import { RenameModal } from './ui/panels/RenameModal';
 import { useRenameModalStore } from './store/renameModal';
@@ -480,6 +481,7 @@ function Editor() {
       <EmergencyRecoveryOverlay />
       <ClipContextMenu />
       <CaptionGenerationModal />
+      <AutoCaptionProgress />
       <SilenceStripperModal />
       <RenameModal />
       <SettingsPanel />

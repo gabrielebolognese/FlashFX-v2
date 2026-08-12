@@ -8,7 +8,7 @@ import {
   FastForward, Rewind, Tag, Palette, Settings, Wand2, ScanLine, AudioLines,
   Waves, Activity, Gauge, Ungroup, Group, MousePointer, Columns3, Rows3,
   Zap, ArrowLeftToLine, ArrowRightToLine, Container, Download,
-  Combine, Diff, SquareStack, Blend,
+  Combine, Diff, SquareStack, Blend, Captions,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { MenuEntry } from './types';
@@ -21,6 +21,7 @@ import { usePreviewStore } from '../../store/preview';
 import { useMediaPoolStore } from '../../store/mediaPool';
 import { useSettingsStore, getSettingValue } from '../../settings/store';
 import { useCaptionStore } from '../../store/captions';
+import { autoCaptionAudioLayers } from '../../store/autoCaption';
 import { useSilenceStore } from '../../store/silenceStripper';
 import { videoDecoderPool } from '../../engine/video/videoDecoderPool';
 import { generateThumbnailSheet } from '../../engine/video/thumbnailSheet';
@@ -460,8 +461,21 @@ export function buildMultiClipMenu(): MenuEntry[] {
   const shapeCount = editor.selection.selectedIds.filter(
     (id) => editor.composition.layers.find((l) => l.id === id)?.type === 'shape'
   ).length;
+  const audioCount = editor.selection.selectedIds.filter(
+    (id) => editor.composition.layers.find((l) => l.id === id)?.type === 'audio'
+  ).length;
 
   return [
+    // Offline auto-captions — shown when the selection includes any audio clips. Transcribes each
+    // selected audio clip (Whisper Small, on-device) and drops phrase subtitles on a Subtitles track.
+    ...(audioCount >= 1 ? [{
+      type: 'group' as const,
+      label: 'Captions',
+      items: [
+        item('auto-caption-selected', `Auto-Caption Selected Clip${audioCount > 1 ? 's' : ''}`,
+          () => autoCaptionAudioLayers(useEditorStore.getState().selection.selectedIds), Captions),
+      ],
+    }] : []),
     // Boolean path ops — shown only for 2+ selected shapes (Figma/Illustrator gate
     // combining behind a multi-shape selection). Subtract cuts upper shapes from the
     // bottom one; all are destructive (a live boolean group is milestone M22).
@@ -585,6 +599,14 @@ function buildAudioClipSection(layerId: string): MenuEntry[] {
             window.alert('Crossfade needs a second audio clip overlapping this one. Drag two audio clips so they overlap, then try again.');
           }
         }, Waves),
+      ],
+    },
+    {
+      type: 'group',
+      label: 'Captions',
+      items: [
+        // Offline auto-caption of just this clip's played region (Whisper Small, on-device).
+        item('auto-caption-clip', 'Auto-Caption Clip', () => autoCaptionAudioLayers([layerId]), Captions),
       ],
     },
   ];

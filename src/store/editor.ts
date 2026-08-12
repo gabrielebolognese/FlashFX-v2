@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Composition, SceneDocument, Layer, AnimatableProperty, Keyframe, Vec2, Vec4, InterpolationType, BackgroundLayer, Track, TrackType, VideoPlaybackMode, PathVertex, VertexType, Mask, MaskType, AnchorEdge, PhysicsBindingDef, PhysicsWorldDef, StaggerBindingDef, LayoutObjectLayer, LayoutContainerLayer, ContainerShapeType, Marker, ShapeLayer, PolygonShape } from '../core/types';
+import type { Composition, SceneDocument, Layer, AnimatableProperty, Keyframe, Vec2, Vec4, InterpolationType, BackgroundLayer, Track, TrackType, VideoPlaybackMode, PathVertex, VertexType, Mask, MaskType, AnchorEdge, PhysicsBindingDef, PhysicsWorldDef, StaggerBindingDef, LayoutObjectLayer, LayoutContainerLayer, ContainerShapeType, Marker, ShapeLayer, PolygonShape, TextLayer } from '../core/types';
 import { createComposition, createRectangleLayer, createCircleLayer, createStarLayer, createPolygonLayer, createDefaultPolygonVertices, createTextLayer, createDefaultTextContent, createVideoLayer, createImageLayer, createAudioLayer, createGroupLayer, createKeyframe, createBackgroundLayer, createMask, createParticleLayer, createAnimationItemLayer, createFieldSampledLayer, createGenerativePatternLayer, createCameraLayer, createLottieIconLayer, createLayoutObjectLayer, createLayoutContainerLayer, createDefaultChildOverride, createProperty, uid } from '../core/factory';
 import { outlineText, canOutlineFont } from '../text/outlineText';
 import { computeBatchNames, type RenamePattern } from '../core/batchRename';
@@ -61,7 +61,7 @@ import { canParentTo } from '../core/layerSwitches';
 import { recomputeCompositionDuration, withMinimumDuration, getMinimumDuration } from '../core/compositionDuration';
 import { reflowCompressedTracks, isTrackCompressed } from '../core/trackCompression';
 import { clampGroupResizeDelta, applyResizeDelta, type ResizeEdge } from '../core/clipResize';
-import { buildCaptionLayers, type CaptionSegment, type CaptionOptions } from '../core/captions';
+import { buildCaptionLayers, deoverlapCaptionLayers, type CaptionSegment, type CaptionOptions } from '../core/captions';
 import { computeExplodeElements, type SplitMode } from '../core/textExplode';
 import type { SpeechSegment } from '../core/silenceCutPlan';
 import { persistExplodeGroup } from '../engine/textExplodePersistence';
@@ -405,6 +405,9 @@ interface EditorState {
    *  holes), preserving transform + fill/stroke. Async (loads the bundled font). */
   outlineTextLayer: (layerId: string) => void;
   addCaptionClips: (segments: CaptionSegment[], options: CaptionOptions, clipStartFrame: number) => void;
+  /** Batch auto-caption: commit pre-built caption text layers (already timed at their global
+   *  positions by the caller) onto one shared "Subtitles" track, de-overlapped, as one undo step. */
+  addSubtitleClips: (layers: TextLayer[]) => void;
   stripSilence: (layerId: string, segments: SpeechSegment[]) => string[];
   explodeTextLayer: (layerId: string, splitMode: SplitMode, staggerFrames: number) => void;
   removeLayer: (id: string) => void;
@@ -2630,6 +2633,47 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
     exec({
       label: 'Generate Captions',
+      execute: () => { set({ composition: newComp, selection: newSel }); },
+      undo: () => { set({ composition: oldComp, selection: oldSel }); },
+    });
+  },
+
+  addSubtitleClips: (layers) => {
+    const { composition, selection } = get();
+    if (layers.length === 0) return;
+    const oldComp = composition;
+    const oldSel = selection;
+
+    const SUBTITLE_TRACK_NAME = 'Subtitles';
+    // Reuse an existing Subtitles track, else create one above the visual tracks (settleComposition
+    // renumbers visual-first, so a low order resolves to the top slot and always sits above audio).
+    const existing = composition.tracks.find((t) => t.type === 'text' && t.name === SUBTITLE_TRACK_NAME);
+    let tracks = composition.tracks;
+    let trackId: string;
+    if (existing) {
+      trackId = existing.id;
+    } else {
+      const minVisualOrder = composition.tracks
+        .filter((t) => t.type !== 'audio')
+        .reduce((m, t) => Math.min(m, t.order), 0);
+      const track = createTrack(SUBTITLE_TRACK_NAME, 'text', minVisualOrder - 1);
+      trackId = track.id;
+      tracks = [...composition.tracks, track];
+    }
+
+    // Layers arrive pre-timed at global positions (one clip's phrases after another). Put them on
+    // the shared track and de-overlap by time — including across the batch's source clips.
+    const subtitleLayers = deoverlapCaptionLayers(layers.map((l) => ({ ...l, trackId })));
+
+    const newComp = settleComposition({
+      ...composition,
+      tracks,
+      layers: [...composition.layers, ...subtitleLayers],
+    });
+    const newSel: SelectionState = sel(subtitleLayers.map((l) => l.id), subtitleLayers[0].id);
+
+    exec({
+      label: 'Auto-Caption',
       execute: () => { set({ composition: newComp, selection: newSel }); },
       undo: () => { set({ composition: oldComp, selection: oldSel }); },
     });

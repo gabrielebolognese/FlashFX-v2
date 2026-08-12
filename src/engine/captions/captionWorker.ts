@@ -7,9 +7,16 @@ import {
 } from '@huggingface/transformers';
 import type { CaptionSegment, TimestampMode, WhisperModelId } from '../../core/captions';
 
-// Allow remote model download (first run) and browser-cache reuse (subsequent
-// runs). No local model files are bundled.
+// No local model files are bundled. When VITE_MODELS_BASE_URL is set we self-host the weights on our
+// OWN origin/CDN (first-party, no third-party Hugging Face fetch); otherwise we fall back to the
+// default hub in dev. Either way transformers.js caches the fetched weights in the browser, so after
+// the first download generation is fully offline.
 env.allowLocalModels = false;
+const MODELS_BASE = (import.meta as unknown as { env?: Record<string, string | undefined> }).env?.VITE_MODELS_BASE_URL;
+if (MODELS_BASE) {
+  env.allowRemoteModels = true;
+  env.remoteHost = MODELS_BASE;
+}
 if (env.backends?.onnx?.wasm) {
   // Let the runtime pick a sensible thread count for WASM fallback.
   env.backends.onnx.wasm.proxy = false;
@@ -76,8 +83,9 @@ async function loadPipeline(
 
   const pipe = (await pipeline('automatic-speech-recognition', model, {
     device,
+    dtype: 'q8', // int8 quantized weights — small download, deterministic across runs
     progress_callback,
-  })) as AutomaticSpeechRecognitionPipeline;
+  } as Record<string, unknown>)) as AutomaticSpeechRecognitionPipeline;
 
   cached = { key, pipe };
   return pipe;
@@ -143,6 +151,11 @@ async function run(msg: Extract<WorkerInbound, { type: 'generate' }>): Promise<v
     stride_length_s: 5,
     language: msg.language ?? undefined,
     task: 'transcribe',
+    // Deterministic decoding: greedy, no sampling / temperature fallback → the same audio always
+    // yields identical text + timestamps on a given machine.
+    temperature: 0,
+    do_sample: false,
+    num_beams: 1,
   } as Record<string, unknown>)) as WhisperOutput;
 
   const segments = toSegments(output, totalDuration);

@@ -13,7 +13,7 @@ export interface CaptionSegment {
   confidence?: number;
 }
 
-export type WhisperModelId = 'Xenova/whisper-tiny' | 'Xenova/whisper-base';
+export type WhisperModelId = 'Xenova/whisper-tiny' | 'Xenova/whisper-base' | 'Xenova/whisper-small';
 
 export interface ModelOption {
   id: WhisperModelId;
@@ -24,6 +24,7 @@ export interface ModelOption {
 export const MODEL_OPTIONS: ModelOption[] = [
   { id: 'Xenova/whisper-tiny', label: 'Whisper Tiny', description: 'Fastest, smallest download (~75 MB)' },
   { id: 'Xenova/whisper-base', label: 'Whisper Base', description: 'More accurate, larger download (~145 MB)' },
+  { id: 'Xenova/whisper-small', label: 'Whisper Small', description: 'Most accurate, largest download (~230 MB)' },
 ];
 
 export type TimestampMode = 'phrase' | 'word';
@@ -303,6 +304,40 @@ export interface BuildCaptionLayersArgs {
   position: PositionPresetId;
   style: StyleTemplateId;
   clipStartOffsetFrames: number; // frame at which the source clip starts on the timeline
+}
+
+/**
+ * Map a clip's trim + timeline placement to the inputs the auto-caption pipeline needs: its played
+ * SOURCE window (seconds, for slicing the PCM) and its global start (frames, the offset added to
+ * clip-local transcript timings). All frame inputs are composition frames.
+ */
+export function captionClipWindow(
+  startOffsetFrames: number,
+  inPoint: number,
+  outPoint: number,
+  fps: number,
+): { startSec: number; spanSec: number; clipStartFrame: number } {
+  return {
+    startSec: startOffsetFrames / fps,
+    spanSec: (outPoint - inPoint) / fps,
+    clipStartFrame: inPoint,
+  };
+}
+
+/**
+ * Sort caption clips by in-point and clamp each one's out-point to the next clip's in-point, so no
+ * two overlap on a shared track after frame rounding (including across a multi-clip batch). Returns
+ * a new sorted array; the input layer objects are copied where clamped.
+ */
+export function deoverlapCaptionLayers(layers: TextLayer[]): TextLayer[] {
+  const sorted = [...layers].sort((a, b) => a.inPoint - b.inPoint);
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const next = sorted[i + 1];
+    if (sorted[i].outPoint > next.inPoint) {
+      sorted[i] = { ...sorted[i], outPoint: Math.max(sorted[i].inPoint + 1, next.inPoint) };
+    }
+  }
+  return sorted;
 }
 
 // Convert cleaned segments into ordinary point-mode text clips positioned with a
