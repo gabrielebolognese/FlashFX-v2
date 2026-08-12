@@ -1137,6 +1137,20 @@ export function TrackArea({ layers, tracks, selectedIds, rulerOnly, ghostRowCoun
                       </span>
                     )}
 
+                    {/* Text preview — a little of the clip's actual text, ellipsized if it can't fit. */}
+                    {layer.type === 'text' && barWidth > 24 && (() => {
+                      const preview = layer.content.spans.map((s) => s.text).join('').replace(/\s+/g, ' ').trim() || layer.name;
+                      return (
+                        <span
+                          className="absolute inset-x-0 top-[2px] px-1.5 z-[5] text-[9px] leading-tight text-white/95 truncate pointer-events-none"
+                          style={{ textShadow: '0 1px 2px rgba(0,0,0,0.55)' }}
+                          title={preview}
+                        >
+                          {preview}
+                        </span>
+                      );
+                    })()}
+
                     {/* Edge handles — hover surface, no permanent indicator */}
                     {showHandles && (
                       <>
