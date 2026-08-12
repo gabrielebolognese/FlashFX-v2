@@ -23,6 +23,8 @@ export function getVideoRowHeight(): number {
 
 export const ROW_HEIGHT = 22;
 export const VIDEO_ROW_HEIGHT = 45;
+/** Audio lanes are double-height so the waveform has room to read clearly (CapCut/Resolve-style). */
+export const AUDIO_ROW_HEIGHT = 44;
 export const LAYER_ROW_HEIGHT = 19;
 
 export function clampZoom(zoom: number): number {

@@ -29,6 +29,7 @@ import {
   getFrameWidth,
   ROW_HEIGHT,
   VIDEO_ROW_HEIGHT,
+  AUDIO_ROW_HEIGHT,
 } from './timeUtils';
 
 function getZoomSensitivity(): number {
@@ -79,7 +80,7 @@ function getClipColor(layer: Layer): string {
 }
 
 function getTrackHeight(track: Track): number {
-  return track.type === 'video' ? VIDEO_ROW_HEIGHT : ROW_HEIGHT;
+  return track.type === 'video' ? VIDEO_ROW_HEIGHT : track.type === 'audio' ? AUDIO_ROW_HEIGHT : ROW_HEIGHT;
 }
 
 // Mirror of editor.ts layerTypeToTrackType — used for cross-type drop checks.
@@ -1391,42 +1392,48 @@ function WaveformCanvas({ peaks, startPeak, visiblePeaks, width, height, midY, a
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, W, H);
 
-    // Per-column peak extremes (true max/min over the covered source peaks).
+    // Per-column magnitude (the peak excursion over the source peaks that column covers), plus the
+    // loudest column — used to NORMALIZE so the clip fills the lane and stays clearly visible even
+    // when the recording is quiet, while preserving the relative dynamics that make it read as the
+    // actual audio.
     const cols = W;
-    const topMax = new Float32Array(cols);
-    const botMin = new Float32Array(cols);
+    const mag = new Float32Array(cols);
+    let loudest = 0;
     for (let x = 0; x < cols; x++) {
       const p0 = startPeak + Math.floor((x / cols) * visiblePeaks);
       const p1 = Math.max(p0 + 1, startPeak + Math.floor(((x + 1) / cols) * visiblePeaks));
-      let mn = 0;
-      let mx = 0;
+      let m = 0;
       for (let p = p0; p < p1; p++) {
-        const lo = peaks[p * 2] || 0;
-        const hi = peaks[p * 2 + 1] || 0;
-        if (lo < mn) mn = lo;
-        if (hi > mx) mx = hi;
+        const lo = Math.abs(peaks[p * 2] || 0);
+        const hi = Math.abs(peaks[p * 2 + 1] || 0);
+        if (lo > m) m = lo;
+        if (hi > m) m = hi;
       }
-      topMax[x] = mx;
-      botMin[x] = mn;
+      mag[x] = m;
+      if (m > loudest) loudest = m;
     }
 
+    // Faint baseline (also the whole picture for silence).
+    ctx.globalAlpha = 0.35;
+    ctx.fillStyle = core;
+    ctx.fillRect(0, midY - 0.5, W, 1);
+    ctx.globalAlpha = 1;
+    if (loudest < 1e-4) return; // silent clip — just the baseline
+
+    const norm = 1 / loudest;
+    // Symmetric (mirrored) filled envelope — balanced around the centre, the CapCut/Resolve look.
     const drawEnvelope = (scale: number, style: string) => {
       ctx.beginPath();
-      ctx.moveTo(0, midY - topMax[0] * amp * scale);
-      for (let x = 1; x < cols; x++) ctx.lineTo(x + 0.5, midY - topMax[x] * amp * scale);
-      for (let x = cols - 1; x >= 0; x--) ctx.lineTo(x + 0.5, midY - botMin[x] * amp * scale);
+      ctx.moveTo(0, midY - mag[0] * amp * norm * scale);
+      for (let x = 1; x < cols; x++) ctx.lineTo(x + 0.5, midY - mag[x] * amp * norm * scale);
+      for (let x = cols - 1; x >= 0; x--) ctx.lineTo(x + 0.5, midY + mag[x] * amp * norm * scale);
       ctx.closePath();
       ctx.fillStyle = style;
       ctx.fill();
     };
 
-    drawEnvelope(1, fill);   // outer peak envelope
-    drawEnvelope(0.5, core); // brighter inner core (RMS approximation)
-    // faint baseline
-    ctx.globalAlpha = 0.3;
-    ctx.fillStyle = core;
-    ctx.fillRect(0, midY - 0.5, W, 1);
-    ctx.globalAlpha = 1;
+    drawEnvelope(1, fill);    // full peak envelope
+    drawEnvelope(0.55, core); // denser inner core (RMS-ish) for depth
   }, [peaks, startPeak, visiblePeaks, width, height, midY, amp, fill, core]);
 
   return <canvas ref={ref} className="absolute inset-0 pointer-events-none" style={{ width: '100%', height: '100%' }} />;
@@ -1451,8 +1458,8 @@ function AudioWaveformStrip({ layer, clipWidth, clipHeight, compositionFrameRate
     <WaveformCanvas
       peaks={waveform.peaks} startPeak={win.startPeak} visiblePeaks={win.visiblePeaks}
       width={clipWidth} height={clipHeight}
-      midY={clipHeight / 2} amp={(clipHeight - 8) / 2}
-      fill="rgba(125,195,255,0.42)" core="rgba(175,220,255,0.85)"
+      midY={clipHeight / 2} amp={clipHeight / 2 - 3}
+      fill="rgba(96,58,3,0.85)" core="rgba(61,37,0,0.95)"
     />
   );
 }

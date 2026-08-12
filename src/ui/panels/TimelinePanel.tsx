@@ -6,7 +6,7 @@ import { usePanelStore } from '../../store/panels';
 import { TrackArea } from './timeline/TrackArea';
 import { TrackRow, GhostTrackRow } from './timeline/TrackRow';
 import { TimelineZoomControl } from './timeline/TimelineZoomControl';
-import { ROW_HEIGHT, VIDEO_ROW_HEIGHT } from './timeline/timeUtils';
+import { ROW_HEIGHT, VIDEO_ROW_HEIGHT, AUDIO_ROW_HEIGHT } from './timeline/timeUtils';
 import { Film, Scissors, ArrowLeftToLine, ArrowRightToLine, ArrowUpToLine, ArrowDownToLine, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import type { Track } from '../../core/types';
 import { useContextMenu } from '../context-menu';
@@ -19,7 +19,7 @@ const LABEL_COLUMN_WIDTH = 360;
 const VERTICAL_SCROLL_SPEED = 1.0;
 
 function getTrackHeight(track: Track): number {
-  return track.type === 'video' ? VIDEO_ROW_HEIGHT : ROW_HEIGHT;
+  return track.type === 'video' ? VIDEO_ROW_HEIGHT : track.type === 'audio' ? AUDIO_ROW_HEIGHT : ROW_HEIGHT;
 }
 
 export function TimelinePanel() {
