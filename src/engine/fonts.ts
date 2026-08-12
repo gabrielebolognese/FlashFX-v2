@@ -90,7 +90,25 @@ export function bundledFontUrl(family: string, fontWeight: number): string | nul
 
 let loadPromise: Promise<void> | null = null;
 let loaded = false;
-const listeners = new Set<() => void>();
+const changeListeners = new Set<() => void>();
+
+/**
+ * Fire whenever the available fonts change — bundled faces finished loading, or a custom font was
+ * imported/removed. Busts the text caches (via the epoch) and notifies subscribers so open frames
+ * repaint. Both the bundled loader and the custom-font store call this.
+ */
+export function fireFontsChanged(): void {
+  bumpFontEpoch();
+  for (const cb of [...changeListeners]) {
+    try { cb(); } catch { /* a listener must not break font notification */ }
+  }
+}
+
+/** Subscribe to font-set changes (bundled ready, custom added/removed). Returns an unsubscribe fn. */
+export function onFontsChanged(cb: () => void): () => void {
+  changeListeners.add(cb);
+  return () => changeListeners.delete(cb);
+}
 
 /**
  * Register the bundled faces with the browser and bust the text caches once they resolve.
@@ -124,26 +142,14 @@ export function loadBundledFonts(): Promise<void> {
   loadPromise = Promise.allSettled(faces).then(() => {
     loaded = true;
     // Both the textAtlas bitmap cache and the renderer's GPU texture cache are keyed by
-    // textCacheKey; bumping the epoch folds into that key so every text re-rasterizes with
-    // the now-loaded face instead of the sans-serif fallback that got cached pre-load.
-    bumpFontEpoch();
-    for (const cb of [...listeners]) {
-      try { cb(); } catch { /* listener errors must not break font loading */ }
-    }
+    // textCacheKey; bumping the epoch (inside fireFontsChanged) folds into that key so every
+    // text re-rasterizes with the now-loaded face instead of the cached sans-serif fallback.
+    fireFontsChanged();
   });
   return loadPromise;
 }
 
-/**
- * Subscribe to "fonts finished loading" (fires once, then on nothing else). If fonts are
- * already loaded, the callback runs on the next microtask. Returns an unsubscribe fn.
- * Consumers use this to repaint so a static frame re-rasterizes with the real fonts.
- */
-export function onFontsLoaded(cb: () => void): () => void {
-  if (loaded) {
-    Promise.resolve().then(cb);
-    return () => {};
-  }
-  listeners.add(cb);
-  return () => listeners.delete(cb);
+/** True once the bundled faces have finished their initial load attempt. */
+export function bundledFontsLoaded(): boolean {
+  return loaded;
 }

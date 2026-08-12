@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useInspectorStore, type InspectorTab } from '../../store/inspector';
 import { DEFAULT_SHADOW, DEFAULT_GLOW, DEFAULT_BLUR } from '../../core/effectDefaults';
 import { useEditorStore } from '../../store/editor';
@@ -22,10 +22,11 @@ const FALLBACK_TEXT_LAYOUT: TextLayoutConfig = {
 };
 import { evaluateProperty } from '../../core/interpolation';
 import { FONT_MANIFEST, defaultTrackingPx } from '../../engine/fonts';
+import { useCustomFontStore } from '../../engine/customFonts';
 import { createProperty, createTextAnimOverrides } from '../../core/factory';
 import { getMotionBlur } from '../../core/layerSwitches';
 import { DEFAULT_CONSTRAINTS, type ReframeAxisMode } from '../../core/reframe';
-import { Diamond, Route, Trash2, Wand2, Sliders, Sparkles, Square, Circle, Star, Hexagon, Zap, Scissors, Moon, Layers, Type, Frame, Copy, ChevronUp, ChevronDown, Eye, EyeOff, Plus, Repeat, Link2, Atom, Grid3x3, Aperture, Code2, SlidersHorizontal, Palette, Loader2, Boxes, Box, RotateCcw, Lock, Unlock } from 'lucide-react';
+import { Diamond, Route, Trash2, Wand2, Sliders, Sparkles, Square, Circle, Star, Hexagon, Zap, Scissors, Moon, Layers, Type, Frame, Copy, ChevronUp, ChevronDown, Eye, EyeOff, Plus, Repeat, Link2, Atom, Grid3x3, Aperture, Code2, SlidersHorizontal, Palette, Loader2, Boxes, Box, RotateCcw, Lock, Unlock, Upload } from 'lucide-react';
 import { DragInput } from '../components/DragInput';
 import { useAgentBuildStore } from '../agent-build/agentBuildStore';
 import { useSilenceStore } from '../../store/silenceStripper';
@@ -59,6 +60,85 @@ import type { SplitMode } from '../../core/textExplode';
 const FONT_GROUPS: { category: string; families: string[] }[] = (['Sans', 'Display', 'Serif', 'Mono', 'System'] as const)
   .map((cat) => ({ category: cat, families: FONT_MANIFEST.filter((f) => f.category === cat).map((f) => f.family) }))
   .filter((g) => g.families.length > 0);
+
+/** Font family row: the grouped bundled+custom menu, an "import font" button, and (when a custom
+ *  font is selected) a remove button. Imported fonts are shared across all projects. */
+function FontFamilyRow({ value, onPick }: { value: string; onPick: (family: string) => void }) {
+  const customFonts = useCustomFontStore((s) => s.fonts);
+  const importFont = useCustomFontStore((s) => s.importFont);
+  const removeFont = useCustomFontStore((s) => s.removeFont);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const customFamilies = Array.from(new Set(customFonts.map((f) => f.family)));
+  const selectedCustom = customFonts.find((f) => f.family === value);
+
+  const onFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files ? Array.from(e.target.files) : [];
+    e.target.value = '';
+    if (files.length === 0) return;
+    setErr(null);
+    setBusy(true);
+    let lastFamily: string | null = null;
+    for (const file of files) {
+      try { lastFamily = await importFont(file); }
+      catch (ex) { setErr(ex instanceof Error ? ex.message : 'Font import failed'); }
+    }
+    setBusy(false);
+    if (lastFamily) onPick(lastFamily); // select the newly imported face
+  };
+
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-1">
+        <label className="text-[10px] text-slate-500 w-14 flex-shrink-0">Family</label>
+        <select
+          value={value}
+          onChange={(e) => onPick(e.target.value)}
+          className="flex-1 min-w-0 bg-[#122240] text-[10px] text-slate-300 px-1 py-0.5 rounded border border-[#1a2a42] outline-none"
+        >
+          {FONT_GROUPS.map((g) => (
+            <optgroup key={g.category} label={g.category}>
+              {g.families.map((f) => (<option key={f} value={f}>{f}</option>))}
+            </optgroup>
+          ))}
+          {customFamilies.length > 0 && (
+            <optgroup label="Custom">
+              {customFamilies.map((f) => (<option key={f} value={f}>{f}</option>))}
+            </optgroup>
+          )}
+        </select>
+        <button
+          title="Import a font (TTF / OTF / WOFF / WOFF2). Shared across all projects."
+          onClick={() => fileRef.current?.click()}
+          disabled={busy}
+          className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded text-slate-400 hover:text-slate-100 hover:bg-white/5 disabled:opacity-50"
+        >
+          {busy ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
+        </button>
+        {selectedCustom && (
+          <button
+            title={`Remove "${selectedCustom.family}" from your custom fonts`}
+            onClick={() => removeFont(selectedCustom.id)}
+            className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded text-slate-400 hover:text-rose-400 hover:bg-white/5"
+          >
+            <Trash2 size={12} />
+          </button>
+        )}
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".ttf,.otf,.woff,.woff2,font/ttf,font/otf,font/woff,font/woff2,application/font-woff,application/x-font-ttf"
+          multiple
+          className="hidden"
+          onChange={onFiles}
+        />
+      </div>
+      {err && <p className="text-[9px] text-rose-400 pl-14 leading-snug">{err}</p>}
+    </div>
+  );
+}
 
 /** Compact gradient-fill editor for text: kind + start/end stops + angle. Solid clears the fill. */
 function TextGradientControl({ fill, onChange }: { fill?: TextGradientFill; onChange: (next: TextGradientFill | undefined) => void }) {
@@ -1645,33 +1725,20 @@ function TextProperties({
       {style && (
         <>
           <Section title="Font">
-            <div className="flex items-center gap-1">
-              <label className="text-[10px] text-slate-500 w-14 flex-shrink-0">Family</label>
-              <select
-                value={style.fontFamily}
-                onChange={(e) => {
-                  const fam = e.target.value;
-                  updateLayerProperty(layer.id, 'content.spans[0].style.fontFamily', fam);
-                  // Premium touch: apply the face's default tracking, but only if the user
-                  // hasn't set their own (treat 0 as "unset" so we never clobber a choice).
-                  if (overrides.letterSpacing.defaultValue === 0) {
-                    const fsRaw = overrides.fontSize.defaultValue;
-                    const fs = typeof fsRaw === 'number' ? fsRaw : style.fontSize;
-                    const t = defaultTrackingPx(fam, fs);
-                    if (t !== 0) updateLayerProperty(layer.id, 'animOverrides.letterSpacing.defaultValue', t);
-                  }
-                }}
-                className="flex-1 bg-[#122240] text-[10px] text-slate-300 px-1 py-0.5 rounded border border-[#1a2a42] outline-none"
-              >
-                {FONT_GROUPS.map((g) => (
-                  <optgroup key={g.category} label={g.category}>
-                    {g.families.map((f) => (
-                      <option key={f} value={f}>{f}</option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
-            </div>
+            <FontFamilyRow
+              value={style.fontFamily}
+              onPick={(fam) => {
+                updateLayerProperty(layer.id, 'content.spans[0].style.fontFamily', fam);
+                // Premium touch: apply the face's default tracking, but only if the user hasn't
+                // set their own (treat 0 as "unset" so we never clobber a choice).
+                if (overrides.letterSpacing.defaultValue === 0) {
+                  const fsRaw = overrides.fontSize.defaultValue;
+                  const fs = typeof fsRaw === 'number' ? fsRaw : style.fontSize;
+                  const t = defaultTrackingPx(fam, fs);
+                  if (t !== 0) updateLayerProperty(layer.id, 'animOverrides.letterSpacing.defaultValue', t);
+                }
+              }}
+            />
 
             <div className="flex items-center gap-1">
               <label className="text-[10px] text-slate-500 w-14 flex-shrink-0">Weight</label>

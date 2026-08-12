@@ -1,6 +1,6 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
 import { WebGPURenderer } from '../../engine/renderer';
-import { onFontsLoaded } from '../../engine/fonts';
+import { onFontsChanged } from '../../engine/fonts';
 import { generateRulerTicks } from '../../core/rulers';
 import { timelineEngine } from '../../engine/timeline';
 import { playbackController } from '../../store/timeline';
@@ -174,9 +174,9 @@ export function Viewport() {
     playbackController.renderCurrentFrame();
   }, [composition]);
 
-  // Repaint once the bundled fonts finish loading so a static frame rendered against the
-  // sans-serif fallback re-rasterizes with the real face.
-  useEffect(() => onFontsLoaded(() => playbackController.renderCurrentFrame()), []);
+  // Repaint whenever the font set changes (bundled faces finish loading, or a custom font is
+  // imported/removed) so a static frame re-rasterizes with the real face.
+  useEffect(() => onFontsChanged(() => playbackController.renderCurrentFrame()), []);
 
   // On-canvas text editing: hide the edited layer's rendered text (the textarea shows it),
   // then repaint so the change is reflected whether or not playback is running.
