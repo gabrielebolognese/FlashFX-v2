@@ -100,6 +100,18 @@ export type TextBoundingBox =
 
 export type FontWeight = 100 | 200 | 300 | 400 | 500 | 600 | 700 | 800 | 900;
 
+/**
+ * Optional gradient fill for text. When present it overrides the solid `color` in the Canvas-2D
+ * rasterizer, painted across the whole text box (layer space) so the gradient doesn't swim per
+ * glyph. Conic + a rotating angle gives the chrome/foil sweep near-free.
+ */
+export interface TextGradientFill {
+  kind: 'linear' | 'radial' | 'conic';
+  stops: GradientStop[];
+  /** Degrees. Direction for linear, start angle for conic; ignored for radial. */
+  angle: number;
+}
+
 export interface TextSpanStyle {
   fontFamily: string;
   fontWeight: FontWeight;
@@ -113,6 +125,8 @@ export interface TextSpanStyle {
   underline: boolean;
   strikethrough: boolean;
   textTransform: 'none' | 'uppercase' | 'lowercase' | 'capitalize';
+  /** Optional gradient fill; overrides `color` when set. */
+  fill?: TextGradientFill;
 }
 
 export interface TextSpan {
@@ -1372,6 +1386,8 @@ export interface ResolvedText {
   textAlign: TextAlign;
   underline: boolean;
   strikethrough: boolean;
+  /** Optional gradient fill; overrides `fillColor` in the rasterizer when set. */
+  fill?: TextGradientFill;
   measuredWidth: number;
   measuredHeight: number;
 }

@@ -1,4 +1,4 @@
-import type { ResolvedText } from '../core/types';
+import type { ResolvedText, TextGradientFill } from '../core/types';
 
 interface CachedTextEntry {
   bitmap: ImageBitmap;
@@ -31,13 +31,50 @@ export function bumpFontEpoch(): void {
   clearTextCache();
 }
 
+function fillKey(text: ResolvedText): string {
+  const f = text.fill;
+  if (!f) return '';
+  return `${f.kind}:${f.angle}:${f.stops.map((s) => `${s.color.join(',')}@${s.position}x${s.opacity}`).join(';')}`;
+}
+
 export function textCacheKey(text: ResolvedText): string {
-  return `${fontEpoch}|${text.content}|${text.fontFamily}|${text.fontWeight}|${text.fontStyle}|${text.fontSize}|${text.lineHeight}|${text.letterSpacing}|${text.textAlign}|${text.fillColor.join(',')}|${text.strokeColor.join(',')}|${text.strokeWidth}|${text.underline}|${text.strikethrough}|${text.mode}|${text.boxWidth}|${text.boxHeight}`;
+  return `${fontEpoch}|${text.content}|${text.fontFamily}|${text.fontWeight}|${text.fontStyle}|${text.fontSize}|${text.lineHeight}|${text.letterSpacing}|${text.textAlign}|${text.fillColor.join(',')}|${fillKey(text)}|${text.strokeColor.join(',')}|${text.strokeWidth}|${text.underline}|${text.strikethrough}|${text.mode}|${text.boxWidth}|${text.boxHeight}`;
 }
 
 export function buildFontString(text: ResolvedText): string {
   const style = text.fontStyle === 'italic' ? 'italic' : 'normal';
   return `${style} ${text.fontWeight} ${text.fontSize}px "${text.fontFamily}", sans-serif`;
+}
+
+/** Build a Canvas gradient spanning the text box, from a TextGradientFill descriptor. */
+function buildTextGradient(
+  ctx: OffscreenCanvasRenderingContext2D,
+  fill: TextGradientFill,
+  w: number,
+  h: number,
+): CanvasGradient {
+  const cx = w / 2;
+  const cy = h / 2;
+  let grad: CanvasGradient;
+  if (fill.kind === 'radial') {
+    grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.hypot(w, h) / 2);
+  } else if (fill.kind === 'conic') {
+    // createConicGradient is available in the Chromium/WebGPU target this app requires.
+    grad = ctx.createConicGradient((fill.angle * Math.PI) / 180, cx, cy);
+  } else {
+    const a = (fill.angle * Math.PI) / 180;
+    const dx = Math.cos(a);
+    const dy = Math.sin(a);
+    const ext = (Math.abs(dx) * w + Math.abs(dy) * h) / 2;
+    grad = ctx.createLinearGradient(cx - dx * ext, cy - dy * ext, cx + dx * ext, cy + dy * ext);
+  }
+  const stops = fill.stops.length > 0 ? fill.stops : [{ color: [1, 1, 1] as [number, number, number], position: 0, opacity: 1 }];
+  for (const s of stops) {
+    const pos = Math.max(0, Math.min(1, s.position));
+    const [r, g, b] = s.color;
+    grad.addColorStop(pos, `rgba(${Math.round(r * 255)},${Math.round(g * 255)},${Math.round(b * 255)},${s.opacity})`);
+  }
+  return grad;
 }
 
 function measureLineWithSpacing(ctx: OffscreenCanvasRenderingContext2D, line: string, spacing: number): number {
@@ -170,6 +207,11 @@ export function renderTextToCanvas(text: ResolvedText): CachedTextEntry | null {
   ctx.textBaseline = 'top';
 
   const [fr, fg, fb, fa] = text.fillColor;
+  const solidFill = `rgba(${Math.round(fr * 255)},${Math.round(fg * 255)},${Math.round(fb * 255)},${fa})`;
+  // Gradient fills paint across the whole box (layer space) so they don't swim per glyph.
+  const fillPaint: string | CanvasGradient = text.fill
+    ? buildTextGradient(ctx, text.fill, canvasWidth, canvasHeight)
+    : solidFill;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -195,7 +237,7 @@ export function renderTextToCanvas(text: ResolvedText): CachedTextEntry | null {
       }
     }
 
-    ctx.fillStyle = `rgba(${Math.round(fr * 255)},${Math.round(fg * 255)},${Math.round(fb * 255)},${fa})`;
+    ctx.fillStyle = fillPaint;
     if (text.letterSpacing !== 0) {
       drawTextWithSpacing(ctx, line, x, y, text.letterSpacing, 'fill');
     } else {
@@ -203,7 +245,7 @@ export function renderTextToCanvas(text: ResolvedText): CachedTextEntry | null {
     }
 
     if (text.underline || text.strikethrough) {
-      ctx.fillStyle = `rgba(${Math.round(fr * 255)},${Math.round(fg * 255)},${Math.round(fb * 255)},${fa})`;
+      ctx.fillStyle = fillPaint;
       if (text.underline) {
         const uy = y + text.fontSize * 1.1;
         ctx.fillRect(x, uy, lineW, Math.max(1, text.fontSize * 0.06));

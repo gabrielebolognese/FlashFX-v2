@@ -201,7 +201,27 @@ function ensureTextSpanStyle(val: unknown): TextSpanStyle {
     underline: typeof s.underline === 'boolean' ? s.underline : false,
     strikethrough: typeof s.strikethrough === 'boolean' ? s.strikethrough : false,
     textTransform: (s.textTransform === 'uppercase' || s.textTransform === 'lowercase' || s.textTransform === 'capitalize') ? s.textTransform : 'none',
+    ...(ensureTextFill(s.fill) ? { fill: ensureTextFill(s.fill)! } : {}),
   };
+}
+
+function ensureTextFill(val: unknown): TextSpanStyle['fill'] | null {
+  if (!isObject(val)) return null;
+  const f = val as Record<string, unknown>;
+  const kind = f.kind === 'radial' || f.kind === 'conic' ? f.kind : f.kind === 'linear' ? 'linear' : null;
+  if (!kind) return null;
+  const rawStops = Array.isArray(f.stops) ? f.stops : [];
+  const stops = rawStops.map((sp) => {
+    const o = isObject(sp) ? sp as Record<string, unknown> : {};
+    const c = Array.isArray(o.color) ? o.color : [1, 1, 1];
+    return {
+      color: [Number(c[0]) || 0, Number(c[1]) || 0, Number(c[2]) || 0] as [number, number, number],
+      position: typeof o.position === 'number' ? o.position : 0,
+      opacity: typeof o.opacity === 'number' ? o.opacity : 1,
+    };
+  });
+  if (stops.length < 2) return null;
+  return { kind, angle: typeof f.angle === 'number' ? f.angle : 90, stops };
 }
 
 function ensureTextContent(val: unknown): TextContent {

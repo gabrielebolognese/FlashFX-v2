@@ -7,7 +7,7 @@ import { useMotionPathStore } from '../../store/motionPath';
 import { useMaskStore } from '../../store/mask';
 import { usePathEditStore } from '../../store/pathEdit';
 import { BrandColorPicker } from '../components/BrandColorPicker';
-import type { ShapeLayer, TextLayer, VideoLayer, ImageLayer, AudioLayer, ParticleLayer, GenerativePatternLayer, CameraLayer, AnimationItemLayer, LottieIconLayer, AnimatableProperty, Vec2, Vec4, RectangleShape, CircleShape, StarShape, PolygonShape, MotionPathAnchor, MotionPathLoop, Mask, MaskType, Layer, LayerShadow, LayerGlow, LayerBlur, BlurType, GlowMode, LayoutObjectLayer, LayoutContainerLayer, TextSpanStyle, TextLayoutConfig } from '../../core/types';
+import type { ShapeLayer, TextLayer, VideoLayer, ImageLayer, AudioLayer, ParticleLayer, GenerativePatternLayer, CameraLayer, AnimationItemLayer, LottieIconLayer, AnimatableProperty, Vec2, Vec4, RectangleShape, CircleShape, StarShape, PolygonShape, MotionPathAnchor, MotionPathLoop, Mask, MaskType, Layer, LayerShadow, LayerGlow, LayerBlur, BlurType, GlowMode, LayoutObjectLayer, LayoutContainerLayer, TextSpanStyle, TextLayoutConfig, TextGradientFill } from '../../core/types';
 
 // Safe fallbacks so the Text inspector renders even for a text layer with missing/empty content or
 // layoutConfig (defensive — factory layers set these, but selection must never crash).
@@ -59,6 +59,71 @@ import type { SplitMode } from '../../core/textExplode';
 const FONT_GROUPS: { category: string; families: string[] }[] = (['Sans', 'Display', 'Serif', 'Mono', 'System'] as const)
   .map((cat) => ({ category: cat, families: FONT_MANIFEST.filter((f) => f.category === cat).map((f) => f.family) }))
   .filter((g) => g.families.length > 0);
+
+/** Compact gradient-fill editor for text: kind + start/end stops + angle. Solid clears the fill. */
+function TextGradientControl({ fill, onChange }: { fill?: TextGradientFill; onChange: (next: TextGradientFill | undefined) => void }) {
+  const kind = fill?.kind ?? 'none';
+  const stops = fill?.stops ?? [];
+  const start = stops[0] ?? { color: [1, 1, 1] as [number, number, number], position: 0, opacity: 1 };
+  const end = stops[stops.length - 1] ?? { color: [0.4, 0.5, 1] as [number, number, number], position: 1, opacity: 1 };
+
+  const setKind = (k: string) => {
+    if (k === 'none') { onChange(undefined); return; }
+    const nk = k as TextGradientFill['kind'];
+    if (fill) { onChange({ ...fill, kind: nk }); return; }
+    onChange({
+      kind: nk, angle: 90,
+      stops: [
+        { color: [1, 1, 1], position: 0, opacity: 1 },
+        { color: [0.4, 0.5, 1], position: 1, opacity: 1 },
+      ],
+    });
+  };
+  const setStop = (which: 'start' | 'end', v: Vec4) => {
+    if (!fill) return;
+    const s = fill.stops.length >= 2
+      ? fill.stops.slice()
+      : [{ color: start.color, position: 0, opacity: start.opacity }, { color: end.color, position: 1, opacity: end.opacity }];
+    const idx = which === 'start' ? 0 : s.length - 1;
+    s[idx] = { ...s[idx], color: [v[0], v[1], v[2]], opacity: v[3] };
+    onChange({ ...fill, stops: s });
+  };
+
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-1">
+        <label className="text-[10px] text-slate-500 w-14 flex-shrink-0">Gradient</label>
+        <select
+          value={kind}
+          onChange={(e) => setKind(e.target.value)}
+          className="flex-1 bg-[#122240] text-[10px] text-slate-300 px-1 py-0.5 rounded border border-[#1a2a42] outline-none"
+        >
+          <option value="none">Solid</option>
+          <option value="linear">Linear</option>
+          <option value="radial">Radial</option>
+          <option value="conic">Conic</option>
+        </select>
+      </div>
+      {fill && (
+        <>
+          <ColorInput label="Start" value={[start.color[0], start.color[1], start.color[2], start.opacity] as Vec4} onChange={(v) => setStop('start', v)} />
+          <ColorInput label="End" value={[end.color[0], end.color[1], end.color[2], end.opacity] as Vec4} onChange={(v) => setStop('end', v)} />
+          {kind !== 'radial' && (
+            <div className="flex items-center gap-1">
+              <label className="text-[10px] text-slate-500 w-14 flex-shrink-0">Angle</label>
+              <input
+                type="range" min={0} max={360} value={fill.angle}
+                onChange={(e) => onChange({ ...fill, angle: Number(e.target.value) })}
+                className="flex-1"
+              />
+              <span className="text-[10px] text-slate-400 w-8 text-right">{Math.round(fill.angle)}°</span>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
 
 export function Inspector() {
   const composition = useEditorStore((s) => s.composition);
@@ -1677,6 +1742,10 @@ function TextProperties({
               label="Fill"
               value={style.color}
               onChange={(v) => updateLayerProperty(layer.id, 'content.spans[0].style.color', v)}
+            />
+            <TextGradientControl
+              fill={style.fill}
+              onChange={(next) => updateLayerProperty(layer.id, 'content.spans[0].style.fill', next)}
             />
             <ColorInput
               label="Stroke"

@@ -559,6 +559,7 @@ function resolveTextLayer(layer: TextLayer, frame: number, getStyle?: StyleLooku
     textAlign: layer.layoutConfig.horizontalAlign,
     underline: style.underline,
     strikethrough: style.strikethrough,
+    fill: style.fill,
     measuredWidth: 0,
     measuredHeight: 0,
   };
