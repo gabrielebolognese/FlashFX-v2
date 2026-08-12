@@ -23,10 +23,11 @@ const FALLBACK_TEXT_LAYOUT: TextLayoutConfig = {
 import { evaluateProperty } from '../../core/interpolation';
 import { FONT_MANIFEST, defaultTrackingPx } from '../../engine/fonts';
 import { useCustomFontStore } from '../../engine/customFonts';
+import { autoCaptionAudioLayers, useAutoCaptionStore } from '../../store/autoCaption';
 import { createProperty, createTextAnimOverrides } from '../../core/factory';
 import { getMotionBlur } from '../../core/layerSwitches';
 import { DEFAULT_CONSTRAINTS, type ReframeAxisMode } from '../../core/reframe';
-import { Diamond, Route, Trash2, Wand2, Sliders, Sparkles, Square, Circle, Star, Hexagon, Zap, Scissors, Moon, Layers, Type, Frame, Copy, ChevronUp, ChevronDown, Eye, EyeOff, Plus, Repeat, Link2, Atom, Grid3x3, Aperture, Code2, SlidersHorizontal, Palette, Loader2, Boxes, Box, RotateCcw, Lock, Unlock, Upload } from 'lucide-react';
+import { Diamond, Route, Trash2, Wand2, Sliders, Sparkles, Square, Circle, Star, Hexagon, Zap, Scissors, Moon, Layers, Type, Frame, Copy, ChevronUp, ChevronDown, Eye, EyeOff, Plus, Repeat, Link2, Atom, Grid3x3, Aperture, Code2, SlidersHorizontal, Palette, Loader2, Boxes, Box, RotateCcw, Lock, Unlock, Upload, Captions } from 'lucide-react';
 import { DragInput } from '../components/DragInput';
 import { useAgentBuildStore } from '../agent-build/agentBuildStore';
 import { useSilenceStore } from '../../store/silenceStripper';
@@ -1532,8 +1533,24 @@ function AudioProperties({
           suffix="st"
         />
         <StripSilenceButton layerId={layer.id} />
+        <AutoCaptionButton layerId={layer.id} />
       </div>
     </Section>
+  );
+}
+
+function AutoCaptionButton({ layerId }: { layerId: string }) {
+  const active = useAutoCaptionStore((s) => s.active);
+  return (
+    <button
+      onClick={() => autoCaptionAudioLayers([layerId])}
+      disabled={active}
+      title="Transcribe this clip on-device (Whisper Small) and add subtitles to the timeline"
+      className="w-full mt-1 flex items-center justify-center gap-1.5 py-1.5 rounded bg-[#122240] hover:bg-[#1a2a42] text-[10px] text-slate-300 hover:text-[#f7b500] transition-colors disabled:opacity-50 disabled:hover:text-slate-300"
+    >
+      <Captions size={11} className="text-[#f7b500]" />
+      {active ? 'Auto-Captioning…' : 'Auto-Caption'}
+    </button>
   );
 }
 
