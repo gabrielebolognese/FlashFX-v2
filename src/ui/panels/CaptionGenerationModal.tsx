@@ -66,7 +66,7 @@ export function CaptionGenerationModal() {
           <div className="flex items-center gap-2 min-w-0">
             <Captions size={16} className="text-cyan-400 shrink-0" />
             <h2 className="text-sm font-medium text-slate-200 truncate">Generate Captions</h2>
-            {targetName && <span className="text-[11px] text-slate-600 truncate">— {targetName}</span>}
+            {targetName && <span className="text-[11px] text-slate-600 truncate">{targetName}</span>}
           </div>
           {!busy && (
             <button onClick={close} className="text-slate-500 hover:text-slate-300 transition-colors">

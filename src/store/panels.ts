@@ -34,9 +34,13 @@ interface PanelStore {
   videoFormat: VideoFormat;
   /** VS Code-style AI chat side panel; when open it takes the right 20% and compresses the layout. */
   aiChatOpen: boolean;
+  /** Tasks side panel: a live log of background work (model downloads, caption generation, …). */
+  tasksOpen: boolean;
   setEditorWorkspace: (w: EditorWorkspace) => void;
   setVideoFormat: (f: VideoFormat) => void;
   toggleAiChat: () => void;
+  toggleTasks: () => void;
+  openTasks: () => void;
   setSize: (id: PanelId, size: number) => void;
   setVisible: (id: PanelId, visible: boolean) => void;
   toggleCollapsed: (id: PanelId) => void;
@@ -81,6 +85,7 @@ export const usePanelStore = create<PanelStore>((set) => ({
   editorWorkspace: loadWorkspace(),
   videoFormat: 'long',
   aiChatOpen: false,
+  tasksOpen: false,
 
   setEditorWorkspace: (w) => set(() => {
     saveWorkspace(w);
@@ -89,6 +94,8 @@ export const usePanelStore = create<PanelStore>((set) => ({
 
   setVideoFormat: (f) => set(() => ({ videoFormat: f })),
   toggleAiChat: () => set((s) => ({ aiChatOpen: !s.aiChatOpen })),
+  toggleTasks: () => set((s) => ({ tasksOpen: !s.tasksOpen })),
+  openTasks: () => set({ tasksOpen: true }),
 
   setSize: (id, size) => set((s) => {
     const p = s.panels[id];

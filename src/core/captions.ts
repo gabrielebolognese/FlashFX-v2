@@ -158,7 +158,11 @@ export const DEFAULT_CLEANING: CleaningConfig = {
 };
 
 function normalizeText(raw: string): string {
-  return raw.replace(/\s+/g, ' ').trim();
+  return raw
+    // Strip em/en dashes (Whisper inserts them for pauses/interruptions) — keep the words spaced.
+    .replace(/\s*[—–]\s*/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function isEmptyCaption(text: string): boolean {

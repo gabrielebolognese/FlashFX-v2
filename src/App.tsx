@@ -9,9 +9,10 @@ import { useTimelineStore } from './store/timeline';
 import { usePanelStore } from './store/panels';
 import { ProjectApp, useProjectStore } from './project-system';
 import { useAnimationBuilderStore } from './animation-builder';
-import { ArrowLeft, LayoutGrid, Settings2, GraduationCap, Sparkles, Download } from 'lucide-react';
+import { ArrowLeft, LayoutGrid, Settings2, GraduationCap, Sparkles, Download, ListChecks } from 'lucide-react';
 import { ExportModal } from './ui/panels/ExportModal';
 import { AiChatPanel } from './ui/panels/AiChatPanel';
+import { TasksPanel } from './ui/panels/TasksPanel';
 import { ResetEditorDialog } from './ui/recovery/ResetEditorDialog';
 import { EmergencyRecoveryOverlay } from './ui/recovery/EmergencyRecoveryOverlay';
 import { CaptionGenerationModal } from './ui/panels/CaptionGenerationModal';
@@ -56,6 +57,8 @@ function Editor() {
   const workspace = useAnimationBuilderStore((s) => s.workspace);
   const aiChatOpen = usePanelStore((s) => s.aiChatOpen);
   const toggleAiChat = usePanelStore((s) => s.toggleAiChat);
+  const tasksOpen = usePanelStore((s) => s.tasksOpen);
+  const toggleTasks = usePanelStore((s) => s.toggleTasks);
   const [showExport, setShowExport] = useState(false);
   const aiEditorWorkspace = usePanelStore((s) => s.editorWorkspace);
   // AI chat works in every mode except preview/review (that mode is a full-screen player).
@@ -458,6 +461,18 @@ function Editor() {
           <Sparkles size={13} />
           <span className="text-[11px] font-medium">AI</span>
         </button>
+        <button
+          onClick={toggleTasks}
+          className={`flex items-center gap-1.5 px-3 transition-colors border-l border-[#1a2a42] ${
+            tasksOpen
+              ? 'bg-[#f7b500]/8 text-[#f7b500] border-b-2 border-b-[#f7b500]'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.03]'
+          }`}
+          title="Toggle Tasks log"
+        >
+          <ListChecks size={13} />
+          <span className="text-[11px] font-medium">Tasks</span>
+        </button>
         {/* Prominent single Export entry point (replaces the old Render + Export toolbar buttons). */}
         {workspace === 'editor' && (
           <button
@@ -475,6 +490,7 @@ function Editor() {
       <div className="flex-1 flex flex-row min-h-0 min-w-0">
         {workspace === 'editor' ? <PanelLayout /> : <BuilderLayout />}
         {showAiChat && <AiChatPanel />}
+        {tasksOpen && <TasksPanel />}
       </div>
       {showExport && <ExportModal onClose={() => setShowExport(false)} />}
       <ResetEditorDialog />

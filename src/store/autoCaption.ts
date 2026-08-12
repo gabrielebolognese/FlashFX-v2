@@ -10,6 +10,7 @@ import type { AudioLayer, TextLayer } from '../core/types';
 import { extractClipAudioForCaptions } from '../engine/captions/clipAudio';
 import { generateCaptions, type CaptionBackend } from '../engine/captions/captionService';
 import { useEditorStore } from './editor';
+import { useTasksStore } from './tasks';
 
 // Batch, non-blocking auto-captioning of one or more selected audio clips. Each clip is transcribed
 // in turn (the worker runs one job at a time), its transcript timestamps are placed at the clip's
@@ -64,23 +65,31 @@ export const useAutoCaptionStore = create<AutoCaptionState>((set, get) => ({
     const controller = new AbortController();
     abortController = controller;
 
+    const tasks = useTasksStore.getState();
+    tasks.push({ title: 'Auto-caption started', detail: `${clips.length} clip${clips.length > 1 ? 's' : ''} queued`, status: 'info' });
+
     set({ active: true, index: 0, total: clips.length, label: 'Preparing…', download: null, backend: null, error: null });
 
     // Snapshot comp settings for building caption layers (comp settings don't change mid-run).
     const settings = useEditorStore.getState().composition.settings;
     const allLayers: TextLayer[] = [];
+    // The model downloads once for the batch; track its single log line + progress across clips.
+    let downloadTaskId: string | null = null;
+    let downloadDone = false;
 
     try {
       for (let i = 0; i < clips.length; i++) {
         if (controller.signal.aborted) return;
         const clip = clips[i];
         set({ index: i + 1, label: `Transcribing clip ${i + 1} of ${clips.length}…`, download: null });
+        const clipTaskId = tasks.push({ title: `Transcribing clip ${i + 1} of ${clips.length}`, detail: clip.name || 'audio', status: 'running', progress: null });
 
         let audio: Float32Array;
         try {
           audio = await extractClipAudioForCaptions(clip.assetId, clip.startSec, clip.spanSec);
         } catch {
-          continue; // a clip with no audio in its range — skip it, keep going
+          tasks.update(clipTaskId, { status: 'info', detail: 'No audio in the played range' });
+          continue; // a clip with no audio in its range: skip it, keep going
         }
         if (controller.signal.aborted) return;
 
@@ -89,19 +98,35 @@ export const useAutoCaptionStore = create<AutoCaptionState>((set, get) => ({
           options,
           {
             onBackend: (backend) => set({ backend }),
-            onDownload: (info) =>
+            onDownload: (info) => {
               set({
                 download: { file: info.file, progress: info.progress },
                 label: `Downloading speech model… ${Math.round(info.progress)}%`,
-              }),
-            onStatus: (_stage, message) => set({ label: `${message} — clip ${i + 1} of ${clips.length}`, download: null }),
+              });
+              if (downloadTaskId === null) {
+                downloadTaskId = tasks.push({ title: 'Downloading speech model', detail: info.file, progress: info.progress, status: 'running' });
+              } else {
+                tasks.update(downloadTaskId, { progress: info.progress, detail: info.file });
+              }
+            },
+            onStatus: (_stage, message) => {
+              set({ label: `${message} (clip ${i + 1} of ${clips.length})`, download: null });
+              if (downloadTaskId !== null && !downloadDone) {
+                tasks.update(downloadTaskId, { status: 'done', progress: 100, detail: 'Cached for offline use' });
+                downloadDone = true;
+              }
+            },
           },
           controller.signal,
         );
         if (controller.signal.aborted) return;
 
         const cleaned = cleanSegments(raw);
-        if (cleaned.length === 0) continue;
+        if (cleaned.length === 0) {
+          tasks.update(clipTaskId, { status: 'info', detail: 'No speech detected' });
+          continue;
+        }
+        tasks.update(clipTaskId, { status: 'done', detail: `${cleaned.length} caption${cleaned.length > 1 ? 's' : ''} generated` });
 
         allLayers.push(
           ...buildCaptionLayers({
@@ -119,17 +144,21 @@ export const useAutoCaptionStore = create<AutoCaptionState>((set, get) => ({
       if (controller.signal.aborted) return;
 
       if (allLayers.length === 0) {
+        tasks.push({ title: 'Auto-caption finished', detail: 'No speech was detected in the selected clip(s).', status: 'info' });
         set({ active: false, label: '', download: null, error: 'No speech was detected in the selected clip(s).' });
         return;
       }
 
       useEditorStore.getState().addSubtitleClips(allLayers);
+      tasks.push({ title: 'Captions added', detail: `${allLayers.length} subtitle clip${allLayers.length > 1 ? 's' : ''} on the Subtitles track`, status: 'done' });
       set({ active: false, label: '', download: null, backend: null, error: null });
     } catch (e) {
       if ((e as Error).message === 'Caption generation cancelled') {
+        tasks.push({ title: 'Auto-caption cancelled', status: 'info' });
         set({ active: false, label: '', download: null });
         return;
       }
+      tasks.push({ title: 'Auto-caption failed', detail: (e as Error).message, status: 'error' });
       set({ active: false, label: '', download: null, error: (e as Error).message });
     } finally {
       if (abortController === controller) abortController = null;
