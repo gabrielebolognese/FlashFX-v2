@@ -43,6 +43,7 @@ export function Viewport() {
   const activeGroupId = useEditorStore((s) => s.activeGroupId);
   const addImageFromAsset = useEditorStore((s) => s.addImageFromAsset);
   const addVideoFromAsset = useEditorStore((s) => s.addVideoFromAsset);
+  const addAudioFromAsset = useEditorStore((s) => s.addAudioFromAsset);
   // NB: currentFrame is intentionally NOT subscribed here — it changes every played
   // frame and would re-render the whole viewport + all overlays. The <FrameCounter>
   // leaf below owns that subscription so only it updates per frame.
@@ -296,6 +297,9 @@ export function Viewport() {
           addImageFromAsset(data.id, compX, compY);
         } else if (data.type === 'video') {
           addVideoFromAsset(data.id, compX, compY);
+        } else if (data.type === 'audio') {
+          // Audio has no canvas placement — drop anywhere adds it to the timeline.
+          addAudioFromAsset(data.id);
         }
       } catch {}
       return;
@@ -305,7 +309,7 @@ export function Viewport() {
     // big batch can't crash the app). The user drags pool assets onto the canvas/timeline to use them.
     const files = e.dataTransfer.files;
     if (files.length && activeProjectId) void importFilesToPool(files, activeProjectId);
-  }, [canvasStyle, compW, compH, addImageFromAsset, addVideoFromAsset, activeProjectId]);
+  }, [canvasStyle, compW, compH, addImageFromAsset, addVideoFromAsset, addAudioFromAsset, activeProjectId]);
 
   const activeTool = useShapeToolStore((s) => s.activeTool);
   const shapeToolActive = isShapeTool(activeTool);

@@ -108,6 +108,7 @@ export function TimelinePanel() {
   //     batches); a media-pool asset dragged in gets placed on the timeline. ---
   const addImageFromAsset = useEditorStore((s) => s.addImageFromAsset);
   const addVideoFromAsset = useEditorStore((s) => s.addVideoFromAsset);
+  const addAudioFromAsset = useEditorStore((s) => s.addAudioFromAsset);
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
   const [dragKind, setDragKind] = useState<null | 'files' | 'asset'>(null);
 
@@ -139,6 +140,7 @@ export function TimelinePanel() {
         const cy = composition.settings.height / 2;
         if (a.type === 'video') addVideoFromAsset(a.id, cx, cy);
         else if (a.type === 'image') addImageFromAsset(a.id, cx, cy);
+        else if (a.type === 'audio') addAudioFromAsset(a.id);
       } catch { /* malformed payload — ignore */ }
       return;
     }
@@ -146,7 +148,7 @@ export function TimelinePanel() {
     // OS files dropped → import into the media pool only (bounded concurrency, no placement).
     const files = e.dataTransfer.files;
     if (files.length) void importFilesToPool(files, activeProjectId);
-  }, [activeProjectId, composition.settings.width, composition.settings.height, addVideoFromAsset, addImageFromAsset]);
+  }, [activeProjectId, composition.settings.width, composition.settings.height, addVideoFromAsset, addImageFromAsset, addAudioFromAsset]);
 
   return (
     <div

@@ -1356,52 +1356,104 @@ function SilenceOverlay({
   );
 }
 
-function AudioWaveformStrip({ layer, clipWidth, clipHeight, compositionFrameRate }: { layer: AudioLayer; clipWidth: number; clipHeight: number; compositionFrameRate: number }) {
-  const waveform = mediaAssetManager.getWaveform(layer.audio.assetId);
-  const canvas = useMemo(() => {
-    if (!waveform || clipWidth <= 0) return null;
-    const totalDuration = layer.audio.sourceDuration;
-    if (totalDuration <= 0) return null;
+// The mapping from a clip's on-screen window to its source waveform peaks. Returns the peak span the
+// clip actually plays (trim + startOffset + rate aware), or null if there's nothing to draw.
+function peakWindow(peaks: Float32Array, totalDuration: number, sourceStartSec: number, sourceSpanSec: number): { startPeak: number; visiblePeaks: number } | null {
+  if (totalDuration <= 0) return null;
+  const peakCount = peaks.length / 2;
+  const startPeak = Math.max(0, Math.floor((sourceStartSec / totalDuration) * peakCount));
+  const endPeak = Math.min(peakCount, Math.floor(((sourceStartSec + sourceSpanSec) / totalDuration) * peakCount));
+  const visiblePeaks = endPeak - startPeak;
+  return visiblePeaks > 0 ? { startPeak, visiblePeaks } : null;
+}
 
-    const peakCount = waveform.peaks.length / 2;
-    // Source window the clip plays, in seconds. Source time 0 sits at
-    // (inPoint - startOffset); the clip spans (outPoint - inPoint) comp frames.
-    const startOffset = layer.audio.startOffset ?? 0;
-    const sourceStartSec = startOffset / compositionFrameRate;
-    const sourceSpanSec = (layer.outPoint - layer.inPoint) / compositionFrameRate;
-    const startRatio = sourceStartSec / totalDuration;
-    const clipDurationRatio = sourceSpanSec / totalDuration;
+/**
+ * CapCut / DaVinci-style waveform: a FILLED min/max envelope drawn on a canvas (crisp at device DPR),
+ * with a brighter inner "RMS" core and a faint baseline — not a thin SVG stroke. Per screen column we
+ * take the true peak extremes over the peaks it covers, so transients never wash out on zoomed-out
+ * clips. `midY`/`amp` place + scale it (audio is centered; a video's audio sits in the lower band).
+ */
+function WaveformCanvas({ peaks, startPeak, visiblePeaks, width, height, midY, amp, fill, core }: {
+  peaks: Float32Array; startPeak: number; visiblePeaks: number;
+  width: number; height: number; midY: number; amp: number; fill: string; core: string;
+}) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const W = Math.max(1, Math.round(width));
+    const H = Math.max(1, Math.round(height));
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    el.width = Math.round(W * dpr);
+    el.height = Math.round(H * dpr);
+    const ctx = el.getContext('2d');
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
 
-    const startPeak = Math.max(0, Math.floor(startRatio * peakCount));
-    const endPeak = Math.min(peakCount, Math.floor((startRatio + clipDurationRatio) * peakCount));
-    const visiblePeaks = endPeak - startPeak;
-
-    if (visiblePeaks <= 0) return null;
-
-    const barCount = Math.min(clipWidth, visiblePeaks);
-    const midY = clipHeight / 2;
-    const amplitude = (clipHeight - 8) / 2;
-
-    const pathParts: string[] = [];
-    for (let i = 0; i < barCount; i++) {
-      const peakIdx = startPeak + Math.floor(i * visiblePeaks / barCount);
-      const min = waveform.peaks[peakIdx * 2] || 0;
-      const max = waveform.peaks[peakIdx * 2 + 1] || 0;
-      const x = (i / barCount) * clipWidth;
-      const y1 = midY - max * amplitude;
-      const y2 = midY - min * amplitude;
-      pathParts.push(`M${x.toFixed(1)},${y1.toFixed(1)}L${x.toFixed(1)},${y2.toFixed(1)}`);
+    // Per-column peak extremes (true max/min over the covered source peaks).
+    const cols = W;
+    const topMax = new Float32Array(cols);
+    const botMin = new Float32Array(cols);
+    for (let x = 0; x < cols; x++) {
+      const p0 = startPeak + Math.floor((x / cols) * visiblePeaks);
+      const p1 = Math.max(p0 + 1, startPeak + Math.floor(((x + 1) / cols) * visiblePeaks));
+      let mn = 0;
+      let mx = 0;
+      for (let p = p0; p < p1; p++) {
+        const lo = peaks[p * 2] || 0;
+        const hi = peaks[p * 2 + 1] || 0;
+        if (lo < mn) mn = lo;
+        if (hi > mx) mx = hi;
+      }
+      topMax[x] = mx;
+      botMin[x] = mn;
     }
 
-    return pathParts.join('');
-  }, [waveform, clipWidth, clipHeight, layer.inPoint, layer.outPoint, layer.audio.sourceDuration, layer.audio.startOffset, compositionFrameRate]);
+    const drawEnvelope = (scale: number, style: string) => {
+      ctx.beginPath();
+      ctx.moveTo(0, midY - topMax[0] * amp * scale);
+      for (let x = 1; x < cols; x++) ctx.lineTo(x + 0.5, midY - topMax[x] * amp * scale);
+      for (let x = cols - 1; x >= 0; x--) ctx.lineTo(x + 0.5, midY - botMin[x] * amp * scale);
+      ctx.closePath();
+      ctx.fillStyle = style;
+      ctx.fill();
+    };
 
-  if (!canvas) return null;
+    drawEnvelope(1, fill);   // outer peak envelope
+    drawEnvelope(0.5, core); // brighter inner core (RMS approximation)
+    // faint baseline
+    ctx.globalAlpha = 0.3;
+    ctx.fillStyle = core;
+    ctx.fillRect(0, midY - 0.5, W, 1);
+    ctx.globalAlpha = 1;
+  }, [peaks, startPeak, visiblePeaks, width, height, midY, amp, fill, core]);
+
+  return <canvas ref={ref} className="absolute inset-0 pointer-events-none" style={{ width: '100%', height: '100%' }} />;
+}
+
+function AudioWaveformStrip({ layer, clipWidth, clipHeight, compositionFrameRate }: { layer: AudioLayer; clipWidth: number; clipHeight: number; compositionFrameRate: number }) {
+  const waveform = mediaAssetManager.getWaveform(layer.audio.assetId);
+  const win = useMemo(() => {
+    if (!waveform || clipWidth <= 0) return null;
+    const startOffset = layer.audio.startOffset ?? 0;
+    return peakWindow(
+      waveform.peaks,
+      layer.audio.sourceDuration,
+      startOffset / compositionFrameRate,
+      (layer.outPoint - layer.inPoint) / compositionFrameRate,
+    );
+  }, [waveform, clipWidth, layer.inPoint, layer.outPoint, layer.audio.sourceDuration, layer.audio.startOffset, compositionFrameRate]);
+
+  if (!waveform || !win) return null;
 
   return (
-    <svg className="absolute inset-0 w-full h-full pointer-events-none" preserveAspectRatio="none">
-      <path d={canvas} stroke="rgba(255,255,255,0.6)" strokeWidth={1.2} fill="none" />
-    </svg>
+    <WaveformCanvas
+      peaks={waveform.peaks} startPeak={win.startPeak} visiblePeaks={win.visiblePeaks}
+      width={clipWidth} height={clipHeight}
+      midY={clipHeight / 2} amp={(clipHeight - 8) / 2}
+      fill="rgba(125,195,255,0.42)" core="rgba(175,220,255,0.85)"
+    />
   );
 }
 
@@ -1422,48 +1474,27 @@ function VideoAudioWaveformStrip({ layer, clipWidth, clipHeight, compositionFram
   }, [assetId]);
 
   const waveform = mediaAssetManager.getWaveform(assetId);
-  const canvas = useMemo(() => {
+  const win = useMemo(() => {
     if (!waveform || clipWidth <= 0) return null;
-    const totalDuration = waveform.duration;
-    if (totalDuration <= 0) return null;
-
-    const peakCount = waveform.peaks.length / 2;
     const startOffset = layer.video.startOffset ?? 0;
-    const sourceStartSec = (startOffset / compositionFrameRate) * layer.video.playbackRate;
-    const sourceSpanSec = ((layer.outPoint - layer.inPoint) / compositionFrameRate) * layer.video.playbackRate;
-    const startRatio = sourceStartSec / totalDuration;
-    const clipDurationRatio = sourceSpanSec / totalDuration;
+    const rate = layer.video.playbackRate;
+    return peakWindow(
+      waveform.peaks,
+      waveform.duration,
+      (startOffset / compositionFrameRate) * rate,
+      ((layer.outPoint - layer.inPoint) / compositionFrameRate) * rate,
+    );
+  }, [waveform, clipWidth, layer.inPoint, layer.outPoint, layer.video.startOffset, layer.video.playbackRate, compositionFrameRate]);
 
-    const startPeak = Math.max(0, Math.floor(startRatio * peakCount));
-    const endPeak = Math.min(peakCount, Math.floor((startRatio + clipDurationRatio) * peakCount));
-    const visiblePeaks = endPeak - startPeak;
-
-    if (visiblePeaks <= 0) return null;
-
-    const barCount = Math.min(clipWidth, visiblePeaks);
-    const midY = clipHeight * 0.75;
-    const amplitude = (clipHeight * 0.4) / 2;
-
-    const pathParts: string[] = [];
-    for (let i = 0; i < barCount; i++) {
-      const peakIdx = startPeak + Math.floor(i * visiblePeaks / barCount);
-      const min = waveform.peaks[peakIdx * 2] || 0;
-      const max = waveform.peaks[peakIdx * 2 + 1] || 0;
-      const x = (i / barCount) * clipWidth;
-      const y1 = midY - max * amplitude;
-      const y2 = midY - min * amplitude;
-      pathParts.push(`M${x.toFixed(1)},${y1.toFixed(1)}L${x.toFixed(1)},${y2.toFixed(1)}`);
-    }
-
-    return pathParts.join('');
-  }, [waveform, clipWidth, clipHeight, layer.inPoint, layer.outPoint, layer.video.startOffset, layer.video.playbackRate, compositionFrameRate]);
-
-  if (!canvas) return null;
+  if (!waveform || !win) return null;
 
   return (
-    <svg className="absolute inset-0 w-full h-full pointer-events-none opacity-70" preserveAspectRatio="none">
-      <path d={canvas} stroke="rgba(247,181,0,0.8)" strokeWidth={1} fill="none" />
-    </svg>
+    <WaveformCanvas
+      peaks={waveform.peaks} startPeak={win.startPeak} visiblePeaks={win.visiblePeaks}
+      width={clipWidth} height={clipHeight}
+      midY={clipHeight * 0.75} amp={(clipHeight * 0.4) / 2}
+      fill="rgba(247,181,0,0.32)" core="rgba(255,201,64,0.7)"
+    />
   );
 }
 
