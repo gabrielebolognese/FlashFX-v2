@@ -10,8 +10,9 @@ import {
   type AlignAxis, type DistributeMode, type SizeMode, type SizeResult,
   type TransformMode, type TransformResult, type RandomizeOptions, type RandomizeResult, type FitCanvasResult,
 } from '../../core/align';
-import type { Layer, Vec2 } from '../../core/types';
+import type { Layer, Vec2, Vec4, BlendMode } from '../../core/types';
 import { autoCaptionAudioLayers } from '../../store/autoCaption';
+import { FONT_MANIFEST } from '../../engine/fonts';
 import {
   AlignStartVertical,
   AlignCenterVertical,
@@ -53,17 +54,19 @@ import {
   Zap,
   Box,
   Captions,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { StaggerPanel } from './StaggerPanel';
 
-type ArrangeTab = 'align' | 'distribute' | 'size' | 'transform' | 'spacing' | 'arrange' | 'canvas' | 'stagger';
+type ArrangeTab = 'common' | 'align' | 'distribute' | 'size' | 'transform' | 'spacing' | 'arrange' | 'canvas' | 'stagger';
 
 export function MultiSelectInspector() {
-  const [tab, setTab] = useState<ArrangeTab>('align');
+  const [tab, setTab] = useState<ArrangeTab>('common');
 
   return (
     <div className="flex-1 flex flex-row overflow-hidden min-h-0">
       <div tabIndex={0} className="flex-1 overflow-y-auto min-h-0 outline-none focus:outline-none">
+        {tab === 'common' && <CommonPropertiesContent />}
         {tab === 'align' && <AlignContent />}
         {tab === 'distribute' && <DistributeContent />}
         {tab === 'size' && <SizeContent />}
@@ -74,6 +77,7 @@ export function MultiSelectInspector() {
         {tab === 'stagger' && <StaggerPanel />}
       </div>
       <nav className="flex-shrink-0 w-[116px] flex flex-col py-1 border-l border-[#1a2a42] bg-[#0b0e15] overflow-y-auto">
+        <NavItem active={tab === 'common'} onClick={() => setTab('common')} icon={<SlidersHorizontal size={13} />} label="Common" />
         <NavItem active={tab === 'align'} onClick={() => setTab('align')} icon={<Sliders size={13} />} label="Align" />
         <NavItem active={tab === 'distribute'} onClick={() => setTab('distribute')} icon={<AlignHorizontalDistributeCenter size={13} />} label="Distribute" />
         <NavItem active={tab === 'size'} onClick={() => setTab('size')} icon={<Maximize2 size={13} />} label="Size" />
@@ -283,6 +287,166 @@ function NumericInput({ value, onChange, label, min, step = 1 }: { value: number
           <Plus size={9} />
         </button>
       </div>
+    </div>
+  );
+}
+
+// --- Common Properties Tab ---
+// One place to edit the shared appearance of a mixed selection: opacity/blend for anything visual,
+// fill/border for shapes+text, font+size for text, volume for audio, and a one-click entrance for
+// all. Each control applies to every selected layer that supports it, as ONE undo step. Controls
+// only appear when the selection actually contains a layer they apply to.
+
+const COMMON_BLEND_MODES: BlendMode[] = ['normal', 'multiply', 'screen', 'overlay', 'add'];
+const COMMON_PRESETS: { id: string; label: string }[] = [
+  { id: 'fade-in', label: 'Fade In' },
+  { id: 'fade-slide-up', label: 'Slide Up' },
+  { id: 'pop-in', label: 'Pop' },
+];
+
+const vec4ToHex = (c: Vec4): string =>
+  '#' + [0, 1, 2].map((i) => Math.round(Math.max(0, Math.min(1, c[i])) * 255).toString(16).padStart(2, '0')).join('');
+const hexToVec4 = (hex: string, alpha = 1): Vec4 => {
+  const n = parseInt(hex.slice(1), 16);
+  return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255, alpha];
+};
+const numOr = (v: number | Vec2 | undefined, d: number): number => (typeof v === 'number' ? v : d);
+
+function ColorRow({ label, value, onChange }: { label: string; value: Vec4; onChange: (v: Vec4) => void }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-[9px] text-slate-500 w-16 shrink-0">{label}</span>
+      <input
+        type="color"
+        value={vec4ToHex(value)}
+        onChange={(e) => onChange(hexToVec4(e.target.value, value[3] ?? 1))}
+        className="h-6 w-9 rounded border border-[#1a2a42] bg-transparent cursor-pointer"
+      />
+      <span className="text-[9px] text-slate-500 font-mono">{vec4ToHex(value)}</span>
+    </div>
+  );
+}
+
+function CommonPropertiesContent() {
+  const composition = useEditorStore((s) => s.composition);
+  const selection = useEditorStore((s) => s.selection);
+  const applyAnimationPresetBatch = useEditorStore((s) => s.applyAnimationPresetBatch);
+
+  const selected = composition.layers.filter((l) => selection.selectedIds.includes(l.id));
+  const shapes = selected.filter((l) => l.type === 'shape');
+  const texts = selected.filter((l) => l.type === 'text');
+  const audios = selected.filter((l) => l.type === 'audio');
+  const visual = selected.filter((l) => l.type !== 'audio');
+  const hasColor = shapes.length > 0 || texts.length > 0;
+
+  // One undoable command that mutates every selected layer that supports the change.
+  const apply = (label: string, mutate: (l: Layer) => Layer) => {
+    const { composition: comp, selection: sel } = useEditorStore.getState();
+    const ids = new Set(sel.selectedIds);
+    const newComp = { ...comp, layers: comp.layers.map((l) => (ids.has(l.id) ? mutate(l) : l)) };
+    useHistoryStore.getState().execute({
+      label,
+      execute: () => useEditorStore.setState({ composition: newComp }),
+      undo: () => useEditorStore.setState({ composition: comp }),
+    });
+  };
+
+  // Representative current values (from the first applicable selected layer).
+  const repFill: Vec4 = shapes[0] ? shapes[0].shape.fillColor : texts[0]?.content.spans[0]?.style.color ?? [1, 1, 1, 1];
+  const repStroke: Vec4 = shapes[0] ? shapes[0].shape.strokeColor : texts[0]?.content.spans[0]?.style.strokeColor ?? [0, 0, 0, 1];
+  const repStrokeW = shapes[0] ? numOr(shapes[0].shape.strokeWidth.defaultValue, 0) : texts[0] ? numOr(texts[0].animOverrides.strokeWidth.defaultValue, 0) : 0;
+  const repOpacity = Math.round(numOr(visual[0]?.transform.opacity.defaultValue, 1) * 100);
+  const repBlend = (selected[0]?.blendMode ?? 'normal') as BlendMode;
+  const repFont = texts[0]?.content.spans[0]?.style.fontFamily ?? 'Inter';
+  const repSize = texts[0] ? numOr(texts[0].animOverrides.fontSize.defaultValue, 48) : 48;
+  const repVolume = audios[0] ? Math.round(numOr(audios[0].audio.volume.defaultValue, 1) * 100) : 100;
+
+  const setFill = (v: Vec4) => apply('Set Fill', (l) => {
+    if (l.type === 'shape') return { ...l, shape: { ...l.shape, fillColor: v } } as Layer;
+    if (l.type === 'text') return { ...l, content: { ...l.content, spans: l.content.spans.map((s) => ({ ...s, style: { ...s.style, color: v } })) } } as Layer;
+    return l;
+  });
+  const setStroke = (v: Vec4) => apply('Set Border', (l) => {
+    if (l.type === 'shape') return { ...l, shape: { ...l.shape, strokeColor: v } } as Layer;
+    if (l.type === 'text') return { ...l, content: { ...l.content, spans: l.content.spans.map((s) => ({ ...s, style: { ...s.style, strokeColor: v } })) } } as Layer;
+    return l;
+  });
+  const setStrokeWidth = (w: number) => apply('Set Border Width', (l) => {
+    if (l.type === 'shape') return { ...l, shape: { ...l.shape, strokeWidth: { ...l.shape.strokeWidth, defaultValue: w } } } as Layer;
+    if (l.type === 'text') return { ...l, animOverrides: { ...l.animOverrides, strokeWidth: { ...l.animOverrides.strokeWidth, defaultValue: w } } } as Layer;
+    return l;
+  });
+  const setOpacity = (pct: number) => apply('Set Opacity', (l) => (l.type === 'audio' ? l : ({ ...l, transform: { ...l.transform, opacity: { ...l.transform.opacity, defaultValue: pct / 100 } } } as Layer)));
+  const setBlend = (mode: BlendMode) => apply('Set Blend Mode', (l) => ({ ...l, blendMode: mode } as Layer));
+  const setFontFamily = (fam: string) => apply('Set Font', (l) => (l.type === 'text' ? ({ ...l, content: { ...l.content, spans: l.content.spans.map((s) => ({ ...s, style: { ...s.style, fontFamily: fam } })) } } as Layer) : l));
+  const setFontSize = (px: number) => apply('Set Font Size', (l) => (l.type === 'text' ? ({ ...l, animOverrides: { ...l.animOverrides, fontSize: { ...l.animOverrides.fontSize, defaultValue: px } } } as Layer) : l));
+  const setVolume = (pct: number) => apply('Set Volume', (l) => (l.type === 'audio' ? ({ ...l, audio: { ...l.audio, volume: { ...l.audio.volume, defaultValue: pct / 100 } } } as Layer) : l));
+
+  const selectCls = 'flex-1 h-5 px-1 text-[9px] text-slate-300 bg-[#0a1628] border border-[#1a2a42] rounded outline-none focus:border-[#f7b500]/50';
+
+  return (
+    <div className="p-3 space-y-4">
+      <SelectionHeader count={selected.length} />
+
+      {visual.length > 0 && (
+        <section className="space-y-2">
+          <h3 className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">Appearance</h3>
+          <NumericInput label="Opacity %" value={repOpacity} min={0} step={5} onChange={(v) => setOpacity(Math.max(0, Math.min(100, v)))} />
+          <div className="flex items-center gap-2">
+            <span className="text-[9px] text-slate-500 w-16 shrink-0">Blend</span>
+            <select value={repBlend} onChange={(e) => setBlend(e.target.value as BlendMode)} className={selectCls}>
+              {COMMON_BLEND_MODES.map((m) => <option key={m} value={m}>{m}</option>)}
+            </select>
+          </div>
+        </section>
+      )}
+
+      {hasColor && (
+        <section className="space-y-2">
+          <h3 className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">Color &amp; Border</h3>
+          <ColorRow label="Fill" value={repFill} onChange={setFill} />
+          <ColorRow label="Border" value={repStroke} onChange={setStroke} />
+          <NumericInput label="Border W" value={Math.round(repStrokeW)} min={0} step={1} onChange={(v) => setStrokeWidth(Math.max(0, v))} />
+        </section>
+      )}
+
+      {texts.length > 0 && (
+        <section className="space-y-2">
+          <h3 className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">Text</h3>
+          <div className="flex items-center gap-2">
+            <span className="text-[9px] text-slate-500 w-16 shrink-0">Font</span>
+            <select value={repFont} onChange={(e) => setFontFamily(e.target.value)} className={selectCls}>
+              {FONT_MANIFEST.map((f) => <option key={f.family} value={f.family}>{f.family}</option>)}
+            </select>
+          </div>
+          <NumericInput label="Size" value={Math.round(repSize)} min={1} step={2} onChange={(v) => setFontSize(Math.max(1, v))} />
+        </section>
+      )}
+
+      {audios.length > 0 && (
+        <section className="space-y-2">
+          <h3 className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">Audio</h3>
+          <NumericInput label="Volume %" value={repVolume} min={0} step={5} onChange={(v) => setVolume(Math.max(0, v))} />
+        </section>
+      )}
+
+      {visual.length > 0 && (
+        <section className="space-y-2">
+          <h3 className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">Animation</h3>
+          <div className="grid grid-cols-3 gap-1">
+            {COMMON_PRESETS.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => applyAnimationPresetBatch(selection.selectedIds, p.id, 0.6, false)}
+                className="px-2 py-1.5 rounded border border-[#1a2a42] bg-[#0a1628]/60 text-[10px] text-slate-300 hover:text-[#f7b500] hover:border-[#f7b500]/40 transition-colors"
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+          <p className="text-[9px] text-slate-600">Applies the entrance to every selected layer.</p>
+        </section>
+      )}
     </div>
   );
 }
