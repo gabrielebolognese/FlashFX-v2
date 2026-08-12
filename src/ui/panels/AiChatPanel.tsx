@@ -5,19 +5,23 @@ import {
 } from 'lucide-react';
 import { usePanelStore } from '../../store/panels';
 import { useEditorStore } from '../../store/editor';
+import { useProjectStore } from '../../project-system/hooks/useProjectStore';
+import { useAiChatStore, EMPTY_CONVERSATION, convKey, type AiMsg, type Attachment, type AttachKind } from '../../store/aiChat';
 import { runBlackjackDemo, runGalaxyDemo, type Step } from './aiChatDemo';
 
 // VS Code / Copilot-style AI assistant - MOCKUP (no model). Assistant responses are borderless plain
 // text with a thinking loader → streaming → a response timer; the user turn sits in a subtle box.
 // The single seam for a real model is streamResponse() below: swap its body for a streaming client and
 // the whole UI (thinking, token streaming, elapsed timer, stop, done state) already works.
+// The conversation lives in useAiChatStore (persisted per project) so it survives closing/reopening
+// the panel and reopening the project; only the in-flight generation state is local to this component.
 
-type AttachKind = 'file' | 'drive' | 'image';
-interface Attachment { id: string; name: string; kind: AttachKind }
-interface Msg { id: string; role: 'user' | 'assistant'; text: string; streaming?: boolean; ms?: number; attachments?: Attachment[]; steps?: Step[] }
+type Msg = AiMsg;
 
 let uid = 0;
-const nextId = () => `m${++uid}`;
+// Include a random suffix so ids don't collide with a conversation restored from a previous session
+// (where the module-level counter has reset to 0).
+const nextId = () => `m${++uid}_${Math.random().toString(36).slice(2, 8)}`;
 
 const REPLIES = [
   'Done. I added a position + scale keyframe intro with an ease-out and enabled an outer glow on the title. Scrub the timeline to preview, or tell me to tweak the easing.',
@@ -54,9 +58,22 @@ const fmt = (ms: number) => `${(ms / 1000).toFixed(1)}s`;
 
 export function AiChatPanel() {
   const toggleAiChat = usePanelStore((s) => s.toggleAiChat);
-  const [messages, setMessages] = useState<Msg[]>([]);
-  const [draft, setDraft] = useState('');
-  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const activeProjectId = useProjectStore((s) => s.activeProjectId);
+
+  // Conversation is stored per project and persisted to localStorage; the panel reads its slice.
+  const conv = useAiChatStore((s) => s.byProject[convKey(activeProjectId)] ?? EMPTY_CONVERSATION);
+  const { messages, draft, attachments } = conv;
+  const setMessagesFor = useAiChatStore((s) => s.setMessages);
+  const setDraftFor = useAiChatStore((s) => s.setDraft);
+  const setAttachmentsFor = useAiChatStore((s) => s.setAttachments);
+  const clearConversation = useAiChatStore((s) => s.clearConversation);
+  const settleStreaming = useAiChatStore((s) => s.settleStreaming);
+  // Bind the setters to the current project so call sites stay terse.
+  const setMessages = useCallback((u: Msg[] | ((p: Msg[]) => Msg[])) => setMessagesFor(activeProjectId, u), [setMessagesFor, activeProjectId]);
+  const setDraft = useCallback((v: string) => setDraftFor(activeProjectId, v), [setDraftFor, activeProjectId]);
+  const setAttachments = useCallback((u: Attachment[] | ((p: Attachment[]) => Attachment[])) => setAttachmentsFor(activeProjectId, u), [setAttachmentsFor, activeProjectId]);
+
+  // Transient, per-mount generation state — a half-finished stream can't survive an unmount.
   const [generating, setGenerating] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const genRef = useRef<{ cancel: () => void } | null>(null);
@@ -66,12 +83,14 @@ export function AiChatPanel() {
 
   const stopTick = useCallback(() => { if (tickRef.current) { clearInterval(tickRef.current); tickRef.current = null; } }, []);
   useEffect(() => () => { genRef.current?.cancel(); stopTick(); }, [stopTick]);
+  // On (re)open or project switch, clear any streaming flag left by a mid-generation close.
+  useEffect(() => { settleStreaming(activeProjectId); }, [activeProjectId, settleStreaming]);
   useEffect(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight }); }, [messages]);
 
   const stop = useCallback(() => {
     genRef.current?.cancel(); genRef.current = null; stopTick(); setGenerating(false);
     setMessages((m) => m.map((x) => (x.streaming ? { ...x, streaming: false } : x)));
-  }, [stopTick]);
+  }, [stopTick, setMessages]);
 
   const send = useCallback(() => {
     const text = draft.trim();
@@ -120,13 +139,13 @@ export function AiChatPanel() {
         onDone: finish,
       });
     }
-  }, [draft, generating, attachments, messages.length, stopTick]);
+  }, [draft, generating, attachments, messages.length, stopTick, setMessages, setDraft, setAttachments]);
 
   const attach = (kind: AttachKind) => {
     const names: Record<AttachKind, string> = { file: 'timeline.ffx', drive: 'brand_kit.zip', image: 'reference.png' };
     setAttachments((a) => [...a, { id: nextId(), name: names[kind], kind }]);
   };
-  const newChat = () => { stop(); setMessages([]); setAttachments([]); setDraft(''); };
+  const newChat = () => { stop(); clearConversation(activeProjectId); };
 
   return (
     <aside className="flex-shrink-0 h-full flex flex-col bg-[#0b1220] border-l border-[#1a2a42]" style={{ width: '20%', minWidth: 260 }}>
@@ -220,8 +239,8 @@ export function AiChatPanel() {
             <ToolBtn title="Attach file" onClick={() => attach('file')}><Paperclip size={13} /></ToolBtn>
             <ToolBtn title="Add from Drive" onClick={() => attach('drive')}><HardDrive size={13} /></ToolBtn>
             <ToolBtn title="Add image" onClick={() => attach('image')}><ImageIcon size={13} /></ToolBtn>
-            <ToolBtn title="Add context" onClick={() => setDraft((d) => d + '#')}><Hash size={13} /></ToolBtn>
-            <ToolBtn title="Reference a layer" onClick={() => setDraft((d) => d + '@')}><AtSign size={13} /></ToolBtn>
+            <ToolBtn title="Add context" onClick={() => setDraft(draft + '#')}><Hash size={13} /></ToolBtn>
+            <ToolBtn title="Reference a layer" onClick={() => setDraft(draft + '@')}><AtSign size={13} /></ToolBtn>
             <button title="Model" className="ml-1 flex items-center gap-1 px-1.5 h-6 rounded text-[10.5px] text-slate-400 hover:text-slate-200 hover:bg-white/5">
               FlashFX AI <ChevronDown size={11} />
             </button>
