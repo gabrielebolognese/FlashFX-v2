@@ -11,6 +11,7 @@ import { extractClipAudioForCaptions } from '../engine/captions/clipAudio';
 import { generateCaptions, type CaptionBackend } from '../engine/captions/captionService';
 import { useEditorStore } from './editor';
 import { useTasksStore } from './tasks';
+import { useSubtitleReviewStore } from './subtitleReview';
 
 // Batch, non-blocking auto-captioning of one or more selected audio clips. Each clip is transcribed
 // in turn (the worker runs one job at a time), its transcript timestamps are placed at the clip's
@@ -149,8 +150,10 @@ export const useAutoCaptionStore = create<AutoCaptionState>((set, get) => ({
         return;
       }
 
-      useEditorStore.getState().addSubtitleClips(allLayers);
-      tasks.push({ title: 'Captions added', detail: `${allLayers.length} subtitle clip${allLayers.length > 1 ? 's' : ''} on the Subtitles track`, status: 'done' });
+      // Hand the built captions to the non-modal review panel; the user edits the text there and
+      // places them (or cancels). Committing happens in useSubtitleReviewStore.place().
+      tasks.push({ title: 'Transcription complete', detail: `${allLayers.length} caption${allLayers.length > 1 ? 's' : ''} ready to review`, status: 'done' });
+      useSubtitleReviewStore.getState().begin(allLayers);
       set({ active: false, label: '', download: null, backend: null, error: null });
     } catch (e) {
       if ((e as Error).message === 'Caption generation cancelled') {

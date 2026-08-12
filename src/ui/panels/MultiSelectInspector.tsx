@@ -11,6 +11,7 @@ import {
   type TransformMode, type TransformResult, type RandomizeOptions, type RandomizeResult, type FitCanvasResult,
 } from '../../core/align';
 import type { Layer, Vec2 } from '../../core/types';
+import { autoCaptionAudioLayers } from '../../store/autoCaption';
 import {
   AlignStartVertical,
   AlignCenterVertical,
@@ -51,6 +52,7 @@ import {
   Undo2,
   Zap,
   Box,
+  Captions,
 } from 'lucide-react';
 import { StaggerPanel } from './StaggerPanel';
 
@@ -314,6 +316,10 @@ function AlignContent() {
   const convertible = selectedLayers.filter((l) => l.type !== 'camera' && l.type !== 'group' && l.type !== 'audio' && !l.is3D);
   const noneToConvert = convertible.length === 0;
 
+  // An all-audio selection can't be 3D, so that slot becomes "Add Subtitles" (transcribe → review).
+  const audioSelected = selectedLayers.filter((l) => l.type === 'audio');
+  const allAudio = selectedLayers.length > 0 && audioSelected.length === selectedLayers.length;
+
   return (
     <div className="p-3">
       <SelectionHeader count={selectedLayers.length} />
@@ -330,20 +336,36 @@ function AlignContent() {
         </div>
       </section>
 
-      {/* Prep a whole selection for a camera in one click (2.5D). */}
-      <section className="mt-4">
-        <h3 className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold mb-2">3D</h3>
-        <button
-          onClick={() => useEditorStore.getState().convertSelectionTo3D()}
-          disabled={noneToConvert}
-          title={noneToConvert ? 'Every selected layer is already 3D (or can’t be 3D)' : 'Enable 3D on all selected layers so a camera can move through them'}
-          className="w-full flex items-center justify-center gap-2 px-3 py-3 rounded-md border border-[#f7b500]/40 bg-[#f7b500]/10 text-[#f7b500] font-semibold hover:bg-[#f7b500]/20 hover:border-[#f7b500]/60 active:bg-[#f7b500]/25 transition-all duration-100 disabled:opacity-30 disabled:pointer-events-none"
-        >
-          <Box size={16} strokeWidth={2} />
-          <span className="text-[11px]">Convert all to 3D{noneToConvert ? '' : ` (${convertible.length})`}</span>
-        </button>
-        <p className="mt-1.5 text-[9px] text-slate-600">Makes every selected layer 3D so a camera can move through the scene.</p>
-      </section>
+      {allAudio ? (
+        /* All-audio selection: transcribe on-device, then review the text before placing. */
+        <section className="mt-4">
+          <h3 className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold mb-2">Subtitles</h3>
+          <button
+            onClick={() => autoCaptionAudioLayers(audioSelected.map((l) => l.id))}
+            title="Transcribe the selected audio on-device (Whisper Small), review the text, then place captions"
+            className="w-full flex items-center justify-center gap-2 px-3 py-3 rounded-md border border-[#f7b500]/40 bg-[#f7b500]/10 text-[#f7b500] font-semibold hover:bg-[#f7b500]/20 hover:border-[#f7b500]/60 active:bg-[#f7b500]/25 transition-all duration-100"
+          >
+            <Captions size={16} strokeWidth={2} />
+            <span className="text-[11px]">Add Subtitles ({audioSelected.length})</span>
+          </button>
+          <p className="mt-1.5 text-[9px] text-slate-600">Transcribes each selected clip, then lets you edit the text before it lands on a Subtitles track.</p>
+        </section>
+      ) : (
+        /* Prep a whole selection for a camera in one click (2.5D). */
+        <section className="mt-4">
+          <h3 className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold mb-2">3D</h3>
+          <button
+            onClick={() => useEditorStore.getState().convertSelectionTo3D()}
+            disabled={noneToConvert}
+            title={noneToConvert ? 'Every selected layer is already 3D (or can’t be 3D)' : 'Enable 3D on all selected layers so a camera can move through them'}
+            className="w-full flex items-center justify-center gap-2 px-3 py-3 rounded-md border border-[#f7b500]/40 bg-[#f7b500]/10 text-[#f7b500] font-semibold hover:bg-[#f7b500]/20 hover:border-[#f7b500]/60 active:bg-[#f7b500]/25 transition-all duration-100 disabled:opacity-30 disabled:pointer-events-none"
+          >
+            <Box size={16} strokeWidth={2} />
+            <span className="text-[11px]">Convert all to 3D{noneToConvert ? '' : ` (${convertible.length})`}</span>
+          </button>
+          <p className="mt-1.5 text-[9px] text-slate-600">Makes every selected layer 3D so a camera can move through the scene.</p>
+        </section>
+      )}
     </div>
   );
 }
