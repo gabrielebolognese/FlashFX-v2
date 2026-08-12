@@ -18,6 +18,7 @@ import { GridOverlay } from './GridOverlay';
 import { ShapeCreationOverlay } from './ShapeCreationOverlay';
 import { TextCreationOverlay } from './TextCreationOverlay';
 import { TextEditOverlay } from './TextEditOverlay';
+import { QuickTextPanel } from './QuickTextPanel';
 import { PenToolOverlay } from './PenToolOverlay';
 import { BoundingBoxesOverlay } from './BoundingBoxesOverlay';
 import { SafeAreasOverlay } from './SafeAreasOverlay';
@@ -368,6 +369,7 @@ export function Viewport() {
       <ShapeCreationOverlay compW={compW} compH={compH} style={overlayStyle} />
       <TextCreationOverlay compW={compW} compH={compH} style={overlayStyle} />
       <TextEditOverlay compW={compW} compH={compH} style={overlayStyle} />
+      <QuickTextPanel />
       <PenToolOverlay compW={compW} compH={compH} style={overlayStyle} />
       <BoundingBoxesOverlay compW={compW} compH={compH} style={overlayStyle} />
       <AnimatedPathsOverlay compW={compW} compH={compH} style={overlayStyle} />

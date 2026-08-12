@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useEditorStore } from '../../store/editor';
 import { useShapeToolStore, isTextTool } from '../../store/shapeTool';
 import { useTextEditStore } from '../../store/textEdit';
+import { useQuickTextStore } from '../../store/quickText';
 
 interface TextCreationOverlayProps {
   style?: React.CSSProperties;
@@ -34,6 +35,7 @@ function getBox(drag: DragState) {
 export function TextCreationOverlay({ style, compW, compH }: TextCreationOverlayProps) {
   const activeTool = useShapeToolStore((s) => s.activeTool);
   const createTextAt = useEditorStore((s) => s.createTextAt);
+  const createQuickText = useEditorStore((s) => s.createQuickText);
   const startEditing = useTextEditStore((s) => s.startEditing);
 
   const [drag, setDrag] = useState<DragState | null>(null);
@@ -66,6 +68,16 @@ export function TextCreationOverlay({ style, compW, compH }: TextCreationOverlay
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
+    // Fast text: Shift-place drops a default "modify this" instantly and opens the quick panel
+    // (write text · pick a font · pick a preset + granularity · Place). No drag, no on-canvas editor.
+    if (e.shiftKey && overlayWidth > 0 && overlayHeight > 0) {
+      const compX = (x / overlayWidth) * compW;
+      const compY = (y / overlayHeight) * compH;
+      const id = createQuickText(compX, compY, 'modify this');
+      useShapeToolStore.getState().clearTool();
+      useQuickTextStore.getState().open(id, e.clientX, e.clientY);
+      return;
+    }
     setDrag({ startX: x, startY: y, currentX: x, currentY: y });
     e.currentTarget.setPointerCapture(e.pointerId);
   };

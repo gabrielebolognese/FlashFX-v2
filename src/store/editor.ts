@@ -313,6 +313,14 @@ interface EditorState {
    * abandoned empty text leaves no undo entry). Selects the new layer.
    */
   createTextAt: (x: number, y: number, box: { width: number; height: number } | null) => string;
+  /** Fast text: create a committed point-text with the given content at (x,y), select it, return its id. */
+  createQuickText: (x: number, y: number, text: string) => string;
+  /**
+   * Fast text: apply a quick entrance to a freshly-placed text. `whole` animates the layer;
+   * `word`/`character` explode it into staggered pieces (reusing the Text Motion Control split)
+   * then apply the preset per piece. `presetId` null = leave it static.
+   */
+  placeQuickText: (layerId: string, opts: { presetId: string | null; granularity: 'whole' | 'word' | 'character'; staggerFrames?: number; durationSeconds?: number }) => void;
   /** Snapshot pre-edit state so double-click editing an existing text is one undo step. Selects it. */
   beginTextEditExisting: (layerId: string) => void;
   /** Live (non-undoable) update of a text layer's content while typing on canvas. */
@@ -1978,6 +1986,40 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     // Non-undoable set — history is written once, at commitTextEdit.
     set({ composition: newComp, selection: sel([layer.id], layer.id) });
     return layer.id;
+  },
+
+  createQuickText: (x, y, text) => {
+    const { composition, selection } = get();
+    const oldComp = composition;
+    const oldSel = selection;
+    const textCount = composition.layers.filter((l) => l.type === 'text').length;
+    const layer = createTextLayer(`Text ${textCount + 1}`, x, y, text, defaultClipFrames(composition));
+    const newComp = settleComposition(ensureLayerHasTrack({ ...composition, layers: [...composition.layers, layer] }, layer));
+    const newSel: SelectionState = sel([layer.id], layer.id);
+    exec({
+      label: 'Add Text',
+      execute: () => { set({ composition: newComp, selection: newSel }); },
+      undo: () => { set({ composition: oldComp, selection: oldSel }); },
+    });
+    return layer.id;
+  },
+
+  placeQuickText: (layerId, opts) => {
+    const presetId = opts.presetId;
+    if (!presetId) return; // static text — nothing to animate
+    const fps = get().composition.settings.frameRate;
+    const duration = opts.durationSeconds ?? 0.6;
+    if (opts.granularity === 'whole') {
+      get().applyAnimationPreset(layerId, presetId);
+      return;
+    }
+    // Per word / per character: split into staggered pieces (reuses Text Motion Control), then
+    // apply the preset to each — pieces have staggered inPoints so `atStart` fans the entrance out.
+    const defaultStagger = opts.granularity === 'character' ? Math.max(1, Math.round(fps * 0.05)) : Math.max(1, Math.round(fps * 0.08));
+    const stagger = opts.staggerFrames ?? defaultStagger;
+    get().explodeTextLayer(layerId, opts.granularity, stagger);
+    const ids = get().selection.selectedIds;
+    if (ids.length > 0) get().applyAnimationPresetBatch(ids, presetId, duration, true);
   },
 
   beginTextEditExisting: (layerId) => {
