@@ -1,5 +1,101 @@
 # Devlog
 
+## 2026-08-12
+
+Text-system continuation, then a full day on audio/captions, plus the AI Coder stage. 14 commits,
+net +2836/−648 across 46 files. typecheck stayed at 0 and lint at the 127 baseline every commit.
+Everything touching WebGPU/WebCodecs/FontFace/IndexedDB is unverifiable here, so it ships behind Node
+harnesses + guards and needs a real run to confirm.
+
+- Text can have a gradient fill (linear / radial / conic, start+end stops + angle) from the inspector.
+  - Number: reuses the existing shape `GradientStop` type; added a validation passthrough so the
+    descriptor survives save/load.
+  - Hard part: text is a Canvas-2D bitmap, not vector, so the gradient is painted across the whole
+    text box in layer space (not per glyph, or it swims), and folded into the text cache key. The
+    save/load whitelist would have silently stripped the field.
+
+- Users can import their own fonts (TTF/OTF/WOFF/WOFF2); imported fonts are shared across every
+  project and survive reload, and appear in a "Custom" group in the font menu.
+  - Number: stored in a dedicated IndexedDB database (`flashfx-fonts`), NOT per-project.
+  - Hard part: opentype.js can't decode WOFF2 to read the family name, so that path falls back to
+    the filename (FontFace itself decodes WOFF2 fine). Generalized the font-change notifier so an
+    import busts the text cache + repaints, same path the bundled faces use.
+
+- Fast text: hold Shift with the text tool and click, and a default "modify this" drops instantly
+  with a small panel to write the text, pick a font, pick an entrance (fade/slide/pop), pick
+  granularity (whole / per-word / per-char), and place.
+  - Number: reuses `explodeTextLayer` + `applyAnimationPresetBatch`.
+  - Hard part: confirming the explode shifts each piece's `inPoint` — it does, so `atStart` preset
+    timing fans the entrance out per word/char with no extra machinery.
+
+- internal: a frame-pure range-selector primitive — `weight(unitIndex, count, cfg) → [0,1]`, the
+  AE-range-selector / Cavalry-falloff abstraction the text animation lacked.
+  - Number: `verify:rangeselector`, 12 checks, provable in Node.
+  - Hard part: the "one-sided clamp-hold" model. square = a held typewriter step, and bands are made
+    by composing two selectors (matches AE Mode: intersect). My first test expectations were wrong
+    because I assumed a single selector made a band.
+
+- The AI chat conversation survives closing/reopening the panel and reopening the project.
+  - Number: keyed by project id, persisted to localStorage.
+  - Hard part: the root cause was that the panel unmounts on close (`{showAiChat && <Panel/>}`), so
+    its component-local `useState` was destroyed. Lifted to a store + persist; had to strip stuck
+    "streaming" flags on reopen and give message ids a random suffix so they don't collide after a
+    reload resets the counter.
+
+- Dragging an audio asset onto the timeline or the canvas now adds it (before: nothing happened).
+  - Number: both drop handlers only branched on video/image, so an `audio` payload hit neither
+    branch and returned.
+  - Hard part: none for the drop. Separately, the timeline waveform was a 1px SVG stroke; replaced
+    with a filled canvas envelope (peak + an RMS-approximation core).
+
+- Audio clips are double height and the waveform actually reads as the clip's audio.
+  - Number: `AUDIO_ROW_HEIGHT` 44 (2× the 22 default), updated in both `getTrackHeight` copies.
+  - Hard part: "barely visible" was not a size problem, it was no normalization — raw PCM peaks from
+    a quiet recording barely leave the centre line. Now normalized per-clip to its loudest column
+    (dynamics preserved, scale filled), and drawn symmetric/mirrored in a dark amber.
+
+- Offline auto-captions: select one or more audio clips, transcribe on-device with Whisper Small,
+  edit the text in a non-modal review panel, and place phrase subtitles on a shared "Subtitles"
+  track at the correct global time. Triggerable from the audio Properties button, the clip
+  context menu, and the multi-select "Add Subtitles" (which replaces the 3D button for audio).
+  - Number: ~670 lines across four commits; `verify:caption-window` 9 checks (window math + global
+    placement + de-overlap, in Node).
+  - Hard part: (1) the existing caption flow transcribed the WHOLE source asset ignoring trim — a
+    new per-clip slice does trim + downmix + 16 kHz resample in one `OfflineAudioContext`
+    (`start(0, startSec, spanSec)`). (2) It's a browser app, so there is no whisper.cpp/WhisperKit;
+    transformers.js on WebGPU was already the runtime. (3) Determinism pinned (temperature 0,
+    greedy) and self-host via `env.remoteHost`. (4) None of the transcription runs here — WebGPU
+    isn't available — so only the pure timing/placement math is proven.
+
+- A "Tasks" side panel (same shape as the AI panel, no chat) shows a live log of background work:
+  model-download %, "Transcribing clip N of M", "Captions added", etc. Clicking the floating
+  caption chip opens it. Generated captions no longer contain em dashes.
+  - Number: `normalizeText` strips em/en dashes from every caption segment.
+  - Hard part: nothing structural; the flow logs one line per event and updates the download line in
+    place.
+
+- internal: the AI Coder stage — the missing model stage. `runCoder(job) → CoderFragment` mirrors
+  `runDirector` (forced tool, retry-once-with-errors, fail-loudly) plus a Coder-local validator
+  (id-namespace ownership, panelId match, budget, boundary present-lists).
+  - Number: `verify:coder` 9 checks with a fake client (no network); `scripts/coder-run.mjs` runs
+    the real Director → compilePlan → Coder end to end. Deleted 2 stale AI docs, added
+    `docs/AI_PLAN.md` as the canonical one.
+  - Hard part: the coder-local semantic checks are the cross-fragment rules Zod can't express. The
+    prompt (`coder.md`) is a first draft — it can only be tuned against the real model, which needs
+    the API key (kept out of the browser; env var for Node, a Supabase edge function later).
+
+- Text clips in the timeline show a preview of their actual text, ellipsized when it doesn't fit.
+  - Number: 14 lines; clips previously showed no label at all.
+  - Hard part: none.
+
+- Multi-selecting opens a "Common" tab that edits shared appearance across the whole selection in one
+  undo step: opacity/blend for anything visual, fill/border for shapes+text, font+size for text,
+  volume for audio, and a one-click entrance for all.
+  - Number: it is now the default multi-select tab; each edit is one command over the selection.
+  - Hard part: routing each control to the right per-type path — `shape.fillColor` vs the text
+    spans' `style.color`, `animOverrides.fontSize` for text size, `audio.volume` for audio — and
+    only rendering a control when the selection actually contains a layer it applies to.
+
 ## 2026-08-11
 
 Two big arcs and a long tail of bug-fixing: the cinematic "agent builds your scene" animation, and
