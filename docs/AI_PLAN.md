@@ -37,20 +37,37 @@ description + canvas
 - The **Director** stage end-to-end (`src/ai/director/`), incl. a **real Anthropic client**
   (`createAnthropicClient`) and a node runner (`scripts/director-run.mjs`).
 - The **deterministic compiler** (`compilePlan` + `assemble` + `validateDirectorPlan` + `commit`).
+- The **Coder stage** (`src/ai/coder/`): `runCoder(job) → CoderFragment`, retry-once, Coder-local
+  validator. `verify:coder` (fake client) + `scripts/coder-run.mjs` (real end-to-end run).
 - Dev hook `window.__aiCompile('showreel')` compiles+commits a **fixture** (hand-authored
-  fragments) onto the canvas.
+  director+fragments) onto the canvas.
 
-**Not built yet — the roadmap, in order:**
-1. **Coder stage (`src/ai/coder/`)** ← NEXT. `runCoder(job, …)` mirroring `runDirector`: a
-   forced-tool call emitting a `CoderFragment`, retry-once, plus Coder-local validation (panelId
-   matches, ids carry the `idNamespace`, ≤ budget, boundary present-lists realized). Provable here
-   with a fake client (`scripts/verify-coder.mjs`) — needs nothing from you.
-2. **Auto-fix loop** — feed semantic-validation errors back to regenerate a corrected plan/fragment
-   (bounded retries) instead of only reporting them.
-3. **`aiMeta` persistence** — whitelist brief/styleContract/panelPlan/seed/digest/tier through
-   `project-system/services/validation.ts` so regenerate survives save/load.
-4. **Browser wiring + API-key proxy** — connect prompt → Director → Coder → compile → commit in a
-   real UI, through a server proxy that holds the key (see below).
+**What's missing:** the stages exist in isolation. Nothing ties `description → Director → Coder(per
+panel) → compile → commit` into one call, the errors only visible after assembly aren't fed back,
+the regeneration inputs don't persist, and there's no browser path (the key can't live client-side).
+
+### Milestones to a working in-app AI (definitive order)
+
+- **M1 — Pipeline orchestrator** `generate(description, canvas, …, client) → { composition, styles,
+  report, aiMeta, usage }`. Runs Director → `compilePlan` → Coder per panel → `compile()`. The single
+  entry point the app, the node runner, and tests all use. Provable here (fake client) + live via the
+  node runner. **Needs nothing from you.** ← NEXT
+- **M2 — Auto-fix loop** (inside the orchestrator). `runDirector`/`runCoder` already self-retry on
+  their OWN validation; M2 catches the cross-stage errors only `compile()` sees (assembly seams,
+  ownership) and re-runs the offending stage with the errors fed back (bounded, e.g. 2 repairs).
+  Provable here. **Needs nothing from you.**
+- **M3 — `aiMeta` persistence** — whitelist brief/styleContract/panelPlan/seed/digest/tier through
+  `src/project-system/services/validation.ts` (it's on the core type but stripped on save/load).
+  Round-trip harness. **Needs nothing from you.**
+- **M4 — Key-holding proxy** — a Supabase edge function (Deno, the `drive-assets` pattern) holding
+  `ANTHROPIC_API_KEY` as a secret, proxying Director+Coder calls to Anthropic. **I write it; you set
+  the secret + deploy** (two commands, below). The ONLY milestone that needs you.
+- **M5 — Browser wiring (the feature)** — a browser client hitting the proxy; replace the AiChatPanel
+  mockup with prompt → orchestrator → commit onto the canvas, progress in the Tasks panel. Needs M4.
+- **M6 — Edit & assets (polish)** — regenerate/tweak via `aiMeta`; bind real image/video assets;
+  usage/cost + tier UI.
+
+M1–M3 are all buildable and provable here now, with no key. M4 is your two commands. M5 lights it up.
 
 ## What I need from you (and when)
 

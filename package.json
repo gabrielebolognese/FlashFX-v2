@@ -16,6 +16,7 @@
     "verify:rangeselector": "node scripts/verify-rangeselector.mjs",
     "verify:caption-window": "node scripts/verify-caption-window.mjs",
     "verify:coder": "node scripts/verify-coder.mjs",
+    "verify:generate": "node scripts/verify-generate.mjs",
     "verify:cloner-render": "node scripts/verify-cloner-render.mjs",
     "verify:trash": "node scripts/verify-trash.mjs",
     "verify:precomp": "node scripts/verify-precomp.mjs",
