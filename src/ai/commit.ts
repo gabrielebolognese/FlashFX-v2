@@ -8,7 +8,11 @@ import { useHistoryStore } from '../store/history';
 // snapshot-command pattern. We do NOT use the document loader: it clears history, which would make
 // the generation non-undoable. Scoped to AI commits only — this is not a general write path.
 
-export function commitAiComposition(composition: Composition, styles: Record<string, SharedStyle>): void {
+export function commitAiComposition(
+  composition: Composition,
+  styles: Record<string, SharedStyle>,
+  aiMeta?: Record<string, unknown>,
+): void {
   const editor = useEditorStore.getState();
   const before = {
     composition: editor.composition,
@@ -17,6 +21,7 @@ export function commitAiComposition(composition: Composition, styles: Record<str
     rootCompositionId: editor.rootCompositionId,
     activeCompositionId: editor.activeCompositionId,
     navStack: (editor as unknown as { navStack?: unknown[] }).navStack ?? [],
+    aiMeta: editor.aiMeta,
   };
   const after = {
     composition,
@@ -25,6 +30,8 @@ export function commitAiComposition(composition: Composition, styles: Record<str
     rootCompositionId: composition.id,
     activeCompositionId: composition.id,
     navStack: [],
+    // Carried through save/load so the edit path can regenerate from it.
+    aiMeta,
   };
   useHistoryStore.getState().execute({
     label: 'AI: generate scene',

@@ -25,7 +25,7 @@ export function installAiDevHook(): void {
     const result = compile(fx.director, fx.fragments, { fps: 30, tier: 'pro', seed: 1 });
     console.log(`[ai] compiled '${name}':`, result.report);
     if (result.report.issues.length) console.table(result.report.issues);
-    commitAiComposition(result.composition, result.styles);
+    commitAiComposition(result.composition, result.styles, result.aiMeta as unknown as Record<string, unknown>);
     console.log(`[ai] committed '${name}' — ${result.report.stats.layers} layers, ${result.report.stats.clonersBuilt} cloner(s). Ctrl+Z to undo.`);
   };
   console.log(`[ai] dev hook ready — __aiCompile(${Object.keys(FIXTURES).map((n) => `'${n}'`).join(' | ')})`);

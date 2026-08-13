@@ -205,6 +205,9 @@ interface EditorState {
    *  precomps, which live in `compositions` but aren't listed here). The current
    *  scene is always `navStack[0]`. */
   scenes: string[];
+  /** AI-generation regeneration inputs (brief/styleContract/panelPlan/seed/digest/tier). Opaque to
+   *  the core/renderer; carried through save/load so the edit path can regenerate. See @/schema AiMeta. */
+  aiMeta?: Record<string, unknown>;
   currentFrame: number;
   isPlaying: boolean;
   selection: SelectionState;
@@ -1702,9 +1705,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   getDocument: () => {
-    const { compositions, activeCompositionId, composition, rootCompositionId, scenes } = get();
+    const { compositions, activeCompositionId, composition, rootCompositionId, scenes, aiMeta } = get();
     // Fold the live active comp into the registry so the document is complete.
-    return { version: 2, rootCompositionId, scenes, compositions: { ...compositions, [activeCompositionId]: composition }, styles: get().styles };
+    return { version: 2, rootCompositionId, scenes, compositions: { ...compositions, [activeCompositionId]: composition }, styles: get().styles, ...(aiMeta ? { aiMeta } : {}) };
   },
 
   loadDocument: (doc) => {
@@ -1727,6 +1730,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     set({
       compositions,
       styles: doc.styles ?? {},
+      aiMeta: doc.aiMeta, // regeneration inputs travel with the document (undefined clears prior meta)
       composition: compositions[rootId],
       rootCompositionId: rootId,
       activeCompositionId: rootId,
