@@ -1024,6 +1024,14 @@ export function TrackArea({ layers, tracks, selectedIds, rulerOnly, ghostRowCoun
 
                 if (barWidth <= 0) return null;
 
+                // The clip element is clamped to the viewport, so `barWidth` is only its VISIBLE
+                // width. Pass the visible frame sub-window to the waveform strips so the waveform
+                // maps to the audio actually under it (stretches/compacts with zoom + scroll)
+                // instead of squeezing the whole clip into the visible slice.
+                const frameWidthPx = getFrameWidth(zoomLevel);
+                const waveHiddenLeftFrames = frameWidthPx > 0 ? (clipLeft - inX) / frameWidthPx : 0;
+                const waveVisibleFrames = frameWidthPx > 0 ? barWidth / frameWidthPx : (displayOut - displayIn);
+
                 const color = getClipColor(layer);
                 const isSelected = selectedIds.includes(layer.id);
                 const isInvalid = (isDragTarget && clipDrag && !clipDrag.isValid)
@@ -1097,6 +1105,8 @@ export function TrackArea({ layers, tracks, selectedIds, rulerOnly, ghostRowCoun
                         clipWidth={barWidth}
                         clipHeight={trackHeight}
                         compositionFrameRate={frameRate}
+                        hiddenLeftFrames={waveHiddenLeftFrames}
+                        visibleFrames={waveVisibleFrames}
                       />
                     )}
 
@@ -1107,6 +1117,8 @@ export function TrackArea({ layers, tracks, selectedIds, rulerOnly, ghostRowCoun
                         clipWidth={barWidth}
                         clipHeight={trackHeight}
                         compositionFrameRate={frameRate}
+                        hiddenLeftFrames={waveHiddenLeftFrames}
+                        visibleFrames={waveVisibleFrames}
                       />
                     )}
 
@@ -1453,18 +1465,20 @@ function WaveformCanvas({ peaks, startPeak, visiblePeaks, width, height, midY, a
   return <canvas ref={ref} className="absolute inset-0 pointer-events-none" style={{ width: '100%', height: '100%' }} />;
 }
 
-function AudioWaveformStrip({ layer, clipWidth, clipHeight, compositionFrameRate }: { layer: AudioLayer; clipWidth: number; clipHeight: number; compositionFrameRate: number }) {
+function AudioWaveformStrip({ layer, clipWidth, clipHeight, compositionFrameRate, hiddenLeftFrames, visibleFrames }: { layer: AudioLayer; clipWidth: number; clipHeight: number; compositionFrameRate: number; hiddenLeftFrames: number; visibleFrames: number }) {
   const waveform = mediaAssetManager.getWaveform(layer.audio.assetId);
   const win = useMemo(() => {
     if (!waveform || clipWidth <= 0) return null;
     const startOffset = layer.audio.startOffset ?? 0;
+    // Map only the VISIBLE portion of the clip (it can extend past the viewport when zoomed in), so
+    // the waveform stays aligned to the audio under it at any zoom / scroll.
     return peakWindow(
       waveform.peaks,
       layer.audio.sourceDuration,
-      startOffset / compositionFrameRate,
-      (layer.outPoint - layer.inPoint) / compositionFrameRate,
+      (startOffset + hiddenLeftFrames) / compositionFrameRate,
+      visibleFrames / compositionFrameRate,
     );
-  }, [waveform, clipWidth, layer.inPoint, layer.outPoint, layer.audio.sourceDuration, layer.audio.startOffset, compositionFrameRate]);
+  }, [waveform, clipWidth, layer.audio.sourceDuration, layer.audio.startOffset, compositionFrameRate, hiddenLeftFrames, visibleFrames]);
 
   if (!waveform || !win) return null;
 
@@ -1478,7 +1492,7 @@ function AudioWaveformStrip({ layer, clipWidth, clipHeight, compositionFrameRate
   );
 }
 
-function VideoAudioWaveformStrip({ layer, clipWidth, clipHeight, compositionFrameRate }: { layer: VideoLayer; clipWidth: number; clipHeight: number; compositionFrameRate: number }) {
+function VideoAudioWaveformStrip({ layer, clipWidth, clipHeight, compositionFrameRate, hiddenLeftFrames, visibleFrames }: { layer: VideoLayer; clipWidth: number; clipHeight: number; compositionFrameRate: number; hiddenLeftFrames: number; visibleFrames: number }) {
   const assetId = layer.video.assetId;
   const [, forceUpdate] = useState(0);
   const lastWaveform = useRef<unknown>(undefined);
@@ -1499,13 +1513,14 @@ function VideoAudioWaveformStrip({ layer, clipWidth, clipHeight, compositionFram
     if (!waveform || clipWidth <= 0) return null;
     const startOffset = layer.video.startOffset ?? 0;
     const rate = layer.video.playbackRate;
+    // Only the visible frame sub-window (see AudioWaveformStrip), scaled by the clip's playback rate.
     return peakWindow(
       waveform.peaks,
       waveform.duration,
-      (startOffset / compositionFrameRate) * rate,
-      ((layer.outPoint - layer.inPoint) / compositionFrameRate) * rate,
+      ((startOffset + hiddenLeftFrames) / compositionFrameRate) * rate,
+      (visibleFrames / compositionFrameRate) * rate,
     );
-  }, [waveform, clipWidth, layer.inPoint, layer.outPoint, layer.video.startOffset, layer.video.playbackRate, compositionFrameRate]);
+  }, [waveform, clipWidth, layer.video.startOffset, layer.video.playbackRate, compositionFrameRate, hiddenLeftFrames, visibleFrames]);
 
   if (!waveform || !win) return null;
 
