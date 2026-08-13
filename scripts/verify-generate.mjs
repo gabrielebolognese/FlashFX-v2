@@ -30,6 +30,15 @@ const validDirector = () => ({
 });
 const U = { inputTokens: 1000, cacheReadTokens: 800, cacheWriteTokens: 0, outputTokens: 300 };
 
+function parseJob(req) {
+  const turn = req.messages[0].content;
+  return {
+    panelId: /Panel id: (\S+)/.exec(turn)?.[1] ?? 'panel-0',
+    ns: /start with "([^"]+)"/.exec(turn)?.[1] ?? 'p0:',
+    isRepair: req.messages.length > 1, // a feedback note was seeded into the first request
+  };
+}
+
 // Returns the Director plan on the director tool, and a valid fragment per Coder call (parsing the
 // panel id + namespace out of the request's user turn).
 function fakeClient() {
@@ -39,10 +48,26 @@ function fakeClient() {
     createMessage: async (req) => {
       requests.push(req);
       if (req.tools[0].name === 'emit_director_output') return { toolInput: validDirector(), usage: U };
-      const turn = req.messages[0].content;
-      const panelId = /Panel id: (\S+)/.exec(turn)?.[1] ?? 'panel-0';
-      const ns = /start with "([^"]+)"/.exec(turn)?.[1] ?? 'p0:';
+      const { panelId, ns } = parseJob(req);
       return { toolInput: { panelId, layers: [{ id: ns + 'title', name: 'title', type: 'text', spans: [{ text: 'Hello' }] }] }, usage: U };
+    },
+  };
+}
+
+// First Coder response has a dangling parentId — it PASSES runCoder's own validation but FAILS
+// assembly (compile-only error). On the repair round (feedback seeded), it returns a clean fragment.
+function autoFixClient() {
+  const requests = [];
+  return {
+    requests,
+    createMessage: async (req) => {
+      requests.push(req);
+      if (req.tools[0].name === 'emit_director_output') return { toolInput: validDirector(), usage: U };
+      const { panelId, ns, isRepair } = parseJob(req);
+      const layer = isRepair
+        ? { id: ns + 'title', name: 'title', type: 'text', spans: [{ text: 'Hello' }] }
+        : { id: ns + 'title', name: 'title', type: 'text', spans: [{ text: 'Hello' }], parentId: ns + 'ghost' };
+      return { toolInput: { panelId, layers: [layer] }, usage: U };
     },
   };
 }
@@ -81,6 +106,31 @@ try {
     assert.equal(res.attempts.director, 1);
     assert.deepEqual(res.attempts.coder, [1]);
     assert.ok(res.aiMeta && res.aiMeta.seed === 1, 'aiMeta.seed should be carried through');
+    assert.equal(res.repairs, 0, 'a clean run needs no repairs');
+  });
+
+  await ok('generate() auto-fixes a compile-only error (dangling parent) by re-running the panel', async () => {
+    const client = autoFixClient();
+    const res = await generate(opts(client));
+    // director + coder(broken) + coder(repair) = 3 calls
+    assert.equal(client.requests.length, 3, `expected 3 calls, got ${client.requests.length}`);
+    assert.ok(client.requests[2].messages.length === 2, 'the repair call must feed the errors back');
+    assert.equal(res.repairs, 1, 'exactly one repair round');
+    assert.equal(res.report.ok, true, `report should be clean after repair: ${JSON.stringify(res.report.issues)}`);
+    assert.ok(res.composition.layers.length >= 1);
+  });
+
+  await ok('generate() gives up after maxRepairs and returns the report (never loops forever)', async () => {
+    // A client that never fixes the dangling parent.
+    const stubborn = () => ({ createMessage: async (req) => {
+      if (req.tools[0].name === 'emit_director_output') return { toolInput: validDirector(), usage: U };
+      const { panelId, ns } = parseJob(req);
+      return { toolInput: { panelId, layers: [{ id: ns + 'title', name: 'title', type: 'text', spans: [{ text: 'x' }], parentId: ns + 'ghost' }] }, usage: U };
+    } });
+    const res = await generate({ ...opts(stubborn()), maxRepairs: 2 });
+    assert.equal(res.repairs, 2, 'stopped at maxRepairs');
+    assert.equal(res.report.ok, false, 'unfixable error remains in the report');
+    assert.ok(res.report.issues.some((i) => i.code === 'dangling-parent'));
   });
 
   console.log(`\n✅ ${passed} checks passed`);

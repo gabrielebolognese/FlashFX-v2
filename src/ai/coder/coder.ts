@@ -29,6 +29,9 @@ export interface RunCoderOpts {
   maxTokens?: number;
   /** Injected clock for deterministic tests; defaults to Date.now. */
   now?: () => number;
+  /** Errors + prior output from a repair round (assembly problems only compile() sees), fed into
+   *  the FIRST request so the Coder corrects them. See the pipeline auto-fix loop (generate.ts). */
+  feedback?: { previousOutput: unknown; errors: string[] };
 }
 
 /**
@@ -69,7 +72,7 @@ export async function runCoder(o: RunCoderOpts): Promise<CoderResult> {
   const t0 = now();
 
   let usage = ZERO_USAGE;
-  let retry: { previousOutput: unknown; errors: string[] } | undefined;
+  let retry: { previousOutput: unknown; errors: string[] } | undefined = o.feedback;
 
   for (let attempt = 1; attempt <= 2; attempt++) {
     const req = buildCoderRequest({
