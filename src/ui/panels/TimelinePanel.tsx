@@ -298,7 +298,7 @@ export function TimelinePanel() {
                     key={`ghost-label-${i}`}
                     label={`N${i + 1}`}
                     height={ROW_HEIGHT}
-                    shade={(tracks.length + i) % 2 === 0 ? '#0c1a2d' : '#0a1628'}
+                    shade={(tracks.length + i) % 2 === 0 ? '#080f1c' : '#0a1424'}
                   />
                 ))}
               </div>

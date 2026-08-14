@@ -54,28 +54,29 @@ const SCRUB_MAX_SPEED = 18; // px per rAF tick at maximum proximity
 function getClipColor(layer: Layer): string {
   if (layer.labelColor) return layer.labelColor;
   switch (layer.type) {
-    case 'video': return '#22c55e';
-    case 'text': return '#3b82f6';
-    case 'image': return '#22c55e';
-    case 'audio': return '#f59e0b';
-    case 'group': return '#6b7280';
-    case 'particle': return '#e879f9';
-    case 'animationItem': return '#f97316';
-    case 'fieldSampled': return '#06b6d4';
-    case 'generativePattern': return '#8b5cf6';
-    case 'lottieIcon': return '#a78bfa';
-    case 'camera': return '#eab308';
+    // Muted, desaturated role tints — never candy-bright (they read on a dark well).
+    case 'video': return '#4d7089';
+    case 'text': return '#7a6b9e';
+    case 'image': return '#4d7089';
+    case 'audio': return '#4f8a68';
+    case 'group': return '#5a6472';
+    case 'particle': return '#8a6ba8';
+    case 'animationItem': return '#a0764e';
+    case 'fieldSampled': return '#4d8a8a';
+    case 'generativePattern': return '#6a6ba8';
+    case 'lottieIcon': return '#7a6b9e';
+    case 'camera': return '#8a7f5a';
     case 'shape': {
       const shape = (layer as ShapeLayer).shape;
       switch (shape.type) {
-        case 'rectangle': return '#ef4444';
-        case 'circle': return '#22c55e';
-        case 'star': return '#eab308';
-        case 'polygon': return '#f97316';
-        default: return '#6b7280';
+        case 'rectangle': return '#9a5f5f';
+        case 'circle': return '#4f8a68';
+        case 'star': return '#8a7f5a';
+        case 'polygon': return '#a0764e';
+        default: return '#5a6472';
       }
     }
-    default: return '#6b7280';
+    default: return '#5a6472';
   }
 }
 
@@ -979,7 +980,7 @@ export function TrackArea({ layers, tracks, selectedIds, rulerOnly, ghostRowCoun
                 height: trackHeight,
                 backgroundColor: isDropTarget
                   ? clipDrag.isValid ? 'rgba(34, 197, 94, 0.06)' : 'rgba(239, 68, 68, 0.06)'
-                  : trackIndex % 2 === 0 ? '#0c1a2d' : '#0a1628',
+                  : trackIndex % 2 === 0 ? '#080f1c' : '#0a1424',
                 boxShadow: isDropTarget
                   ? clipDrag.isValid
                     ? 'inset 0 0 0 1px rgba(34,197,94,0.55)'
@@ -1042,7 +1043,7 @@ export function TrackArea({ layers, tracks, selectedIds, rulerOnly, ghostRowCoun
                   <div
                     key={layer.id}
                     data-clip-id={layer.id}
-                    className="absolute overflow-hidden"
+                    className="absolute overflow-hidden transition-[filter] duration-100 hover:brightness-110"
                     onContextMenu={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
@@ -1060,11 +1061,12 @@ export function TrackArea({ layers, tracks, selectedIds, rulerOnly, ghostRowCoun
                       top: 0,
                       bottom: 0,
                       backgroundColor: color,
-                      opacity: isDragTarget ? 0.7 : isResizeTarget ? 0.92 : isSelected ? 0.95 : 0.75,
-                      borderLeft: '1px solid rgba(255,255,255,0.1)',
-                      borderRight: '1px solid rgba(0,0,0,0.3)',
-                      outline: isSelected ? '1.5px solid #ffffff' : isInvalid ? '1.5px solid #ef4444' : 'none',
-                      outlineOffset: '-1.5px',
+                      opacity: isDragTarget ? 0.7 : isResizeTarget ? 0.92 : isSelected ? 0.98 : 0.82,
+                      borderRadius: 4,
+                      border: '1px solid rgba(0,0,0,0.22)',
+                      borderTopColor: 'rgba(255,255,255,0.09)',
+                      outline: isSelected ? '2px solid #d9a521' : isInvalid ? '2px solid #ef4444' : 'none',
+                      outlineOffset: '-1px',
                       cursor: isResizeTarget ? 'ew-resize' : 'grab',
                     }}
                   >
@@ -1217,7 +1219,7 @@ export function TrackArea({ layers, tracks, selectedIds, rulerOnly, ghostRowCoun
             className="relative border-b border-hairline pointer-events-none"
             style={{
               height: ROW_HEIGHT,
-              backgroundColor: (sortedTracks.length + i) % 2 === 0 ? '#0c1a2d' : '#0a1628',
+              backgroundColor: (sortedTracks.length + i) % 2 === 0 ? '#080f1c' : '#0a1424',
             }}
           />
         ))}
@@ -1788,13 +1790,13 @@ function TimelinePlayhead({
     if (playheadX < -5 || playheadX > containerWidth + 5) return null;
     return (
       <div className="absolute bottom-0 z-20 pointer-events-none" style={{ left: playheadX, transform: 'translateX(-4px)' }}>
-        <div className="w-0 h-0 border-l-[5px] border-r-[5px] border-b-[6px] border-l-transparent border-r-transparent border-b-accent" />
+        <div className="w-0 h-0 border-l-[5px] border-r-[5px] border-b-[6px] border-l-transparent border-r-transparent border-b-white" />
       </div>
     );
   }
   if (playheadX < -1 || playheadX > containerWidth + 1) return null;
   return (
-    <div className="absolute top-0 bottom-0 z-20 pointer-events-none" style={{ left: playheadX, width: 1, backgroundColor: '#ffcc00' }} />
+    <div className="absolute top-0 bottom-0 z-20 pointer-events-none" style={{ left: playheadX, width: 1, backgroundColor: '#ffffff' }} />
   );
 }
 
