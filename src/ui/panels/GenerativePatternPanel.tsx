@@ -43,7 +43,7 @@ export function GenerativePatternPanel({ layer }: { layer: GenerativePatternLaye
         <div className="grid grid-cols-2 gap-1">
           {PATTERN_PRESETS.map((p) => (
             <button key={p.name} onClick={() => applyPreset(p.config)}
-              className="px-2 py-1 rounded text-[11px] bg-[#122240] text-slate-300 hover:bg-[#1a2f52] hover:text-slate-100 transition-colors text-left truncate">
+              className="px-2 py-1 rounded text-[11px] bg-surface-3 text-slate-300 hover:bg-[#1a2f52] hover:text-slate-100 transition-colors text-left truncate">
               {p.name}
             </button>
           ))}
@@ -55,18 +55,18 @@ export function GenerativePatternPanel({ layer }: { layer: GenerativePatternLaye
         <div className="flex items-center gap-1.5">
           <input type="number" value={Math.round(layer.width.defaultValue as number)} min={2}
             onChange={(e) => updateLayerProperty(layer.id, 'width.defaultValue', Math.max(2, parseInt(e.target.value) || 2))}
-            className="w-full h-6 px-1.5 rounded bg-[#0b1220] border border-[#1a2a42] text-[11px] text-slate-200 focus:outline-none" />
+            className="w-full h-6 px-1.5 rounded bg-surface-sunken border border-hairline text-[11px] text-slate-200 focus:outline-none" />
           <span className="text-slate-600 text-[11px]">×</span>
           <input type="number" value={Math.round(layer.height.defaultValue as number)} min={2}
             onChange={(e) => updateLayerProperty(layer.id, 'height.defaultValue', Math.max(2, parseInt(e.target.value) || 2))}
-            className="w-full h-6 px-1.5 rounded bg-[#0b1220] border border-[#1a2a42] text-[11px] text-slate-200 focus:outline-none" />
+            className="w-full h-6 px-1.5 rounded bg-surface-sunken border border-hairline text-[11px] text-slate-200 focus:outline-none" />
         </div>
       </Row>
 
       {/* Type */}
       <Row label="Type">
         <select value={cfg.type} onChange={(e) => set('type', e.target.value as PatternType)}
-          className="w-full h-6 px-1.5 rounded bg-[#0b1220] border border-[#1a2a42] text-[11px] text-slate-200 focus:outline-none">
+          className="w-full h-6 px-1.5 rounded bg-surface-sunken border border-hairline text-[11px] text-slate-200 focus:outline-none">
           {PATTERN_TYPES.map((t) => <option key={t} value={t}>{TYPE_LABEL[t]}</option>)}
         </select>
       </Row>
@@ -74,7 +74,7 @@ export function GenerativePatternPanel({ layer }: { layer: GenerativePatternLaye
       {/* Blend with the layers below (GPU: normal/add/multiply/screen) */}
       <Row label="Blend">
         <select value={layer.blendMode} onChange={(e) => updateLayerProperty(layer.id, 'blendMode', e.target.value)}
-          className="w-full h-6 px-1.5 rounded bg-[#0b1220] border border-[#1a2a42] text-[11px] text-slate-200 focus:outline-none">
+          className="w-full h-6 px-1.5 rounded bg-surface-sunken border border-hairline text-[11px] text-slate-200 focus:outline-none">
           <option value="normal">Normal</option>
           <option value="add">Add (Linear Dodge)</option>
           <option value="multiply">Multiply</option>
@@ -98,13 +98,13 @@ export function GenerativePatternPanel({ layer }: { layer: GenerativePatternLaye
             className="text-[10px] text-slate-400 hover:text-slate-200">+ stop</button>
         </div>
         {/* live gradient bar */}
-        <div className="h-5 rounded border border-[#1a2a42] mb-2"
+        <div className="h-5 rounded border border-hairline mb-2"
           style={{ background: `linear-gradient(90deg, ${[...cfg.palette].sort((a, b) => a.pos - b.pos).map((s) => `rgb(${s.color.map((c) => Math.round(c * 255)).join(',')}) ${Math.round(s.pos * 100)}%`).join(', ')})` }} />
         {/* preset swatches */}
         <div className="flex flex-wrap gap-1 mb-2">
           {Object.entries(PALETTES).map(([name, stops]) => (
             <button key={name} onClick={() => set('palette', stops)} title={name}
-              className="w-8 h-5 rounded border border-[#1a2a42] overflow-hidden"
+              className="w-8 h-5 rounded border border-hairline overflow-hidden"
               style={{ background: `linear-gradient(90deg, ${stops.map((s) => `rgb(${s.color.map((c) => Math.round(c * 255)).join(',')}) ${Math.round(s.pos * 100)}%`).join(', ')})` }} />
           ))}
         </div>
@@ -114,7 +114,7 @@ export function GenerativePatternPanel({ layer }: { layer: GenerativePatternLaye
             <div key={i} className="flex items-center gap-2">
               <input type="color" value={rgbToHex(stop.color)}
                 onChange={(e) => set('palette', cfg.palette.map((s, j) => j === i ? { ...s, color: hexToRgb(e.target.value) } : s))}
-                className="w-6 h-6 rounded bg-transparent border border-[#1a2a42] p-0 cursor-pointer" />
+                className="w-6 h-6 rounded bg-transparent border border-hairline p-0 cursor-pointer" />
               <input type="range" min={0} max={1} step={0.01} value={stop.pos}
                 onChange={(e) => set('palette', cfg.palette.map((s, j) => j === i ? { ...s, pos: parseFloat(e.target.value) } : s))}
                 className="flex-1 accent-[#f7b500]" />
@@ -148,7 +148,7 @@ function Slider({ label, value, min, max, step, onChange, unit, onKey }: { label
     <Row label={label}>
       <div className="flex items-center gap-2">
         {onKey && (
-          <button onClick={onKey} title="Add keyframe at playhead" className="flex-shrink-0 text-slate-600 hover:text-[#f7b500] transition-colors">
+          <button onClick={onKey} title="Add keyframe at playhead" className="flex-shrink-0 text-slate-600 hover:text-accent transition-colors">
             <Diamond size={11} />
           </button>
         )}

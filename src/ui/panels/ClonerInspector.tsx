@@ -18,8 +18,8 @@ type SetFn = (path: string, value: number | string | boolean) => void;
 // ── small local UI helpers (Inspector's Section/etc. are not exported) ──
 function Sec({ title, right, children }: { title: string; right?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <div className="border-b border-[#1a2a42]">
-      <div className="px-3 py-1.5 bg-[#081220] flex items-center justify-between">
+    <div className="border-b border-hairline">
+      <div className="px-3 py-1.5 bg-surface-sunken flex items-center justify-between">
         <span className="text-[10px] uppercase tracking-wider text-slate-500 font-medium">{title}</span>
         {right}
       </div>
@@ -32,12 +32,12 @@ function Seg<T extends string>({ label, value, opts, onChange }: { label?: strin
   return (
     <div className="flex items-center gap-2">
       {label && <label className="text-[10px] text-slate-500 w-14 flex-shrink-0">{label}</label>}
-      <div className="flex flex-1 rounded border border-[#1a2a42] overflow-hidden">
+      <div className="flex flex-1 rounded border border-hairline overflow-hidden">
         {opts.map((o) => (
           <button
             key={o.v}
             onClick={() => onChange(o.v)}
-            className={`flex-1 text-[9px] py-1 transition-colors ${value === o.v ? 'bg-[#f7b500]/20 text-[#f7b500]' : 'bg-[#122240] text-slate-400 hover:text-slate-200'}`}
+            className={`flex-1 text-[9px] py-1 transition-colors ${value === o.v ? 'bg-accent-wash text-accent' : 'bg-surface-3 text-slate-400 hover:text-slate-200'}`}
           >
             {o.l}
           </button>
@@ -94,14 +94,14 @@ export function ClonerInspector() {
   return (
     <div>
       <div className="px-3 py-2 flex items-center gap-1.5 text-[11px] font-medium text-slate-300">
-        <Boxes size={12} className="text-[#f7b500]" /> Cloner
+        <Boxes size={12} className="text-accent" /> Cloner
       </div>
 
       <Sec title="Source">
         <select
           value={c.sourceRef.type === 'layer' ? c.sourceRef.layerId : ''}
           onChange={(e) => updateLayerProperty(id, 'sourceRef', { type: 'layer', layerId: e.target.value })}
-          className="w-full bg-[#122240] text-[11px] text-slate-300 px-1.5 py-1 rounded border border-[#1a2a42] focus:border-[#f7b500]/50 outline-none"
+          className="w-full bg-surface-3 text-[11px] text-slate-300 px-1.5 py-1 rounded border border-hairline focus:border-accent-dim outline-none"
         >
           {sources.length === 0 && <option value="">No eligible layers</option>}
           {sources.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
@@ -139,7 +139,7 @@ export function ClonerInspector() {
               <select
                 value={dist.pathRef}
                 onChange={(e) => set('distribution.pathRef', e.target.value)}
-                className="flex-1 bg-[#122240] text-[11px] text-slate-300 px-1.5 py-0.5 rounded border border-[#1a2a42] outline-none"
+                className="flex-1 bg-surface-3 text-[11px] text-slate-300 px-1.5 py-0.5 rounded border border-hairline outline-none"
               >
                 {motionPaths.map((p, idx) => <option key={p.id} value={p.id}>Path {idx + 1}</option>)}
               </select>
@@ -165,7 +165,7 @@ export function ClonerInspector() {
         right={
           <div className="flex gap-0.5">
             {EFFECTOR_TYPES.map((t) => (
-              <button key={t} title={`Add ${t} effector`} onClick={() => addClonerEffector(id, t)} className="text-[8px] px-1 py-0.5 rounded bg-[#122240] text-slate-400 hover:text-[#f7b500] border border-[#1a2a42] capitalize">
+              <button key={t} title={`Add ${t} effector`} onClick={() => addClonerEffector(id, t)} className="text-[8px] px-1 py-0.5 rounded bg-surface-3 text-slate-400 hover:text-accent border border-hairline capitalize">
                 <Plus size={7} className="inline" />{t}
               </button>
             ))}
@@ -174,7 +174,7 @@ export function ClonerInspector() {
       >
         {c.effectors.length === 0 && <div className="text-[9px] text-slate-600">No effectors. Add one above to modulate the clones.</div>}
         {c.effectors.map((eff, i) => (
-          <div key={i} className="rounded border border-[#1a2a42] p-1.5 space-y-1 bg-[#0a1628]/50">
+          <div key={i} className="rounded border border-hairline p-1.5 space-y-1 bg-[#0a1628]/50">
             <div className="flex items-center justify-between">
               <span className="text-[10px] text-slate-300 capitalize font-medium">{eff.type}</span>
               <div className="flex gap-0.5">

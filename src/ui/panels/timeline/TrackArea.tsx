@@ -866,7 +866,7 @@ export function TrackArea({ layers, tracks, selectedIds, rulerOnly, ghostRowCoun
     return (
       <div
         ref={containerRef}
-        className="flex-1 relative bg-[#1a1e28] border-b border-[#243a5c] cursor-col-resize select-none overflow-hidden"
+        className="flex-1 relative bg-[#1a1e28] border-b border-hairline cursor-col-resize select-none overflow-hidden"
         onMouseDown={handleRulerMouseDown}
       >
         {ticks.map((tick, i) => {
@@ -926,7 +926,7 @@ export function TrackArea({ layers, tracks, selectedIds, rulerOnly, ghostRowCoun
     <div className="flex-1 flex flex-col min-h-0 min-w-0 relative">
       <div
         ref={containerRef}
-        className="flex-1 relative overflow-hidden bg-[#16294a] select-none"
+        className="flex-1 relative overflow-hidden bg-surface-4 select-none"
         onPointerDown={handleTrackAreaPointerDown}
       >
         {/* Vertically scrollable track stack */}
@@ -974,7 +974,7 @@ export function TrackArea({ layers, tracks, selectedIds, rulerOnly, ghostRowCoun
           return (
             <div
               key={track.id}
-              className={`relative border-b border-[#1a2a42] ${!track.visible ? 'opacity-35' : ''}`}
+              className={`relative border-b border-hairline ${!track.visible ? 'opacity-35' : ''}`}
               style={{
                 height: trackHeight,
                 backgroundColor: isDropTarget
@@ -1144,7 +1144,7 @@ export function TrackArea({ layers, tracks, selectedIds, rulerOnly, ghostRowCoun
 
                     {/* Proxy badge */}
                     {layer.type === 'video' && layer.video.playbackMode === 'proxy' && barWidth > 60 && (
-                      <span className="absolute top-1 left-1 z-10 px-1.5 py-0.5 rounded bg-black/55 text-[8px] font-semibold tracking-wide text-[#ffc83d] pointer-events-none">
+                      <span className="absolute top-1 left-1 z-10 px-1.5 py-0.5 rounded bg-black/55 text-[8px] font-semibold tracking-wide text-accent-hover pointer-events-none">
                         PROXY
                       </span>
                     )}
@@ -1214,7 +1214,7 @@ export function TrackArea({ layers, tracks, selectedIds, rulerOnly, ghostRowCoun
         {Array.from({ length: ghostRowCount }).map((_, i) => (
           <div
             key={`ghost-${i}`}
-            className="relative border-b border-[#1a2a42]/70 pointer-events-none"
+            className="relative border-b border-hairline pointer-events-none"
             style={{
               height: ROW_HEIGHT,
               backgroundColor: (sortedTracks.length + i) % 2 === 0 ? '#0c1a2d' : '#0a1628',
@@ -1271,7 +1271,7 @@ export function TrackArea({ layers, tracks, selectedIds, rulerOnly, ghostRowCoun
 
       {/* Horizontal scrollbar */}
       {showScrollbar && (
-        <div className="h-[10px] min-h-[10px] bg-[#081220] border-t border-[#1a2a42] relative">
+        <div className="h-[10px] min-h-[10px] bg-surface-sunken border-t border-hairline relative">
           <div
             className="absolute top-[2px] bottom-[2px] rounded-full bg-slate-600/40 hover:bg-slate-500/50 cursor-grab active:cursor-grabbing transition-colors"
             style={{ left: scrollbarThumbLeft, width: scrollbarThumbWidth }}
@@ -1303,7 +1303,7 @@ function ResizeTooltip({
   const startFrame = state.previewInPoint;
   return (
     <div
-      className="fixed z-[100] pointer-events-none px-2 py-1 rounded-md bg-[#0e1c32]/95 border border-[#243a5c] shadow-lg text-[10px] font-mono tabular-nums whitespace-nowrap"
+      className="fixed z-[100] pointer-events-none px-2 py-1 rounded-md bg-[#0e1c32]/95 border border-hairline shadow-lg text-[10px] font-mono tabular-nums whitespace-nowrap"
       style={{
         left: state.cursorClientX + 14,
         top: state.cursorClientY - 36,
@@ -1788,7 +1788,7 @@ function TimelinePlayhead({
     if (playheadX < -5 || playheadX > containerWidth + 5) return null;
     return (
       <div className="absolute bottom-0 z-20 pointer-events-none" style={{ left: playheadX, transform: 'translateX(-4px)' }}>
-        <div className="w-0 h-0 border-l-[5px] border-r-[5px] border-b-[6px] border-l-transparent border-r-transparent border-b-[#ffcc00]" />
+        <div className="w-0 h-0 border-l-[5px] border-r-[5px] border-b-[6px] border-l-transparent border-r-transparent border-b-accent" />
       </div>
     );
   }

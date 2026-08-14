@@ -57,7 +57,7 @@ export function BackgroundPanel() {
         {tab === 'grid' && <GridTab />}
         {tab === 'physics' && <PhysicsWorldTab />}
       </div>
-      <nav className="flex-shrink-0 w-[96px] flex flex-col py-1 border-l border-[#1a2a42] bg-[#0b0e15] overflow-y-auto">
+      <nav className="flex-shrink-0 w-[96px] flex flex-col py-1 border-l border-hairline bg-[#0b0e15] overflow-y-auto">
         {tabs.map((t) => (
           <button
             key={t.id}
@@ -65,13 +65,13 @@ export function BackgroundPanel() {
             aria-pressed={tab === t.id}
             className={`relative flex items-center gap-2 px-3 py-2 text-[11px] font-medium text-left transition-colors ${
               tab === t.id
-                ? 'text-[#f7b500] bg-[#f7b500]/10'
+                ? 'text-accent bg-accent-wash'
                 : 'text-slate-500 hover:text-slate-300 hover:bg-white/[0.03]'
             }`}
           >
             <span
               className={`absolute left-0 top-0 bottom-0 w-[2px] transition-colors ${
-                tab === t.id ? 'bg-[#f7b500]' : 'bg-transparent'
+                tab === t.id ? 'bg-accent' : 'bg-transparent'
               }`}
             />
             {t.icon}
@@ -106,7 +106,7 @@ function BackgroundFillTab() {
           {bgLayers.length > 1 && (
             <button
               onClick={clearAll}
-              className="flex items-center gap-1 px-1.5 py-0.5 text-[9px] rounded bg-[#122240] text-slate-500 hover:text-red-400"
+              className="flex items-center gap-1 px-1.5 py-0.5 text-[9px] rounded bg-surface-3 text-slate-500 hover:text-red-400"
               title="Clear all"
             >
               <X size={9} />
@@ -116,7 +116,7 @@ function BackgroundFillTab() {
           <button
             onClick={addBackgroundLayer}
             disabled={bgLayers.length >= 10}
-            className="p-1 rounded hover:bg-[#1a2a42] text-slate-400 hover:text-slate-200 disabled:opacity-30"
+            className="p-1 rounded hover:bg-surface-4 text-slate-400 hover:text-slate-200 disabled:opacity-30"
             title="Add layer"
           >
             <Plus size={11} />
@@ -127,7 +127,7 @@ function BackgroundFillTab() {
       {bgLayers.length === 0 && (
         <button
           onClick={addBackgroundLayer}
-          className="w-full py-2 rounded border border-dashed border-[#243a5c] text-[10px] text-slate-400 hover:bg-[#122240] hover:text-slate-200 hover:border-[#f7b500]/50 transition-colors"
+          className="w-full py-2 rounded border border-dashed border-hairline text-[10px] text-slate-400 hover:bg-surface-3 hover:text-slate-200 hover:border-accent-dim transition-colors"
         >
           + Add Fill Color
         </button>
@@ -135,7 +135,7 @@ function BackgroundFillTab() {
 
       {bgLayers.length > 0 && (
         <div
-          className="h-6 rounded border border-[#243a5c]"
+          className="h-6 rounded border border-hairline"
           style={{ background: getCompositePreview(bgLayers) }}
           title="Composite preview"
         />
@@ -196,36 +196,36 @@ function GridTab() {
   return (
     <div className="p-3 space-y-3">
       {/* Grid Section */}
-      <div className="border border-[#1a2a42] rounded-md overflow-hidden">
+      <div className="border border-hairline rounded-md overflow-hidden">
         <button
           onClick={() => setGridExpanded(!gridExpanded)}
-          className="w-full flex items-center gap-2 px-2.5 py-1.5 bg-[#0a1628] hover:bg-[#0d1d35] transition-colors"
+          className="w-full flex items-center gap-2 px-2.5 py-1.5 bg-surface-1 hover:bg-[#0d1d35] transition-colors"
         >
           {gridExpanded ? <ChevronDown size={10} className="text-slate-500" /> : <ChevronRight size={10} className="text-slate-500" />}
-          <Grid3x3 size={11} className="text-[#f7b500]" />
+          <Grid3x3 size={11} className="text-accent" />
           <span className="text-[10px] font-medium text-slate-300 flex-1 text-left">Grid</span>
           <button
             onClick={(e) => { e.stopPropagation(); setGridVisible(!grid.visible); }}
-            className={`p-0.5 rounded ${grid.visible ? 'text-[#f7b500]' : 'text-slate-600'}`}
+            className={`p-0.5 rounded ${grid.visible ? 'text-accent' : 'text-slate-600'}`}
           >
             {grid.visible ? <Eye size={10} /> : <EyeOff size={10} />}
           </button>
         </button>
         {gridExpanded && (
-          <div className="px-2.5 py-2 space-y-2 bg-[#060f1c]">
+          <div className="px-2.5 py-2 space-y-2 bg-surface-sunken">
             <div className="grid grid-cols-2 gap-2">
               <label className="text-[9px] text-slate-500">
                 Columns
                 <input type="number" value={grid.columns} min={1} max={100}
                   onChange={(e) => setGridColumns(Number(e.target.value))}
-                  className="w-full bg-[#0a1628] border border-[#1a2a42] rounded px-1.5 py-0.5 text-[10px] text-slate-300 mt-0.5"
+                  className="w-full bg-surface-1 border border-hairline rounded px-1.5 py-0.5 text-[10px] text-slate-300 mt-0.5"
                 />
               </label>
               <label className="text-[9px] text-slate-500">
                 Rows
                 <input type="number" value={grid.rows} min={1} max={100}
                   onChange={(e) => setGridRows(Number(e.target.value))}
-                  className="w-full bg-[#0a1628] border border-[#1a2a42] rounded px-1.5 py-0.5 text-[10px] text-slate-300 mt-0.5"
+                  className="w-full bg-surface-1 border border-hairline rounded px-1.5 py-0.5 text-[10px] text-slate-300 mt-0.5"
                 />
               </label>
             </div>
@@ -234,7 +234,7 @@ function GridTab() {
               Subdivisions
               <input type="number" value={grid.subdivisions} min={1} max={10}
                 onChange={(e) => setGridSubdivisions(Number(e.target.value))}
-                className="w-full bg-[#0a1628] border border-[#1a2a42] rounded px-1.5 py-0.5 text-[10px] text-slate-300 mt-0.5"
+                className="w-full bg-surface-1 border border-hairline rounded px-1.5 py-0.5 text-[10px] text-slate-300 mt-0.5"
               />
             </label>
             <label className="text-[9px] text-slate-500 block">
@@ -243,7 +243,7 @@ function GridTab() {
                 type="range" min={2} max={100}
                 value={Math.round(grid.opacity * 100)}
                 onChange={(e) => setGridOpacity(Number(e.target.value) / 100)}
-                className="w-full h-1 mt-1 bg-[#1c3155] rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-2.5 [&::-webkit-slider-thumb]:h-2.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[#f7b500]"
+                className="w-full h-1 mt-1 bg-surface-5 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-2.5 [&::-webkit-slider-thumb]:h-2.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-accent"
               />
             </label>
           </div>
@@ -251,28 +251,28 @@ function GridTab() {
       </div>
 
       {/* Guidelines Section */}
-      <div className="border border-[#1a2a42] rounded-md overflow-hidden">
+      <div className="border border-hairline rounded-md overflow-hidden">
         <button
           onClick={() => setGuidesExpanded(!guidesExpanded)}
-          className="w-full flex items-center gap-2 px-2.5 py-1.5 bg-[#0a1628] hover:bg-[#0d1d35] transition-colors"
+          className="w-full flex items-center gap-2 px-2.5 py-1.5 bg-surface-1 hover:bg-[#0d1d35] transition-colors"
         >
           {guidesExpanded ? <ChevronDown size={10} className="text-slate-500" /> : <ChevronRight size={10} className="text-slate-500" />}
           <span className="text-[10px] font-medium text-slate-300 flex-1 text-left">Guidelines</span>
           <span className="text-[9px] text-slate-600">{guides.guidelines.length}</span>
           <button
             onClick={(e) => { e.stopPropagation(); setGuidesVisible(!guides.visible); }}
-            className={`p-0.5 rounded ${guides.visible ? 'text-[#f7b500]' : 'text-slate-600'}`}
+            className={`p-0.5 rounded ${guides.visible ? 'text-accent' : 'text-slate-600'}`}
           >
             {guides.visible ? <Eye size={10} /> : <EyeOff size={10} />}
           </button>
         </button>
         {guidesExpanded && (
-          <div className="px-2.5 py-2 space-y-2 bg-[#060f1c]">
+          <div className="px-2.5 py-2 space-y-2 bg-surface-sunken">
             <div className="flex items-center gap-1.5">
               <select
                 value={newGuideAxis}
                 onChange={(e) => setNewGuideAxis(e.target.value as 'vertical' | 'horizontal')}
-                className="bg-[#0a1628] border border-[#1a2a42] rounded text-[9px] text-slate-300 px-1 py-0.5 outline-none"
+                className="bg-surface-1 border border-hairline rounded text-[9px] text-slate-300 px-1 py-0.5 outline-none"
               >
                 <option value="vertical">X</option>
                 <option value="horizontal">Y</option>
@@ -283,27 +283,27 @@ function GridTab() {
                 onChange={(e) => setNewGuidePos(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') handleAddGuide(); }}
                 placeholder={newGuideAxis === 'vertical' ? `0-${canvasW}` : `0-${canvasH}`}
-                className="flex-1 bg-[#0a1628] border border-[#1a2a42] rounded text-[9px] text-slate-300 px-1.5 py-0.5 outline-none placeholder:text-slate-700"
+                className="flex-1 bg-surface-1 border border-hairline rounded text-[9px] text-slate-300 px-1.5 py-0.5 outline-none placeholder:text-slate-700"
               />
-              <button onClick={handleAddGuide} className="p-1 rounded bg-[#f7b500]/10 hover:bg-[#f7b500]/15">
-                <Plus size={9} className="text-[#f7b500]" />
+              <button onClick={handleAddGuide} className="p-1 rounded bg-accent-wash hover:bg-accent-wash">
+                <Plus size={9} className="text-accent" />
               </button>
             </div>
             <div className="flex gap-1">
-              <button onClick={() => addGuideline('vertical', canvasW / 2)} className="px-1.5 py-0.5 text-[8px] rounded bg-[#122240] text-slate-500 hover:text-slate-300">X:{Math.round(canvasW / 2)}</button>
-              <button onClick={() => addGuideline('horizontal', canvasH / 2)} className="px-1.5 py-0.5 text-[8px] rounded bg-[#122240] text-slate-500 hover:text-slate-300">Y:{Math.round(canvasH / 2)}</button>
-              <button onClick={() => { addGuideline('vertical', canvasW / 3); addGuideline('vertical', (canvasW / 3) * 2); addGuideline('horizontal', canvasH / 3); addGuideline('horizontal', (canvasH / 3) * 2); }} className="px-1.5 py-0.5 text-[8px] rounded bg-[#122240] text-slate-500 hover:text-slate-300">Thirds</button>
+              <button onClick={() => addGuideline('vertical', canvasW / 2)} className="px-1.5 py-0.5 text-[8px] rounded bg-surface-3 text-slate-500 hover:text-slate-300">X:{Math.round(canvasW / 2)}</button>
+              <button onClick={() => addGuideline('horizontal', canvasH / 2)} className="px-1.5 py-0.5 text-[8px] rounded bg-surface-3 text-slate-500 hover:text-slate-300">Y:{Math.round(canvasH / 2)}</button>
+              <button onClick={() => { addGuideline('vertical', canvasW / 3); addGuideline('vertical', (canvasW / 3) * 2); addGuideline('horizontal', canvasH / 3); addGuideline('horizontal', (canvasH / 3) * 2); }} className="px-1.5 py-0.5 text-[8px] rounded bg-surface-3 text-slate-500 hover:text-slate-300">Thirds</button>
             </div>
             {guides.guidelines.length > 0 && (
               <div className="space-y-0.5 max-h-[120px] overflow-y-auto">
                 {guides.guidelines.map((g) => (
                   <div key={g.id} className="flex items-center gap-1 group/guide">
                     <span className="text-[8px] text-slate-600 w-3 font-mono">{g.axis === 'vertical' ? 'X' : 'Y'}</span>
-                    <input type="number" value={Math.round(g.position)} onChange={(e) => moveGuideline(g.id, Number(e.target.value))} className="w-10 bg-[#0a1628] border border-[#1a2a42] rounded text-[8px] text-slate-300 px-1 py-0.5 outline-none" />
-                    <button onClick={() => toggleGuidelineVisibility(g.id)} className="p-0.5 rounded hover:bg-[#1a2a42]">
+                    <input type="number" value={Math.round(g.position)} onChange={(e) => moveGuideline(g.id, Number(e.target.value))} className="w-10 bg-surface-1 border border-hairline rounded text-[8px] text-slate-300 px-1 py-0.5 outline-none" />
+                    <button onClick={() => toggleGuidelineVisibility(g.id)} className="p-0.5 rounded hover:bg-surface-4">
                       {g.visible ? <Eye size={8} className="text-slate-500" /> : <EyeOff size={8} className="text-slate-600" />}
                     </button>
-                    <button onClick={() => toggleGuidelineLocked(g.id)} className="p-0.5 rounded hover:bg-[#1a2a42]">
+                    <button onClick={() => toggleGuidelineLocked(g.id)} className="p-0.5 rounded hover:bg-surface-4">
                       {g.locked ? <Lock size={8} className="text-amber-500" /> : <Unlock size={8} className="text-slate-600" />}
                     </button>
                     <button onClick={() => removeGuideline(g.id)} className="p-0.5 rounded hover:bg-red-500/10 opacity-0 group-hover/guide:opacity-100">
@@ -357,21 +357,21 @@ function PhysicsWorldTab() {
       </div>
 
       {/* World Settings */}
-      <div className="border border-[#1a2a42] rounded-md overflow-hidden bg-[#060f1c]">
+      <div className="border border-hairline rounded-md overflow-hidden bg-surface-sunken">
         <div className="px-2.5 py-2 space-y-2">
           <div className="grid grid-cols-2 gap-2">
             <label className="text-[9px] text-slate-500">
               Gravity X
               <input type="number" value={world.gravityX} step={10}
                 onChange={(e) => updatePhysicsWorld({ gravityX: +e.target.value })}
-                className="w-full bg-[#0a1628] border border-[#1a2a42] rounded px-1.5 py-0.5 text-[10px] text-slate-300 mt-0.5"
+                className="w-full bg-surface-1 border border-hairline rounded px-1.5 py-0.5 text-[10px] text-slate-300 mt-0.5"
               />
             </label>
             <label className="text-[9px] text-slate-500">
               Gravity Y
               <input type="number" value={world.gravityY} step={10}
                 onChange={(e) => updatePhysicsWorld({ gravityY: +e.target.value })}
-                className="w-full bg-[#0a1628] border border-[#1a2a42] rounded px-1.5 py-0.5 text-[10px] text-slate-300 mt-0.5"
+                className="w-full bg-surface-1 border border-hairline rounded px-1.5 py-0.5 text-[10px] text-slate-300 mt-0.5"
               />
             </label>
           </div>
@@ -380,14 +380,14 @@ function PhysicsWorldTab() {
               Time Scale
               <input type="number" value={world.timeScale} step={0.1} min={0.1} max={5}
                 onChange={(e) => updatePhysicsWorld({ timeScale: +e.target.value })}
-                className="w-full bg-[#0a1628] border border-[#1a2a42] rounded px-1.5 py-0.5 text-[10px] text-slate-300 mt-0.5"
+                className="w-full bg-surface-1 border border-hairline rounded px-1.5 py-0.5 text-[10px] text-slate-300 mt-0.5"
               />
             </label>
             <label className="text-[9px] text-slate-500">
               Substeps
               <input type="number" value={world.substeps} min={1} max={8} step={1}
                 onChange={(e) => updatePhysicsWorld({ substeps: Math.max(1, +e.target.value) })}
-                className="w-full bg-[#0a1628] border border-[#1a2a42] rounded px-1.5 py-0.5 text-[10px] text-slate-300 mt-0.5"
+                className="w-full bg-surface-1 border border-hairline rounded px-1.5 py-0.5 text-[10px] text-slate-300 mt-0.5"
               />
             </label>
           </div>
@@ -395,7 +395,7 @@ function PhysicsWorldTab() {
       </div>
 
       {/* Bake Button */}
-      <div className="border border-[#1a2a42] rounded-md overflow-hidden">
+      <div className="border border-hairline rounded-md overflow-hidden">
         <button
           onClick={() => { if (canBake) bakePhysics(); }}
           disabled={!canBake}
@@ -407,8 +407,8 @@ function PhysicsWorldTab() {
               : bakeStatus === 'stale'
               ? 'bg-orange-500/10 text-orange-400 hover:bg-orange-500/20 cursor-pointer'
               : canBake
-              ? 'bg-[#0a1628] text-slate-300 hover:bg-[#0d1d35] cursor-pointer'
-              : 'bg-[#060f1c] text-slate-600 cursor-not-allowed'
+              ? 'bg-surface-1 text-slate-300 hover:bg-[#0d1d35] cursor-pointer'
+              : 'bg-surface-sunken text-slate-600 cursor-not-allowed'
           }`}
         >
           <Play size={11} />
@@ -421,7 +421,7 @@ function PhysicsWorldTab() {
             : 'Bake Simulation'}
         </button>
         {bakeStatus === 'baking' && (
-          <div className="h-0.5 bg-[#1a2a42]">
+          <div className="h-0.5 bg-surface-4">
             <div className="h-full bg-amber-400 transition-all duration-200" style={{ width: `${bakeProgress}%` }} />
           </div>
         )}
@@ -435,8 +435,8 @@ function PhysicsWorldTab() {
       )}
 
       {/* Physics objects summary */}
-      <div className="border border-[#1a2a42] rounded-md overflow-hidden bg-[#060f1c]">
-        <div className="px-2.5 py-1.5 bg-[#0a1628]">
+      <div className="border border-hairline rounded-md overflow-hidden bg-surface-sunken">
+        <div className="px-2.5 py-1.5 bg-surface-1">
           <span className="text-[9px] text-slate-500 uppercase tracking-wider">Objects ({physicsBindings.length})</span>
         </div>
         {physicsBindings.length === 0 ? (
@@ -462,8 +462,8 @@ function PhysicsWorldTab() {
 
       {/* Mini preview placeholder */}
       {physicsBindings.length > 0 && bakeStatus === 'done' && (
-        <div className="border border-[#1a2a42] rounded-md overflow-hidden">
-          <div className="px-2.5 py-1.5 bg-[#0a1628] text-[9px] text-slate-500 uppercase tracking-wider">
+        <div className="border border-hairline rounded-md overflow-hidden">
+          <div className="px-2.5 py-1.5 bg-surface-1 text-[9px] text-slate-500 uppercase tracking-wider">
             Preview
           </div>
           <PhysicsPreview />
@@ -497,9 +497,9 @@ function PhysicsPreview() {
   };
 
   return (
-    <div className="relative bg-[#060f1c]">
+    <div className="relative bg-surface-sunken">
       <div
-        className="mx-auto my-2 relative border border-[#1a2a42] rounded overflow-hidden"
+        className="mx-auto my-2 relative border border-hairline rounded overflow-hidden"
         style={{ width: canvasW * previewScale, height: canvasH * previewScale }}
       >
         {physicsBindings.filter((b) => b.role === 'dynamic').map((b) => {
@@ -518,7 +518,7 @@ function PhysicsPreview() {
           );
         })}
       </div>
-      <div className="flex items-center gap-2 px-2.5 py-1.5 border-t border-[#1a2a42]">
+      <div className="flex items-center gap-2 px-2.5 py-1.5 border-t border-hairline">
         <button
           onClick={startPlay}
           disabled={playing}
@@ -526,7 +526,7 @@ function PhysicsPreview() {
         >
           <Play size={9} />
         </button>
-        <div className="flex-1 h-1 bg-[#1a2a42] rounded-full overflow-hidden">
+        <div className="flex-1 h-1 bg-surface-4 rounded-full overflow-hidden">
           <div className="h-full bg-emerald-400 transition-all" style={{ width: `${(frame / Math.max(1, totalFrames - 1)) * 100}%` }} />
         </div>
         <span className="text-[8px] text-slate-600 font-mono w-6 text-right">{frame}</span>
@@ -551,16 +551,16 @@ function BackgroundLayerCard({ layer, index, total, onUpdate, onRemove, onReorde
   const previewBg = getLayerPreview(layer);
 
   return (
-    <div className="rounded border border-[#1a2a42] bg-[#0c1018] overflow-hidden">
+    <div className="rounded border border-hairline bg-[#0c1018] overflow-hidden">
       <div
-        className="flex items-center gap-1.5 px-2 py-1.5 cursor-pointer hover:bg-[#122240]"
+        className="flex items-center gap-1.5 px-2 py-1.5 cursor-pointer hover:bg-surface-3"
         onClick={() => setExpanded(!expanded)}
       >
         <span className="text-slate-500">
           {expanded ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
         </span>
         <div
-          className="w-6 h-4 rounded-sm border border-[#243a5c] flex-shrink-0"
+          className="w-6 h-4 rounded-sm border border-hairline flex-shrink-0"
           style={{ background: previewBg }}
         />
         <span className="text-[10px] text-slate-300 flex-1 truncate">
@@ -568,20 +568,20 @@ function BackgroundLayerCard({ layer, index, total, onUpdate, onRemove, onReorde
         </span>
         <span className="text-[9px] text-slate-500">{Math.round(layer.opacity * 100)}%</span>
         <div className="flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
-          <button onClick={() => onReorder('up')} disabled={index === 0} className="p-0.5 rounded hover:bg-[#1a2a42] text-slate-500 hover:text-slate-300 disabled:opacity-20">
+          <button onClick={() => onReorder('up')} disabled={index === 0} className="p-0.5 rounded hover:bg-surface-4 text-slate-500 hover:text-slate-300 disabled:opacity-20">
             <ArrowUp size={9} />
           </button>
-          <button onClick={() => onReorder('down')} disabled={index === total - 1} className="p-0.5 rounded hover:bg-[#1a2a42] text-slate-500 hover:text-slate-300 disabled:opacity-20">
+          <button onClick={() => onReorder('down')} disabled={index === total - 1} className="p-0.5 rounded hover:bg-surface-4 text-slate-500 hover:text-slate-300 disabled:opacity-20">
             <ArrowDown size={9} />
           </button>
-          <button onClick={onRemove} disabled={total <= 1} className="p-0.5 rounded hover:bg-[#1a2a42] text-slate-500 hover:text-red-400 disabled:opacity-20">
+          <button onClick={onRemove} disabled={total <= 1} className="p-0.5 rounded hover:bg-surface-4 text-slate-500 hover:text-red-400 disabled:opacity-20">
             <Trash2 size={9} />
           </button>
         </div>
       </div>
 
       {expanded && (
-        <div className="px-2.5 py-2 space-y-2 border-t border-[#1a2a42]">
+        <div className="px-2.5 py-2 space-y-2 border-t border-hairline">
           <div className="flex items-center gap-1">
             <label className="text-[10px] text-slate-500 w-14 flex-shrink-0">Type</label>
             <div className="flex gap-0.5">
@@ -591,8 +591,8 @@ function BackgroundLayerCard({ layer, index, total, onUpdate, onRemove, onReorde
                   onClick={() => onUpdate({ type: t.value })}
                   className={`px-1.5 py-0.5 text-[9px] rounded transition-colors ${
                     layer.type === t.value
-                      ? 'bg-[#f7b500]/15 text-[#ffc83d] ring-1 ring-[#f7b500]/30'
-                      : 'bg-[#122240] text-slate-500 hover:text-slate-300'
+                      ? 'bg-accent-wash text-accent-hover ring-1 ring-accent'
+                      : 'bg-surface-3 text-slate-500 hover:text-slate-300'
                   }`}
                 >
                   {t.label}
@@ -606,7 +606,7 @@ function BackgroundLayerCard({ layer, index, total, onUpdate, onRemove, onReorde
             <select
               value={layer.blendMode}
               onChange={(e) => onUpdate({ blendMode: e.target.value as BackgroundBlendMode })}
-              className="flex-1 bg-[#122240] text-[10px] text-slate-300 px-1 py-0.5 rounded border border-[#1a2a42] outline-none"
+              className="flex-1 bg-surface-3 text-[10px] text-slate-300 px-1 py-0.5 rounded border border-hairline outline-none"
             >
               {BLEND_MODES.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
             </select>
@@ -665,19 +665,19 @@ function ColorStopsEditor({ stops, showPosition, onChange }: { stops: GradientSt
     <div className="space-y-1.5">
       <div className="flex items-center justify-between">
         <span className="text-[10px] text-slate-500">Color Stops</span>
-        <button onClick={addStop} disabled={stops.length >= 6} className="p-0.5 rounded hover:bg-[#1a2a42] text-slate-500 hover:text-slate-300 disabled:opacity-30">
+        <button onClick={addStop} disabled={stops.length >= 6} className="p-0.5 rounded hover:bg-surface-4 text-slate-500 hover:text-slate-300 disabled:opacity-30">
           <Plus size={10} />
         </button>
       </div>
-      {showPosition && <div className="h-4 rounded border border-[#243a5c]" style={{ background: previewBg }} />}
+      {showPosition && <div className="h-4 rounded border border-hairline" style={{ background: previewBg }} />}
       {sorted.map((stop, idx) => (
         <div key={idx} className="flex items-center gap-1">
           <input type="color" value={colorToHex(stop.color)} onChange={(e) => updateStop(idx, { color: hexToColor(e.target.value) })} className="w-5 h-5 bg-transparent border-0 cursor-pointer p-0 flex-shrink-0" />
-          <input type="text" value={colorToHex(stop.color).toUpperCase()} onChange={(e) => { const v = e.target.value.trim(); if (/^#[0-9a-fA-F]{6}$/.test(v)) updateStop(idx, { color: hexToColor(v) }); }} className="bg-[#122240] text-[9px] font-mono text-slate-300 px-1 py-0.5 rounded border border-[#1a2a42] outline-none w-14" />
+          <input type="text" value={colorToHex(stop.color).toUpperCase()} onChange={(e) => { const v = e.target.value.trim(); if (/^#[0-9a-fA-F]{6}$/.test(v)) updateStop(idx, { color: hexToColor(v) }); }} className="bg-surface-3 text-[9px] font-mono text-slate-300 px-1 py-0.5 rounded border border-hairline outline-none w-14" />
           <BrandColorPicker onSelect={(rgba) => updateStop(idx, { color: [rgba[0], rgba[1], rgba[2]] })} currentAlpha={stop.opacity} />
           {showPosition && <DragInput label="P" value={Math.round(stop.position * 100)} onChange={(v) => updateStop(idx, { position: Math.max(0, Math.min(100, Math.round(v))) / 100 })} min={0} max={100} step={1} precision={0} className="flex-1" />}
           <DragInput label="A" value={Math.round(stop.opacity * 100)} onChange={(v) => updateStop(idx, { opacity: Math.max(0, Math.min(100, Math.round(v))) / 100 })} min={0} max={100} step={1} precision={0} className="flex-1" />
-          <button onClick={() => removeStop(idx)} disabled={stops.length <= 1} className="p-0.5 rounded hover:bg-[#1a2a42] text-slate-600 hover:text-red-400 disabled:opacity-20 flex-shrink-0">
+          <button onClick={() => removeStop(idx)} disabled={stops.length <= 1} className="p-0.5 rounded hover:bg-surface-4 text-slate-600 hover:text-red-400 disabled:opacity-20 flex-shrink-0">
             <Trash2 size={9} />
           </button>
         </div>

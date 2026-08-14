@@ -379,8 +379,8 @@ export function KeyframeTimeline() {
 
   if (!activeLayer || activeLayer.type === 'group') {
     return (
-      <div className="flex flex-col h-full bg-[#0e1c32]">
-        <div className="h-[26px] min-h-[26px] flex items-center px-3 border-b border-[#1a2a42] bg-[#081220]">
+      <div className="flex flex-col h-full bg-surface-2">
+        <div className="h-[26px] min-h-[26px] flex items-center px-3 border-b border-hairline bg-surface-sunken">
           <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">Keyframes</span>
         </div>
         <div className="flex-1 flex items-center justify-center">
@@ -391,9 +391,9 @@ export function KeyframeTimeline() {
   }
 
   return (
-    <div className="flex flex-col h-full bg-[#0e1c32]">
+    <div className="flex flex-col h-full bg-surface-2">
       {/* Header */}
-      <div className="h-[26px] min-h-[26px] flex items-center px-3 border-b border-[#1a2a42] bg-[#081220]">
+      <div className="h-[26px] min-h-[26px] flex items-center px-3 border-b border-hairline bg-surface-sunken">
         <Diamond size={10} className="text-yellow-500 mr-1.5" />
         <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">Keyframes</span>
         <span className="text-[9px] text-slate-600 ml-2 truncate">{activeLayer.name}</span>
@@ -402,7 +402,7 @@ export function KeyframeTimeline() {
             onClick={() => setSnapToKeyframes(!snapToKeyframes)}
             className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium transition-all ${
               snapToKeyframes
-                ? 'bg-[#f7b500]/10 border border-[#f7b500]/30 text-[#ffc83d]'
+                ? 'bg-accent-wash border border-accent-dim text-accent-hover'
                 : 'border border-transparent text-slate-600 hover:text-slate-400'
             }`}
             title="Snap playhead to keyframes"
@@ -417,10 +417,10 @@ export function KeyframeTimeline() {
       <div className="flex-1 flex flex-col min-h-0 min-w-0">
         {/* Ruler row */}
         <div className="flex flex-row flex-shrink-0" style={{ height: 21 }}>
-          <div className="flex-shrink-0 border-r border-b border-[#243a5c] bg-[#081220]" style={{ width: 180 }} />
+          <div className="flex-shrink-0 border-r border-b border-hairline bg-surface-sunken" style={{ width: 180 }} />
           <div
             ref={containerRef}
-            className="flex-1 relative bg-[#1a1e28] border-b border-[#243a5c] cursor-col-resize select-none overflow-hidden"
+            className="flex-1 relative bg-[#1a1e28] border-b border-hairline cursor-col-resize select-none overflow-hidden"
             onMouseDown={handleRulerMouseDown}
             onWheel={handleWheel}
           >
@@ -446,7 +446,7 @@ export function KeyframeTimeline() {
                 className="absolute bottom-0 z-20 pointer-events-none"
                 style={{ left: playheadX, transform: 'translateX(-4px)' }}
               >
-                <div className="w-0 h-0 border-l-[5px] border-r-[5px] border-b-[6px] border-l-transparent border-r-transparent border-b-[#ffcc00]" />
+                <div className="w-0 h-0 border-l-[5px] border-r-[5px] border-b-[6px] border-l-transparent border-r-transparent border-b-accent" />
               </div>
             )}
           </div>
@@ -455,7 +455,7 @@ export function KeyframeTimeline() {
         {/* Track rows */}
         <div className="flex-1 flex flex-row min-h-0 overflow-hidden">
           {/* Left: property names */}
-          <div className="flex-shrink-0 min-h-0 overflow-y-auto overflow-x-hidden border-r border-[#1a2a42] bg-[#081220]" style={{ width: 180 }}>
+          <div className="flex-shrink-0 min-h-0 overflow-y-auto overflow-x-hidden border-r border-hairline bg-surface-sunken" style={{ width: 180 }}>
             {flatRows.map((row) => {
               if (row.type === 'group') {
                 const isCollapsed = collapsedGroups.has(row.group.id);
@@ -463,7 +463,7 @@ export function KeyframeTimeline() {
                 return (
                   <div
                     key={row.group.id}
-                    className="flex items-center px-2 border-b border-[#1a2a42] cursor-pointer hover:bg-[#141820] select-none"
+                    className="flex items-center px-2 border-b border-hairline cursor-pointer hover:bg-[#141820] select-none"
                     style={{ height: GROUP_ROW_HEIGHT }}
                     onClick={() => toggleGroup(row.group.id)}
                   >
@@ -481,7 +481,7 @@ export function KeyframeTimeline() {
               return (
                 <div
                   key={track.id}
-                  className="flex items-center px-2 pl-5 border-b border-[#1a2a42] group/row"
+                  className="flex items-center px-2 pl-5 border-b border-hairline group/row"
                   style={{ height: ROW_HEIGHT }}
                 >
                   <span className={`text-[9px] flex-1 truncate ${hasKeys ? 'text-yellow-400/90' : 'text-slate-500'}`}>
@@ -505,7 +505,7 @@ export function KeyframeTimeline() {
           {/* Right: keyframe diamonds area */}
           <div
             ref={kfAreaRef}
-            className="flex-1 relative overflow-hidden bg-[#16294a] select-none"
+            className="flex-1 relative overflow-hidden bg-surface-4 select-none"
             onWheel={handleWheel}
             onPointerDown={(e) => {
               if ((e.target as HTMLElement).closest('[data-kf-id]')) return;
@@ -524,7 +524,7 @@ export function KeyframeTimeline() {
                 return (
                   <div
                     key={`tr_${row.group.id}`}
-                    className="relative border-b border-[#1a2a42]"
+                    className="relative border-b border-hairline"
                     style={{ height: GROUP_ROW_HEIGHT }}
                   >
                     {/* Show summary diamonds for collapsed groups */}
@@ -547,7 +547,7 @@ export function KeyframeTimeline() {
               return (
                 <div
                   key={`tr_${track.id}`}
-                  className="relative border-b border-[#1a2a42]"
+                  className="relative border-b border-hairline"
                   style={{ height: ROW_HEIGHT }}
                 >
                   {track.property.keyframes.map((kf) => {

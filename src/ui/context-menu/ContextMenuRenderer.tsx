@@ -78,7 +78,7 @@ function MenuPanel({
         opacity: ready ? 1 : 0,
       }}
     >
-      <div className="bg-[#1a2233]/95 backdrop-blur-xl border border-[#2a3a52] rounded-lg shadow-[0_8px_40px_rgba(0,0,0,0.5),0_2px_8px_rgba(0,0,0,0.3)] py-1 overflow-hidden">
+      <div className="bg-[#1a2233]/95 backdrop-blur-xl border border-hairline rounded-lg shadow-[0_8px_40px_rgba(0,0,0,0.5),0_2px_8px_rgba(0,0,0,0.3)] py-1 overflow-hidden">
         {flatItems.map((entry, i) => {
           if (entry.type === 'separator') {
             return <div key={`sep-${i}`} className="h-px bg-[#2a3a52]/70 my-1 mx-2" />;
@@ -109,7 +109,7 @@ function MenuPanel({
                 className={`w-full flex items-center gap-2.5 px-3 py-[5px] text-left transition-colors duration-75 ${
                   disabled
                     ? 'text-slate-600 cursor-default'
-                    : 'text-slate-200 hover:bg-[#f7b500]/10 hover:text-white active:bg-[#f7b500]/20'
+                    : 'text-slate-200 hover:bg-accent-wash hover:text-white active:bg-accent-wash'
                 }`}
               >
                 <span className="w-4 h-4 flex items-center justify-center flex-shrink-0">
@@ -117,7 +117,7 @@ function MenuPanel({
                 </span>
                 <span className="flex-1 text-[11px] leading-none">{entry.label}</span>
                 {entry.checked && (
-                  <span className="text-[#f7b500] text-[10px]">&#10003;</span>
+                  <span className="text-accent text-[10px]">&#10003;</span>
                 )}
                 {entry.shortcut && (
                   <span className={`text-[10px] ml-4 ${disabled ? 'text-slate-700' : 'text-slate-500'}`}>
@@ -183,8 +183,8 @@ function SubmenuItem({
           disabled
             ? 'text-slate-600 cursor-default'
             : open
-              ? 'bg-[#f7b500]/10 text-white'
-              : 'text-slate-200 hover:bg-[#f7b500]/10 hover:text-white'
+              ? 'bg-accent-wash text-white'
+              : 'text-slate-200 hover:bg-accent-wash hover:text-white'
         }`}
       >
         <span className="w-4 h-4 flex items-center justify-center flex-shrink-0">

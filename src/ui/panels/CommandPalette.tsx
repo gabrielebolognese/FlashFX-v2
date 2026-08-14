@@ -72,8 +72,8 @@ export function CommandPalette() {
       className="fixed inset-0 z-[10000] flex items-start justify-center pt-[12vh] bg-black/40"
       onPointerDown={(e) => { if (e.target === e.currentTarget) close(); }}
     >
-      <div className="w-[min(640px,92vw)] max-h-[70vh] flex flex-col rounded-xl overflow-hidden bg-[#0e1c32] border border-[#243a5c] shadow-2xl">
-        <div className="flex items-center gap-2 px-3 h-11 border-b border-[#1a2a42]">
+      <div className="w-[min(640px,92vw)] max-h-[70vh] flex flex-col rounded-xl overflow-hidden bg-surface-2 border border-hairline shadow-2xl">
+        <div className="flex items-center gap-2 px-3 h-11 border-b border-hairline">
           <Search size={15} className="text-slate-500 shrink-0" />
           <input
             ref={inputRef}
@@ -103,13 +103,13 @@ export function CommandPalette() {
                 onPointerEnter={() => setActive(i)}
                 onClick={() => runAt(i)}
                 className={`w-full flex items-center gap-2 px-3 py-1.5 text-left ${
-                  i === active ? 'bg-[#1c3155]' : 'hover:bg-white/[0.03]'
+                  i === active ? 'bg-surface-5' : 'hover:bg-white/[0.03]'
                 }`}
               >
                 <span className="text-[13px] text-slate-200 flex-1 truncate">{c.label}</span>
                 <span className="text-[10px] text-slate-500 shrink-0">{c.category}</span>
                 {c.shortcut && (
-                  <span className="ml-1 shrink-0 text-[10px] font-mono text-slate-400 bg-[#0a1526] border border-[#243a5c] rounded px-1.5 py-0.5">
+                  <span className="ml-1 shrink-0 text-[10px] font-mono text-slate-400 bg-[#0a1526] border border-hairline rounded px-1.5 py-0.5">
                     {c.shortcut}
                   </span>
                 )}

@@ -433,11 +433,11 @@ function Editor() {
   }, [createGroup, ungroupSelection, removeLayers, selection.selectedIds, selection.activeId, undo, redo, trimSplit, trimLeft, trimRight, trimCutUp, trimCutDown, copySelection, pasteClipboard, duplicateSelection]);
 
   return (
-    <div className="h-screen w-screen flex flex-col bg-[#06101a] text-slate-300 overflow-hidden select-none" onContextMenu={(e) => e.preventDefault()}>
-      <div className="flex items-stretch bg-[#0a1628] border-b border-[#1a2a42] shadow-[0_1px_3px_rgba(0,0,0,0.4)]">
+    <div className="h-screen w-screen flex flex-col bg-surface-sunken text-slate-300 overflow-hidden select-none" onContextMenu={(e) => e.preventDefault()}>
+      <div className="flex items-stretch bg-surface-1 border-b border-hairline shadow-[0_1px_3px_rgba(0,0,0,0.4)]">
         <button
           onClick={closeProject}
-          className="flex items-center gap-1.5 px-3 text-slate-400 hover:text-slate-200 hover:bg-white/[0.03] transition-colors border-r border-[#1a2a42]"
+          className="flex items-center gap-1.5 px-3 text-slate-400 hover:text-slate-200 hover:bg-white/[0.03] transition-colors border-r border-hairline"
           title="Back to Projects"
         >
           <ArrowLeft size={14} />
@@ -452,7 +452,7 @@ function Editor() {
             re-exposed by restoring this button. */}
         <button
           onClick={toggleAiChat}
-          className={`flex items-center gap-1.5 px-3 transition-colors border-l border-[#1a2a42] ${
+          className={`flex items-center gap-1.5 px-3 transition-colors border-l border-hairline ${
             aiChatOpen
               ? 'bg-surface-4 text-primary border-b-2 border-b-accent'
               : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.03]'
@@ -464,7 +464,7 @@ function Editor() {
         </button>
         <button
           onClick={toggleTasks}
-          className={`flex items-center gap-1.5 px-3 transition-colors border-l border-[#1a2a42] ${
+          className={`flex items-center gap-1.5 px-3 transition-colors border-l border-hairline ${
             tasksOpen
               ? 'bg-surface-4 text-primary border-b-2 border-b-accent'
               : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.03]'
@@ -479,7 +479,7 @@ function Editor() {
           <button
             onClick={() => setShowExport(true)}
             data-tutorial-id="export"
-            className="flex items-center gap-1.5 px-4 border-l border-[#1a2a42] bg-accent hover:bg-accent-hover text-on-accent text-[11px] font-semibold transition-colors"
+            className="flex items-center gap-1.5 px-4 border-l border-hairline bg-accent hover:bg-accent-hover text-on-accent text-[11px] font-semibold transition-colors"
             title="Export video"
           >
             <Download size={13} strokeWidth={2.5} />
@@ -540,7 +540,7 @@ function PanelsMenu() {
     <div ref={menuRef} className="relative">
       <button
         onClick={() => setOpen(!open)}
-        className={`flex items-center gap-1.5 px-3 h-full text-slate-400 hover:text-slate-200 hover:bg-white/[0.03] transition-colors border-l border-[#1a2a42] ${open ? 'bg-white/[0.04] text-slate-200' : ''}`}
+        className={`flex items-center gap-1.5 px-3 h-full text-slate-400 hover:text-slate-200 hover:bg-white/[0.03] transition-colors border-l border-hairline ${open ? 'bg-white/[0.04] text-slate-200' : ''}`}
         title="Toggle Panels"
       >
         <LayoutGrid size={13} />
@@ -548,7 +548,7 @@ function PanelsMenu() {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-1 z-50 bg-[#0e1c32] border border-[#1a2a42] rounded-lg shadow-2xl py-1 min-w-[160px] backdrop-blur-sm">
+        <div className="absolute right-0 top-full mt-1 z-50 bg-surface-2 border border-hairline rounded-lg shadow-2xl py-1 min-w-[160px] backdrop-blur-sm">
           {items.map((item) => (
             <button
               key={item.id}
@@ -559,7 +559,7 @@ function PanelsMenu() {
               <span className={`w-2 h-2 rounded-full ${panels[item.id].visible ? 'bg-accent' : 'bg-slate-700'}`} />
             </button>
           ))}
-          <div className="border-t border-[#1a2a42] my-1" />
+          <div className="border-t border-hairline my-1" />
           <button
             onClick={() => { openSettings(); setOpen(false); }}
             className="w-full px-3 py-1.5 flex items-center gap-2 text-[11px] text-slate-300 hover:bg-white/[0.04] transition-colors"
@@ -567,7 +567,7 @@ function PanelsMenu() {
             <Settings2 size={12} />
             <span>Settings</span>
           </button>
-          <div className="border-t border-[#1a2a42] my-1" />
+          <div className="border-t border-hairline my-1" />
           <button
             onClick={() => {
               items.forEach((item) => {
@@ -619,7 +619,7 @@ function App() {
         onClick={() => { void launchTutorial(); }}
         title="Replay the tutorial"
         aria-label="Replay the tutorial"
-        className="fixed bottom-3 left-3 z-50 flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-[#0a1628]/90 border border-[#1a2a42] text-slate-400 hover:text-slate-100 hover:border-[#2a3a52] shadow-lg backdrop-blur-sm transition-colors"
+        className="fixed bottom-3 left-3 z-50 flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-[#0a1628]/90 border border-hairline text-slate-400 hover:text-slate-100 hover:border-hairline shadow-lg backdrop-blur-sm transition-colors"
       >
         <GraduationCap size={14} />
         <span className="text-[11px] font-medium">Tutorial</span>

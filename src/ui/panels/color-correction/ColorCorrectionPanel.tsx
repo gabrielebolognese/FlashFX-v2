@@ -217,7 +217,7 @@ function GradingSlider({
         >
           {!gradient && (
             <div
-              className="absolute inset-y-0 bg-[#f7b500]/50 rounded-full"
+              className="absolute inset-y-0 bg-accent-wash rounded-full"
               style={{
                 left: `${Math.min(centerPct, pct)}%`,
                 width: `${Math.abs(pct - centerPct)}%`,
@@ -235,11 +235,11 @@ function GradingSlider({
           className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
         />
         <div
-          className="absolute w-3 h-3 rounded-full border-2 border-slate-400 bg-[#0e1c32] pointer-events-none transition-colors group-hover/slider:border-slate-300"
+          className="absolute w-3 h-3 rounded-full border-2 border-slate-400 bg-surface-2 pointer-events-none transition-colors group-hover/slider:border-slate-300"
           style={{ left: `calc(${pct}% - 6px)` }}
         />
       </div>
-      <span className={`text-[9px] font-mono w-9 text-right flex-shrink-0 ${isActive ? 'text-[#f7b500]' : 'text-slate-600'}`}>
+      <span className={`text-[9px] font-mono w-9 text-right flex-shrink-0 ${isActive ? 'text-accent' : 'text-slate-600'}`}>
         {formatNum(value, step)}
       </span>
       {isActive && (
@@ -359,7 +359,7 @@ function ProColorWheel({
             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
           />
           <div
-            className="absolute w-2.5 h-2.5 rounded-full border border-slate-400 bg-[#0e1c32] pointer-events-none"
+            className="absolute w-2.5 h-2.5 rounded-full border border-slate-400 bg-surface-2 pointer-events-none"
             style={{ left: `calc(${((luminance + 1) / 2) * 100}% - 5px)` }}
           />
         </div>
@@ -483,7 +483,7 @@ function CurvesEditor() {
       </div>
 
       {/* Curve canvas */}
-      <div className="relative w-full aspect-square bg-[#0c1a2d] rounded-md border border-[#1a2a42] overflow-hidden">
+      <div className="relative w-full aspect-square bg-surface-1 rounded-md border border-hairline overflow-hidden">
         {/* Grid */}
         <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 100 100" preserveAspectRatio="none">
           {[25, 50, 75].map((v) => (

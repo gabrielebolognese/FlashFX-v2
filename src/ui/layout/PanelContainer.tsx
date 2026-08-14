@@ -19,7 +19,7 @@ export function PanelContainer({ id, title, children, canHide = true, direction 
 
   if (collapsed && !isVertical) {
     return (
-      <div className="flex flex-col items-center w-[24px] min-w-[24px] bg-[#081220]">
+      <div className="flex flex-col items-center w-[24px] min-w-[24px] bg-surface-sunken">
         <button
           onClick={() => toggleCollapsed(id)}
           className="mt-1 p-1 text-slate-600 hover:text-accent transition-colors"
@@ -36,7 +36,7 @@ export function PanelContainer({ id, title, children, canHide = true, direction 
 
   if (collapsed && isVertical) {
     return (
-      <div className="flex items-center h-[22px] min-h-[22px] bg-[#081220] border-t border-[#1a2a42]/40 px-2 gap-1">
+      <div className="flex items-center h-[22px] min-h-[22px] bg-surface-sunken border-t border-hairline px-2 gap-1">
         <button
           onClick={() => toggleCollapsed(id)}
           className="p-0.5 text-slate-600 hover:text-accent transition-colors"
@@ -50,9 +50,9 @@ export function PanelContainer({ id, title, children, canHide = true, direction 
   }
 
   return (
-    <div className="flex flex-col h-full w-full bg-[#0a1628]">
+    <div className="flex flex-col h-full w-full bg-surface-1">
       {/* Header */}
-      <div className="flex items-center h-[22px] min-h-[22px] px-2 bg-[#081220] border-b border-[#1a2a42]/40">
+      <div className="flex items-center h-[22px] min-h-[22px] px-2 bg-surface-sunken border-b border-hairline">
         <button
           onClick={() => toggleCollapsed(id)}
           className="p-0.5 text-slate-600 hover:text-accent transition-colors mr-1.5"

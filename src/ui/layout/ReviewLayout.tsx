@@ -20,8 +20,8 @@ export function ReviewLayout() {
   return (
     <div className="flex-1 flex flex-col min-h-0 min-w-0 overflow-hidden">
       {/* Mode bar */}
-      <div className="h-7 min-h-[28px] flex items-center px-3 bg-[#0e1c32] border-b border-[#1a2a42] gap-3 flex-shrink-0">
-        <div className="flex items-center gap-0.5 p-0.5 rounded-md bg-[#06101a] border border-[#1a2a42]">
+      <div className="h-7 min-h-[28px] flex items-center px-3 bg-surface-2 border-b border-hairline gap-3 flex-shrink-0">
+        <div className="flex items-center gap-0.5 p-0.5 rounded-md bg-surface-sunken border border-hairline">
           {WORKSPACES.map(({ id, label, icon: Icon }) => {
             const active = workspace === id;
             return (
@@ -30,7 +30,7 @@ export function ReviewLayout() {
                 onClick={() => setWorkspace(id)}
                 className={`flex items-center gap-1 h-5 px-2 rounded text-[10px] font-medium transition-colors ${
                   active
-                    ? 'bg-[#f7b500]/10 text-[#ffc83d]'
+                    ? 'bg-accent-wash text-accent-hover'
                     : 'text-slate-500 hover:text-slate-200 hover:bg-white/[0.04]'
                 }`}
               >
@@ -48,7 +48,7 @@ export function ReviewLayout() {
         {/* Left: Audio Meter + Canvas */}
         <div className="flex flex-row min-h-0 min-w-0" style={{ width: '55%' }}>
           {/* Audio meter */}
-          <div className="flex-shrink-0 min-h-0 border-r border-[#1a2a42] bg-[#06101a]" style={{ width: '52px' }}>
+          <div className="flex-shrink-0 min-h-0 border-r border-hairline bg-surface-sunken" style={{ width: '52px' }}>
             <PanelErrorBoundary name="AudioMeter">
               <AudioMeter />
             </PanelErrorBoundary>
@@ -62,7 +62,7 @@ export function ReviewLayout() {
         </div>
 
         {/* Right: Keyframe Overview */}
-        <div className="flex-1 min-h-0 min-w-0 border-l border-[#1a2a42]">
+        <div className="flex-1 min-h-0 min-w-0 border-l border-hairline">
           <PanelErrorBoundary name="KeyframeOverview">
             <KeyframeOverview />
           </PanelErrorBoundary>
@@ -70,7 +70,7 @@ export function ReviewLayout() {
       </div>
 
       {/* Bottom section: 45% - Review Timeline */}
-      <div className="min-w-0 min-h-0 overflow-hidden border-t border-[#1a2a42] flex-1">
+      <div className="min-w-0 min-h-0 overflow-hidden border-t border-hairline flex-1">
         <PanelErrorBoundary name="ReviewTimeline">
           <ReviewTimeline />
         </PanelErrorBoundary>

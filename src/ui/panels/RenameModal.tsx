@@ -8,7 +8,7 @@ import { Pencil, X, AlertTriangle, ArrowUp, ArrowDown } from 'lucide-react';
 // with a live preview, and commits via the undoable renameLayers store action. Numbering follows
 // document (z-order) order, resolved in the store at commit time.
 
-const INPUT = 'bg-[#122240] text-[12px] text-slate-300 px-2.5 py-1.5 rounded border border-[#1a2a42] focus:border-cyan-400/50 outline-none w-full';
+const INPUT = 'bg-surface-3 text-[12px] text-slate-300 px-2.5 py-1.5 rounded border border-hairline focus:border-cyan-400/50 outline-none w-full';
 const LABEL = 'text-[10px] uppercase tracking-wider text-slate-500 font-medium';
 
 export function RenameModal() {
@@ -41,8 +41,8 @@ export function RenameModal() {
     <div className="fixed inset-0 z-[100] flex items-center justify-center">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={close} />
 
-      <div className="relative bg-[#0e1c32] border border-[#1a2a42] rounded-lg shadow-2xl w-full max-w-xl overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#1a2a42]">
+      <div className="relative bg-surface-2 border border-hairline rounded-lg shadow-2xl w-full max-w-xl overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-hairline">
           <div className="flex items-center gap-2">
             <Pencil size={16} className="text-cyan-400 shrink-0" />
             <h2 className="text-sm font-medium text-slate-200">Rename {ordered.length} Layers</h2>
@@ -52,13 +52,13 @@ export function RenameModal() {
 
         <div className="flex">
           {/* Fields */}
-          <div className="w-1/2 p-4 space-y-3 border-r border-[#1a2a42]">
+          <div className="w-1/2 p-4 space-y-3 border-r border-hairline">
             <div className="space-y-1">
               <label className={LABEL}>Template</label>
               <input className={INPUT} value={pattern.template} onChange={(e) => setPattern({ template: e.target.value })} placeholder="{name}_{n}" />
               <div className="flex gap-1 pt-1">
                 {[['{name}', 'Name'], ['{n}', 'Number'], ['{type}', 'Type']].map(([tok, lbl]) => (
-                  <button key={tok} onClick={() => insertToken(tok)} className="text-[10px] px-1.5 py-0.5 rounded bg-[#122240] border border-[#1a2a42] text-slate-400 hover:text-cyan-300">+ {lbl}</button>
+                  <button key={tok} onClick={() => insertToken(tok)} className="text-[10px] px-1.5 py-0.5 rounded bg-surface-3 border border-hairline text-slate-400 hover:text-cyan-300">+ {lbl}</button>
                 ))}
               </div>
             </div>
@@ -70,9 +70,9 @@ export function RenameModal() {
               </div>
               <div className="flex-1 space-y-1">
                 <label className={LABEL}>Order</label>
-                <div className="flex rounded border border-[#1a2a42] overflow-hidden">
-                  <button onClick={() => setPattern({ descending: false })} className={`flex-1 flex items-center justify-center gap-1 text-[11px] py-1.5 ${!pattern.descending ? 'bg-cyan-400/20 text-cyan-300' : 'bg-[#122240] text-slate-400'}`}><ArrowUp size={11} />Asc</button>
-                  <button onClick={() => setPattern({ descending: true })} className={`flex-1 flex items-center justify-center gap-1 text-[11px] py-1.5 ${pattern.descending ? 'bg-cyan-400/20 text-cyan-300' : 'bg-[#122240] text-slate-400'}`}><ArrowDown size={11} />Desc</button>
+                <div className="flex rounded border border-hairline overflow-hidden">
+                  <button onClick={() => setPattern({ descending: false })} className={`flex-1 flex items-center justify-center gap-1 text-[11px] py-1.5 ${!pattern.descending ? 'bg-cyan-400/20 text-cyan-300' : 'bg-surface-3 text-slate-400'}`}><ArrowUp size={11} />Asc</button>
+                  <button onClick={() => setPattern({ descending: true })} className={`flex-1 flex items-center justify-center gap-1 text-[11px] py-1.5 ${pattern.descending ? 'bg-cyan-400/20 text-cyan-300' : 'bg-surface-3 text-slate-400'}`}><ArrowDown size={11} />Desc</button>
                 </div>
               </div>
             </div>
@@ -106,9 +106,9 @@ export function RenameModal() {
           </div>
         </div>
 
-        <div className="flex justify-end gap-2 px-5 py-3.5 border-t border-[#1a2a42]">
-          <button onClick={close} className="px-3 py-1.5 rounded-lg text-[12px] bg-[#122240] hover:bg-[#1a2a42] text-slate-400">Cancel</button>
-          <button onClick={apply} disabled={ordered.length === 0} className="px-4 py-1.5 rounded-lg text-[12px] font-semibold bg-cyan-400 hover:bg-cyan-300 text-[#0e1c32] disabled:opacity-40">Rename</button>
+        <div className="flex justify-end gap-2 px-5 py-3.5 border-t border-hairline">
+          <button onClick={close} className="px-3 py-1.5 rounded-lg text-[12px] bg-surface-3 hover:bg-surface-4 text-slate-400">Cancel</button>
+          <button onClick={apply} disabled={ordered.length === 0} className="px-4 py-1.5 rounded-lg text-[12px] font-semibold bg-cyan-400 hover:bg-cyan-300 text-on-accent disabled:opacity-40">Rename</button>
         </div>
       </div>
     </div>

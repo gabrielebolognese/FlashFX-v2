@@ -20,7 +20,7 @@ export function CompositionBreadcrumb() {
     (id === activeCompositionId ? composition.name : compositions[id]?.name) ?? 'Comp';
 
   return (
-    <div className="flex items-center gap-1 px-3 h-7 flex-shrink-0 border-b border-[#1a2a42] bg-[#0c1a2d] text-[11px] overflow-x-auto">
+    <div className="flex items-center gap-1 px-3 h-7 flex-shrink-0 border-b border-hairline bg-surface-1 text-[11px] overflow-x-auto">
       <button
         onClick={exitPrecomp}
         title="Up one level (Esc)"

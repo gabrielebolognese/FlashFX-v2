@@ -223,7 +223,7 @@ export function MediaPool() {
 
   return (
     <div
-      className="flex flex-row h-full bg-[#081220] relative"
+      className="flex flex-row h-full bg-surface-sunken relative"
       onContextMenu={(e) => { e.preventDefault(); showContextMenu(e.clientX, e.clientY, buildMediaPoolEmptyMenu()); }}
       onDragOver={handleFileDragOver}
       onDragLeave={handleFileDragLeave}
@@ -247,7 +247,7 @@ export function MediaPool() {
         </div>
       )}
       {/* Left nav */}
-      <nav className="flex-shrink-0 w-[106px] flex flex-col py-1 border-r border-[#1a2a42] bg-[#0b0e15] overflow-y-auto">
+      <nav className="flex-shrink-0 w-[106px] flex flex-col py-1 border-r border-hairline bg-[#0b0e15] overflow-y-auto">
         {TABS.map((t) => (
           <button
             key={t.id}
@@ -258,13 +258,13 @@ export function MediaPool() {
               t.disabled
                 ? 'text-slate-700 cursor-not-allowed'
                 : tab === t.id
-                  ? 'text-[#f7b500] bg-[#f7b500]/10'
+                  ? 'text-accent bg-accent-wash'
                   : 'text-slate-500 hover:text-slate-300 hover:bg-white/[0.03]'
             }`}
           >
             <span
               className={`absolute right-0 top-0 bottom-0 w-[2px] transition-colors ${
-                tab === t.id ? 'bg-[#f7b500]' : 'bg-transparent'
+                tab === t.id ? 'bg-accent' : 'bg-transparent'
               }`}
             />
             <span className="flex-shrink-0">{t.icon}</span>
@@ -377,8 +377,8 @@ function MediaTabContent({
   return (
     <>
       {/* Search + sort */}
-      <div className="flex items-center gap-1.5 px-2 py-1.5 border-b border-[#1a2a42]">
-        <div className="flex-1 flex items-center gap-1.5 bg-[#16294a] border border-[#1c3155] rounded px-2 py-1">
+      <div className="flex items-center gap-1.5 px-2 py-1.5 border-b border-hairline">
+        <div className="flex-1 flex items-center gap-1.5 bg-surface-4 border border-hairline rounded px-2 py-1">
           <Search size={9} className="text-slate-600 flex-shrink-0" />
           <input
             type="text"
@@ -391,7 +391,7 @@ function MediaTabContent({
         <select
           value={sortMode}
           onChange={(e) => setSortMode(e.target.value as MediaSortMode)}
-          className="bg-[#16294a] border border-[#1c3155] rounded px-1 py-0.5 text-[8px] text-slate-500 outline-none"
+          className="bg-surface-4 border border-hairline rounded px-1 py-0.5 text-[8px] text-slate-500 outline-none"
         >
           <option value="date">Recent</option>
           <option value="name">Name</option>
@@ -410,11 +410,11 @@ function MediaTabContent({
       />
 
       {/* Import Button */}
-      <div className="px-2 py-1.5 border-b border-[#1a2a42]">
+      <div className="px-2 py-1.5 border-b border-hairline">
         <button
           onClick={handleImportClick}
           disabled={importing}
-          className="w-full px-2 py-1.5 text-[10px] rounded bg-[#f7b500]/8 border border-[#f7b500]/15 text-[#f7b500] hover:bg-[#f7b500]/10 transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50"
+          className="w-full px-2 py-1.5 text-[10px] rounded bg-accent-wash border border-accent-dim text-accent hover:bg-accent-wash transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50"
         >
           <Upload size={11} />
           {importing ? 'Importing...' : 'Import Media'}
@@ -499,12 +499,12 @@ function IconsTabContent({
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
       {/* Subtab switcher */}
-      <div className="flex items-center gap-0.5 px-2 pt-1.5 pb-1 border-b border-[#1a2a42]">
+      <div className="flex items-center gap-0.5 px-2 pt-1.5 pb-1 border-b border-hairline">
         <button
           onClick={() => setSubTab('static')}
           className={`flex-1 py-1 rounded text-[9px] font-medium transition-colors ${
             subTab === 'static'
-              ? 'bg-[#f7b500]/10 text-[#f7b500] border border-[#f7b500]/20'
+              ? 'bg-accent-wash text-accent border border-accent-dim'
               : 'text-slate-500 hover:text-slate-300 border border-transparent'
           }`}
         >
@@ -514,7 +514,7 @@ function IconsTabContent({
           onClick={() => setSubTab('animated')}
           className={`flex-1 py-1 rounded text-[9px] font-medium transition-colors ${
             subTab === 'animated'
-              ? 'bg-[#f7b500]/10 text-[#f7b500] border border-[#f7b500]/20'
+              ? 'bg-accent-wash text-accent border border-accent-dim'
               : 'text-slate-500 hover:text-slate-300 border border-transparent'
           }`}
         >
@@ -587,8 +587,8 @@ function StaticIconsContent({
         onClick={() => handleSelect(icon)}
         className={`w-full h-full rounded border flex items-center justify-center transition-colors ${
           selectedIcon?.id === icon.id
-            ? 'bg-[#f7b500]/10 border-[#f7b500]/50'
-            : 'bg-transparent border-transparent hover:bg-[#122240] hover:border-[#1a2a42]'
+            ? 'bg-accent-wash border-accent-dim'
+            : 'bg-transparent border-transparent hover:bg-surface-3 hover:border-hairline'
         }`}
         title={icon.name}
       >
@@ -605,8 +605,8 @@ function StaticIconsContent({
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
       {/* Search */}
-      <div className="flex items-center gap-1.5 px-2 py-1.5 border-b border-[#1a2a42]">
-        <div className="flex-1 flex items-center gap-1.5 bg-[#16294a] border border-[#1c3155] rounded px-2 py-1">
+      <div className="flex items-center gap-1.5 px-2 py-1.5 border-b border-hairline">
+        <div className="flex-1 flex items-center gap-1.5 bg-surface-4 border border-hairline rounded px-2 py-1">
           <Search size={9} className="text-slate-600 flex-shrink-0" />
           <input
             type="text"
@@ -648,9 +648,9 @@ function StaticIconsContent({
 
       {/* Selection footer */}
       {selectedIcon && (
-        <div className="flex-shrink-0 border-t border-[#1a2a42] bg-[#0a1628] px-2 py-2 space-y-2">
+        <div className="flex-shrink-0 border-t border-hairline bg-surface-1 px-2 py-2 space-y-2">
           <div className="flex items-center gap-2">
-            <div className="w-9 h-9 rounded border border-[#1a2a42] bg-[#06101a] flex items-center justify-center flex-shrink-0">
+            <div className="w-9 h-9 rounded border border-hairline bg-surface-sunken flex items-center justify-center flex-shrink-0">
               <SvgIcon icon={selectedIcon} size={24} color={selectedColor} />
             </div>
             <div className="flex-1 min-w-0">
@@ -664,7 +664,7 @@ function StaticIconsContent({
                 key={c}
                 onClick={() => setSelectedColor(c)}
                 className={`w-5 h-5 rounded-full border-2 transition-all ${
-                  selectedColor === c ? 'border-[#f7b500] scale-110' : 'border-[#1a2a42] hover:border-slate-500'
+                  selectedColor === c ? 'border-accent scale-110' : 'border-hairline hover:border-slate-500'
                 }`}
                 style={{ backgroundColor: c }}
               />
@@ -679,7 +679,7 @@ function StaticIconsContent({
           <button
             onClick={handleInsert}
             disabled={inserting || !activeProjectId}
-            className="w-full py-1.5 rounded bg-[#f7b500] hover:bg-[#f7b500] disabled:opacity-50 text-white text-[10px] font-medium transition-colors"
+            className="w-full py-1.5 rounded bg-accent hover:bg-accent disabled:opacity-50 text-white text-[10px] font-medium transition-colors"
           >
             {inserting ? 'Inserting...' : 'Insert Icon'}
           </button>
@@ -711,11 +711,11 @@ function AssetCard({ asset, isSelected, isDragging, onClick, onDragStart, onDrag
       onContextMenu={onContextMenu}
       className={`group rounded overflow-hidden border transition-all cursor-grab active:cursor-grabbing ${
         isSelected
-          ? 'border-[#f7b500]/50 bg-[#f7b500]/5'
-          : 'border-[#1c3155] bg-[#16294a] hover:border-[#2a3044]'
+          ? 'border-accent-dim bg-accent-wash'
+          : 'border-hairline bg-surface-4 hover:border-[#2a3044]'
       } ${isDragging ? 'opacity-50 scale-95' : ''}`}
     >
-      <div className="aspect-video bg-[#0a1628] relative overflow-hidden">
+      <div className="aspect-video bg-surface-1 relative overflow-hidden">
         {asset.type === 'image' ? (
           <img
             src={asset.thumbnailUrl}
@@ -765,10 +765,10 @@ function AssetListRow({ asset, isSelected, isDragging, onClick, onDragStart, onD
       onDragEnd={onDragEnd}
       onContextMenu={onContextMenu}
       className={`group flex items-center gap-2 px-1.5 py-1 rounded border transition-all cursor-grab active:cursor-grabbing ${
-        isSelected ? 'border-[#f7b500]/50 bg-[#f7b500]/5' : 'border-transparent hover:bg-[#16294a]'
+        isSelected ? 'border-accent-dim bg-accent-wash' : 'border-transparent hover:bg-surface-4'
       } ${isDragging ? 'opacity-50' : ''}`}
     >
-      <div className="w-9 h-9 flex-shrink-0 rounded overflow-hidden bg-[#0a1628] flex items-center justify-center">
+      <div className="w-9 h-9 flex-shrink-0 rounded overflow-hidden bg-surface-1 flex items-center justify-center">
         {asset.type === 'image' ? (
           <img src={asset.thumbnailUrl} alt={asset.name} className="w-full h-full object-cover" loading="lazy" />
         ) : asset.type === 'video' ? (

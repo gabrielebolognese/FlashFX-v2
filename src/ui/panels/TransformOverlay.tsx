@@ -1141,8 +1141,8 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
                     isGroupActive
                       ? 'bg-white border-green-500 shadow-[0_0_4px_rgba(34,197,94,0.5)]'
                       : isCorner
-                        ? 'bg-white border-[#f7b500] shadow-[0_0_4px_rgba(247,181,0,0.5)]'
-                        : 'bg-white border-[#f7b500] shadow-[0_0_3px_rgba(247,181,0,0.4)]'
+                        ? 'bg-white border-accent shadow-[0_0_4px_rgba(247,181,0,0.5)]'
+                        : 'bg-white border-accent shadow-[0_0_3px_rgba(247,181,0,0.4)]'
                   } ${isHovered ? 'scale-[1.4]' : ''}`}
                 />
               </div>
@@ -1198,7 +1198,7 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
               className={`w-full h-full rounded-full border-2 transition-transform duration-75 ${
                 isGroupActive
                   ? `border-green-500 ${hoverHandle === 'rotate' ? 'bg-green-500/60 scale-[1.3]' : 'bg-green-500/30'}`
-                  : `border-[#f7b500] ${hoverHandle === 'rotate' ? 'bg-[#f7b500]/60 scale-[1.3]' : 'bg-[#f7b500]/30'}`
+                  : `border-accent ${hoverHandle === 'rotate' ? 'bg-accent-wash scale-[1.3]' : 'bg-accent-wash'}`
               }`}
             />
           </div>
@@ -1213,7 +1213,7 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
                 height: 10,
               }}
             >
-              <svg width="10" height="10" viewBox="0 0 10 10" className="text-[#ffc83d]/80">
+              <svg width="10" height="10" viewBox="0 0 10 10" className="text-accent-hover">
                 <circle cx="5" cy="5" r="3" fill="none" stroke="currentColor" strokeWidth="1" />
                 <line x1="0" y1="5" x2="10" y2="5" stroke="currentColor" strokeWidth="0.5" />
                 <line x1="5" y1="0" x2="5" y2="10" stroke="currentColor" strokeWidth="0.5" />

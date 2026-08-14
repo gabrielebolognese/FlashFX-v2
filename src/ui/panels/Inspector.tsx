@@ -97,7 +97,7 @@ function FontFamilyRow({ value, onPick }: { value: string; onPick: (family: stri
         <select
           value={value}
           onChange={(e) => onPick(e.target.value)}
-          className="flex-1 min-w-0 bg-[#122240] text-[10px] text-slate-300 px-1 py-0.5 rounded border border-[#1a2a42] outline-none"
+          className="flex-1 min-w-0 bg-surface-3 text-[10px] text-slate-300 px-1 py-0.5 rounded border border-hairline outline-none"
         >
           {FONT_GROUPS.map((g) => (
             <optgroup key={g.category} label={g.category}>
@@ -177,7 +177,7 @@ function TextGradientControl({ fill, onChange }: { fill?: TextGradientFill; onCh
         <select
           value={kind}
           onChange={(e) => setKind(e.target.value)}
-          className="flex-1 bg-[#122240] text-[10px] text-slate-300 px-1 py-0.5 rounded border border-[#1a2a42] outline-none"
+          className="flex-1 bg-surface-3 text-[10px] text-slate-300 px-1 py-0.5 rounded border border-hairline outline-none"
         >
           <option value="none">Solid</option>
           <option value="linear">Linear</option>
@@ -272,7 +272,7 @@ export function Inspector() {
       </div>
       {/* A camera has no standard tabs — hide the sidebar so the 3D View gets the full width. */}
       {layer.type !== 'camera' && (
-        <nav className="flex-shrink-0 w-[116px] flex flex-col py-1 border-l border-[#1a2a42] bg-[#0b0e15] overflow-y-auto">
+        <nav className="flex-shrink-0 w-[116px] flex flex-col py-1 border-l border-hairline bg-[#0b0e15] overflow-y-auto">
           {visibleTabs.map((t) => (
             <NavItem
               key={t.id}
@@ -305,13 +305,13 @@ function NavItem({
       aria-pressed={active}
       className={`relative flex items-center gap-2 px-3 py-2 text-[11px] font-medium text-left transition-colors ${
         active
-          ? 'text-[#f7b500] bg-[#f7b500]/10'
+          ? 'text-accent bg-accent-wash'
           : 'text-slate-500 hover:text-slate-300 hover:bg-white/[0.03]'
       }`}
     >
       <span
         className={`absolute left-0 top-0 bottom-0 w-[2px] transition-colors ${
-          active ? 'bg-[#f7b500]' : 'bg-transparent'
+          active ? 'bg-accent' : 'bg-transparent'
         }`}
       />
       <span className="flex-shrink-0">{icon}</span>
@@ -416,7 +416,7 @@ function InspectorTabContent({ tab, layer }: { tab: InspectorTab; layer: Layer }
   if (layer.type === 'camera') {
     return (
       <>
-        <div className="p-2 border-b border-[#1c2433]">
+        <div className="p-2 border-b border-hairline">
           <StringInput label="Name" value={layer.name} onChange={(v) => updateLayerProperty(layer.id, 'name', v)} />
         </div>
         <Camera3DView layer={layer as CameraLayer} />
@@ -450,7 +450,7 @@ function InspectorTabContent({ tab, layer }: { tab: InspectorTab; layer: Layer }
             className={`flex items-center gap-1.5 mb-1.5 px-2 py-1 rounded text-[11px] border transition-colors ${
               layer.is3D
                 ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
-                : 'bg-[#122240] border-[#1a2a42] text-slate-400 hover:text-slate-200'
+                : 'bg-surface-3 border-hairline text-slate-400 hover:text-slate-200'
             }`}
           >
             <Box size={12} />
@@ -863,8 +863,8 @@ function SegmentedControl({
             onClick={() => onChange(val)}
             className={`flex-1 text-[10px] py-1 transition-colors ${
               value === val
-                ? 'bg-[#f7b500]/15 text-[#ffc83d]'
-                : 'bg-[#0e1c32] text-slate-400 hover:text-slate-200 hover:bg-[#122240]'
+                ? 'bg-accent-wash text-accent-hover'
+                : 'bg-surface-2 text-slate-400 hover:text-slate-200 hover:bg-surface-3'
             }`}
           >
             {name}
@@ -880,7 +880,7 @@ function StripSilenceButton({ layerId }: { layerId: string }) {
   return (
     <button
       onClick={() => openSilence(layerId)}
-      className="w-full mt-1 flex items-center justify-center gap-1.5 py-1.5 rounded bg-[#122240] hover:bg-[#1a2a42] text-[10px] text-slate-300 hover:text-cyan-400 transition-colors"
+      className="w-full mt-1 flex items-center justify-center gap-1.5 py-1.5 rounded bg-surface-3 hover:bg-surface-4 text-[10px] text-slate-300 hover:text-cyan-400 transition-colors"
     >
       <Scissors size={11} className="text-cyan-400" />
       Strip Silence
@@ -934,7 +934,7 @@ function EffectsSection({ layer }: { layer: Layer }) {
           role="switch"
           aria-checked={enabled}
           onClick={() => updateLayerProperty(layer.id, 'motionBlur', !enabled)}
-          className={`relative w-8 h-[18px] rounded-full transition-colors ${enabled ? 'bg-cyan-500' : 'bg-[#1a2a42]'}`}
+          className={`relative w-8 h-[18px] rounded-full transition-colors ${enabled ? 'bg-cyan-500' : 'bg-surface-4'}`}
         >
           <span
             className={`absolute top-[2px] w-[14px] h-[14px] rounded-full bg-white transition-transform ${enabled ? 'translate-x-[16px]' : 'translate-x-[2px]'}`}
@@ -964,7 +964,7 @@ function EffectsSection({ layer }: { layer: Layer }) {
         </div>
       )}
 
-      <div className="mt-3 pt-3 border-t border-[#1a2a42] flex items-center justify-between">
+      <div className="mt-3 pt-3 border-t border-hairline flex items-center justify-between">
         <div className="flex items-center gap-1.5">
           <Moon size={12} className="text-cyan-400" />
           <span className="text-[11px] text-slate-300">Shadow</span>
@@ -973,7 +973,7 @@ function EffectsSection({ layer }: { layer: Layer }) {
           role="switch"
           aria-checked={shadowEnabled}
           onClick={() => updateLayerProperty(layer.id, 'shadow', shadowEnabled ? { ...shadow, enabled: false } : DEFAULT_SHADOW)}
-          className={`relative w-8 h-[18px] rounded-full transition-colors ${shadowEnabled ? 'bg-cyan-500' : 'bg-[#1a2a42]'}`}
+          className={`relative w-8 h-[18px] rounded-full transition-colors ${shadowEnabled ? 'bg-cyan-500' : 'bg-surface-4'}`}
         >
           <span
             className={`absolute top-[2px] w-[14px] h-[14px] rounded-full bg-white transition-transform ${shadowEnabled ? 'translate-x-[16px]' : 'translate-x-[2px]'}`}
@@ -1025,7 +1025,7 @@ function EffectsSection({ layer }: { layer: Layer }) {
               role="switch"
               aria-checked={shadow.onlyShadow}
               onClick={() => updateLayerProperty(layer.id, 'shadow.onlyShadow', !shadow.onlyShadow)}
-              className={`relative w-8 h-[18px] rounded-full transition-colors ${shadow.onlyShadow ? 'bg-cyan-500' : 'bg-[#1a2a42]'}`}
+              className={`relative w-8 h-[18px] rounded-full transition-colors ${shadow.onlyShadow ? 'bg-cyan-500' : 'bg-surface-4'}`}
             >
               <span
                 className={`absolute top-[2px] w-[14px] h-[14px] rounded-full bg-white transition-transform ${shadow.onlyShadow ? 'translate-x-[16px]' : 'translate-x-[2px]'}`}
@@ -1035,7 +1035,7 @@ function EffectsSection({ layer }: { layer: Layer }) {
         </div>
       )}
 
-      <div className="mt-3 pt-3 border-t border-[#1a2a42] flex items-center justify-between">
+      <div className="mt-3 pt-3 border-t border-hairline flex items-center justify-between">
         <div className="flex items-center gap-1.5">
           <Sparkles size={12} className="text-cyan-400" />
           <span className="text-[11px] text-slate-300">Glow</span>
@@ -1044,7 +1044,7 @@ function EffectsSection({ layer }: { layer: Layer }) {
           role="switch"
           aria-checked={glowEnabled}
           onClick={() => updateLayerProperty(layer.id, 'glow', glowEnabled ? { ...glow, enabled: false } : DEFAULT_GLOW)}
-          className={`relative w-8 h-[18px] rounded-full transition-colors ${glowEnabled ? 'bg-cyan-500' : 'bg-[#1a2a42]'}`}
+          className={`relative w-8 h-[18px] rounded-full transition-colors ${glowEnabled ? 'bg-cyan-500' : 'bg-surface-4'}`}
         >
           <span
             className={`absolute top-[2px] w-[14px] h-[14px] rounded-full bg-white transition-transform ${glowEnabled ? 'translate-x-[16px]' : 'translate-x-[2px]'}`}
@@ -1064,7 +1064,7 @@ function EffectsSection({ layer }: { layer: Layer }) {
                   className={`flex-1 text-[9px] py-1 rounded transition-colors ${
                     glow.mode === m.value
                       ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
-                      : 'bg-[#1a2a42] text-slate-400 border border-transparent hover:border-slate-600'
+                      : 'bg-surface-4 text-slate-400 border border-transparent hover:border-slate-600'
                   }`}
                 >
                   {m.label}
@@ -1100,7 +1100,7 @@ function EffectsSection({ layer }: { layer: Layer }) {
               role="switch"
               aria-checked={glow.onlyGlow}
               onClick={() => updateLayerProperty(layer.id, 'glow.onlyGlow', !glow.onlyGlow)}
-              className={`relative w-8 h-[18px] rounded-full transition-colors ${glow.onlyGlow ? 'bg-cyan-500' : 'bg-[#1a2a42]'}`}
+              className={`relative w-8 h-[18px] rounded-full transition-colors ${glow.onlyGlow ? 'bg-cyan-500' : 'bg-surface-4'}`}
             >
               <span
                 className={`absolute top-[2px] w-[14px] h-[14px] rounded-full bg-white transition-transform ${glow.onlyGlow ? 'translate-x-[16px]' : 'translate-x-[2px]'}`}
@@ -1110,7 +1110,7 @@ function EffectsSection({ layer }: { layer: Layer }) {
         </div>
       )}
 
-      <div className="mt-3 pt-3 border-t border-[#1a2a42] flex items-center justify-between">
+      <div className="mt-3 pt-3 border-t border-hairline flex items-center justify-between">
         <div className="flex items-center gap-1.5">
           <Aperture size={12} className="text-cyan-400" />
           <span className="text-[11px] text-slate-300">Blur</span>
@@ -1119,7 +1119,7 @@ function EffectsSection({ layer }: { layer: Layer }) {
           role="switch"
           aria-checked={blurEnabled}
           onClick={() => updateLayerProperty(layer.id, 'blur', blurEnabled ? { ...blur, enabled: false } : DEFAULT_BLUR)}
-          className={`relative w-8 h-[18px] rounded-full transition-colors ${blurEnabled ? 'bg-cyan-500' : 'bg-[#1a2a42]'}`}
+          className={`relative w-8 h-[18px] rounded-full transition-colors ${blurEnabled ? 'bg-cyan-500' : 'bg-surface-4'}`}
         >
           <span
             className={`absolute top-[2px] w-[14px] h-[14px] rounded-full bg-white transition-transform ${blurEnabled ? 'translate-x-[16px]' : 'translate-x-[2px]'}`}
@@ -1139,7 +1139,7 @@ function EffectsSection({ layer }: { layer: Layer }) {
                   className={`flex-1 text-[9px] py-1 rounded transition-colors ${
                     blur.type === bt.value
                       ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
-                      : 'bg-[#1a2a42] text-slate-400 border border-transparent hover:border-slate-600'
+                      : 'bg-surface-4 text-slate-400 border border-transparent hover:border-slate-600'
                   }`}
                 >
                   {bt.label}
@@ -1286,7 +1286,7 @@ function VideoProperties({
             className={`px-1.5 py-0.5 text-[9px] rounded ${
               video.muted
                 ? 'bg-red-500/20 text-red-400'
-                : 'bg-[#122240] text-slate-500 hover:text-slate-300'
+                : 'bg-surface-3 text-slate-500 hover:text-slate-300'
             }`}
           >
             {video.muted ? 'Muted' : 'Unmuted'}
@@ -1308,7 +1308,7 @@ function LockAspectToggle({ layer }: { layer: ImageLayer | VideoLayer }) {
       <button
         onClick={() => updateLayerProperty(layer.id, 'lockAspect', !locked)}
         title={locked ? 'Corner-resize keeps the aspect ratio (hold Shift to free it)' : 'Corner-resize is free (hold Shift to lock)'}
-        className={`flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-medium transition-colors ${locked ? 'bg-[#f7b500]/15 text-[#f7b500]' : 'bg-[#122240] text-slate-400 hover:text-slate-200'}`}
+        className={`flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-medium transition-colors ${locked ? 'bg-accent-wash text-accent' : 'bg-surface-3 text-slate-400 hover:text-slate-200'}`}
       >
         {locked ? <Lock size={11} /> : <Unlock size={11} />}
         {locked ? 'Locked' : 'Free'}
@@ -1420,15 +1420,15 @@ function RemoveBackgroundButton({ layer }: { layer: ImageLayer }) {
         disabled={isProcessing}
         className={`w-full relative overflow-hidden flex items-center justify-center gap-2 py-2 rounded-md text-[11px] font-medium transition-all ${
           isProcessing
-            ? 'bg-[#f7b500]/5 border border-[#f7b500]/20 text-[#ffc83d]/70 cursor-wait'
+            ? 'bg-accent-wash border border-accent-dim text-accent-hover cursor-wait'
             : status === 'done'
             ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20'
-            : 'bg-[#f7b500]/10 hover:bg-[#f7b500]/20 border border-[#f7b500]/30 hover:border-[#f7b500]/50 text-[#ffc83d]'
+            : 'bg-accent-wash hover:bg-accent-wash border border-accent-dim hover:border-accent-dim text-accent-hover'
         }`}
       >
         {isProcessing && (
           <div
-            className="absolute inset-0 bg-[#f7b500]/10 transition-all duration-300 ease-out"
+            className="absolute inset-0 bg-accent-wash transition-all duration-300 ease-out"
             style={{ width: `${progressWidth}%` }}
           />
         )}
@@ -1492,7 +1492,7 @@ function AudioProperties({
             className={`px-1.5 py-0.5 text-[9px] rounded ${
               audio.muted
                 ? 'bg-red-500/20 text-red-400'
-                : 'bg-[#122240] text-slate-500 hover:text-slate-300'
+                : 'bg-surface-3 text-slate-500 hover:text-slate-300'
             }`}
           >
             {audio.muted ? 'Muted' : 'Unmuted'}
@@ -1549,9 +1549,9 @@ function AutoCaptionButton({ layerId }: { layerId: string }) {
       onClick={() => autoCaptionAudioLayers([layerId])}
       disabled={active}
       title="Transcribe this clip on-device (Whisper Small) and add subtitles to the timeline"
-      className="w-full mt-1 flex items-center justify-center gap-1.5 py-1.5 rounded bg-[#122240] hover:bg-[#1a2a42] text-[10px] text-slate-300 hover:text-[#f7b500] transition-colors disabled:opacity-50 disabled:hover:text-slate-300"
+      className="w-full mt-1 flex items-center justify-center gap-1.5 py-1.5 rounded bg-surface-3 hover:bg-surface-4 text-[10px] text-slate-300 hover:text-accent transition-colors disabled:opacity-50 disabled:hover:text-slate-300"
     >
-      <Captions size={11} className="text-[#f7b500]" />
+      <Captions size={11} className="text-accent" />
       {active ? 'Auto-Captioning…' : 'Auto-Caption'}
     </button>
   );
@@ -1596,8 +1596,8 @@ function TextMotionControlSection({ layer }: { layer: TextLayer }) {
                 onClick={() => setMode(m.id)}
                 className={`text-[11px] px-2 py-1 rounded border transition-colors ${
                   mode === m.id
-                    ? 'border-[#f7b500] text-[#f7b500] bg-[#f7b500]/10'
-                    : 'border-[#1a2a42] text-slate-400 hover:text-slate-200 hover:bg-white/[0.03]'
+                    ? 'border-accent text-accent bg-accent-wash'
+                    : 'border-hairline text-slate-400 hover:text-slate-200 hover:bg-white/[0.03]'
                 }`}
               >
                 {m.label}
@@ -1615,13 +1615,13 @@ function TextMotionControlSection({ layer }: { layer: TextLayer }) {
               step={unit === 'seconds' ? 0.01 : 1}
               value={amount}
               onChange={(e) => setAmount(parseFloat(e.target.value) || 0)}
-              className="flex-1 bg-[#122240] text-[11px] text-slate-300 px-1.5 py-1 rounded border border-[#1a2a42] focus:border-[#f7b500]/50 outline-none"
+              className="flex-1 bg-surface-3 text-[11px] text-slate-300 px-1.5 py-1 rounded border border-hairline focus:border-accent-dim outline-none"
             />
-            <div className="flex rounded border border-[#1a2a42] overflow-hidden">
+            <div className="flex rounded border border-hairline overflow-hidden">
               <button
                 onClick={() => setUnit('seconds')}
                 className={`text-[10px] px-2 py-1 transition-colors ${
-                  unit === 'seconds' ? 'bg-[#f7b500]/10 text-[#f7b500]' : 'text-slate-500 hover:text-slate-300'
+                  unit === 'seconds' ? 'bg-accent-wash text-accent' : 'text-slate-500 hover:text-slate-300'
                 }`}
               >
                 Sec
@@ -1629,7 +1629,7 @@ function TextMotionControlSection({ layer }: { layer: TextLayer }) {
               <button
                 onClick={() => setUnit('frames')}
                 className={`text-[10px] px-2 py-1 transition-colors ${
-                  unit === 'frames' ? 'bg-[#f7b500]/10 text-[#f7b500]' : 'text-slate-500 hover:text-slate-300'
+                  unit === 'frames' ? 'bg-accent-wash text-accent' : 'text-slate-500 hover:text-slate-300'
                 }`}
               >
                 Frames
@@ -1646,8 +1646,8 @@ function TextMotionControlSection({ layer }: { layer: TextLayer }) {
           disabled={!canConvert}
           className={`w-full flex items-center justify-center gap-1.5 text-[11px] font-medium px-2 py-1.5 rounded transition-colors ${
             canConvert
-              ? 'bg-[#f7b500] text-white hover:bg-[#f7b500]'
-              : 'bg-[#122240] text-slate-600 cursor-not-allowed'
+              ? 'bg-accent text-white hover:bg-accent'
+              : 'bg-surface-3 text-slate-600 cursor-not-allowed'
           }`}
         >
           <Zap size={12} />
@@ -1685,7 +1685,7 @@ function TextProperties({
           <textarea
             value={fullText}
             onChange={(e) => updateLayerProperty(layer.id, 'content.spans', [{ text: e.target.value, style: style }])}
-            className="w-full bg-[#122240] text-[11px] text-slate-300 px-2 py-1.5 rounded border border-[#1a2a42] focus:border-[#f7b500]/50 outline-none resize-none min-h-[48px]"
+            className="w-full bg-surface-3 text-[11px] text-slate-300 px-2 py-1.5 rounded border border-hairline focus:border-accent-dim outline-none resize-none min-h-[48px]"
             rows={3}
             maxLength={500}
           />
@@ -1705,8 +1705,8 @@ function TextProperties({
                 }}
                 className={`px-1.5 py-0.5 text-[9px] rounded ${
                   lc.boundingBox.type === bbType
-                    ? 'bg-[#f7b500]/15 text-[#f7b500]'
-                    : 'bg-[#122240] text-slate-500 hover:text-slate-300'
+                    ? 'bg-accent-wash text-accent'
+                    : 'bg-surface-3 text-slate-500 hover:text-slate-300'
                 }`}
               >
                 {bbType === 'auto' ? 'Auto' : bbType === 'fixedWidth' ? 'Width' : 'Fixed'}
@@ -1727,14 +1727,14 @@ function TextProperties({
                   if (lc.boundingBox.type === 'fixed') updateLayerProperty(layer.id, 'layoutConfig.boundingBox', { type: 'fixed', width: w, height: lc.boundingBox.height });
                   else updateLayerProperty(layer.id, 'layoutConfig.boundingBox', { type: 'fixedWidth', width: w });
                 }}
-                className="w-1/2 bg-[#122240] text-[10px] text-slate-300 px-1 py-0.5 rounded border border-[#1a2a42] outline-none"
+                className="w-1/2 bg-surface-3 text-[10px] text-slate-300 px-1 py-0.5 rounded border border-hairline outline-none"
               />
               {lc.boundingBox.type === 'fixed' && (
                 <input
                   type="number"
                   value={Math.round(lc.boundingBox.height)}
                   onChange={(e) => updateLayerProperty(layer.id, 'layoutConfig.boundingBox', { type: 'fixed', width: lc.boundingBox.type === 'fixed' ? lc.boundingBox.width : 300, height: Math.max(8, Number(e.target.value)) })}
-                  className="w-1/2 bg-[#122240] text-[10px] text-slate-300 px-1 py-0.5 rounded border border-[#1a2a42] outline-none"
+                  className="w-1/2 bg-surface-3 text-[10px] text-slate-300 px-1 py-0.5 rounded border border-hairline outline-none"
                 />
               )}
             </div>
@@ -1765,7 +1765,7 @@ function TextProperties({
               <select
                 value={style.fontWeight}
                 onChange={(e) => updateLayerProperty(layer.id, 'content.spans[0].style.fontWeight', Number(e.target.value))}
-                className="flex-1 bg-[#122240] text-[10px] text-slate-300 px-1 py-0.5 rounded border border-[#1a2a42] outline-none"
+                className="flex-1 bg-surface-3 text-[10px] text-slate-300 px-1 py-0.5 rounded border border-hairline outline-none"
               >
                 {[100, 200, 300, 400, 500, 600, 700, 800, 900].map((w) => (
                   <option key={w} value={w}>{w}</option>
@@ -1779,7 +1779,7 @@ function TextProperties({
                 <button
                   onClick={() => updateLayerProperty(layer.id, 'content.spans[0].style.fontStyle', style.fontStyle === 'italic' ? 'normal' : 'italic')}
                   className={`px-1.5 py-0.5 text-[9px] rounded italic ${
-                    style.fontStyle === 'italic' ? 'bg-[#f7b500]/15 text-[#f7b500]' : 'bg-[#122240] text-slate-500 hover:text-slate-300'
+                    style.fontStyle === 'italic' ? 'bg-accent-wash text-accent' : 'bg-surface-3 text-slate-500 hover:text-slate-300'
                   }`}
                 >
                   I
@@ -1862,8 +1862,8 @@ function TextProperties({
                     onClick={() => updateLayerProperty(layer.id, 'layoutConfig.horizontalAlign', align)}
                     className={`px-1.5 py-0.5 text-[9px] rounded ${
                       lc.horizontalAlign === align
-                        ? 'bg-[#f7b500]/15 text-[#f7b500]'
-                        : 'bg-[#122240] text-slate-500 hover:text-slate-300'
+                        ? 'bg-accent-wash text-accent'
+                        : 'bg-surface-3 text-slate-500 hover:text-slate-300'
                     }`}
                   >
                     {align.charAt(0).toUpperCase() + align.slice(1)}
@@ -1882,8 +1882,8 @@ function TextProperties({
                       onClick={() => updateLayerProperty(layer.id, 'layoutConfig.verticalAlign', align)}
                       className={`px-1.5 py-0.5 text-[9px] rounded ${
                         lc.verticalAlign === align
-                          ? 'bg-[#f7b500]/15 text-[#f7b500]'
-                          : 'bg-[#122240] text-slate-500 hover:text-slate-300'
+                          ? 'bg-accent-wash text-accent'
+                          : 'bg-surface-3 text-slate-500 hover:text-slate-300'
                       }`}
                     >
                       {align.charAt(0).toUpperCase() + align.slice(1)}
@@ -1902,8 +1902,8 @@ function TextProperties({
                     onClick={() => updateLayerProperty(layer.id, 'content.spans[0].style.textTransform', t)}
                     className={`px-1 py-0.5 text-[8px] rounded ${
                       style.textTransform === t
-                        ? 'bg-[#f7b500]/15 text-[#f7b500]'
-                        : 'bg-[#122240] text-slate-500 hover:text-slate-300'
+                        ? 'bg-accent-wash text-accent'
+                        : 'bg-surface-3 text-slate-500 hover:text-slate-300'
                     }`}
                   >
                     {t === 'none' ? 'Aa' : t === 'uppercase' ? 'AA' : t === 'lowercase' ? 'aa' : 'Ab'}
@@ -1922,8 +1922,8 @@ function TextProperties({
                       onClick={() => updateLayerProperty(layer.id, 'layoutConfig.overflow', o)}
                       className={`px-1.5 py-0.5 text-[9px] rounded ${
                         lc.overflow === o
-                          ? 'bg-[#f7b500]/15 text-[#f7b500]'
-                          : 'bg-[#122240] text-slate-500 hover:text-slate-300'
+                          ? 'bg-accent-wash text-accent'
+                          : 'bg-surface-3 text-slate-500 hover:text-slate-300'
                       }`}
                     >
                       {o.charAt(0).toUpperCase() + o.slice(1)}
@@ -1941,7 +1941,7 @@ function TextProperties({
                 <button
                   onClick={() => updateLayerProperty(layer.id, 'content.spans[0].style.underline', !style.underline)}
                   className={`px-1.5 py-0.5 text-[9px] rounded underline ${
-                    style.underline ? 'bg-[#f7b500]/15 text-[#f7b500]' : 'bg-[#122240] text-slate-500 hover:text-slate-300'
+                    style.underline ? 'bg-accent-wash text-accent' : 'bg-surface-3 text-slate-500 hover:text-slate-300'
                   }`}
                 >
                   U
@@ -1949,7 +1949,7 @@ function TextProperties({
                 <button
                   onClick={() => updateLayerProperty(layer.id, 'content.spans[0].style.strikethrough', !style.strikethrough)}
                   className={`px-1.5 py-0.5 text-[9px] rounded line-through ${
-                    style.strikethrough ? 'bg-[#f7b500]/15 text-[#f7b500]' : 'bg-[#122240] text-slate-500 hover:text-slate-300'
+                    style.strikethrough ? 'bg-accent-wash text-accent' : 'bg-surface-3 text-slate-500 hover:text-slate-300'
                   }`}
                 >
                   S
@@ -1968,8 +1968,8 @@ function LottieIconSection({ layer }: { layer: LottieIconLayer }) {
   const lottie = layer.lottieIcon;
 
   return (
-    <div className="border-b border-[#1a2a42]">
-      <div className="px-3 py-1.5 bg-[#081220]">
+    <div className="border-b border-hairline">
+      <div className="px-3 py-1.5 bg-surface-sunken">
         <span className="text-[10px] uppercase tracking-wider text-slate-500 font-medium">Lottie Animation</span>
       </div>
       <div className="px-3 py-2 space-y-2">
@@ -1979,7 +1979,7 @@ function LottieIconSection({ layer }: { layer: LottieIconLayer }) {
             type="color"
             value={lottie.color}
             onChange={(e) => updateLayerProperty(layer.id, 'lottieIcon.color', e.target.value)}
-            className="w-6 h-6 rounded border border-[#1a2a42] bg-transparent cursor-pointer"
+            className="w-6 h-6 rounded border border-hairline bg-transparent cursor-pointer"
           />
           <span className="text-[9px] text-slate-500 font-mono">{lottie.color}</span>
         </div>
@@ -2026,12 +2026,12 @@ function ConstraintRow({ label, opts, value, onChange }: { label: string; opts: 
   return (
     <div className="flex items-center gap-2">
       <label className="text-[10px] text-slate-500 w-14 flex-shrink-0">{label}</label>
-      <div className="flex flex-1 rounded border border-[#1a2a42] overflow-hidden">
+      <div className="flex flex-1 rounded border border-hairline overflow-hidden">
         {opts.map((o) => (
           <button
             key={o.mode}
             onClick={() => onChange(o.mode)}
-            className={`flex-1 text-[9px] py-1 transition-colors ${value === o.mode ? 'bg-[#f7b500]/20 text-[#f7b500]' : 'bg-[#122240] text-slate-400 hover:text-slate-200'}`}
+            className={`flex-1 text-[9px] py-1 transition-colors ${value === o.mode ? 'bg-accent-wash text-accent' : 'bg-surface-3 text-slate-400 hover:text-slate-200'}`}
           >
             {o.label}
           </button>
@@ -2092,12 +2092,12 @@ function ColorStyleRow({ label, layerId, slot, rawColor, onRawChange }: {
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-6 z-50 w-44 bg-[#0e1c32] border border-[#1a2a42] rounded-md shadow-xl p-1 text-[11px]">
+          <div className="absolute right-0 top-6 z-50 w-44 bg-surface-2 border border-hairline rounded-md shadow-xl p-1 text-[11px]">
             {linked && <div className="px-1.5 py-1 text-slate-500">Linked: {linked.name}</div>}
             <div className="max-h-40 overflow-y-auto">
               {colorStyles.map((s) => (
                 <button key={s.id} onClick={() => { linkLayerColorStyle(layerId, slot, s.id); setOpen(false); }} className="w-full flex items-center gap-1.5 px-1.5 py-1 rounded hover:bg-white/5 text-slate-300">
-                  <span className="w-3 h-3 rounded-sm border border-[#1a2a42]" style={{ background: s.value.kind === 'color' ? swatch(s.value.color) : undefined }} />
+                  <span className="w-3 h-3 rounded-sm border border-hairline" style={{ background: s.value.kind === 'color' ? swatch(s.value.color) : undefined }} />
                   <span className="truncate">{s.name}</span>
                 </button>
               ))}
@@ -2113,8 +2113,8 @@ function ColorStyleRow({ label, layerId, slot, rawColor, onRawChange }: {
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="border-b border-[#1a2a42]">
-      <div className="px-3 py-1.5 bg-[#081220]">
+    <div className="border-b border-hairline">
+      <div className="px-3 py-1.5 bg-surface-sunken">
         <span className="text-[10px] uppercase tracking-wider text-slate-500 font-medium">{title}</span>
       </div>
       <div className="px-3 py-2 space-y-1">{children}</div>
@@ -2130,7 +2130,7 @@ function StringInput({ label, value, onChange }: { label: string; value: string;
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="flex-1 bg-[#122240] text-[11px] text-slate-300 px-1.5 py-0.5 rounded border border-[#1a2a42] focus:border-[#f7b500]/50 outline-none"
+        className="flex-1 bg-surface-3 text-[11px] text-slate-300 px-1.5 py-0.5 rounded border border-hairline focus:border-accent-dim outline-none"
       />
     </div>
   );
@@ -2169,7 +2169,7 @@ function NumberDragInput({
   return (
     <div
       data-prop={propPath}
-      className={`flex items-center gap-0.5 rounded transition-shadow ${highlighted ? 'ring-2 ring-[#f7b500] shadow-[0_0_12px_2px_#f7b50055]' : ''}`}
+      className={`flex items-center gap-0.5 rounded transition-shadow ${highlighted ? 'ring-2 ring-accent shadow-[0_0_12px_2px_#f7b50055]' : ''}`}
     >
       <DragInput
         label={label}
@@ -2249,7 +2249,7 @@ function Vec2DragInput({
   return (
     <div
       data-prop={propPath}
-      className={`flex items-center gap-0.5 rounded transition-shadow ${highlighted ? 'ring-2 ring-[#f7b500] shadow-[0_0_12px_2px_#f7b50055]' : ''}`}
+      className={`flex items-center gap-0.5 rounded transition-shadow ${highlighted ? 'ring-2 ring-accent shadow-[0_0_12px_2px_#f7b50055]' : ''}`}
     >
       <span className="text-[10px] text-slate-500 w-14 flex-shrink-0">{label}</span>
       <div className="flex-1 flex gap-1 min-w-0">
@@ -2358,7 +2358,7 @@ function MaskSection({ layerId, currentFrame }: { layerId: string; currentFrame:
     <Section title="Masks">
       <div className="space-y-2">
         {/* Mask list */}
-        <div className="rounded border border-[#1c3155] bg-[#0d1f38] overflow-visible relative">
+        <div className="rounded border border-hairline bg-[#0d1f38] overflow-visible relative">
           {masks.length === 0 ? (
             <div className="px-2 py-3 text-center text-[10px] text-slate-500">No masks</div>
           ) : (
@@ -2367,7 +2367,7 @@ function MaskSection({ layerId, currentFrame }: { layerId: string; currentFrame:
                 <div
                   key={m.id}
                   onClick={() => setSelectedMaskId(m.id)}
-                  className={`flex items-center gap-1.5 px-2 py-1.5 cursor-pointer border-b border-[#1c3155] last:border-b-0 transition-colors ${
+                  className={`flex items-center gap-1.5 px-2 py-1.5 cursor-pointer border-b border-hairline last:border-b-0 transition-colors ${
                     m.id === selectedMaskId
                       ? 'bg-yellow-500/10'
                       : 'hover:bg-[#162a4a]'
@@ -2388,7 +2388,7 @@ function MaskSection({ layerId, currentFrame }: { layerId: string; currentFrame:
             </div>
           )}
           {/* Add mask toolbar */}
-          <div className="flex items-center gap-0.5 px-1.5 py-1 border-t border-[#1c3155] bg-[#0a1628]">
+          <div className="flex items-center gap-0.5 px-1.5 py-1 border-t border-hairline bg-surface-1">
             <div className="relative">
               <button
                 onClick={() => setAddMenuOpen(!addMenuOpen)}
@@ -2398,7 +2398,7 @@ function MaskSection({ layerId, currentFrame }: { layerId: string; currentFrame:
                 <Plus size={11} />
               </button>
               {addMenuOpen && (
-                <div className="absolute top-full left-0 mt-1 z-50 bg-[#0d1f38] border border-[#1c3155] rounded shadow-lg py-0.5 min-w-[100px]">
+                <div className="absolute top-full left-0 mt-1 z-50 bg-[#0d1f38] border border-hairline rounded shadow-lg py-0.5 min-w-[100px]">
                   {MASK_TYPES.map(({ type, label, icon: Icon }) => (
                     <button
                       key={type}
@@ -2450,13 +2450,13 @@ function MaskSection({ layerId, currentFrame }: { layerId: string; currentFrame:
 
         {/* Selected mask properties */}
         {mask && (
-          <div className="space-y-2 pt-1 border-t border-[#1c3155]">
+          <div className="space-y-2 pt-1 border-t border-hairline">
             <div className="flex items-center gap-1">
               <label className="text-[10px] text-slate-500 w-14 flex-shrink-0">Type</label>
               <select
                 value={mask.type}
                 onChange={(e) => updateMaskProperty(layerId, mask.id, 'type', e.target.value as MaskType)}
-                className="flex-1 bg-[#16294a] border border-[#1c3155] rounded px-1.5 py-0.5 text-[10px] text-slate-300 outline-none"
+                className="flex-1 bg-surface-4 border border-hairline rounded px-1.5 py-0.5 text-[10px] text-slate-300 outline-none"
               >
                 {MASK_TYPES.map((opt) => (
                   <option key={opt.type} value={opt.type}>{opt.label}</option>
@@ -2549,7 +2549,7 @@ function MaskSection({ layerId, currentFrame }: { layerId: string; currentFrame:
                 className={`px-2 py-0.5 text-[9px] rounded border transition-colors ${
                   mask.inverted
                     ? 'bg-yellow-500/15 border-yellow-500/40 text-yellow-300'
-                    : 'bg-[#16294a] border-[#1c3155] text-slate-400 hover:border-yellow-500/30'
+                    : 'bg-surface-4 border-hairline text-slate-400 hover:border-yellow-500/30'
                 }`}
               >
                 {mask.inverted ? 'Inverted' : 'Normal'}
@@ -2617,7 +2617,7 @@ function MotionPathSection({ layerId }: { layerId: string }) {
       {!activePath ? (
         <button
           onClick={handleCreate}
-          className="w-full px-2 py-1.5 text-[10px] rounded bg-[#f7b500]/10 border border-[#f7b500]/30 text-[#f7b500] hover:bg-[#f7b500]/15 transition-colors flex items-center justify-center gap-1.5"
+          className="w-full px-2 py-1.5 text-[10px] rounded bg-accent-wash border border-accent-dim text-accent hover:bg-accent-wash transition-colors flex items-center justify-center gap-1.5"
         >
           <Route size={11} />
           Create Motion Path
@@ -2629,22 +2629,22 @@ function MotionPathSection({ layerId }: { layerId: string }) {
               onClick={handleToggleEdit}
               className={`flex-1 px-2 py-1 text-[9px] rounded border transition-colors ${
                 editMode !== 'idle'
-                  ? 'bg-[#f7b500]/10 border-[#f7b500]/30 text-[#ffc83d]'
-                  : 'bg-[#16294a] border-[#1c3155] text-slate-400 hover:border-[#f7b500]/30'
+                  ? 'bg-accent-wash border-accent-dim text-accent-hover'
+                  : 'bg-surface-4 border-hairline text-slate-400 hover:border-accent-dim'
               }`}
             >
               {editMode === 'creating' ? 'Adding Points...' : editMode === 'editing' ? 'Editing...' : 'Edit Path'}
             </button>
             <button
               onClick={handleSmooth}
-              className="px-2 py-1 text-[9px] rounded bg-[#16294a] border border-[#1c3155] text-slate-400 hover:border-amber-500/30 hover:text-amber-300 transition-colors"
+              className="px-2 py-1 text-[9px] rounded bg-surface-4 border border-hairline text-slate-400 hover:border-amber-500/30 hover:text-amber-300 transition-colors"
               title="Auto Smooth"
             >
               <Wand2 size={10} />
             </button>
             <button
               onClick={handleDelete}
-              className="px-2 py-1 text-[9px] rounded bg-[#16294a] border border-[#1c3155] text-slate-400 hover:border-red-500/30 hover:text-red-300 transition-colors"
+              className="px-2 py-1 text-[9px] rounded bg-surface-4 border border-hairline text-slate-400 hover:border-red-500/30 hover:text-red-300 transition-colors"
               title="Delete Path"
             >
               <Trash2 size={10} />
@@ -2663,7 +2663,7 @@ function MotionPathSection({ layerId }: { layerId: string }) {
             <select
               value={activePath.anchor}
               onChange={(e) => updateMotionPath(activePath.id, { anchor: e.target.value as MotionPathAnchor })}
-              className="flex-1 bg-[#16294a] border border-[#1c3155] rounded px-1.5 py-0.5 text-[9px] text-slate-300 outline-none"
+              className="flex-1 bg-surface-4 border border-hairline rounded px-1.5 py-0.5 text-[9px] text-slate-300 outline-none"
             >
               {ANCHOR_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -2677,7 +2677,7 @@ function MotionPathSection({ layerId }: { layerId: string }) {
             <select
               value={activePath.loop}
               onChange={(e) => updateMotionPath(activePath.id, { loop: e.target.value as MotionPathLoop })}
-              className="flex-1 bg-[#16294a] border border-[#1c3155] rounded px-1.5 py-0.5 text-[9px] text-slate-300 outline-none"
+              className="flex-1 bg-surface-4 border border-hairline rounded px-1.5 py-0.5 text-[9px] text-slate-300 outline-none"
             >
               {LOOP_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -2692,8 +2692,8 @@ function MotionPathSection({ layerId }: { layerId: string }) {
               onClick={() => updateMotionPath(activePath.id, { orientToPath: !activePath.orientToPath })}
               className={`px-2 py-0.5 text-[9px] rounded border transition-colors ${
                 activePath.orientToPath
-                  ? 'bg-[#f7b500]/10 border-[#f7b500]/30 text-[#ffc83d]'
-                  : 'bg-[#16294a] border-[#1c3155] text-slate-500'
+                  ? 'bg-accent-wash border-accent-dim text-accent-hover'
+                  : 'bg-surface-4 border-hairline text-slate-500'
               }`}
             >
               Orient to Path
@@ -2707,8 +2707,8 @@ function MotionPathSection({ layerId }: { layerId: string }) {
               onClick={() => updateMotionPath(activePath.id, { closed: !activePath.closed })}
               className={`px-2 py-0.5 text-[9px] rounded border transition-colors ${
                 activePath.closed
-                  ? 'bg-[#f7b500]/10 border-[#f7b500]/30 text-[#ffc83d]'
-                  : 'bg-[#16294a] border-[#1c3155] text-slate-500'
+                  ? 'bg-accent-wash border-accent-dim text-accent-hover'
+                  : 'bg-surface-4 border-hairline text-slate-500'
               }`}
             >
               {activePath.closed ? 'Closed' : 'Open'}

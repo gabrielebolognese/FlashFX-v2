@@ -38,7 +38,7 @@ export function PanelLayout() {
   const layout = WORKSPACE_LAYOUT[workspace];
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 min-w-0 overflow-hidden bg-[#06101a]">
+    <div className="flex-1 flex flex-col min-h-0 min-w-0 overflow-hidden bg-surface-sunken">
       {/* Upper region: media pool + canvas + inspector */}
       <div className="flex-1 flex flex-row min-h-0 min-w-0">
         {/* Media Pool */}
@@ -50,7 +50,7 @@ export function PanelLayout() {
         </div>
 
         {/* Canvas - takes remaining space */}
-        <div data-tutorial-id="canvas" className="flex-1 min-h-0 min-w-0 flex flex-col bg-[#050d18] border-l border-[#1a2a42]/40">
+        <div data-tutorial-id="canvas" className="flex-1 min-h-0 min-w-0 flex flex-col bg-[#050d18] border-l border-hairline">
           <CanvasToolbar />
           <PanelErrorBoundary name="Viewport">
             <Viewport />
@@ -62,7 +62,7 @@ export function PanelLayout() {
         {panels.properties.visible && (
           <div
             data-tutorial-id="inspector"
-            className="flex-shrink-0 min-h-0 overflow-hidden border-l border-[#1a2a42]/40"
+            className="flex-shrink-0 min-h-0 overflow-hidden border-l border-hairline"
             style={{ width: layout.inspectorWidth }}
           >
             <PanelContainer id="properties" title="Properties">
@@ -77,7 +77,7 @@ export function PanelLayout() {
       {/* Bottom workspace: main timeline + (Animate only) keyframes/graph */}
       {layout.showTimeline && panels.timeline.visible && (
         <div
-          className="flex-shrink-0 min-w-0 overflow-hidden border-t border-[#1a2a42]/60 flex flex-row shadow-[0_-1px_3px_rgba(0,0,0,0.3)]"
+          className="flex-shrink-0 min-w-0 overflow-hidden border-t border-hairline flex flex-row shadow-[0_-1px_3px_rgba(0,0,0,0.3)]"
           style={{ height: layout.bottomHeight }}
         >
           <div
@@ -90,7 +90,7 @@ export function PanelLayout() {
             </PanelErrorBoundary>
           </div>
           <div
-            className="min-w-0 min-h-0 overflow-hidden border-l border-[#1a2a42]/40"
+            className="min-w-0 min-h-0 overflow-hidden border-l border-hairline"
             style={{
               width: layout.showAnimationPanel ? '33.34%' : '0',
               display: layout.showAnimationPanel ? 'block' : 'none',

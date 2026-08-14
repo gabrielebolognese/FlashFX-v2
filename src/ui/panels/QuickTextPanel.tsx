@@ -79,8 +79,8 @@ export function QuickTextPanel() {
       onPointerDown={(e) => e.stopPropagation()}
       onKeyDown={(e) => e.stopPropagation()}
     >
-      <div className="flex items-center gap-1.5 px-2.5 h-8 border-b border-[#1a2a42]">
-        <Sparkles size={12} className="text-[#f7b500]" />
+      <div className="flex items-center gap-1.5 px-2.5 h-8 border-b border-hairline">
+        <Sparkles size={12} className="text-accent" />
         <span className="text-[11px] font-semibold text-slate-200">Fast text</span>
         <button title="Close" className="ml-auto p-1 rounded text-slate-500 hover:text-slate-200 hover:bg-white/5" onClick={close}><X size={12} /></button>
       </div>
@@ -92,7 +92,7 @@ export function QuickTextPanel() {
           onChange={(e) => commitText(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); close(); } if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); place(); } }}
           rows={2}
-          className="w-full resize-none rounded bg-[#0e1726] border border-[#1a2a42] focus:border-[#2a3a52] text-[12px] text-slate-100 px-2 py-1.5 outline-none"
+          className="w-full resize-none rounded bg-[#0e1726] border border-hairline focus:border-hairline text-[12px] text-slate-100 px-2 py-1.5 outline-none"
           placeholder="Type your text…"
         />
 
@@ -102,7 +102,7 @@ export function QuickTextPanel() {
           <select
             value={font}
             onChange={(e) => updateLayerProperty(target.layerId, 'content.spans[0].style.fontFamily', e.target.value)}
-            className="flex-1 min-w-0 bg-[#122240] text-[10px] text-slate-300 px-1 py-0.5 rounded border border-[#1a2a42] outline-none"
+            className="flex-1 min-w-0 bg-surface-3 text-[10px] text-slate-300 px-1 py-0.5 rounded border border-hairline outline-none"
           >
             {FONT_CATEGORY_ORDER.map((cat) => {
               const fams = FONT_MANIFEST.filter((f) => f.category === cat).map((f) => f.family);
@@ -130,8 +130,8 @@ export function QuickTextPanel() {
                 onClick={() => setPreset(p.id)}
                 className={`px-2 h-6 rounded text-[10.5px] border transition-colors ${
                   preset === p.id
-                    ? 'bg-[#f7b500] text-[#0e1c32] border-[#f7b500] font-medium'
-                    : 'bg-[#122240] text-slate-300 border-[#1a2a42] hover:border-[#2a3a52]'
+                    ? 'bg-accent text-on-accent border-accent font-medium'
+                    : 'bg-surface-3 text-slate-300 border-hairline hover:border-hairline'
                 }`}
               >
                 {p.label}
@@ -143,7 +143,7 @@ export function QuickTextPanel() {
         {/* Granularity (only meaningful when animating) */}
         <div className={preset ? '' : 'opacity-40 pointer-events-none'}>
           <div className="text-[10px] text-slate-500 mb-1">Apply to</div>
-          <div className="flex rounded border border-[#1a2a42] overflow-hidden">
+          <div className="flex rounded border border-hairline overflow-hidden">
             {GRANULARITIES.map((g) => (
               <button
                 key={g.value}
@@ -160,7 +160,7 @@ export function QuickTextPanel() {
 
         <button
           onClick={place}
-          className="w-full h-8 rounded-md bg-[#f7b500] hover:bg-[#ffc21a] text-[#0e1c32] text-[12px] font-semibold transition-colors"
+          className="w-full h-8 rounded-md bg-accent hover:bg-[#ffc21a] text-on-accent text-[12px] font-semibold transition-colors"
         >
           {preset ? 'Place Animated Text' : 'Place Text'}
         </button>

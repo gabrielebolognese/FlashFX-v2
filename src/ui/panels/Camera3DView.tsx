@@ -164,20 +164,20 @@ export function Camera3DView({ layer }: { layer: CameraLayer }) {
 
   return (
     <div className="flex flex-col">
-      <div className="flex items-center gap-2 px-2.5 py-1.5 border-b border-[#1c2433]">
+      <div className="flex items-center gap-2 px-2.5 py-1.5 border-b border-hairline">
         <Video size={12} className="text-amber-400 flex-shrink-0" />
         <span className="text-[11px] font-medium text-slate-300">3D View</span>
         <span className="ml-auto text-[10px] text-slate-500">Double-click camera for settings</span>
       </div>
-      <div className="flex border-b border-[#1c2433]">
+      <div className="flex border-b border-hairline">
         {(['top', 'side'] as const).map((vw) => (
           <button key={vw} onClick={() => setView(vw)}
-            className={`flex-1 py-1.5 text-[11px] font-semibold transition-colors ${view === vw ? 'bg-[#f7b500] text-[#0a0f16]' : 'bg-[#0b1220] text-slate-400 hover:text-slate-200'}`}>
+            className={`flex-1 py-1.5 text-[11px] font-semibold transition-colors ${view === vw ? 'bg-accent text-on-accent' : 'bg-surface-sunken text-slate-400 hover:text-slate-200'}`}>
             {vw === 'top' ? 'Top' : 'Side'}
           </button>
         ))}
       </div>
-      <div className="relative h-[400px] bg-[#0e1420]">
+      <div className="relative h-[400px] bg-surface-1">
         {view === 'top'
           ? <OrthoView {...common} label="Top · X → Z (depth)" hAxis="x" vAxis="z"
               onDrag={(who, h, v) => { const set = who === 'cam' ? setEye : setPoi; set('x', h); set('z', v); }}
@@ -427,7 +427,7 @@ function OrthoView({ label, hAxis, vAxis, W, H, eye, poi, fov, apertureMm, fStop
       {menu && (
         <>
           <div className="fixed inset-0 z-20" onClick={() => setMenu(null)} onContextMenu={(e) => { e.preventDefault(); setMenu(null); }} />
-          <div className="absolute z-30 min-w-[140px] rounded-md border border-[#1a2a42] bg-[#0b1220] py-1 shadow-xl text-[11px] text-slate-200"
+          <div className="absolute z-30 min-w-[140px] rounded-md border border-hairline bg-surface-sunken py-1 shadow-xl text-[11px] text-slate-200"
             style={{ left: Math.min(menu.x, EW - 150), top: Math.min(menu.y, EH - 120) }}>
             {menu.kind === 'segment' ? (
               <>
@@ -451,7 +451,7 @@ function OrthoView({ label, hAxis, vAxis, W, H, eye, poi, fov, apertureMm, fStop
 function MenuItem({ label, onClick, danger }: { label: string; onClick: () => void; danger?: boolean }) {
   return (
     <button onClick={onClick}
-      className={`block w-full text-left px-3 py-1 hover:bg-[#122240] transition-colors ${danger ? 'text-red-400' : ''}`}>
+      className={`block w-full text-left px-3 py-1 hover:bg-surface-3 transition-colors ${danger ? 'text-red-400' : ''}`}>
       {label}
     </button>
   );

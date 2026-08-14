@@ -49,7 +49,7 @@ export function AnimationItemPanel({ layer }: AnimationItemPanelProps) {
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2 px-1">
-        <Activity size={13} className="text-[#f7b500]" />
+        <Activity size={13} className="text-accent" />
         <span className="text-[10px] uppercase tracking-wider text-slate-400 font-medium">
           Animation Item
         </span>
@@ -62,8 +62,8 @@ export function AnimationItemPanel({ layer }: AnimationItemPanelProps) {
             onClick={() => setSection(s.id)}
             className={`flex-1 px-1.5 py-1 text-[9px] rounded transition-colors ${
               section === s.id
-                ? 'bg-[#f7b500]/15 text-[#ffc83d] ring-1 ring-[#f7b500]/30'
-                : 'bg-[#122240] text-slate-500 hover:text-slate-300'
+                ? 'bg-accent-wash text-accent-hover ring-1 ring-accent'
+                : 'bg-surface-3 text-slate-500 hover:text-slate-300'
             }`}
           >
             {s.label}
@@ -111,8 +111,8 @@ function PresetSection({ currentType, onApply }: { currentType: string; onApply:
             onClick={() => setFilter(c.id)}
             className={`px-1.5 py-0.5 text-[9px] rounded transition-colors ${
               filter === c.id
-                ? 'bg-[#f7b500]/15 text-[#ffc83d] ring-1 ring-[#f7b500]/30'
-                : 'bg-[#122240] text-slate-500 hover:text-slate-300'
+                ? 'bg-accent-wash text-accent-hover ring-1 ring-accent'
+                : 'bg-surface-3 text-slate-500 hover:text-slate-300'
             }`}
           >
             {c.label}
@@ -126,8 +126,8 @@ function PresetSection({ currentType, onApply }: { currentType: string; onApply:
             onClick={() => onApply(preset.name)}
             className={`px-2 py-2 rounded text-[10px] text-left transition-colors ${
               currentType === preset.itemConfig.type
-                ? 'bg-[#f7b500]/15 text-[#ffc83d] ring-1 ring-[#f7b500]/30'
-                : 'bg-[#0c1018] border border-[#1a2a42] text-slate-400 hover:text-slate-200 hover:border-[#f7b500]/50'
+                ? 'bg-accent-wash text-accent-hover ring-1 ring-accent'
+                : 'bg-[#0c1018] border border-hairline text-slate-400 hover:text-slate-200 hover:border-accent-dim'
             }`}
             title={preset.description}
           >
@@ -166,8 +166,8 @@ function DataSection({ dataSource, onChange }: { dataSource: DataSourceConfig; o
               onClick={() => onChange({ ...dataSource, simulatedEasing: e })}
               className={`px-1.5 py-0.5 text-[9px] rounded transition-colors ${
                 dataSource.simulatedEasing === e
-                  ? 'bg-[#f7b500]/15 text-[#ffc83d] ring-1 ring-[#f7b500]/30'
-                  : 'bg-[#122240] text-slate-500 hover:text-slate-300'
+                  ? 'bg-accent-wash text-accent-hover ring-1 ring-accent'
+                  : 'bg-surface-3 text-slate-500 hover:text-slate-300'
               }`}
             >
               {e}
@@ -207,7 +207,7 @@ function ProgressBarStyle({ config, onChange }: { config: ProgressBarConfig; onC
           {shapes.map((s) => (
             <button key={s} onClick={() => onChange({ ...config, shape: s })}
               className={`px-1.5 py-0.5 text-[9px] rounded transition-colors capitalize ${
-                config.shape === s ? 'bg-[#f7b500]/15 text-[#ffc83d] ring-1 ring-[#f7b500]/30' : 'bg-[#122240] text-slate-500 hover:text-slate-300'
+                config.shape === s ? 'bg-accent-wash text-accent-hover ring-1 ring-accent' : 'bg-surface-3 text-slate-500 hover:text-slate-300'
               }`}>{s}</button>
           ))}
         </div>
@@ -236,7 +236,7 @@ function ProgressBarStyle({ config, onChange }: { config: ProgressBarConfig; onC
       <div className="flex items-center gap-2">
         <label className="text-[10px] text-slate-500 w-14">Label</label>
         <button onClick={() => onChange({ ...config, showLabel: !config.showLabel })}
-          className={`w-7 h-4 rounded-full transition-colors relative ${config.showLabel ? 'bg-[#f7b500]' : 'bg-[#1a2a42]'}`}>
+          className={`w-7 h-4 rounded-full transition-colors relative ${config.showLabel ? 'bg-accent' : 'bg-surface-4'}`}>
           <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${config.showLabel ? 'left-3.5' : 'left-0.5'}`} />
         </button>
       </div>
@@ -255,7 +255,7 @@ function StopwatchStyle({ config, onChange }: { config: StopwatchConfig; onChang
           {(['digital', 'analog'] as const).map((v) => (
             <button key={v} onClick={() => onChange({ ...config, variant: v })}
               className={`px-1.5 py-0.5 text-[9px] rounded transition-colors capitalize ${
-                config.variant === v ? 'bg-[#f7b500]/15 text-[#ffc83d] ring-1 ring-[#f7b500]/30' : 'bg-[#122240] text-slate-500 hover:text-slate-300'
+                config.variant === v ? 'bg-accent-wash text-accent-hover ring-1 ring-accent' : 'bg-surface-3 text-slate-500 hover:text-slate-300'
               }`}>{v}</button>
           ))}
         </div>
@@ -266,7 +266,7 @@ function StopwatchStyle({ config, onChange }: { config: StopwatchConfig; onChang
           {(['up', 'down'] as const).map((d) => (
             <button key={d} onClick={() => onChange({ ...config, direction: d })}
               className={`px-1.5 py-0.5 text-[9px] rounded transition-colors capitalize ${
-                config.direction === d ? 'bg-[#f7b500]/15 text-[#ffc83d] ring-1 ring-[#f7b500]/30' : 'bg-[#122240] text-slate-500 hover:text-slate-300'
+                config.direction === d ? 'bg-accent-wash text-accent-hover ring-1 ring-accent' : 'bg-surface-3 text-slate-500 hover:text-slate-300'
               }`}>{d}</button>
           ))}
         </div>
@@ -290,7 +290,7 @@ function CounterStyle({ config, onChange }: { config: CounterConfig; onChange: (
       <div className="flex items-center gap-2">
         <label className="text-[10px] text-slate-500 w-14">Commas</label>
         <button onClick={() => onChange({ ...config, thousandsSeparator: !config.thousandsSeparator })}
-          className={`w-7 h-4 rounded-full transition-colors relative ${config.thousandsSeparator ? 'bg-[#f7b500]' : 'bg-[#1a2a42]'}`}>
+          className={`w-7 h-4 rounded-full transition-colors relative ${config.thousandsSeparator ? 'bg-accent' : 'bg-surface-4'}`}>
           <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${config.thousandsSeparator ? 'left-3.5' : 'left-0.5'}`} />
         </button>
       </div>
@@ -298,12 +298,12 @@ function CounterStyle({ config, onChange }: { config: CounterConfig; onChange: (
         <div className="flex-1">
           <label className="text-[9px] text-slate-500">Prefix</label>
           <input value={config.prefix} onChange={(e) => onChange({ ...config, prefix: e.target.value })}
-            className="w-full text-[10px] bg-[#122240] text-slate-300 border border-[#1a2a42] rounded px-1.5 py-0.5 mt-0.5" />
+            className="w-full text-[10px] bg-surface-3 text-slate-300 border border-hairline rounded px-1.5 py-0.5 mt-0.5" />
         </div>
         <div className="flex-1">
           <label className="text-[9px] text-slate-500">Suffix</label>
           <input value={config.suffix} onChange={(e) => onChange({ ...config, suffix: e.target.value })}
-            className="w-full text-[10px] bg-[#122240] text-slate-300 border border-[#1a2a42] rounded px-1.5 py-0.5 mt-0.5" />
+            className="w-full text-[10px] bg-surface-3 text-slate-300 border border-hairline rounded px-1.5 py-0.5 mt-0.5" />
         </div>
       </div>
       <ColorPicker label="Color" color={config.digitStyle?.fillColor ?? [1, 1, 1, 1]} onChange={(fillColor) => onChange({ ...config, digitStyle: { ...config.digitStyle, fillColor } })} />
@@ -321,7 +321,7 @@ function RatingStarsStyle({ config, onChange }: { config: RatingStarsConfig; onC
       <div className="flex items-center gap-2">
         <label className="text-[10px] text-slate-500 w-14">Sequential</label>
         <button onClick={() => onChange({ ...config, animateSequentially: !config.animateSequentially })}
-          className={`w-7 h-4 rounded-full transition-colors relative ${config.animateSequentially ? 'bg-[#f7b500]' : 'bg-[#1a2a42]'}`}>
+          className={`w-7 h-4 rounded-full transition-colors relative ${config.animateSequentially ? 'bg-accent' : 'bg-surface-4'}`}>
           <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${config.animateSequentially ? 'left-3.5' : 'left-0.5'}`} />
         </button>
       </div>
@@ -341,7 +341,7 @@ function SpinnerStyle({ config, onChange }: { config: LoadingSpinnerConfig; onCh
           {variants.map((v) => (
             <button key={v} onClick={() => onChange({ ...config, variant: v })}
               className={`px-1.5 py-0.5 text-[9px] rounded transition-colors capitalize ${
-                config.variant === v ? 'bg-[#f7b500]/15 text-[#ffc83d] ring-1 ring-[#f7b500]/30' : 'bg-[#122240] text-slate-500 hover:text-slate-300'
+                config.variant === v ? 'bg-accent-wash text-accent-hover ring-1 ring-accent' : 'bg-surface-3 text-slate-500 hover:text-slate-300'
               }`}>{v}</button>
           ))}
         </div>
@@ -367,14 +367,14 @@ function GaugeStyle({ config, onChange }: { config: GaugeConfig; onChange: (c: G
       <div className="flex items-center gap-2">
         <label className="text-[10px] text-slate-500 w-14">Needle</label>
         <button onClick={() => onChange({ ...config, showNeedle: !config.showNeedle })}
-          className={`w-7 h-4 rounded-full transition-colors relative ${config.showNeedle ? 'bg-[#f7b500]' : 'bg-[#1a2a42]'}`}>
+          className={`w-7 h-4 rounded-full transition-colors relative ${config.showNeedle ? 'bg-accent' : 'bg-surface-4'}`}>
           <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${config.showNeedle ? 'left-3.5' : 'left-0.5'}`} />
         </button>
       </div>
       <div className="flex items-center gap-2">
         <label className="text-[10px] text-slate-500 w-14">Ticks</label>
         <button onClick={() => onChange({ ...config, showTicks: !config.showTicks })}
-          className={`w-7 h-4 rounded-full transition-colors relative ${config.showTicks ? 'bg-[#f7b500]' : 'bg-[#1a2a42]'}`}>
+          className={`w-7 h-4 rounded-full transition-colors relative ${config.showTicks ? 'bg-accent' : 'bg-surface-4'}`}>
           <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${config.showTicks ? 'left-3.5' : 'left-0.5'}`} />
         </button>
       </div>

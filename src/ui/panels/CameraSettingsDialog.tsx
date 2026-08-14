@@ -76,7 +76,7 @@ export function CameraSettingsDialog({ layer, onClose }: { layer: CameraLayer; o
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
       <div className="w-[880px] max-w-[94vw] max-h-[92vh] overflow-y-auto bg-[#111821] border border-[#2a3a50] rounded-lg shadow-2xl shadow-black/50" onClick={(e) => e.stopPropagation()}>
-        <div className="px-4 py-3 border-b border-[#1c2433] flex items-center gap-2">
+        <div className="px-4 py-3 border-b border-hairline flex items-center gap-2">
           <Video size={15} className="text-amber-400" />
           <h2 className="text-[13px] font-semibold text-slate-100 flex-1">Camera Settings</h2>
           <button onClick={onClose} className="p-1 rounded text-slate-500 hover:text-slate-200 hover:bg-[#1a2233]"><X size={14} /></button>
@@ -84,10 +84,10 @@ export function CameraSettingsDialog({ layer, onClose }: { layer: CameraLayer; o
 
         <div className="flex items-stretch">
           {/* Left: tutorial video placeholder (no video yet — just the placeholder). */}
-          <div className="w-1/2 p-4 border-r border-[#1c2433] flex flex-col gap-3">
+          <div className="w-1/2 p-4 border-r border-hairline flex flex-col gap-3">
             <p className="text-[12px] text-slate-300 font-medium leading-snug">Confused on how to use the camera? Watch this quick tutorial</p>
-            <div className="flex-1 min-h-[240px] rounded-lg border border-[#1a2a42] relative overflow-hidden flex items-center justify-center">
-              <div className="absolute inset-0 bg-gradient-to-br from-[#122240] to-[#0a0f16]" />
+            <div className="flex-1 min-h-[240px] rounded-lg border border-hairline relative overflow-hidden flex items-center justify-center">
+              <div className="absolute inset-0 bg-gradient-to-br from-surface-3 to-[#0a0f16]" />
               <div className="relative flex flex-col items-center gap-2 text-slate-500">
                 <div className="w-16 h-16 rounded-full bg-black/40 border border-[#2a3a50] flex items-center justify-center">
                   <Play size={24} className="text-slate-300 ml-1" fill="currentColor" />
@@ -113,7 +113,7 @@ export function CameraSettingsDialog({ layer, onClose }: { layer: CameraLayer; o
             </Row>
           </div>
 
-          <div className="h-px bg-[#1c2433] my-1" />
+          <div className="h-px bg-surface-2 my-1" />
 
           <Row label="Zoom"><Num value={toDisp(zoom)} onChange={(v) => writeZoom(fromDisp(v))} suffix={unitLabel} /></Row>
           <Row label="Angle of View"><Num value={aovDeg} onChange={setAov} suffix="°" step={0.5} /></Row>
@@ -121,7 +121,7 @@ export function CameraSettingsDialog({ layer, onClose }: { layer: CameraLayer; o
           <Row label="Film Size"><Num value={filmSize} onChange={setFilmSize} suffix="mm" /></Row>
           <Row label="Comp Size"><span className="text-[11px] text-slate-500 font-mono">{Math.round(C)} px ({measure})</span></Row>
 
-          <div className="h-px bg-[#1c2433] my-1" />
+          <div className="h-px bg-surface-2 my-1" />
 
           <label className="flex items-center gap-2 text-[12px] text-slate-200 font-medium">
             <input type="checkbox" checked={dofOn} onChange={(e) => set('camera.dofEnabled', e.target.checked)} />
@@ -132,7 +132,7 @@ export function CameraSettingsDialog({ layer, onClose }: { layer: CameraLayer; o
             <Row label="Focus Distance">
               <div className="flex items-center gap-1.5">
                 <Num value={toDisp(focusDistance)} onChange={(v) => setFocus(fromDisp(v))} suffix={unitLabel} disabled={lockToZoom} />
-                <button onClick={() => setLock(!lockToZoom)} title="Lock focus distance to zoom" className={`px-1.5 py-1 rounded text-[9px] font-medium border ${lockToZoom ? 'bg-amber-500/15 border-amber-500/40 text-amber-300' : 'bg-[#122240] border-[#1a2a42] text-slate-400'}`}>Lock</button>
+                <button onClick={() => setLock(!lockToZoom)} title="Lock focus distance to zoom" className={`px-1.5 py-1 rounded text-[9px] font-medium border ${lockToZoom ? 'bg-amber-500/15 border-amber-500/40 text-amber-300' : 'bg-surface-3 border-hairline text-slate-400'}`}>Lock</button>
               </div>
             </Row>
             <Row label="Aperture"><Num value={toDisp(aperture)} onChange={(v) => setAperture(fromDisp(v))} suffix={unitLabel} /></Row>
@@ -142,9 +142,9 @@ export function CameraSettingsDialog({ layer, onClose }: { layer: CameraLayer; o
           </div>
         </div>
 
-        <div className="px-4 py-3 border-t border-[#1c2433] flex items-center justify-between">
+        <div className="px-4 py-3 border-t border-hairline flex items-center justify-between">
           <span className="text-[10px] text-slate-600">Lens fields are coupled; only Zoom is stored.</span>
-          <button onClick={onClose} className="px-3 py-[6px] text-[11px] font-semibold rounded-md bg-[#f7b500] hover:bg-[#ffc83d] text-[#0a0f16] transition-colors">Done</button>
+          <button onClick={onClose} className="px-3 py-[6px] text-[11px] font-semibold rounded-md bg-accent hover:bg-accent-hover text-on-accent transition-colors">Done</button>
         </div>
       </div>
     </div>
@@ -162,7 +162,7 @@ function Row({ label, children, compact }: { label: string; children: React.Reac
 
 function Select({ value, onChange, options, labels }: { value: string; onChange: (v: string) => void; options: string[]; labels?: Record<string, string> }) {
   return (
-    <select value={value} onChange={(e) => onChange(e.target.value)} className="w-full h-6 px-1.5 rounded bg-[#0b1220] border border-[#1a2a42] text-[11px] text-slate-200 focus:outline-none capitalize">
+    <select value={value} onChange={(e) => onChange(e.target.value)} className="w-full h-6 px-1.5 rounded bg-surface-sunken border border-hairline text-[11px] text-slate-200 focus:outline-none capitalize">
       {options.map((o) => <option key={o} value={o}>{labels?.[o] ?? o}</option>)}
     </select>
   );
@@ -186,7 +186,7 @@ function Num({ value, onChange, suffix, prefix, step = 1, disabled }: { value: n
         onChange={(e) => setText(e.target.value)}
         onBlur={commit}
         onKeyDown={(e) => { if (e.key === 'Enter') commit(); }}
-        className="w-full h-6 px-1.5 rounded bg-[#0b1220] border border-[#1a2a42] text-[11px] text-slate-200 focus:outline-none focus:border-[#f7b500]/40 disabled:opacity-50"
+        className="w-full h-6 px-1.5 rounded bg-surface-sunken border border-hairline text-[11px] text-slate-200 focus:outline-none focus:border-accent-dim disabled:opacity-50"
       />
       {suffix && <span className="text-[10px] text-slate-600 w-5">{suffix}</span>}
     </div>

@@ -42,7 +42,7 @@ export function AnimationTemplatesTab() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search animations…"
-          className="w-full h-7 px-2 rounded bg-[#0b1220] border border-[#1a2a42] text-[12px] text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-[#2a3a52]"
+          className="w-full h-7 px-2 rounded bg-surface-sunken border border-hairline text-[12px] text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-hairline"
         />
       </div>
 
@@ -53,7 +53,7 @@ export function AnimationTemplatesTab() {
             key={c}
             onClick={() => setFilter(c)}
             className={`px-2 py-0.5 rounded-full text-[10px] font-medium transition-colors ${
-              filter === c ? 'bg-[#f7b500]/15 text-[#f7b500]' : 'bg-[#0e1c32] text-slate-400 hover:text-slate-200'
+              filter === c ? 'bg-accent-wash text-accent' : 'bg-surface-2 text-slate-400 hover:text-slate-200'
             }`}
           >
             {c === 'all' ? 'All' : CATEGORY_LABELS[c]}
@@ -67,8 +67,8 @@ export function AnimationTemplatesTab() {
           <div className="text-[11px] text-slate-500 text-center py-8">No animations match.</div>
         )}
         {shown.map((t) => (
-          <div key={t.id} className="rounded-lg bg-[#0b1524] border border-[#1a2a42] overflow-hidden">
-            <div className="h-20 flex items-center justify-center bg-gradient-to-br from-[#0e1c32] to-[#0a1220] text-slate-600">
+          <div key={t.id} className="rounded-lg bg-[#0b1524] border border-hairline overflow-hidden">
+            <div className="h-20 flex items-center justify-center bg-gradient-to-br from-surface-2 to-[#0a1220] text-slate-600">
               <Sparkles size={22} />
             </div>
             <div className="p-2">
@@ -80,7 +80,7 @@ export function AnimationTemplatesTab() {
               <button
                 onClick={() => insertAnimated(t.id)}
                 disabled={building}
-                className="mt-2 w-full h-7 flex items-center justify-center gap-1 rounded bg-[#f7b500] hover:bg-[#ffc21a] disabled:opacity-40 disabled:cursor-not-allowed text-[#0e1c32] text-[11px] font-semibold transition-colors"
+                className="mt-2 w-full h-7 flex items-center justify-center gap-1 rounded bg-accent hover:bg-[#ffc21a] disabled:opacity-40 disabled:cursor-not-allowed text-on-accent text-[11px] font-semibold transition-colors"
               >
                 <Plus size={12} /> {building ? 'Building…' : 'Use this'}
               </button>
@@ -90,12 +90,12 @@ export function AnimationTemplatesTab() {
       </div>
 
       {/* Always-visible footer: drop every animation onto the timeline back-to-back. */}
-      <div className="flex-shrink-0 p-2 border-t border-[#1a2a42] bg-[#0b1220]">
+      <div className="flex-shrink-0 p-2 border-t border-hairline bg-surface-sunken">
         <button
           onClick={() => insertAll()}
           disabled={building}
           title="Insert all animations in sequence, one after another"
-          className="w-full h-8 flex items-center justify-center gap-1.5 rounded-md bg-[#122240] hover:bg-[#1a2f52] disabled:opacity-40 disabled:cursor-not-allowed text-slate-100 text-[12px] font-semibold border border-[#26405f] transition-colors"
+          className="w-full h-8 flex items-center justify-center gap-1.5 rounded-md bg-surface-3 hover:bg-[#1a2f52] disabled:opacity-40 disabled:cursor-not-allowed text-slate-100 text-[12px] font-semibold border border-[#26405f] transition-colors"
         >
           <ListVideo size={14} /> All ({ANIMATION_TEMPLATES.length}) → timeline
         </button>

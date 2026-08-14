@@ -86,8 +86,8 @@ const ReviewTrackRow = memo(function ReviewTrackRow({
   trackWidth: number;
 }) {
   return (
-    <div className="flex border-b border-[#16294a]" style={{ height: ROW_HEIGHT }}>
-      <div className="flex items-center gap-1.5 px-2 flex-shrink-0 bg-[#0a1628] border-r border-[#1a2a42]" style={{ width: LABEL_WIDTH }}>
+    <div className="flex border-b border-hairline" style={{ height: ROW_HEIGHT }}>
+      <div className="flex items-center gap-1.5 px-2 flex-shrink-0 bg-surface-1 border-r border-hairline" style={{ width: LABEL_WIDTH }}>
         {trackIcon(track.type)}
         <span className="text-[9px] text-slate-500 truncate">{track.name || track.type}</span>
       </div>
@@ -189,10 +189,10 @@ export const ReviewTimeline = memo(function ReviewTimeline() {
   }, [durationFrames]);
 
   return (
-    <div ref={containerRef} className="h-full flex flex-col bg-[#0e1c32] overflow-hidden relative">
+    <div ref={containerRef} className="h-full flex flex-col bg-surface-2 overflow-hidden relative">
       {/* Ruler */}
-      <div className="flex flex-shrink-0 border-b border-[#1a2a42]" style={{ height: RULER_HEIGHT }}>
-        <div className="flex-shrink-0 bg-[#0a1628] border-r border-[#1a2a42] flex items-center px-2" style={{ width: LABEL_WIDTH }}>
+      <div className="flex flex-shrink-0 border-b border-hairline" style={{ height: RULER_HEIGHT }}>
+        <div className="flex-shrink-0 bg-surface-1 border-r border-hairline flex items-center px-2" style={{ width: LABEL_WIDTH }}>
           <span className="text-[9px] text-slate-500 font-medium">Review Timeline</span>
         </div>
         <div
@@ -236,10 +236,10 @@ export const ReviewTimeline = memo(function ReviewTimeline() {
       {/* Playhead */}
       <div
         ref={playheadRef}
-        className="absolute top-0 bottom-0 w-px bg-[#f7b500] pointer-events-none z-10"
+        className="absolute top-0 bottom-0 w-px bg-accent pointer-events-none z-10"
         style={{ transform: `translateX(${LABEL_WIDTH}px)` }}
       >
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[4px] border-r-[4px] border-t-[5px] border-l-transparent border-r-transparent border-t-[#f7b500]" />
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[4px] border-r-[4px] border-t-[5px] border-l-transparent border-r-transparent border-t-accent" />
       </div>
     </div>
   );

@@ -32,7 +32,7 @@ export function SceneSwitcher() {
   const nameFor = (id: string): string => (id === activeCompositionId ? composition.name : compositions[id]?.name) ?? 'Scene';
 
   return (
-    <div ref={ref} className="relative flex items-stretch border-l border-[#1a2a42]">
+    <div ref={ref} className="relative flex items-stretch border-l border-hairline">
       <button
         onClick={() => setOpen((o) => !o)}
         title="Scenes"
@@ -43,7 +43,7 @@ export function SceneSwitcher() {
         <ChevronDown size={12} className="text-slate-500" />
       </button>
       {open && (
-        <div className="absolute top-full right-0 mt-0.5 z-[60] bg-[#0e1c32] border border-[#1a2a42] rounded-md shadow-2xl py-1 min-w-[210px] max-h-[380px] overflow-y-auto">
+        <div className="absolute top-full right-0 mt-0.5 z-[60] bg-surface-2 border border-hairline rounded-md shadow-2xl py-1 min-w-[210px] max-h-[380px] overflow-y-auto">
           <div className="px-3 py-1 text-[9px] uppercase tracking-wider text-slate-600">Scenes</div>
           {scenes.map((id) => (
             <button
@@ -51,11 +51,11 @@ export function SceneSwitcher() {
               onClick={() => { switchScene(id); setOpen(false); }}
               className="w-full flex items-center gap-2 px-3 py-1 text-[11px] text-slate-300 hover:bg-white/[0.05] hover:text-slate-100 cursor-pointer"
             >
-              <span className="w-3 flex-shrink-0">{id === currentSceneId && <Check size={11} className="text-[#f7b500]" />}</span>
+              <span className="w-3 flex-shrink-0">{id === currentSceneId && <Check size={11} className="text-accent" />}</span>
               <span className="flex-1 text-left truncate">{nameFor(id)}</span>
             </button>
           ))}
-          <div className="h-px bg-[#1a2a42] my-1" />
+          <div className="h-px bg-surface-4 my-1" />
           <button
             onClick={() => { createScene(); setOpen(false); }}
             className="w-full flex items-center gap-2 px-3 py-1 text-[11px] text-slate-300 hover:bg-white/[0.05] hover:text-slate-100 cursor-pointer"

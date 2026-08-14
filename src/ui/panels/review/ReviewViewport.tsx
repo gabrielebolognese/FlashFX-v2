@@ -134,7 +134,7 @@ export function ReviewViewport() {
       </div>
 
       {/* Transport bar */}
-      <div className="h-9 min-h-[36px] bg-[#0e1c32] border-t border-[#1a2a42] flex items-center px-3 gap-3">
+      <div className="h-9 min-h-[36px] bg-surface-2 border-t border-hairline flex items-center px-3 gap-3">
         <div className="flex items-center gap-1.5">
           <button
             onClick={() => { pause(); seekTo(0); }}
@@ -144,7 +144,7 @@ export function ReviewViewport() {
           </button>
           <button
             onClick={() => { if (isPlaying) pause(); else play(); }}
-            className="w-7 h-7 flex items-center justify-center rounded-full bg-[#f7b500]/10 text-[#f7b500] hover:bg-[#f7b500]/15 hover:text-[#ffc83d] transition-colors"
+            className="w-7 h-7 flex items-center justify-center rounded-full bg-accent-wash text-accent hover:bg-accent-wash hover:text-accent-hover transition-colors"
           >
             {isPlaying ? <Pause size={13} /> : <Play size={13} className="ml-0.5" />}
           </button>
@@ -169,15 +169,15 @@ export function ReviewViewport() {
             max={durationFrames - 1}
             value={currentFrame}
             onChange={(e) => scrubTo(Number(e.target.value))}
-            className="w-full h-1 appearance-none bg-[#1a2a42] rounded cursor-pointer
+            className="w-full h-1 appearance-none bg-surface-4 rounded cursor-pointer
               [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-2.5 [&::-webkit-slider-thumb]:h-3.5
-              [&::-webkit-slider-thumb]:bg-[#f7b500] [&::-webkit-slider-thumb]:rounded-sm [&::-webkit-slider-thumb]:cursor-pointer
+              [&::-webkit-slider-thumb]:bg-accent [&::-webkit-slider-thumb]:rounded-sm [&::-webkit-slider-thumb]:cursor-pointer
               [&::-webkit-slider-thumb]:shadow-[0_0_4px_rgba(247,181,0,0.4)]"
           />
         </div>
 
         <div className="flex items-center gap-2 text-[10px] font-mono">
-          <span className="text-[#f7b500]">{formatTimecode(currentFrame)}</span>
+          <span className="text-accent">{formatTimecode(currentFrame)}</span>
           <span className="text-slate-600">/</span>
           <span className="text-slate-500">{formatTimecode(durationFrames)}</span>
         </div>

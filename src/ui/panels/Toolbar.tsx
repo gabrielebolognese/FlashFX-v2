@@ -434,7 +434,7 @@ export function Toolbar() {
       </div>
 
       {/* Row 2: Toolbar with action buttons */}
-      <div className="h-[28px] bg-[#0a1628]/60 border-t border-[#1a2a42]/50 flex items-center px-2 gap-0.5 relative z-40">
+      <div className="h-[28px] bg-[#0a1628]/60 border-t border-hairline flex items-center px-2 gap-0.5 relative z-40">
         <ToolbarButton icon={FilePlus} label="New" onClick={handleNewProject} />
         <ToolbarButton icon={FolderOpen} label="Open" onClick={handleNewProject} />
         <ToolbarButton icon={Save} label="Save" onClick={handleSave} />
@@ -455,8 +455,8 @@ export function Toolbar() {
           title="Randomize fill color on copy / paste / duplicate"
           className={`flex items-center gap-1 px-1.5 h-[22px] text-[10px] rounded transition-colors ${
             randomizeColors
-              ? 'bg-[#f7b500]/10 text-[#ffc83d] ring-1 ring-[#f7b500]/30'
-              : 'text-slate-400 hover:text-slate-100 hover:bg-[#1a2a42]'
+              ? 'bg-accent-wash text-accent-hover ring-1 ring-accent'
+              : 'text-slate-400 hover:text-slate-100 hover:bg-surface-4'
           }`}
         >
           <Shuffle size={12} strokeWidth={1.5} />
@@ -477,7 +477,7 @@ export function Toolbar() {
       {showSettings && (
         <>
           <div className="fixed inset-0 z-30" onClick={() => setShowSettings(false)} />
-          <div className="absolute top-[52px] left-[320px] z-50 bg-[#0e1c32] border border-[#1a2a42] rounded-lg p-3 shadow-xl w-56">
+          <div className="absolute top-[52px] left-[320px] z-50 bg-surface-2 border border-hairline rounded-lg p-3 shadow-xl w-56">
             <div className="text-[10px] uppercase tracking-wider text-slate-500 font-medium mb-2">Composition</div>
             <div className="space-y-2">
               <SettingRow label="Width" value={composition.settings.width} onChange={(v) => setCompositionSetting('width', v)} />
@@ -490,7 +490,7 @@ export function Toolbar() {
                     <button
                       key={label}
                       onClick={() => setCompositionSize(w, h)}
-                      className={`flex-1 text-[10px] py-1 rounded border transition-colors ${composition.settings.width === w && composition.settings.height === h ? 'bg-[#f7b500]/20 border-[#f7b500]/40 text-[#f7b500]' : 'bg-[#122240] border-[#1a2a42] text-slate-400 hover:text-slate-200'}`}
+                      className={`flex-1 text-[10px] py-1 rounded border transition-colors ${composition.settings.width === w && composition.settings.height === h ? 'bg-accent-wash border-accent-dim text-accent' : 'bg-surface-3 border-hairline text-slate-400 hover:text-slate-200'}`}
                     >
                       {label}
                     </button>
@@ -571,9 +571,9 @@ function MenuDropdown({
         {label}
       </button>
       {isOpen && (
-        <div className="absolute top-full left-0 mt-0.5 z-50 bg-[#0e1c32] border border-[#1a2a42] rounded-md shadow-2xl shadow-black/50 py-1 min-w-[200px]">
+        <div className="absolute top-full left-0 mt-0.5 z-50 bg-surface-2 border border-hairline rounded-md shadow-2xl shadow-black/50 py-1 min-w-[200px]">
           {items.map((item, i) => {
-            if (item.divider) return <div key={i} className="h-px bg-[#1a2a42] my-1 mx-2" />;
+            if (item.divider) return <div key={i} className="h-px bg-surface-4 my-1 mx-2" />;
             if (item.submenu) {
               return (
                 <div key={i} className="relative" onMouseEnter={() => setOpenSub(i)} onMouseLeave={() => setOpenSub(null)}>
@@ -582,7 +582,7 @@ function MenuDropdown({
                     <span className="text-slate-600">›</span>
                   </button>
                   {openSub === i && (
-                    <div className="absolute left-full top-0 -mt-1 ml-0.5 z-50 bg-[#0e1c32] border border-[#1a2a42] rounded-md shadow-2xl py-1 min-w-[200px] max-h-[340px] overflow-y-auto">
+                    <div className="absolute left-full top-0 -mt-1 ml-0.5 z-50 bg-surface-2 border border-hairline rounded-md shadow-2xl py-1 min-w-[200px] max-h-[340px] overflow-y-auto">
                       {item.submenu.length === 0 ? (
                         <div className="px-3 py-1 text-[11px] text-slate-600">No recent projects</div>
                       ) : item.submenu.map((sub, j) => (
@@ -742,7 +742,7 @@ function ToolbarColorControl({ type }: { type: 'fill' | 'stroke' | 'background' 
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-1 z-50 bg-[#0e1c32] border border-[#1a2a42] rounded-lg p-3 shadow-xl shadow-black/50 w-48">
+        <div className="absolute right-0 top-full mt-1 z-50 bg-surface-2 border border-hairline rounded-lg p-3 shadow-xl shadow-black/50 w-48">
           <div className="text-[10px] text-slate-400 font-medium mb-2">
             {type === 'fill' ? 'Default Fill Color' : type === 'stroke' ? 'Default Stroke Color' : 'Background Color'}
           </div>
@@ -750,7 +750,7 @@ function ToolbarColorControl({ type }: { type: 'fill' | 'stroke' | 'background' 
             type="color"
             value={hex}
             onChange={(e) => handleColorChange(e.target.value)}
-            className="w-full h-8 rounded cursor-pointer border border-[#1a2a42] bg-transparent"
+            className="w-full h-8 rounded cursor-pointer border border-hairline bg-transparent"
           />
           <div className="flex items-center gap-1.5 mt-2">
             <span className="text-[10px] text-slate-500 font-mono">{hex.toUpperCase()}</span>
@@ -781,7 +781,7 @@ function SettingRow({ label, value, onChange, suffix }: {
         type="number"
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="flex-1 bg-[#122240] text-[11px] text-slate-300 px-1.5 py-0.5 rounded border border-[#1a2a42] focus:border-yellow-400/50 outline-none"
+        className="flex-1 bg-surface-3 text-[11px] text-slate-300 px-1.5 py-0.5 rounded border border-hairline focus:border-yellow-400/50 outline-none"
       />
       {suffix && <span className="text-[9px] text-slate-600">{suffix}</span>}
     </div>
@@ -826,8 +826,8 @@ function ShortcutsModal({ onClose }: { onClose: () => void }) {
     <>
       <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm" onClick={onClose} />
       <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
-        <div className="bg-[#0e1c32] border border-[#1c3155] rounded-xl shadow-2xl w-[520px] max-h-[70vh] overflow-hidden pointer-events-auto">
-          <div className="px-5 py-3 border-b border-[#1c3155] flex items-center justify-between">
+        <div className="bg-surface-2 border border-hairline rounded-xl shadow-2xl w-[520px] max-h-[70vh] overflow-hidden pointer-events-auto">
+          <div className="px-5 py-3 border-b border-hairline flex items-center justify-between">
             <h2 className="text-[12px] font-semibold text-slate-200">Keyboard Shortcuts</h2>
             <button onClick={onClose} className="text-[11px] text-slate-500 hover:text-slate-300 transition-colors">ESC</button>
           </div>
@@ -840,7 +840,7 @@ function ShortcutsModal({ onClose }: { onClose: () => void }) {
                     {group.shortcuts.map((s) => (
                       <div key={s.keys} className="flex items-center justify-between">
                         <span className="text-[10px] text-slate-400">{s.desc}</span>
-                        <kbd className="text-[9px] text-slate-500 bg-[#122240] border border-[#1c3155] rounded px-1.5 py-0.5 font-mono">{s.keys}</kbd>
+                        <kbd className="text-[9px] text-slate-500 bg-surface-3 border border-hairline rounded px-1.5 py-0.5 font-mono">{s.keys}</kbd>
                       </div>
                     ))}
                   </div>

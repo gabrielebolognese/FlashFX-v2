@@ -89,8 +89,8 @@ export function BrandColorPicker({ onSelect, currentAlpha }: BrandColorPickerPro
         onClick={() => setOpen(!open)}
         className={`w-5 h-5 flex items-center justify-center rounded border transition-colors ${
           open
-            ? 'bg-[#f7b500]/10 border-[#f7b500]/40 text-[#ffc83d]'
-            : 'border-[#1c2433] text-slate-500 hover:text-slate-300 hover:border-[#2a3a5c] hover:bg-[#16294a]'
+            ? 'bg-accent-wash border-accent-dim text-accent-hover'
+            : 'border-hairline text-slate-500 hover:text-slate-300 hover:border-[#2a3a5c] hover:bg-surface-4'
         }`}
         title="Brand colors"
       >
@@ -100,15 +100,15 @@ export function BrandColorPicker({ onSelect, currentAlpha }: BrandColorPickerPro
       {open && (
         <div
           ref={popupRef}
-          className="absolute z-[100] top-full right-0 mt-1 w-[160px] bg-[#0d1b30] border border-[#1c3155] rounded-lg shadow-xl shadow-black/50 overflow-hidden"
+          className="absolute z-[100] top-full right-0 mt-1 w-[160px] bg-[#0d1b30] border border-hairline rounded-lg shadow-xl shadow-black/50 overflow-hidden"
         >
-          <div className="px-2.5 py-1.5 border-b border-[#1c3155]">
+          <div className="px-2.5 py-1.5 border-b border-hairline">
             <span className="text-[9px] font-medium text-slate-400 uppercase tracking-wider">Brand Colors</span>
           </div>
 
           {loading && (
             <div className="px-3 py-4 flex items-center justify-center">
-              <div className="w-4 h-4 border-2 border-slate-600 border-t-[#f7b500] rounded-full animate-spin" />
+              <div className="w-4 h-4 border-2 border-slate-600 border-t-accent rounded-full animate-spin" />
             </div>
           )}
 
@@ -129,7 +129,7 @@ export function BrandColorPicker({ onSelect, currentAlpha }: BrandColorPickerPro
                 <button
                   key={color.id}
                   onClick={() => handleSelect(color.hex)}
-                  className="w-6 h-6 rounded-md border border-[#1c3155] hover:border-[#f7b500]/50 hover:scale-110 transition-all shadow-sm"
+                  className="w-6 h-6 rounded-md border border-hairline hover:border-accent-dim hover:scale-110 transition-all shadow-sm"
                   style={{ backgroundColor: color.hex }}
                   title={color.hex}
                 />

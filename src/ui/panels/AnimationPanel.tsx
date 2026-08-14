@@ -28,8 +28,8 @@ export function AnimationPanel() {
   }, [view]);
 
   return (
-    <div className="flex flex-col h-full bg-[#081220]">
-      <div className="h-[26px] min-h-[26px] flex items-center px-2 gap-1 border-b border-[#1a2a42] bg-[#081220]">
+    <div className="flex flex-col h-full bg-surface-sunken">
+      <div className="h-[26px] min-h-[26px] flex items-center px-2 gap-1 border-b border-hairline bg-surface-sunken">
         <TabButton
           active={view === 'keyframes'}
           onClick={() => setView('keyframes')}
@@ -63,8 +63,8 @@ function TabButton({ active, onClick, icon, label }: TabButtonProps) {
       onClick={onClick}
       className={`flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-medium transition-colors ${
         active
-          ? 'bg-[#f7b500]/10 text-[#f7b500] border border-[#f7b500]/30'
-          : 'text-slate-500 border border-transparent hover:text-slate-300 hover:bg-[#122240]'
+          ? 'bg-accent-wash text-accent border border-accent-dim'
+          : 'text-slate-500 border border-transparent hover:text-slate-300 hover:bg-surface-3'
       }`}
     >
       {icon}

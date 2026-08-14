@@ -160,7 +160,7 @@ export function StaggerPanel() {
             <select
               value={config.directionMode}
               onChange={(e) => setConfig({ ...config, directionMode: e.target.value as StaggerDirectionMode })}
-              className="w-full bg-[#0a1628] border border-[#1a2a42] rounded px-1.5 py-1 text-[10px] text-slate-300"
+              className="w-full bg-surface-1 border border-hairline rounded px-1.5 py-1 text-[10px] text-slate-300"
             >
               {DIRECTION_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
@@ -193,7 +193,7 @@ export function StaggerPanel() {
                   step={1}
                   disabled={config.totalDurationLock.enabled}
                   onChange={(e) => setConfig({ ...config, gapFrames: Math.max(0, +e.target.value) })}
-                  className="w-full bg-[#0a1628] border border-[#1a2a42] rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5 disabled:opacity-40"
+                  className="w-full bg-surface-1 border border-hairline rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5 disabled:opacity-40"
                 />
               </label>
               <label className="text-[9px] text-slate-500">
@@ -204,7 +204,7 @@ export function StaggerPanel() {
                   min={1}
                   step={1}
                   onChange={(e) => setConfig({ ...config, totalDurationLock: { enabled: true, totalFrames: Math.max(1, +e.target.value) } })}
-                  className="w-full bg-[#0a1628] border border-[#1a2a42] rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
+                  className="w-full bg-surface-1 border border-hairline rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
                 />
               </label>
             </div>
@@ -225,7 +225,7 @@ export function StaggerPanel() {
             <select
               value={config.curveProfile}
               onChange={(e) => setConfig({ ...config, curveProfile: e.target.value as StaggerCurveProfile })}
-              className="w-full bg-[#0a1628] border border-[#1a2a42] rounded px-1.5 py-1 text-[10px] text-slate-300"
+              className="w-full bg-surface-1 border border-hairline rounded px-1.5 py-1 text-[10px] text-slate-300"
             >
               {CURVE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
@@ -250,7 +250,7 @@ export function StaggerPanel() {
             <select
               value={config.groupExpansion}
               onChange={(e) => setConfig({ ...config, groupExpansion: e.target.value as StaggerGroupExpansion })}
-              className="w-full bg-[#0a1628] border border-[#1a2a42] rounded px-1.5 py-1 text-[10px] text-slate-300"
+              className="w-full bg-surface-1 border border-hairline rounded px-1.5 py-1 text-[10px] text-slate-300"
             >
               {EXPANSION_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
@@ -287,7 +287,7 @@ export function StaggerPanel() {
 
           {/* Preview */}
           {sortedTargets.length > 0 && (
-            <div className="bg-[#0a1628] border border-[#1a2a42] rounded p-2">
+            <div className="bg-surface-1 border border-hairline rounded p-2">
               <div className="text-[9px] text-slate-500 mb-1">Order Preview</div>
               <div className="flex flex-wrap gap-0.5">
                 {sortedTargets.slice(0, 20).map((id, idx) => {
@@ -296,7 +296,7 @@ export function StaggerPanel() {
                   return (
                     <div
                       key={id}
-                      className="flex items-center gap-0.5 bg-[#081220] rounded px-1 py-0.5"
+                      className="flex items-center gap-0.5 bg-surface-sunken rounded px-1 py-0.5"
                       title={`${layer?.name ?? id} (offset: ${offset}f)`}
                     >
                       <span className="text-[8px] text-amber-400 font-mono">{idx + 1}</span>

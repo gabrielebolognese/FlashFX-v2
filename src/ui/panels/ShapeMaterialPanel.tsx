@@ -53,7 +53,7 @@ export function ShapeMaterialPanel({ layer }: ShapeMaterialPanelProps) {
         config={fillConfig}
         onChange={setFill}
       />
-      <div className="border-t border-[#1a2a42]" />
+      <div className="border-t border-hairline" />
       <MaterialSection
         title="Stroke Material"
         config={strokeConfig}
@@ -62,7 +62,7 @@ export function ShapeMaterialPanel({ layer }: ShapeMaterialPanelProps) {
           fillConfig.enabled && fillConfig.layers.length > 0 ? (
             <button
               onClick={matchStrokeToFill}
-              className="flex items-center gap-1 px-1.5 py-0.5 text-[9px] rounded bg-[#122240] text-slate-400 hover:text-slate-200"
+              className="flex items-center gap-1 px-1.5 py-0.5 text-[9px] rounded bg-surface-3 text-slate-400 hover:text-slate-200"
               title="Copy fill to stroke"
             >
               <Copy size={9} />
@@ -129,7 +129,7 @@ export function MaterialSection({ title, config, onChange, extraActions }: Secti
           {enabled && layers.length > 0 && (
             <button
               onClick={clearAll}
-              className="flex items-center gap-1 px-1.5 py-0.5 text-[9px] rounded bg-[#122240] text-slate-500 hover:text-red-400"
+              className="flex items-center gap-1 px-1.5 py-0.5 text-[9px] rounded bg-surface-3 text-slate-500 hover:text-red-400"
               title="None"
             >
               <X size={9} />
@@ -139,7 +139,7 @@ export function MaterialSection({ title, config, onChange, extraActions }: Secti
           <button
             onClick={addLayer}
             disabled={layers.length >= MAX_LAYERS}
-            className="p-1 rounded hover:bg-[#1a2a42] text-slate-400 hover:text-slate-200 disabled:opacity-30"
+            className="p-1 rounded hover:bg-surface-4 text-slate-400 hover:text-slate-200 disabled:opacity-30"
             title="Add layer"
           >
             <Plus size={11} />
@@ -150,7 +150,7 @@ export function MaterialSection({ title, config, onChange, extraActions }: Secti
       {(!enabled || layers.length === 0) && (
         <button
           onClick={addLayer}
-          className="w-full py-2 rounded border border-dashed border-[#243a5c] text-[10px] text-slate-400 hover:bg-[#122240] hover:text-slate-200 hover:border-[#f7b500]/50 transition-colors"
+          className="w-full py-2 rounded border border-dashed border-hairline text-[10px] text-slate-400 hover:bg-surface-3 hover:text-slate-200 hover:border-accent-dim transition-colors"
         >
           + Add Fill Color
         </button>
@@ -158,7 +158,7 @@ export function MaterialSection({ title, config, onChange, extraActions }: Secti
 
       {enabled && layers.length > 0 && (
         <div
-          className="h-6 rounded border border-[#243a5c]"
+          className="h-6 rounded border border-hairline"
           style={{
             ...previewStyle,
             backgroundColor: previewStyle.backgroundColor ?? '#081220',
@@ -197,16 +197,16 @@ function LayerCard({ layer, index, total, onUpdate, onRemove, onReorder }: Layer
   const previewBg = getMaterialGradientCSS(layer);
 
   return (
-    <div className="rounded border border-[#1a2a42] bg-[#0c1018] overflow-hidden">
+    <div className="rounded border border-hairline bg-[#0c1018] overflow-hidden">
       <div
-        className="flex items-center gap-1.5 px-2 py-1.5 cursor-pointer hover:bg-[#122240]"
+        className="flex items-center gap-1.5 px-2 py-1.5 cursor-pointer hover:bg-surface-3"
         onClick={() => setExpanded(!expanded)}
       >
         <span className="text-slate-500">
           {expanded ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
         </span>
         <div
-          className="w-6 h-4 rounded-sm border border-[#243a5c] flex-shrink-0"
+          className="w-6 h-4 rounded-sm border border-hairline flex-shrink-0"
           style={{ background: previewBg }}
         />
         <span className="text-[10px] text-slate-300 flex-1 truncate">
@@ -217,20 +217,20 @@ function LayerCard({ layer, index, total, onUpdate, onRemove, onReorder }: Layer
           <button
             onClick={() => onReorder('up')}
             disabled={index === 0}
-            className="p-0.5 rounded hover:bg-[#1a2a42] text-slate-500 hover:text-slate-300 disabled:opacity-20"
+            className="p-0.5 rounded hover:bg-surface-4 text-slate-500 hover:text-slate-300 disabled:opacity-20"
           >
             <ArrowUp size={9} />
           </button>
           <button
             onClick={() => onReorder('down')}
             disabled={index === total - 1}
-            className="p-0.5 rounded hover:bg-[#1a2a42] text-slate-500 hover:text-slate-300 disabled:opacity-20"
+            className="p-0.5 rounded hover:bg-surface-4 text-slate-500 hover:text-slate-300 disabled:opacity-20"
           >
             <ArrowDown size={9} />
           </button>
           <button
             onClick={onRemove}
-            className="p-0.5 rounded hover:bg-[#1a2a42] text-slate-500 hover:text-red-400"
+            className="p-0.5 rounded hover:bg-surface-4 text-slate-500 hover:text-red-400"
           >
             <Trash2 size={9} />
           </button>
@@ -238,7 +238,7 @@ function LayerCard({ layer, index, total, onUpdate, onRemove, onReorder }: Layer
       </div>
 
       {expanded && (
-        <div className="px-2.5 py-2 space-y-2 border-t border-[#1a2a42]">
+        <div className="px-2.5 py-2 space-y-2 border-t border-hairline">
           <div className="flex items-center gap-1">
             <label className="text-[10px] text-slate-500 w-14 flex-shrink-0">Type</label>
             <div className="flex gap-0.5">
@@ -248,8 +248,8 @@ function LayerCard({ layer, index, total, onUpdate, onRemove, onReorder }: Layer
                   onClick={() => onUpdate({ type: t })}
                   className={`px-1.5 py-0.5 text-[9px] rounded transition-colors ${
                     layer.type === t
-                      ? 'bg-[#f7b500]/15 text-[#ffc83d] ring-1 ring-[#f7b500]/30'
-                      : 'bg-[#122240] text-slate-500 hover:text-slate-300'
+                      ? 'bg-accent-wash text-accent-hover ring-1 ring-accent'
+                      : 'bg-surface-3 text-slate-500 hover:text-slate-300'
                   }`}
                 >
                   {t}
@@ -264,7 +264,7 @@ function LayerCard({ layer, index, total, onUpdate, onRemove, onReorder }: Layer
               <select
                 value={layer.direction ?? 'top-to-bottom'}
                 onChange={(e) => onUpdate({ direction: e.target.value as MaterialLinearDirection, angle: undefined })}
-                className="flex-1 bg-[#122240] text-[10px] text-slate-300 px-1 py-0.5 rounded border border-[#1a2a42] outline-none"
+                className="flex-1 bg-surface-3 text-[10px] text-slate-300 px-1 py-0.5 rounded border border-hairline outline-none"
               >
                 {LINEAR_DIRECTIONS.map((d) => (
                   <option key={d.value} value={d.value}>{d.label}</option>
@@ -279,7 +279,7 @@ function LayerCard({ layer, index, total, onUpdate, onRemove, onReorder }: Layer
               <select
                 value={layer.radialType ?? 'center'}
                 onChange={(e) => onUpdate({ radialType: e.target.value as MaterialRadialType })}
-                className="flex-1 bg-[#122240] text-[10px] text-slate-300 px-1 py-0.5 rounded border border-[#1a2a42] outline-none"
+                className="flex-1 bg-surface-3 text-[10px] text-slate-300 px-1 py-0.5 rounded border border-hairline outline-none"
               >
                 {RADIAL_POSITIONS.map((p) => (
                   <option key={p.value} value={p.value}>{p.label}</option>
@@ -293,7 +293,7 @@ function LayerCard({ layer, index, total, onUpdate, onRemove, onReorder }: Layer
             <select
               value={layer.blendMode}
               onChange={(e) => onUpdate({ blendMode: e.target.value as MaterialBlendMode })}
-              className="flex-1 bg-[#122240] text-[10px] text-slate-300 px-1 py-0.5 rounded border border-[#1a2a42] outline-none"
+              className="flex-1 bg-surface-3 text-[10px] text-slate-300 px-1 py-0.5 rounded border border-hairline outline-none"
             >
               {BLEND_MODES.map((m) => (
                 <option key={m.value} value={m.value}>{m.label}</option>
@@ -360,14 +360,14 @@ function ColorStopsEditor({ stops, onChange }: StopsProps) {
         <button
           onClick={addStop}
           disabled={stops.length >= MAX_COLOR_STOPS}
-          className="p-0.5 rounded hover:bg-[#1a2a42] text-slate-500 hover:text-slate-300 disabled:opacity-30"
+          className="p-0.5 rounded hover:bg-surface-4 text-slate-500 hover:text-slate-300 disabled:opacity-30"
           title="Add stop"
         >
           <Plus size={10} />
         </button>
       </div>
 
-      <div className="h-4 rounded border border-[#243a5c]" style={{ background: previewBg }} />
+      <div className="h-4 rounded border border-hairline" style={{ background: previewBg }} />
 
       {sorted.map((stop) => (
         <div key={stop.id} className="flex items-center gap-1">
@@ -384,7 +384,7 @@ function ColorStopsEditor({ stops, onChange }: StopsProps) {
               const v = e.target.value.trim();
               if (/^#[0-9a-fA-F]{0,6}$/.test(v)) updateStop(stop.id, { color: v });
             }}
-            className="bg-[#122240] text-[9px] font-mono text-slate-300 px-1 py-0.5 rounded border border-[#1a2a42] outline-none w-14"
+            className="bg-surface-3 text-[9px] font-mono text-slate-300 px-1 py-0.5 rounded border border-hairline outline-none w-14"
           />
           <BrandColorPicker
             onSelect={(rgba) => {
@@ -416,7 +416,7 @@ function ColorStopsEditor({ stops, onChange }: StopsProps) {
           <button
             onClick={() => removeStop(stop.id)}
             disabled={stops.length <= 1}
-            className="p-0.5 rounded hover:bg-[#1a2a42] text-slate-600 hover:text-red-400 disabled:opacity-20 flex-shrink-0"
+            className="p-0.5 rounded hover:bg-surface-4 text-slate-600 hover:text-red-400 disabled:opacity-20 flex-shrink-0"
           >
             <Trash2 size={9} />
           </button>

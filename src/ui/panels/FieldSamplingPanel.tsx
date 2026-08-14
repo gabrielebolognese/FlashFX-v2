@@ -158,7 +158,7 @@ export function FieldSamplingPanel() {
             <button
               key={p.name}
               onClick={() => handleAddLayer(p.config)}
-              className="text-[9px] text-left px-1.5 py-1 bg-[#0a1628] border border-[#1a2a42] rounded hover:border-cyan-500/40 hover:text-cyan-300 text-slate-400 transition-colors"
+              className="text-[9px] text-left px-1.5 py-1 bg-surface-1 border border-hairline rounded hover:border-cyan-500/40 hover:text-cyan-300 text-slate-400 transition-colors"
             >
               <Plus size={8} className="inline mr-0.5 opacity-50" />
               {p.name}
@@ -211,7 +211,7 @@ function FieldSection({
       <select
         value={field.type}
         onChange={(e) => switchFieldType(e.target.value as FieldDefinition['type'])}
-        className="w-full bg-[#0a1628] border border-[#1a2a42] rounded px-1.5 py-1 text-[10px] text-slate-300 mb-1.5"
+        className="w-full bg-surface-1 border border-hairline rounded px-1.5 py-1 text-[10px] text-slate-300 mb-1.5"
       >
         <option value="glyph">Glyph / Text</option>
         <option value="noise">Noise Field</option>
@@ -243,7 +243,7 @@ function GlyphFieldControls({
           type="text"
           value={field.text}
           onChange={(e) => updateField({ text: e.target.value })}
-          className="w-full bg-[#0a1628] border border-[#1a2a42] rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
+          className="w-full bg-surface-1 border border-hairline rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
         />
       </label>
       <div className="grid grid-cols-2 gap-1">
@@ -256,7 +256,7 @@ function GlyphFieldControls({
             max={1000}
             step={10}
             onChange={(e) => updateField({ fontSize: +e.target.value })}
-            className="w-full bg-[#0a1628] border border-[#1a2a42] rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
+            className="w-full bg-surface-1 border border-hairline rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
           />
         </label>
         <label className="text-[9px] text-slate-500">
@@ -268,7 +268,7 @@ function GlyphFieldControls({
             max={900}
             step={100}
             onChange={(e) => updateField({ fontWeight: +e.target.value })}
-            className="w-full bg-[#0a1628] border border-[#1a2a42] rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
+            className="w-full bg-surface-1 border border-hairline rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
           />
         </label>
       </div>
@@ -277,7 +277,7 @@ function GlyphFieldControls({
         <select
           value={field.fontFamily}
           onChange={(e) => updateField({ fontFamily: e.target.value })}
-          className="w-full bg-[#0a1628] border border-[#1a2a42] rounded px-1.5 py-0.5 text-[10px] text-slate-300 mt-0.5"
+          className="w-full bg-surface-1 border border-hairline rounded px-1.5 py-0.5 text-[10px] text-slate-300 mt-0.5"
         >
           {['Inter', 'Arial', 'Helvetica', 'Georgia', 'Courier New', 'Verdana', 'Montserrat'].map((f) => (
             <option key={f} value={f}>{f}</option>
@@ -300,7 +300,7 @@ function NoiseFieldControls({
       <select
         value={field.noiseType}
         onChange={(e) => updateField({ noiseType: e.target.value as NoiseFieldDef['noiseType'] })}
-        className="w-full bg-[#0a1628] border border-[#1a2a42] rounded px-1.5 py-0.5 text-[10px] text-slate-300"
+        className="w-full bg-surface-1 border border-hairline rounded px-1.5 py-0.5 text-[10px] text-slate-300"
       >
         <option value="simplex">Simplex</option>
         <option value="perlin">Perlin</option>
@@ -311,14 +311,14 @@ function NoiseFieldControls({
           Scale
           <input type="number" value={field.scale} min={0.001} max={0.5} step={0.005}
             onChange={(e) => updateField({ scale: +e.target.value })}
-            className="w-full bg-[#0a1628] border border-[#1a2a42] rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
+            className="w-full bg-surface-1 border border-hairline rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
           />
         </label>
         <label className="text-[9px] text-slate-500">
           Octaves
           <input type="number" value={field.octaves} min={1} max={8} step={1}
             onChange={(e) => updateField({ octaves: +e.target.value })}
-            className="w-full bg-[#0a1628] border border-[#1a2a42] rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
+            className="w-full bg-surface-1 border border-hairline rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
           />
         </label>
       </div>
@@ -359,7 +359,7 @@ function SamplerSection({
       <select
         value={sampler.type}
         onChange={(e) => switchSamplerType(e.target.value as SamplerDefinition['type'])}
-        className="w-full bg-[#0a1628] border border-[#1a2a42] rounded px-1.5 py-1 text-[10px] text-slate-300 mb-1.5"
+        className="w-full bg-surface-1 border border-hairline rounded px-1.5 py-1 text-[10px] text-slate-300 mb-1.5"
       >
         <option value="grid">Grid / Halftone</option>
         <option value="scanline">Scanline / Dashes</option>
@@ -381,14 +381,14 @@ function GridSamplerControls({ sampler, updateSampler }: { sampler: GridSamplerD
           Cell Size
           <input type="number" value={sampler.cellSize} min={2} max={40} step={1}
             onChange={(e) => updateSampler({ cellSize: +e.target.value })}
-            className="w-full bg-[#0a1628] border border-[#1a2a42] rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
+            className="w-full bg-surface-1 border border-hairline rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
           />
         </label>
         <label className="text-[9px] text-slate-500">
           Jitter
           <input type="number" value={sampler.jitter} min={0} max={1} step={0.05}
             onChange={(e) => updateSampler({ jitter: +e.target.value })}
-            className="w-full bg-[#0a1628] border border-[#1a2a42] rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
+            className="w-full bg-surface-1 border border-hairline rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
           />
         </label>
       </div>
@@ -397,14 +397,14 @@ function GridSamplerControls({ sampler, updateSampler }: { sampler: GridSamplerD
           Min Size
           <input type="number" value={sampler.dotSizeMin} min={0.5} max={20} step={0.5}
             onChange={(e) => updateSampler({ dotSizeMin: +e.target.value })}
-            className="w-full bg-[#0a1628] border border-[#1a2a42] rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
+            className="w-full bg-surface-1 border border-hairline rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
           />
         </label>
         <label className="text-[9px] text-slate-500">
           Max Size
           <input type="number" value={sampler.dotSizeMax} min={1} max={30} step={0.5}
             onChange={(e) => updateSampler({ dotSizeMax: +e.target.value })}
-            className="w-full bg-[#0a1628] border border-[#1a2a42] rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
+            className="w-full bg-surface-1 border border-hairline rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
           />
         </label>
       </div>
@@ -425,7 +425,7 @@ function ScanlineSamplerControls({ sampler, updateSampler }: { sampler: Scanline
       <select
         value={sampler.direction}
         onChange={(e) => updateSampler({ direction: e.target.value as 'horizontal' | 'vertical' })}
-        className="w-full bg-[#0a1628] border border-[#1a2a42] rounded px-1.5 py-0.5 text-[10px] text-slate-300"
+        className="w-full bg-surface-1 border border-hairline rounded px-1.5 py-0.5 text-[10px] text-slate-300"
       >
         <option value="horizontal">Horizontal</option>
         <option value="vertical">Vertical</option>
@@ -435,14 +435,14 @@ function ScanlineSamplerControls({ sampler, updateSampler }: { sampler: Scanline
           Line Spacing
           <input type="number" value={sampler.lineSpacing} min={1} max={20} step={1}
             onChange={(e) => updateSampler({ lineSpacing: +e.target.value })}
-            className="w-full bg-[#0a1628] border border-[#1a2a42] rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
+            className="w-full bg-surface-1 border border-hairline rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
           />
         </label>
         <label className="text-[9px] text-slate-500">
           Max Dash
           <input type="number" value={sampler.dashMaxLength} min={5} max={300} step={5}
             onChange={(e) => updateSampler({ dashMaxLength: +e.target.value })}
-            className="w-full bg-[#0a1628] border border-[#1a2a42] rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
+            className="w-full bg-surface-1 border border-hairline rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
           />
         </label>
       </div>
@@ -481,14 +481,14 @@ function OffsetBundleControls({ sampler, updateSampler }: { sampler: OffsetBundl
           Copies
           <input type="number" value={sampler.copyCount} min={2} max={80} step={1}
             onChange={(e) => updateSampler({ copyCount: +e.target.value })}
-            className="w-full bg-[#0a1628] border border-[#1a2a42] rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
+            className="w-full bg-surface-1 border border-hairline rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
           />
         </label>
         <label className="text-[9px] text-slate-500">
           Spacing
           <input type="number" value={sampler.offsetSpacing} min={0.5} max={20} step={0.5}
             onChange={(e) => updateSampler({ offsetSpacing: +e.target.value })}
-            className="w-full bg-[#0a1628] border border-[#1a2a42] rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
+            className="w-full bg-surface-1 border border-hairline rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
           />
         </label>
       </div>
@@ -496,7 +496,7 @@ function OffsetBundleControls({ sampler, updateSampler }: { sampler: OffsetBundl
         Opacity Falloff
         <select value={sampler.opacityFalloff}
           onChange={(e) => updateSampler({ opacityFalloff: e.target.value as OffsetBundleSamplerDef['opacityFalloff'] })}
-          className="w-full bg-[#0a1628] border border-[#1a2a42] rounded px-1.5 py-0.5 text-[10px] text-slate-300 mt-0.5"
+          className="w-full bg-surface-1 border border-hairline rounded px-1.5 py-0.5 text-[10px] text-slate-300 mt-0.5"
         >
           <option value="linear">Linear</option>
           <option value="easeOut">Ease Out</option>
@@ -531,7 +531,7 @@ function MarkSection({
       <div className="space-y-1">
         <select value={mark.shape}
           onChange={(e) => updateMark({ shape: e.target.value as MarkStyle['shape'] })}
-          className="w-full bg-[#0a1628] border border-[#1a2a42] rounded px-1.5 py-0.5 text-[10px] text-slate-300"
+          className="w-full bg-surface-1 border border-hairline rounded px-1.5 py-0.5 text-[10px] text-slate-300"
         >
           <option value="dot">Dot</option>
           <option value="dash">Dash</option>
@@ -542,14 +542,14 @@ function MarkSection({
             Size Min
             <input type="number" value={mark.sizeMin} min={0.5} max={20} step={0.5}
               onChange={(e) => updateMark({ sizeMin: +e.target.value })}
-              className="w-full bg-[#0a1628] border border-[#1a2a42] rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
+              className="w-full bg-surface-1 border border-hairline rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
             />
           </label>
           <label className="text-[9px] text-slate-500">
             Size Max
             <input type="number" value={mark.sizeMax} min={1} max={30} step={0.5}
               onChange={(e) => updateMark({ sizeMax: +e.target.value })}
-              className="w-full bg-[#0a1628] border border-[#1a2a42] rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
+              className="w-full bg-surface-1 border border-hairline rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
             />
           </label>
         </div>

@@ -24,7 +24,7 @@ export function LayoutParamsPanel({ layer }: LayoutPanelProps) {
     <div className="space-y-3">
       {/* Direction indicator */}
       <div className="flex items-center gap-2 px-1">
-        {isGrid ? <Grid3x3 size={13} className="text-[#f7b500]" /> : isHBox ? <ArrowRight size={13} className="text-[#f7b500]" /> : <ArrowDown size={13} className="text-[#f7b500]" />}
+        {isGrid ? <Grid3x3 size={13} className="text-accent" /> : isHBox ? <ArrowRight size={13} className="text-accent" /> : <ArrowDown size={13} className="text-accent" />}
         <span className="text-[10px] uppercase tracking-wider text-slate-400 font-medium">
           {isGrid ? 'Grid Layout' : isHBox ? 'Horizontal Layout' : 'Vertical Layout'}
         </span>
@@ -46,8 +46,8 @@ export function LayoutParamsPanel({ layer }: LayoutPanelProps) {
                   onClick={() => setParam({ gridHAlign: a })}
                   className={`flex-1 px-1 py-0.5 text-[9px] rounded capitalize transition-colors ${
                     (p.gridHAlign ?? 'start') === a
-                      ? 'bg-[#f7b500]/15 text-[#ffc83d] ring-1 ring-[#f7b500]/30'
-                      : 'bg-[#122240] text-slate-500 hover:text-slate-300'
+                      ? 'bg-accent-wash text-accent-hover ring-1 ring-accent'
+                      : 'bg-surface-3 text-slate-500 hover:text-slate-300'
                   }`}
                 >
                   {a === 'start' ? 'Left' : a === 'end' ? 'Right' : 'Center'}
@@ -65,8 +65,8 @@ export function LayoutParamsPanel({ layer }: LayoutPanelProps) {
                   onClick={() => setParam({ gridVAlign: a })}
                   className={`flex-1 px-1 py-0.5 text-[9px] rounded capitalize transition-colors ${
                     (p.gridVAlign ?? 'start') === a
-                      ? 'bg-[#f7b500]/15 text-[#ffc83d] ring-1 ring-[#f7b500]/30'
-                      : 'bg-[#122240] text-slate-500 hover:text-slate-300'
+                      ? 'bg-accent-wash text-accent-hover ring-1 ring-accent'
+                      : 'bg-surface-3 text-slate-500 hover:text-slate-300'
                   }`}
                 >
                   {a === 'start' ? 'Top' : a === 'end' ? 'Bottom' : 'Center'}
@@ -148,8 +148,8 @@ export function LayoutParamsPanel({ layer }: LayoutPanelProps) {
               onClick={() => setParam({ overflowBehavior: o })}
               className={`flex-1 px-1 py-0.5 text-[9px] rounded capitalize transition-colors ${
                 p.overflowBehavior === o
-                  ? 'bg-[#f7b500]/15 text-[#ffc83d] ring-1 ring-[#f7b500]/30'
-                  : 'bg-[#122240] text-slate-500 hover:text-slate-300'
+                  ? 'bg-accent-wash text-accent-hover ring-1 ring-accent'
+                  : 'bg-surface-3 text-slate-500 hover:text-slate-300'
               }`}
             >
               {o}
@@ -177,9 +177,9 @@ export function ChildLayoutOverridePanel({ layoutId, childId, override }: ChildL
   const setOverride = (updates: Partial<ChildLayoutOverride>) => updateChildOverride(layoutId, childId, updates);
 
   return (
-    <div className="space-y-2 border-t border-[#1a2a42] pt-2 mt-2">
+    <div className="space-y-2 border-t border-hairline pt-2 mt-2">
       <div className="flex items-center gap-2 px-1">
-        <GripVertical size={11} className="text-[#f7b500]" />
+        <GripVertical size={11} className="text-accent" />
         <span className="text-[9px] uppercase tracking-wider text-slate-500 font-medium">Layout Child</span>
       </div>
 
@@ -214,8 +214,8 @@ export function ChildLayoutOverridePanel({ layoutId, childId, override }: ChildL
               onClick={() => setOverride({ layoutVisibility: v })}
               className={`flex-1 px-1 py-0.5 text-[8px] rounded capitalize transition-colors ${
                 override.layoutVisibility === v
-                  ? 'bg-[#f7b500]/15 text-[#ffc83d] ring-1 ring-[#f7b500]/30'
-                  : 'bg-[#122240] text-slate-500 hover:text-slate-300'
+                  ? 'bg-accent-wash text-accent-hover ring-1 ring-accent'
+                  : 'bg-surface-3 text-slate-500 hover:text-slate-300'
               }`}
             >
               {v}
@@ -234,8 +234,8 @@ export function ChildLayoutOverridePanel({ layoutId, childId, override }: ChildL
               onClick={() => setOverride({ alignSelf: override.alignSelf === v ? undefined : v })}
               className={`flex-1 px-1 py-0.5 text-[8px] rounded capitalize transition-colors ${
                 override.alignSelf === v
-                  ? 'bg-[#f7b500]/15 text-[#ffc83d] ring-1 ring-[#f7b500]/30'
-                  : 'bg-[#122240] text-slate-500 hover:text-slate-300'
+                  ? 'bg-accent-wash text-accent-hover ring-1 ring-accent'
+                  : 'bg-surface-3 text-slate-500 hover:text-slate-300'
               }`}
             >
               {v}
@@ -270,7 +270,7 @@ function SizeControl({ label, value, onChange }: {
         <button
           onClick={() => onChange({ type: 'fixed', value: value.type === 'fixed' ? (value.value ?? 200) : 200 })}
           className={`px-1.5 py-0.5 text-[8px] rounded transition-colors ${
-            value.type === 'fixed' ? 'bg-[#f7b500]/15 text-[#ffc83d] ring-1 ring-[#f7b500]/30' : 'bg-[#122240] text-slate-500 hover:text-slate-300'
+            value.type === 'fixed' ? 'bg-accent-wash text-accent-hover ring-1 ring-accent' : 'bg-surface-3 text-slate-500 hover:text-slate-300'
           }`}
         >
           Fixed
@@ -278,7 +278,7 @@ function SizeControl({ label, value, onChange }: {
         <button
           onClick={() => onChange({ type: 'wrapContent' })}
           className={`px-1.5 py-0.5 text-[8px] rounded transition-colors ${
-            value.type === 'wrapContent' ? 'bg-[#f7b500]/15 text-[#ffc83d] ring-1 ring-[#f7b500]/30' : 'bg-[#122240] text-slate-500 hover:text-slate-300'
+            value.type === 'wrapContent' ? 'bg-accent-wash text-accent-hover ring-1 ring-accent' : 'bg-surface-3 text-slate-500 hover:text-slate-300'
           }`}
         >
           Wrap
@@ -286,7 +286,7 @@ function SizeControl({ label, value, onChange }: {
         <button
           onClick={() => onChange({ type: 'fillParent' })}
           className={`px-1.5 py-0.5 text-[8px] rounded transition-colors ${
-            value.type === 'fillParent' ? 'bg-[#f7b500]/15 text-[#ffc83d] ring-1 ring-[#f7b500]/30' : 'bg-[#122240] text-slate-500 hover:text-slate-300'
+            value.type === 'fillParent' ? 'bg-accent-wash text-accent-hover ring-1 ring-accent' : 'bg-surface-3 text-slate-500 hover:text-slate-300'
           }`}
         >
           Fill
@@ -332,8 +332,8 @@ function AlignmentPicker({ options, value, onChange }: {
             onClick={() => onChange(opt.value)}
             className={`flex-1 flex flex-col items-center gap-0.5 px-1 py-1 rounded transition-colors ${
               isActive
-                ? 'bg-[#f7b500]/15 text-[#ffc83d] ring-1 ring-[#f7b500]/30'
-                : 'bg-[#0c1018] text-slate-500 hover:text-slate-300 hover:bg-[#122240]'
+                ? 'bg-accent-wash text-accent-hover ring-1 ring-accent'
+                : 'bg-[#0c1018] text-slate-500 hover:text-slate-300 hover:bg-surface-3'
             }`}
             title={opt.label}
           >
@@ -353,21 +353,21 @@ function ChildrenList({ layer }: { layer: LayoutObjectLayer }) {
 
   if (layer.children.length === 0) {
     return (
-      <div className="px-2 py-3 text-center text-[10px] text-slate-500 border border-dashed border-[#1c3155] rounded">
+      <div className="px-2 py-3 text-center text-[10px] text-slate-500 border border-dashed border-hairline rounded">
         No children. Drag layers here or use "Add to Layout" in context menu.
       </div>
     );
   }
 
   return (
-    <div className="rounded border border-[#1c3155] bg-[#0d1f38] overflow-hidden max-h-[200px] overflow-y-auto">
+    <div className="rounded border border-hairline bg-[#0d1f38] overflow-hidden max-h-[200px] overflow-y-auto">
       {layer.children.map((childId) => {
         const child = composition.layers.find((l) => l.id === childId);
         if (!child) return null;
         return (
           <div
             key={childId}
-            className="flex items-center gap-1.5 px-2 py-1.5 border-b border-[#1c3155] last:border-b-0 hover:bg-[#162a4a] cursor-pointer transition-colors"
+            className="flex items-center gap-1.5 px-2 py-1.5 border-b border-hairline last:border-b-0 hover:bg-[#162a4a] cursor-pointer transition-colors"
             onClick={() => selectLayer(childId, false, 'canvas')}
           >
             <GripVertical size={9} className="text-slate-600" />

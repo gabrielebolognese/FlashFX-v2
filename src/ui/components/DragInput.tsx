@@ -180,7 +180,7 @@ export function DragInput({
           onChange={(e) => setEditValue(e.target.value)}
           onBlur={commitEdit}
           onKeyDown={handleKeyDown}
-          className="flex-1 bg-[#122240] text-[11px] text-slate-200 px-1.5 py-0.5 rounded border border-[#f7b500]/50 outline-none min-w-0"
+          className="flex-1 bg-surface-3 text-[11px] text-slate-200 px-1.5 py-0.5 rounded border border-accent-dim outline-none min-w-0"
         />
         {suffix && <span className="text-[9px] text-slate-600">{suffix}</span>}
       </div>
@@ -201,15 +201,15 @@ export function DragInput({
         className={`
           flex-1 px-1.5 py-0.5 rounded text-[11px] min-w-0 cursor-ew-resize select-none transition-colors duration-75
           ${dragging
-            ? 'bg-[#f7b500]/10 text-[#ffc83d]'
+            ? 'bg-accent-wash text-accent-hover'
             : hovered
-              ? 'bg-[#122240] text-slate-200'
+              ? 'bg-surface-3 text-slate-200'
               : 'bg-transparent text-slate-400'
           }
         `}
         style={{ touchAction: 'none' }}
       >
-        <span className={dragging ? 'text-[#ffc83d]' : ''}>{displayValue}</span>
+        <span className={dragging ? 'text-accent-hover' : ''}>{displayValue}</span>
       </div>
       {suffix && <span className="text-[9px] text-slate-600 flex-shrink-0">{suffix}</span>}
     </div>

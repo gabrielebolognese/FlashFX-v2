@@ -58,21 +58,21 @@ export function ClipContextMenu() {
 
   return (
     <div
-      className="fixed z-[120] min-w-[180px] bg-[#0e1c32] border border-[#1a2a42] rounded-md shadow-2xl py-1"
+      className="fixed z-[120] min-w-[180px] bg-surface-2 border border-hairline rounded-md shadow-2xl py-1"
       style={{ left, top }}
       onPointerDown={(e) => e.stopPropagation()}
       onContextMenu={(e) => e.preventDefault()}
     >
       <button
         onClick={handleGenerate}
-        className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] text-slate-300 hover:bg-[#1a2a42] hover:text-white transition-colors"
+        className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] text-slate-300 hover:bg-surface-4 hover:text-white transition-colors"
       >
         <Captions size={13} className="text-cyan-400" />
         Generate Captions
       </button>
       <button
         onClick={handleStripSilence}
-        className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] text-slate-300 hover:bg-[#1a2a42] hover:text-white transition-colors"
+        className="w-full flex items-center gap-2 px-3 py-1.5 text-[12px] text-slate-300 hover:bg-surface-4 hover:text-white transition-colors"
       >
         <Scissors size={13} className="text-cyan-400" />
         Strip Silence

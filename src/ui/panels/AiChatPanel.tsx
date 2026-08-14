@@ -148,12 +148,12 @@ export function AiChatPanel() {
   const newChat = () => { stop(); clearConversation(activeProjectId); };
 
   return (
-    <aside className="flex-shrink-0 h-full flex flex-col bg-[#0b1220] border-l border-[#1a2a42]" style={{ width: '20%', minWidth: 260 }}>
+    <aside className="flex-shrink-0 h-full flex flex-col bg-surface-sunken border-l border-hairline" style={{ width: '20%', minWidth: 260 }}>
       {/* Header */}
-      <div className="h-9 flex-shrink-0 flex items-center gap-2 px-3 border-b border-[#1a2a42]">
-        <Sparkles size={14} className="text-[#f7b500]" />
+      <div className="h-9 flex-shrink-0 flex items-center gap-2 px-3 border-b border-hairline">
+        <Sparkles size={14} className="text-accent" />
         <span className="text-[12px] font-semibold text-slate-200">AI Assistant</span>
-        <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#122240] text-slate-500 font-medium">Mockup</span>
+        <span className="text-[9px] px-1.5 py-0.5 rounded bg-surface-3 text-slate-500 font-medium">Mockup</span>
         <div className="ml-auto flex items-center gap-1">
           <button title="New chat" className="p-1 rounded text-slate-500 hover:text-slate-200 hover:bg-white/5" onClick={newChat}><Plus size={13} /></button>
           <button title="Close" className="p-1 rounded text-slate-500 hover:text-slate-200 hover:bg-white/5" onClick={toggleAiChat}><X size={13} /></button>
@@ -169,7 +169,7 @@ export function AiChatPanel() {
           </div>
         )}
         {messages.map((m) => m.role === 'user' ? (
-          <div key={m.id} className="rounded-md bg-[#111a28] border border-[#1a2a42] px-3 py-2">
+          <div key={m.id} className="rounded-md bg-[#111a28] border border-hairline px-3 py-2">
             {m.attachments && (
               <div className="flex flex-wrap gap-1 mb-1.5">
                 {m.attachments.map((a) => <AttachChip key={a.id} a={a} />)}
@@ -181,7 +181,7 @@ export function AiChatPanel() {
           <div key={m.id} className="pl-0.5">
             {/* Borderless assistant response (VS Code style) */}
             <div className="flex items-center gap-1.5 mb-1 text-[11px] text-slate-500">
-              <Sparkles size={11} className="text-[#f7b500]" />
+              <Sparkles size={11} className="text-accent" />
               <span className="font-medium text-slate-400">FlashFX AI</span>
               {m.streaming && m.text === '' && <ThinkingDots elapsed={elapsed} />}
               {!m.streaming && m.ms != null && <span>· {fmt(m.ms)}</span>}
@@ -192,7 +192,7 @@ export function AiChatPanel() {
               </p>
             )}
             {m.steps && m.steps.length > 0 && (
-              <div className="mt-2 rounded-md border border-[#1a2a42] bg-[#0e1726] px-2.5 py-2 space-y-1.5">
+              <div className="mt-2 rounded-md border border-hairline bg-[#0e1726] px-2.5 py-2 space-y-1.5">
                 {m.steps.map((s) => (
                   <div key={s.key} className="flex items-center gap-2 text-[11px]">
                     <StepIcon status={s.status} />
@@ -216,7 +216,7 @@ export function AiChatPanel() {
       </div>
 
       {/* Composer */}
-      <div className="flex-shrink-0 p-2 border-t border-[#1a2a42]">
+      <div className="flex-shrink-0 p-2 border-t border-hairline">
         {attachments.length > 0 && (
           <div className="flex flex-wrap gap-1 mb-1.5">
             {attachments.map((a) => (
@@ -224,7 +224,7 @@ export function AiChatPanel() {
             ))}
           </div>
         )}
-        <div className="rounded-lg bg-[#0e1726] border border-[#1a2a42] focus-within:border-[#2a3a52]">
+        <div className="rounded-lg bg-[#0e1726] border border-hairline focus-within:border-hairline">
           <textarea
             ref={textareaRef}
             value={draft}
@@ -246,9 +246,9 @@ export function AiChatPanel() {
             </button>
             <div className="ml-auto">
               {generating ? (
-                <button onClick={stop} title="Stop" className="flex items-center justify-center w-7 h-7 rounded-md text-slate-200 bg-[#2a3a52] hover:bg-[#33445e]"><Square size={11} fill="currentColor" /></button>
+                <button onClick={stop} title="Stop" className="flex items-center justify-center w-7 h-7 rounded-md text-slate-200 bg-surface-4 hover:bg-[#33445e]"><Square size={11} fill="currentColor" /></button>
               ) : (
-                <button onClick={send} disabled={!draft.trim()} title="Send" className={`flex items-center justify-center w-7 h-7 rounded-md transition-colors ${draft.trim() ? 'text-[#0e1c32] bg-[#f7b500] hover:bg-[#ffc21a]' : 'text-slate-600 bg-[#122240]'}`}><Send size={13} /></button>
+                <button onClick={send} disabled={!draft.trim()} title="Send" className={`flex items-center justify-center w-7 h-7 rounded-md transition-colors ${draft.trim() ? 'text-on-accent bg-accent hover:bg-[#ffc21a]' : 'text-slate-600 bg-surface-3'}`}><Send size={13} /></button>
               )}
             </div>
           </div>
@@ -261,7 +261,7 @@ export function AiChatPanel() {
 
 function StepIcon({ status }: { status: Step['status'] }) {
   if (status === 'done') return <Check size={12} className="text-emerald-400 flex-shrink-0" />;
-  if (status === 'running') return <Loader2 size={12} className="text-[#f7b500] flex-shrink-0 animate-spin" />;
+  if (status === 'running') return <Loader2 size={12} className="text-accent flex-shrink-0 animate-spin" />;
   return <Circle size={12} className="text-slate-700 flex-shrink-0" />;
 }
 
@@ -269,7 +269,7 @@ function ThinkingDots({ elapsed }: { elapsed: number }) {
   return (
     <span className="flex items-center gap-1.5">
       <span className="flex gap-0.5">
-        {[0, 1, 2].map((i) => <span key={i} className="w-1 h-1 rounded-full bg-[#f7b500] animate-bounce" style={{ animationDelay: `${i * 120}ms` }} />)}
+        {[0, 1, 2].map((i) => <span key={i} className="w-1 h-1 rounded-full bg-accent animate-bounce" style={{ animationDelay: `${i * 120}ms` }} />)}
       </span>
       <span className="text-slate-500">Thinking… {fmt(elapsed)}</span>
     </span>
@@ -279,7 +279,7 @@ function ThinkingDots({ elapsed }: { elapsed: number }) {
 function AttachChip({ a, onRemove }: { a: Attachment; onRemove?: () => void }) {
   const Icon = a.kind === 'drive' ? HardDrive : a.kind === 'image' ? ImageIcon : Paperclip;
   return (
-    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#122240] border border-[#1a2a42] text-[10px] text-slate-300">
+    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-surface-3 border border-hairline text-[10px] text-slate-300">
       <Icon size={10} className="text-slate-500" />
       {a.name}
       {onRemove && <button onClick={onRemove} className="text-slate-500 hover:text-slate-200"><X size={10} /></button>}

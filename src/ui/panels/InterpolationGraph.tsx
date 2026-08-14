@@ -205,13 +205,13 @@ function HandleNumericField({ label, value, onChange, precision = 2, min, max }:
           onChange={(e) => setDraft(e.target.value)}
           onBlur={commit}
           onKeyDown={handleKeyDown}
-          className="w-[42px] h-[18px] px-1 text-[9px] text-white bg-[#1a2a42] border border-[#3a4055] rounded outline-none focus:border-[#facc15] font-mono text-center"
+          className="w-[42px] h-[18px] px-1 text-[9px] text-white bg-surface-4 border border-[#3a4055] rounded outline-none focus:border-[#facc15] font-mono text-center"
           autoFocus
         />
       ) : (
         <button
           onClick={startEdit}
-          className="w-[42px] h-[18px] px-1 text-[9px] text-slate-300 bg-[#141822] border border-[#243a5c] rounded font-mono text-center hover:border-[#3a4055] hover:text-white transition-colors"
+          className="w-[42px] h-[18px] px-1 text-[9px] text-slate-300 bg-[#141822] border border-hairline rounded font-mono text-center hover:border-[#3a4055] hover:text-white transition-colors"
         >
           {value.toFixed(precision)}
         </button>
@@ -504,8 +504,8 @@ export function InterpolationGraph() {
 
   if (!activeLayer || activeLayer.type === 'group') {
     return (
-      <div className="flex flex-col h-full bg-[#081220]">
-        <div className="h-[28px] min-h-[28px] flex items-center px-3 border-b border-[#1a2a42] bg-[#081220]">
+      <div className="flex flex-col h-full bg-surface-sunken">
+        <div className="h-[28px] min-h-[28px] flex items-center px-3 border-b border-hairline bg-surface-sunken">
           <span className="text-[9px] font-semibold text-slate-500 uppercase tracking-wider">Graph Editor</span>
         </div>
         <div className="flex-1 flex items-center justify-center">
@@ -516,9 +516,9 @@ export function InterpolationGraph() {
   }
 
   return (
-    <div className="flex flex-col h-full bg-[#081220] relative">
+    <div className="flex flex-col h-full bg-surface-sunken relative">
       {/* Property toggle bar */}
-      <div className="h-[28px] min-h-[28px] flex items-center px-3 gap-3 border-b border-[#1a2a42] bg-[#081220] overflow-x-auto">
+      <div className="h-[28px] min-h-[28px] flex items-center px-3 gap-3 border-b border-hairline bg-surface-sunken overflow-x-auto">
         <span className="text-[9px] font-semibold text-slate-500 uppercase tracking-wider flex-shrink-0">Curves</span>
         {allProperties.map((prop) => {
           const active = enabledProps.has(prop.id);
@@ -536,7 +536,7 @@ export function InterpolationGraph() {
 
       {/* Numeric handle editor (visible when a keyframe is selected) */}
       {selectedKeyframeData && (
-        <div className="h-[30px] min-h-[30px] flex items-center px-3 gap-4 border-b border-[#1a2a42] bg-[#0d1018]">
+        <div className="h-[30px] min-h-[30px] flex items-center px-3 gap-4 border-b border-hairline bg-[#0d1018]">
           <HandleNumericField
             label="Value"
             value={getKeyframeValue(selectedKeyframeData.kf, selectedKeyframeData.propId.endsWith('_y') || selectedKeyframeData.propId === 'scale_y' ? 'y' : selectedKeyframeData.propId.endsWith('_x') || selectedKeyframeData.propId === 'pos_x' || selectedKeyframeData.propId === 'scale_x' ? 'x' : 'single')}
@@ -641,7 +641,7 @@ export function InterpolationGraph() {
       {/* Context menu for presets */}
       {contextMenu && (
         <div
-          className="fixed z-50 bg-[#1a1e28] border border-[#243a5c] rounded shadow-xl py-1 min-w-[140px]"
+          className="fixed z-50 bg-[#1a1e28] border border-hairline rounded shadow-xl py-1 min-w-[140px]"
           style={{ left: contextMenu.x, top: contextMenu.y }}
           onClick={(e) => e.stopPropagation()}
         >
@@ -650,7 +650,7 @@ export function InterpolationGraph() {
             <button
               key={preset.id}
               onClick={() => applyPreset(preset)}
-              className="w-full px-3 py-1.5 text-left text-[10px] text-slate-300 hover:bg-[#243a5c] hover:text-white transition-colors"
+              className="w-full px-3 py-1.5 text-left text-[10px] text-slate-300 hover:bg-surface-5 hover:text-white transition-colors"
             >
               {preset.name}
             </button>
@@ -924,7 +924,7 @@ function PropertyTrackRow({ prop, containerWidth, zoomLevel, scrollX, ticks, pla
   }, [keyframes, zoomLevel, scrollX, valueToY, component]);
 
   return (
-    <div className="border-b border-[#1a2a42] relative" style={{ height: TRACK_HEIGHT }}>
+    <div className="border-b border-hairline relative" style={{ height: TRACK_HEIGHT }}>
       {/* Label on left */}
       <div className="absolute left-0 top-0 bottom-0 w-[50px] flex items-center z-10 pointer-events-none">
         <div className="flex items-center pl-2">

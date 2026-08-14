@@ -124,7 +124,7 @@ export function ImageFiltersPanel({ layer }: { layer: ImageLayer }) {
           <div className="flex items-center gap-1.5">
             <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Filters</span>
             {totalActive > 0 && (
-              <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[#f7b500]/15 text-[#f7b500] font-medium">
+              <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-accent-wash text-accent font-medium">
                 {totalActive} active
               </span>
             )}
@@ -141,7 +141,7 @@ export function ImageFiltersPanel({ layer }: { layer: ImageLayer }) {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search filters..."
-            className="w-full h-7 pl-7 pr-3 text-[10px] rounded-md bg-[#0c1a2d] border border-[#1a2a42] text-slate-300 placeholder:text-slate-600 focus:outline-none focus:border-[#f7b500]/40 transition-colors"
+            className="w-full h-7 pl-7 pr-3 text-[10px] rounded-md bg-surface-1 border border-hairline text-slate-300 placeholder:text-slate-600 focus:outline-none focus:border-accent-dim transition-colors"
           />
         </div>
       </div>
@@ -195,9 +195,9 @@ function AppliedEffects({
   if (effects.length === 0) return null;
 
   return (
-    <div className="mb-2 mx-1 rounded-md border border-[#1a2a42] bg-[#0a1524] overflow-hidden">
-      <div className="flex items-center gap-1.5 px-2.5 py-1.5 border-b border-[#1a2a42]">
-        <Layers size={11} className="text-[#f7b500]" />
+    <div className="mb-2 mx-1 rounded-md border border-hairline bg-[#0a1524] overflow-hidden">
+      <div className="flex items-center gap-1.5 px-2.5 py-1.5 border-b border-hairline">
+        <Layers size={11} className="text-accent" />
         <span className="text-[10px] font-semibold text-slate-300 uppercase tracking-wider flex-1">Applied Effects</span>
         <span className="text-[9px] text-slate-600">{effects.length} · render order</span>
       </div>
@@ -210,7 +210,7 @@ function AppliedEffects({
             <div key={e.type} className="flex items-center gap-1 px-2 py-[3px] hover:bg-white/[0.02] group/eff">
               <button
                 onClick={() => onToggle(layer.id, e.type)}
-                className={`flex-shrink-0 transition-colors ${enabled ? 'text-[#f7b500] hover:text-[#ffc83d]' : 'text-slate-600 hover:text-slate-400'}`}
+                className={`flex-shrink-0 transition-colors ${enabled ? 'text-accent hover:text-accent-hover' : 'text-slate-600 hover:text-slate-400'}`}
                 title={enabled ? 'Disable effect' : 'Enable effect'}
               >
                 {enabled ? <Eye size={11} /> : <EyeOff size={11} />}
@@ -284,7 +284,7 @@ function FilterCategoryAccordion({
           {category.filters.length}
         </span>
         {activeCount > 0 && (
-          <span className="w-1.5 h-1.5 rounded-full bg-[#f7b500]" />
+          <span className="w-1.5 h-1.5 rounded-full bg-accent" />
         )}
       </button>
 
@@ -344,7 +344,7 @@ function FilterControl({
         <button
           onClick={() => onChange(value === 1 ? 0 : 1)}
           className={`w-7 h-3.5 rounded-full relative transition-colors ${
-            value === 1 ? 'bg-[#f7b500]' : 'bg-[#1a2a42]'
+            value === 1 ? 'bg-accent' : 'bg-surface-4'
           }`}
         >
           <div
@@ -361,7 +361,7 @@ function FilterControl({
     return (
       <div className="flex items-center gap-1.5 py-[3px] px-2 rounded hover:bg-white/[0.02]">
         <label className="text-[10px] text-slate-500 flex-1">{filter.label}</label>
-        <button className="flex items-center gap-1 px-2 py-0.5 rounded text-[9px] text-slate-500 bg-[#1a2a42] hover:bg-[#1c3155] transition-colors">
+        <button className="flex items-center gap-1 px-2 py-0.5 rounded text-[9px] text-slate-500 bg-surface-4 hover:bg-surface-5 transition-colors">
           <Upload size={9} />
           Load
         </button>
@@ -376,7 +376,7 @@ function FilterControl({
         <select
           value={value}
           onChange={(e) => onChange(Number(e.target.value))}
-          className="flex-1 h-5 text-[9px] rounded bg-[#0c1a2d] border border-[#1a2a42] text-slate-400 px-1.5 focus:outline-none focus:border-[#f7b500]/40"
+          className="flex-1 h-5 text-[9px] rounded bg-surface-1 border border-hairline text-slate-400 px-1.5 focus:outline-none focus:border-accent-dim"
         >
           {filter.options?.map((opt, i) => (
             <option key={opt} value={i}>{opt}</option>
@@ -398,9 +398,9 @@ function FilterControl({
         {filter.label}
       </label>
       <div className="flex-1 relative h-[14px] flex items-center">
-        <div className="absolute inset-x-0 h-[3px] rounded-full bg-[#1a2a42] overflow-hidden">
+        <div className="absolute inset-x-0 h-[3px] rounded-full bg-surface-4 overflow-hidden">
           <div
-            className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-[#f7b500]/40 to-[#f7b500]/70 transition-[width] duration-75"
+            className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-accent to-accent transition-[width] duration-75"
             style={{ width: `${pct}%` }}
           />
         </div>
@@ -414,11 +414,11 @@ function FilterControl({
           className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
         />
         <div
-          className="absolute w-2.5 h-2.5 rounded-full border border-slate-500 bg-[#0e1c32] pointer-events-none transition-colors group-hover/filter:border-slate-400"
+          className="absolute w-2.5 h-2.5 rounded-full border border-slate-500 bg-surface-2 pointer-events-none transition-colors group-hover/filter:border-slate-400"
           style={{ left: `calc(${pct}% - 5px)` }}
         />
       </div>
-      <span className={`text-[9px] font-mono w-9 text-right flex-shrink-0 ${isActive ? 'text-[#f7b500]' : 'text-slate-600'}`}>
+      <span className={`text-[9px] font-mono w-9 text-right flex-shrink-0 ${isActive ? 'text-accent' : 'text-slate-600'}`}>
         {formatValue(value, step)}
       </span>
       {isActive && (

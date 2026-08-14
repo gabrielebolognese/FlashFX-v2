@@ -82,13 +82,13 @@ export function TrackRow({
 
   return (
     <div
-      className="border-b border-[#1a2a42] flex items-stretch select-none"
+      className="border-b border-hairline flex items-stretch select-none"
       style={{ height, backgroundColor: trackIndex % 2 === 0 ? '#0c1a2d' : '#0a1628' }}
       data-track-id={track.id}
     >
       {/* Track header (left subsection) */}
       <div
-        className="flex items-center gap-1.5 px-2 flex-shrink-0 border-r border-[#1a2a42] bg-[#081220]"
+        className="flex items-center gap-1.5 px-2 flex-shrink-0 border-r border-hairline bg-surface-sunken"
         style={{ width: 84 }}
       >
         <div className="flex-shrink-0">{trackIcon(track.type)}</div>
@@ -99,24 +99,24 @@ export function TrackRow({
       </div>
 
       {/* Track switches */}
-      <div className="flex items-center gap-0.5 px-1.5 flex-shrink-0 border-r border-[#1a2a42]">
+      <div className="flex items-center gap-0.5 px-1.5 flex-shrink-0 border-r border-hairline">
         <button
           onClick={() => toggleTrackVisibility(track.id)}
-          className={`p-0.5 rounded transition-colors hover:bg-[#1a2a42] ${track.visible ? 'text-[#f7b500]' : 'text-slate-600'}`}
+          className={`p-0.5 rounded transition-colors hover:bg-surface-4 ${track.visible ? 'text-accent' : 'text-slate-600'}`}
           title={track.visible ? 'Hide track' : 'Show track'}
         >
           {track.visible ? <Eye size={10} /> : <EyeOff size={10} />}
         </button>
         <button
           onClick={() => toggleTrackMute(track.id)}
-          className={`p-0.5 rounded transition-colors hover:bg-[#1a2a42] ${track.muted ? 'text-red-400' : 'text-amber-400'}`}
+          className={`p-0.5 rounded transition-colors hover:bg-surface-4 ${track.muted ? 'text-red-400' : 'text-amber-400'}`}
           title={track.muted ? 'Unmute track' : 'Mute track'}
         >
           {track.muted ? <VolumeX size={10} /> : <Volume2 size={10} />}
         </button>
         <button
           onClick={() => toggleTrackSolo(track.id)}
-          className={`p-0.5 rounded transition-colors hover:bg-[#1a2a42] ${track.solo ? 'text-fuchsia-400' : 'text-slate-600'}`}
+          className={`p-0.5 rounded transition-colors hover:bg-surface-4 ${track.solo ? 'text-fuchsia-400' : 'text-slate-600'}`}
           title={track.solo ? 'Unsolo track' : 'Solo track (hide all others)'}
         >
           <Circle size={10} fill={track.solo ? 'currentColor' : 'none'} />
@@ -165,7 +165,7 @@ export function TrackRow({
                       ? 'bg-[#1a2438] text-white ring-1 ring-white/40'
                       : isHovered
                         ? 'bg-[#141a24] text-slate-200'
-                        : 'bg-[#122240] text-slate-400 hover:bg-[#161c28] hover:text-slate-200'
+                        : 'bg-surface-3 text-slate-400 hover:bg-[#161c28] hover:text-slate-200'
                 }`}
                 style={{ maxWidth: 132, cursor: isDragging ? 'grabbing' : 'grab' }}
                 title={`${layer.name} · in ${layer.inPoint} · out ${layer.outPoint}`}
@@ -193,12 +193,12 @@ interface GhostTrackRowProps {
 export function GhostTrackRow({ label, height, shade }: GhostTrackRowProps) {
   return (
     <div
-      className="border-b border-[#1a2a42]/70 flex items-stretch select-none opacity-50"
+      className="border-b border-hairline flex items-stretch select-none opacity-50"
       style={{ height, backgroundColor: shade }}
     >
       {/* Header */}
       <div
-        className="flex items-center gap-1.5 px-2 flex-shrink-0 border-r border-[#1a2a42]"
+        className="flex items-center gap-1.5 px-2 flex-shrink-0 border-r border-hairline"
         style={{ width: 84 }}
       >
         <div className="flex-shrink-0"><Square size={11} className="text-slate-600" /></div>
@@ -206,7 +206,7 @@ export function GhostTrackRow({ label, height, shade }: GhostTrackRowProps) {
       </div>
 
       {/* Switches — present but disabled */}
-      <div className="flex items-center gap-0.5 px-1.5 flex-shrink-0 border-r border-[#1a2a42]">
+      <div className="flex items-center gap-0.5 px-1.5 flex-shrink-0 border-r border-hairline">
         <span className="p-0.5 rounded text-slate-700 cursor-not-allowed" title="Track visible (n/a)">
           <Eye size={10} />
         </span>

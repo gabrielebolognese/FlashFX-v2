@@ -24,7 +24,7 @@ export function ShortFormLayout() {
   const layout = SHORT_WORKSPACE[workspace];
 
   return (
-    <div className="flex-1 flex flex-row min-h-0 min-w-0 overflow-hidden bg-[#06101a]">
+    <div className="flex-1 flex flex-row min-h-0 min-w-0 overflow-hidden bg-surface-sunken">
       {/* Left 70%: media pool + inspector (top) / timeline (bottom) */}
       <div className="flex flex-col min-h-0 min-w-0" style={{ width: '70%' }}>
         {/* Top panels: media pool + inspector */}
@@ -36,7 +36,7 @@ export function ShortFormLayout() {
 
           {/* Inspector */}
           {panels.properties.visible && (
-            <div className="flex-1 min-h-0 overflow-hidden border-l border-[#1a2a42]/40">
+            <div className="flex-1 min-h-0 overflow-hidden border-l border-hairline">
               <PanelContainer id="properties" title="Properties">
                 <PanelErrorBoundary name="Inspector">
                   <Inspector />
@@ -49,7 +49,7 @@ export function ShortFormLayout() {
         {/* Bottom: Timeline + (Animate only) animation panel */}
         {layout.showTimeline && panels.timeline.visible && (
           <div
-            className="flex-shrink-0 min-w-0 overflow-hidden border-t border-[#1a2a42]/60 flex flex-row shadow-[0_-1px_3px_rgba(0,0,0,0.3)]"
+            className="flex-shrink-0 min-w-0 overflow-hidden border-t border-hairline flex flex-row shadow-[0_-1px_3px_rgba(0,0,0,0.3)]"
             style={{ height: layout.bottomHeight }}
           >
             <div
@@ -61,7 +61,7 @@ export function ShortFormLayout() {
               </PanelErrorBoundary>
             </div>
             {layout.showAnimationPanel && (
-              <div className="min-w-0 min-h-0 overflow-hidden border-l border-[#1a2a42]/40" style={{ width: '33.34%' }}>
+              <div className="min-w-0 min-h-0 overflow-hidden border-l border-hairline" style={{ width: '33.34%' }}>
                 <AnimationPanel />
               </div>
             )}
@@ -70,7 +70,7 @@ export function ShortFormLayout() {
       </div>
 
       {/* Right 30%: Canvas (full height) */}
-      <div className="flex-shrink-0 min-h-0 min-w-0 flex flex-col bg-[#050d18] border-l border-[#1a2a42]/40" style={{ width: '30%' }}>
+      <div className="flex-shrink-0 min-h-0 min-w-0 flex flex-col bg-[#050d18] border-l border-hairline" style={{ width: '30%' }}>
         <CanvasToolbar />
         <PanelErrorBoundary name="Viewport">
           <Viewport />

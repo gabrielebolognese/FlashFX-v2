@@ -138,8 +138,8 @@ export function SavedAssetsTab() {
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
       {/* Search + filter bar */}
-      <div className="flex items-center gap-1.5 px-2 py-1.5 border-b border-[#1a2a42]">
-        <div className="flex-1 flex items-center gap-1.5 bg-[#16294a] border border-[#1c3155] rounded px-2 py-1">
+      <div className="flex items-center gap-1.5 px-2 py-1.5 border-b border-hairline">
+        <div className="flex-1 flex items-center gap-1.5 bg-surface-4 border border-hairline rounded px-2 py-1">
           <Search size={9} className="text-slate-600 flex-shrink-0" />
           <input
             type="text"
@@ -149,14 +149,14 @@ export function SavedAssetsTab() {
             className="bg-transparent text-[9px] text-slate-300 outline-none w-full placeholder:text-slate-700"
           />
         </div>
-        <div className="flex items-center bg-[#16294a] border border-[#1c3155] rounded overflow-hidden">
+        <div className="flex items-center bg-surface-4 border border-hairline rounded overflow-hidden">
           {(['all', 'image', 'audio'] as FilterMode[]).map((f) => (
             <button
               key={f}
               onClick={() => setFilter(f)}
               className={`px-2 py-0.5 text-[8px] font-medium transition-colors ${
                 filter === f
-                  ? 'bg-[#f7b500]/15 text-[#f7b500]'
+                  ? 'bg-accent-wash text-accent'
                   : 'text-slate-500 hover:text-slate-300'
               }`}
             >
@@ -167,11 +167,11 @@ export function SavedAssetsTab() {
       </div>
 
       {/* Save button */}
-      <div className="px-2 py-1.5 border-b border-[#1a2a42]">
+      <div className="px-2 py-1.5 border-b border-hairline">
         <button
           onClick={() => fileInputRef.current?.click()}
           disabled={uploading}
-          className="w-full px-2 py-1.5 text-[10px] rounded bg-[#f7b500]/8 border border-[#f7b500]/15 text-[#f7b500] hover:bg-[#f7b500]/10 transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50"
+          className="w-full px-2 py-1.5 text-[10px] rounded bg-accent-wash border border-accent-dim text-accent hover:bg-accent-wash transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50"
         >
           <Upload size={11} />
           {uploading ? 'Saving...' : 'Save Asset'}
@@ -236,11 +236,11 @@ function SavedAssetCard({
       onDoubleClick={onUse}
       className={`group rounded overflow-hidden border transition-all cursor-pointer ${
         isSelected
-          ? 'border-[#f7b500]/50 bg-[#f7b500]/5'
-          : 'border-[#1c3155] bg-[#16294a] hover:border-[#2a3044]'
+          ? 'border-accent-dim bg-accent-wash'
+          : 'border-hairline bg-surface-4 hover:border-[#2a3044]'
       }`}
     >
-      <div className="aspect-video bg-[#0a1628] relative overflow-hidden">
+      <div className="aspect-video bg-surface-1 relative overflow-hidden">
         {asset.asset_type === 'image' ? (
           <img
             src={asset.url}
@@ -255,7 +255,7 @@ function SavedAssetCard({
         )}
 
         <div className="absolute top-1 left-1">
-          <Bookmark size={10} className="text-[#f7b500] fill-[#f7b500]" />
+          <Bookmark size={10} className="text-accent fill-accent" />
         </div>
 
         <div className="absolute top-1 right-1 px-1 py-0.5 rounded bg-black/60 text-[7px] text-slate-300 uppercase">
@@ -265,7 +265,7 @@ function SavedAssetCard({
         <div className="absolute inset-0 flex items-center justify-center gap-2 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity">
           <button
             onClick={(e) => { e.stopPropagation(); onUse(); }}
-            className="px-2 py-1 rounded bg-[#f7b500]/90 text-[9px] text-white font-medium hover:bg-[#f7b500] transition-colors"
+            className="px-2 py-1 rounded bg-accent-wash text-[9px] text-white font-medium hover:bg-accent transition-colors"
           >
             Use
           </button>

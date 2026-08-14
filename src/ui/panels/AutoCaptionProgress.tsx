@@ -35,14 +35,14 @@ export function AutoCaptionProgress() {
       ) : (
         <>
           <div className="flex items-center gap-2">
-            <Captions size={14} className="text-[#f7b500] flex-shrink-0" />
+            <Captions size={14} className="text-accent flex-shrink-0" />
             <span className="flex-1 min-w-0 text-[12px] text-slate-200 truncate">{label || 'Auto-captioning…'}</span>
             <Loader2 size={13} className="text-slate-500 animate-spin flex-shrink-0" />
             <button title="Cancel" onClick={(e) => { e.stopPropagation(); cancel(); }} className="p-1 rounded text-slate-500 hover:text-slate-200 hover:bg-white/5"><X size={12} /></button>
           </div>
           {download && (
-            <div className="mt-2 h-1 rounded bg-[#122240] overflow-hidden">
-              <div className="h-full bg-[#f7b500] transition-all" style={{ width: `${Math.max(2, Math.min(100, download.progress))}%` }} />
+            <div className="mt-2 h-1 rounded bg-surface-3 overflow-hidden">
+              <div className="h-full bg-accent transition-all" style={{ width: `${Math.max(2, Math.min(100, download.progress))}%` }} />
             </div>
           )}
         </>

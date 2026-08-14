@@ -48,7 +48,7 @@ export function ParticlePanel({ layer }: ParticlePanelProps) {
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2 px-1">
-        <Sparkles size={13} className="text-[#f7b500]" />
+        <Sparkles size={13} className="text-accent" />
         <span className="text-[10px] uppercase tracking-wider text-slate-400 font-medium">
           Particle System
         </span>
@@ -62,8 +62,8 @@ export function ParticlePanel({ layer }: ParticlePanelProps) {
             onClick={() => setSection(s.id)}
             className={`flex-1 px-1.5 py-1 text-[9px] rounded transition-colors ${
               section === s.id
-                ? 'bg-[#f7b500]/15 text-[#ffc83d] ring-1 ring-[#f7b500]/30'
-                : 'bg-[#122240] text-slate-500 hover:text-slate-300'
+                ? 'bg-accent-wash text-accent-hover ring-1 ring-accent'
+                : 'bg-surface-3 text-slate-500 hover:text-slate-300'
             }`}
           >
             {s.label}
@@ -77,7 +77,7 @@ export function ParticlePanel({ layer }: ParticlePanelProps) {
         <span className="text-[10px] text-slate-300 font-mono flex-1">{layer.particle.seed}</span>
         <button
           onClick={randomizeSeed}
-          className="p-1 rounded hover:bg-[#1a2a42] text-slate-400 hover:text-slate-200"
+          className="p-1 rounded hover:bg-surface-4 text-slate-400 hover:text-slate-200"
           title="Randomize seed"
         >
           <RotateCcw size={11} />
@@ -112,8 +112,8 @@ function PresetsSection({ currentPreset, onApply }: { currentPreset: string; onA
           onClick={() => onApply(name)}
           className={`px-2 py-2 rounded text-[10px] text-left transition-colors capitalize ${
             currentPreset === name
-              ? 'bg-[#f7b500]/15 text-[#ffc83d] ring-1 ring-[#f7b500]/30'
-              : 'bg-[#0c1018] border border-[#1a2a42] text-slate-400 hover:text-slate-200 hover:border-[#f7b500]/50'
+              ? 'bg-accent-wash text-accent-hover ring-1 ring-accent'
+              : 'bg-[#0c1018] border border-hairline text-slate-400 hover:text-slate-200 hover:border-accent-dim'
           }`}
         >
           {name}
@@ -135,8 +135,8 @@ function EmitterSection({ config, onChange }: { config: EmitterConfig; onChange:
               onClick={() => onChange({ emitterShape: s })}
               className={`px-1.5 py-0.5 text-[9px] rounded transition-colors capitalize ${
                 config.emitterShape === s
-                  ? 'bg-[#f7b500]/15 text-[#ffc83d] ring-1 ring-[#f7b500]/30'
-                  : 'bg-[#122240] text-slate-500 hover:text-slate-300'
+                  ? 'bg-accent-wash text-accent-hover ring-1 ring-accent'
+                  : 'bg-surface-3 text-slate-500 hover:text-slate-300'
               }`}
             >
               {s}
@@ -159,7 +159,7 @@ function EmitterSection({ config, onChange }: { config: EmitterConfig; onChange:
       <DragInput label="Rate" value={config.spawnRate} onChange={(v) => onChange({ spawnRate: Math.max(0, v) })} min={0} max={500} step={1} precision={0} suffix="/s" />
       <DragInput label="Burst" value={config.burstCount} onChange={(v) => onChange({ burstCount: Math.max(0, Math.round(v)) })} min={0} max={1000} step={1} precision={0} />
 
-      <div className="border-t border-[#1a2a42] pt-2">
+      <div className="border-t border-hairline pt-2">
         <span className="text-[9px] text-slate-500 uppercase">Initial Values</span>
       </div>
       <DragInput label="Speed Min" value={config.initialSpeed.min} onChange={(v) => onChange({ initialSpeed: { ...config.initialSpeed, min: v } })} min={0} max={1000} step={1} precision={0} />
@@ -200,8 +200,8 @@ function AppearanceSection({ config, onChange }: { config: EmitterConfig; onChan
               onClick={() => onChange({ spriteShape: s })}
               className={`px-1.5 py-0.5 text-[9px] rounded transition-colors capitalize ${
                 config.spriteShape === s
-                  ? 'bg-[#f7b500]/15 text-[#ffc83d] ring-1 ring-[#f7b500]/30'
-                  : 'bg-[#122240] text-slate-500 hover:text-slate-300'
+                  ? 'bg-accent-wash text-accent-hover ring-1 ring-accent'
+                  : 'bg-surface-3 text-slate-500 hover:text-slate-300'
               }`}
             >
               {s}
@@ -219,8 +219,8 @@ function AppearanceSection({ config, onChange }: { config: EmitterConfig; onChan
               onClick={() => onChange({ blendMode: b })}
               className={`px-1.5 py-0.5 text-[9px] rounded transition-colors capitalize ${
                 config.blendMode === b
-                  ? 'bg-[#f7b500]/15 text-[#ffc83d] ring-1 ring-[#f7b500]/30'
-                  : 'bg-[#122240] text-slate-500 hover:text-slate-300'
+                  ? 'bg-accent-wash text-accent-hover ring-1 ring-accent'
+                  : 'bg-surface-3 text-slate-500 hover:text-slate-300'
               }`}
             >
               {b}
@@ -229,7 +229,7 @@ function AppearanceSection({ config, onChange }: { config: EmitterConfig; onChan
         </div>
       </div>
 
-      <div className="border-t border-[#1a2a42] pt-2">
+      <div className="border-t border-hairline pt-2">
         <span className="text-[9px] text-slate-500 uppercase">Color Over Life</span>
       </div>
       {config.colorOverLife.map((stop, idx) => (

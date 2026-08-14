@@ -20,7 +20,7 @@ export function TransformDialog({ onClose }: { onClose: () => void }) {
   return (
     <>
       <div className="fixed inset-0 z-[90]" onClick={onClose} />
-      <div className="fixed left-1/2 top-24 -translate-x-1/2 z-[91] w-[280px] bg-[#0e1c32] border border-[#1a2a42] rounded-lg p-4 shadow-2xl">
+      <div className="fixed left-1/2 top-24 -translate-x-1/2 z-[91] w-[280px] bg-surface-2 border border-hairline rounded-lg p-4 shadow-2xl">
         <div className="flex items-center justify-between mb-3">
           <span className="text-[11px] font-semibold text-slate-200">Transform</span>
           <button className="p-0.5 rounded hover:bg-white/10 text-slate-500" onClick={onClose}><X size={14} /></button>
@@ -55,7 +55,7 @@ export function TransformDialog({ onClose }: { onClose: () => void }) {
 
               <button
                 onClick={() => resetTransformAll(layer.id)}
-                className="mt-1 w-full flex items-center justify-center gap-1.5 py-1.5 rounded-md text-[11px] bg-[#16294a] hover:bg-[#1c3155] text-slate-300"
+                className="mt-1 w-full flex items-center justify-center gap-1.5 py-1.5 rounded-md text-[11px] bg-surface-4 hover:bg-surface-5 text-slate-300"
               >
                 <RotateCcw size={12} /> Reset All
               </button>
@@ -83,7 +83,7 @@ function Num({ value, onCommit, suffix }: { value: number; onCommit: (v: number)
         type="number"
         defaultValue={Number.isFinite(value) ? Math.round(value * 100) / 100 : 0}
         onChange={(e) => { const v = parseFloat(e.target.value); if (Number.isFinite(v)) onCommit(v); }}
-        className="w-16 bg-[#0a1628] border border-[#1a2a42] rounded px-1.5 py-0.5 text-[11px] text-slate-200 text-right outline-none focus:border-[#2a4a7c]"
+        className="w-16 bg-surface-1 border border-hairline rounded px-1.5 py-0.5 text-[11px] text-slate-200 text-right outline-none focus:border-[#2a4a7c]"
       />
       {suffix && <span className="text-slate-600 text-[9px] w-2.5">{suffix}</span>}
     </span>

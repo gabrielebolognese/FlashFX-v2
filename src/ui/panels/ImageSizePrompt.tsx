@@ -15,8 +15,8 @@ export function ImageSizePrompt() {
 
   return (
     <div className="absolute top-3 left-1/2 -translate-x-1/2 z-40 pointer-events-auto max-w-[92%]">
-      <div className="flex items-center gap-3 rounded-lg border border-[#f7b500]/40 bg-[#0d1219]/95 backdrop-blur px-3 py-2 shadow-lg shadow-black/40">
-        <ImageOff size={16} className="text-[#f7b500] flex-shrink-0" />
+      <div className="flex items-center gap-3 rounded-lg border border-accent-dim bg-[#0d1219]/95 backdrop-blur px-3 py-2 shadow-lg shadow-black/40">
+        <ImageOff size={16} className="text-accent flex-shrink-0" />
         <div className="text-[11px] leading-tight text-slate-300 min-w-0">
           <div className="font-semibold text-slate-100">This image is larger than the canvas</div>
           <div className="text-slate-400">
@@ -25,13 +25,13 @@ export function ImageSizePrompt() {
         </div>
         <button
           onClick={() => { fitLayerToCanvas(layerId); dismiss(); }}
-          className="flex-shrink-0 flex items-center gap-1.5 h-7 px-2.5 rounded-md bg-[#f7b500] hover:bg-[#ffc21a] text-[#0e1c32] text-[11px] font-semibold transition-colors"
+          className="flex-shrink-0 flex items-center gap-1.5 h-7 px-2.5 rounded-md bg-accent hover:bg-[#ffc21a] text-on-accent text-[11px] font-semibold transition-colors"
         >
           <Maximize2 size={12} /> Resize to fit
         </button>
         <button
           onClick={dismiss}
-          className="flex-shrink-0 h-7 px-2.5 rounded-md bg-[#1a2a42] hover:bg-[#243554] text-slate-200 text-[11px] font-medium transition-colors"
+          className="flex-shrink-0 h-7 px-2.5 rounded-md bg-surface-4 hover:bg-[#243554] text-slate-200 text-[11px] font-medium transition-colors"
         >
           Keep original
         </button>

@@ -21,7 +21,7 @@ export function ProceduralPanel({ layerId }: ProceduralPanelProps) {
     return (
       <div className="space-y-3">
         <div className="flex items-center gap-2 px-1">
-          <Repeat size={13} className="text-[#f7b500]" />
+          <Repeat size={13} className="text-accent" />
           <span className="text-[10px] uppercase tracking-wider text-slate-400 font-medium">
             Procedural Loop
           </span>
@@ -35,7 +35,7 @@ export function ProceduralPanel({ layerId }: ProceduralPanelProps) {
     <div className="space-y-3">
       <div className="flex items-center justify-between px-1">
         <div className="flex items-center gap-2">
-          <Repeat size={13} className="text-[#f7b500]" />
+          <Repeat size={13} className="text-accent" />
           <span className="text-[10px] uppercase tracking-wider text-slate-400 font-medium">
             Procedural Loop
           </span>
@@ -51,7 +51,7 @@ export function ProceduralPanel({ layerId }: ProceduralPanelProps) {
 
       <BindingSettings binding={binding} onUpdate={updateProceduralBinding} />
 
-      <div className="border-t border-[#1a2a42] pt-2">
+      <div className="border-t border-hairline pt-2">
         <span className="text-[9px] text-slate-500 uppercase px-1">Presets</span>
       </div>
       <PresetPicker layerId={layerId} onApply={addProceduralBinding} currentBinding={binding} />
@@ -90,8 +90,8 @@ function PresetPicker({
             onClick={() => setFilter(c.id)}
             className={`flex-1 px-1 py-0.5 text-[9px] rounded transition-colors ${
               filter === c.id
-                ? 'bg-[#f7b500]/15 text-[#ffc83d] ring-1 ring-[#f7b500]/30'
-                : 'bg-[#122240] text-slate-500 hover:text-slate-300'
+                ? 'bg-accent-wash text-accent-hover ring-1 ring-accent'
+                : 'bg-surface-3 text-slate-500 hover:text-slate-300'
             }`}
           >
             {c.label}
@@ -107,8 +107,8 @@ function PresetPicker({
               onClick={() => onApply(layerId, preset.name)}
               className={`px-2 py-2 rounded text-[10px] text-left transition-colors ${
                 isActive
-                  ? 'bg-[#f7b500]/15 text-[#ffc83d] ring-1 ring-[#f7b500]/30'
-                  : 'bg-[#0c1018] border border-[#1a2a42] text-slate-400 hover:text-slate-200 hover:border-[#f7b500]/50'
+                  ? 'bg-accent-wash text-accent-hover ring-1 ring-accent'
+                  : 'bg-[#0c1018] border border-hairline text-slate-400 hover:text-slate-200 hover:border-accent-dim'
               }`}
               title={preset.description}
             >
@@ -145,7 +145,7 @@ function BindingSettings({
         <button
           onClick={() => onUpdate(binding.id, { enabled: !binding.enabled })}
           className={`w-7 h-4 rounded-full transition-colors relative ${
-            binding.enabled ? 'bg-[#f7b500]' : 'bg-[#1a2a42]'
+            binding.enabled ? 'bg-accent' : 'bg-surface-4'
           }`}
         >
           <span
@@ -174,7 +174,7 @@ function BindingSettings({
         <button
           onClick={() => onUpdate(binding.id, { pingPong: !binding.pingPong })}
           className={`w-7 h-4 rounded-full transition-colors relative ${
-            binding.pingPong ? 'bg-[#f7b500]' : 'bg-[#1a2a42]'
+            binding.pingPong ? 'bg-accent' : 'bg-surface-4'
           }`}
         >
           <span
@@ -223,10 +223,10 @@ function TransformParamsEditor({
   const easingOptions: ProceduralTransformParam['easing'][] = ['linear', 'sine', 'cosine'];
 
   return (
-    <div className="space-y-2 border-t border-[#1a2a42] pt-2">
+    <div className="space-y-2 border-t border-hairline pt-2">
       <span className="text-[9px] text-slate-500 uppercase">Transform Properties</span>
       {params.map((param, idx) => (
-        <div key={idx} className="space-y-1 bg-[#0a0f18] rounded p-1.5 border border-[#1a2a42]/50">
+        <div key={idx} className="space-y-1 bg-[#0a0f18] rounded p-1.5 border border-hairline">
           <div className="flex items-center gap-1">
             <select
               value={param.property}
@@ -235,7 +235,7 @@ function TransformParamsEditor({
                 next[idx] = { ...next[idx], property: e.target.value as ProceduralTransformParam['property'] };
                 onChange(next);
               }}
-              className="flex-1 text-[9px] bg-[#122240] text-slate-300 border border-[#1a2a42] rounded px-1 py-0.5"
+              className="flex-1 text-[9px] bg-surface-3 text-slate-300 border border-hairline rounded px-1 py-0.5"
             >
               {propertyOptions.map((p) => <option key={p} value={p}>{p}</option>)}
             </select>
@@ -246,7 +246,7 @@ function TransformParamsEditor({
                 next[idx] = { ...next[idx], easing: e.target.value as ProceduralTransformParam['easing'] };
                 onChange(next);
               }}
-              className="text-[9px] bg-[#122240] text-slate-300 border border-[#1a2a42] rounded px-1 py-0.5 w-14"
+              className="text-[9px] bg-surface-3 text-slate-300 border border-hairline rounded px-1 py-0.5 w-14"
             >
               {easingOptions.map((e) => <option key={e} value={e}>{e}</option>)}
             </select>
@@ -277,8 +277,8 @@ function TransformParamsEditor({
               }}
               className={`px-2 py-0.5 text-[9px] rounded transition-colors ${
                 param.direction === 1
-                  ? 'bg-[#122240] text-slate-400'
-                  : 'bg-[#f7b500]/15 text-[#ffc83d]'
+                  ? 'bg-surface-3 text-slate-400'
+                  : 'bg-accent-wash text-accent-hover'
               }`}
             >
               <RotateCcw size={9} className={param.direction === -1 ? 'scale-x-[-1]' : ''} />
@@ -288,7 +288,7 @@ function TransformParamsEditor({
       ))}
       <button
         onClick={() => onChange([...params, { property: 'rotation', cycles: 1, amplitude: 360, offset: 0, easing: 'linear', direction: 1 }])}
-        className="w-full py-1 text-[9px] text-slate-400 hover:text-slate-200 bg-[#122240] hover:bg-[#1a2a42] rounded transition-colors"
+        className="w-full py-1 text-[9px] text-slate-400 hover:text-slate-200 bg-surface-3 hover:bg-surface-4 rounded transition-colors"
       >
         + Add Property
       </button>
@@ -308,7 +308,7 @@ function GridParamsEditor({
   ];
 
   return (
-    <div className="space-y-2 border-t border-[#1a2a42] pt-2">
+    <div className="space-y-2 border-t border-hairline pt-2">
       <span className="text-[9px] text-slate-500 uppercase">Grid Layout</span>
       <div className="flex gap-1">
         <DragInput label="Rows" value={params.rows} onChange={(v) => onChange({ ...params, rows: Math.max(1, Math.round(v)) })} min={1} max={20} step={1} precision={0} className="flex-1" />
@@ -331,8 +331,8 @@ function GridParamsEditor({
             onClick={() => onChange({ ...params, phaseOffsetMode: p })}
             className={`px-1.5 py-0.5 text-[9px] rounded transition-colors capitalize ${
               params.phaseOffsetMode === p
-                ? 'bg-[#f7b500]/15 text-[#ffc83d] ring-1 ring-[#f7b500]/30'
-                : 'bg-[#122240] text-slate-500 hover:text-slate-300'
+                ? 'bg-accent-wash text-accent-hover ring-1 ring-accent'
+                : 'bg-surface-3 text-slate-500 hover:text-slate-300'
             }`}
           >
             {p}
@@ -357,7 +357,7 @@ function TileParamsEditor({
   onChange: (params: ProceduralTileParams) => void;
 }) {
   return (
-    <div className="space-y-2 border-t border-[#1a2a42] pt-2">
+    <div className="space-y-2 border-t border-hairline pt-2">
       <span className="text-[9px] text-slate-500 uppercase">Tile Scroll</span>
       <div className="flex gap-1">
         <DragInput label="Scroll X" value={params.scrollX} onChange={(v) => onChange({ ...params, scrollX: Math.round(v) })} step={1} precision={0} className="flex-1" suffix="tiles" />

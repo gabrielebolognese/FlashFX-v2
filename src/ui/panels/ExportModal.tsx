@@ -89,9 +89,9 @@ export function ExportModal({ onClose }: ExportModalProps) {
     <div className="fixed inset-0 z-[100] flex items-center justify-center">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={!exporting ? onClose : undefined} />
 
-      <div className="relative bg-[#0e1c32] border border-[#1a2a42] rounded-lg shadow-2xl w-full max-w-md overflow-hidden">
+      <div className="relative bg-surface-2 border border-hairline rounded-lg shadow-2xl w-full max-w-md overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#1a2a42]">
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-hairline">
           <div className="flex items-center gap-2">
             <Film size={16} className="text-accent" />
             <h2 className="text-sm font-medium text-slate-200">Export Video</h2>
@@ -117,7 +117,7 @@ export function ExportModal({ onClose }: ExportModalProps) {
                     className={`py-2 px-2 rounded text-[11px] font-medium transition-all ${
                       quality === key
                         ? 'bg-accent text-on-accent'
-                        : 'bg-[#122240] text-slate-400 hover:bg-[#1a2a42] hover:text-slate-300'
+                        : 'bg-surface-3 text-slate-400 hover:bg-surface-4 hover:text-slate-300'
                     }`}
                   >
                     <div className="flex items-center justify-center gap-1 mb-0.5">
@@ -143,8 +143,8 @@ export function ExportModal({ onClose }: ExportModalProps) {
                     }}
                     className={`py-1 px-2.5 rounded text-[11px] transition-colors ${
                       matchingRes?.label === r.label
-                        ? 'bg-[#1a2a42] text-accent border border-accent-dim'
-                        : 'bg-[#122240] text-slate-400 hover:text-slate-300'
+                        ? 'bg-surface-4 text-accent border border-accent-dim'
+                        : 'bg-surface-3 text-slate-400 hover:text-slate-300'
                     }`}
                   >
                     {r.label}
@@ -156,14 +156,14 @@ export function ExportModal({ onClose }: ExportModalProps) {
                   type="number"
                   value={resolution.width}
                   onChange={(e) => setResolution({ ...resolution, width: Number(e.target.value) })}
-                  className="flex-1 bg-[#122240] text-[11px] text-slate-300 px-2 py-1.5 rounded border border-[#1a2a42] focus:border-accent outline-none"
+                  className="flex-1 bg-surface-3 text-[11px] text-slate-300 px-2 py-1.5 rounded border border-hairline focus:border-accent outline-none"
                 />
                 <span className="text-[10px] text-slate-600">x</span>
                 <input
                   type="number"
                   value={resolution.height}
                   onChange={(e) => setResolution({ ...resolution, height: Number(e.target.value) })}
-                  className="flex-1 bg-[#122240] text-[11px] text-slate-300 px-2 py-1.5 rounded border border-[#1a2a42] focus:border-accent outline-none"
+                  className="flex-1 bg-surface-3 text-[11px] text-slate-300 px-2 py-1.5 rounded border border-hairline focus:border-accent outline-none"
                 />
                 <span className="text-[10px] text-slate-600">px</span>
               </div>
@@ -179,8 +179,8 @@ export function ExportModal({ onClose }: ExportModalProps) {
                     onClick={() => setFrameRate(fps)}
                     className={`py-1 px-3 rounded text-[11px] transition-colors ${
                       frameRate === fps
-                        ? 'bg-[#1a2a42] text-accent border border-accent-dim'
-                        : 'bg-[#122240] text-slate-400 hover:text-slate-300'
+                        ? 'bg-surface-4 text-accent border border-accent-dim'
+                        : 'bg-surface-3 text-slate-400 hover:text-slate-300'
                     }`}
                   >
                     {fps} fps
@@ -193,20 +193,20 @@ export function ExportModal({ onClose }: ExportModalProps) {
             {hasAudio && (
               <button
                 onClick={() => setIncludeAudio((v) => !v)}
-                className="w-full flex items-center justify-between bg-[#122240] hover:bg-[#1a2a42] rounded-lg px-3 py-2.5 transition-colors"
+                className="w-full flex items-center justify-between bg-surface-3 hover:bg-surface-4 rounded-lg px-3 py-2.5 transition-colors"
               >
                 <span className="flex items-center gap-2 text-[11px] text-slate-300">
                   {includeAudio ? <Volume2 size={13} className="text-accent" /> : <VolumeX size={13} className="text-slate-500" />}
                   Include audio
                 </span>
-                <span className={`relative w-8 h-4 rounded-full transition-colors ${includeAudio ? 'bg-accent' : 'bg-[#1a2a42]'}`}>
-                  <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-[#0e1c32] transition-all ${includeAudio ? 'left-4' : 'left-0.5'}`} />
+                <span className={`relative w-8 h-4 rounded-full transition-colors ${includeAudio ? 'bg-accent' : 'bg-surface-4'}`}>
+                  <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-surface-2 transition-all ${includeAudio ? 'left-4' : 'left-0.5'}`} />
                 </span>
               </button>
             )}
 
             {/* Summary */}
-            <div className="bg-[#0a1628] rounded-lg p-3 border border-[#1a2a42]">
+            <div className="bg-surface-1 rounded-lg p-3 border border-hairline">
               <div className="grid grid-cols-3 gap-3 text-center">
                 <div>
                   <div className="text-[10px] text-slate-600 mb-0.5">Duration</div>
@@ -246,7 +246,7 @@ export function ExportModal({ onClose }: ExportModalProps) {
         {exporting && progress && (
           <div className="p-5 space-y-4">
             <div className="text-center">
-              <div className="w-16 h-16 mx-auto mb-3 rounded-full border-2 border-[#1a2a42] flex items-center justify-center relative">
+              <div className="w-16 h-16 mx-auto mb-3 rounded-full border-2 border-hairline flex items-center justify-center relative">
                 <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 64 64">
                   <circle
                     cx="32" cy="32" r="29"
@@ -273,7 +273,7 @@ export function ExportModal({ onClose }: ExportModalProps) {
               </p>
             </div>
 
-            <div className="w-full h-1.5 bg-[#1a2a42] rounded-full overflow-hidden">
+            <div className="w-full h-1.5 bg-surface-4 rounded-full overflow-hidden">
               <div
                 className="h-full bg-accent rounded-full transition-all duration-150"
                 style={{ width: `${progress.percent}%` }}
@@ -282,7 +282,7 @@ export function ExportModal({ onClose }: ExportModalProps) {
 
             <button
               onClick={handleCancel}
-              className="w-full py-2 bg-[#122240] hover:bg-[#1a2a42] text-slate-400 hover:text-slate-300 rounded-lg text-[11px] font-medium transition-colors"
+              className="w-full py-2 bg-surface-3 hover:bg-surface-4 text-slate-400 hover:text-slate-300 rounded-lg text-[11px] font-medium transition-colors"
             >
               Cancel Export
             </button>
@@ -312,7 +312,7 @@ export function ExportModal({ onClose }: ExportModalProps) {
 
             <button
               onClick={() => { setExportedBlob(null); setProgress(null); }}
-              className="w-full py-2 bg-[#122240] hover:bg-[#1a2a42] text-slate-400 hover:text-slate-300 rounded-lg text-[11px] font-medium transition-colors"
+              className="w-full py-2 bg-surface-3 hover:bg-surface-4 text-slate-400 hover:text-slate-300 rounded-lg text-[11px] font-medium transition-colors"
             >
               Export Again
             </button>

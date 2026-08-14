@@ -129,7 +129,7 @@ export function BrandsTab() {
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-y-auto">
       {/* Colors Section */}
-      <section className="px-3 py-3 border-b border-[#1a2a42]">
+      <section className="px-3 py-3 border-b border-hairline">
         <div className="flex items-center justify-between mb-2.5">
           <h3 className="text-[10px] uppercase tracking-wider text-slate-500 font-medium">Brand Colors</h3>
           <button
@@ -148,7 +148,7 @@ export function BrandsTab() {
                 className={`w-9 h-9 rounded-lg border-2 transition-all shadow-sm hover:scale-110 ${
                   editingColorId === color.id
                     ? 'border-white/60 scale-110'
-                    : 'border-[#1a2a42] hover:border-white/30'
+                    : 'border-hairline hover:border-white/30'
                 }`}
                 style={{ backgroundColor: color.hex }}
                 title={color.hex}
@@ -160,7 +160,7 @@ export function BrandsTab() {
                 <X size={8} />
               </button>
               {editingColorId === color.id && (
-                <div className="absolute top-11 left-0 z-10 bg-[#0d1520] border border-[#1a2a42] rounded-lg p-2 shadow-xl">
+                <div className="absolute top-11 left-0 z-10 bg-[#0d1520] border border-hairline rounded-lg p-2 shadow-xl">
                   <input
                     type="color"
                     value={color.hex}
@@ -175,7 +175,7 @@ export function BrandsTab() {
                         const v = e.target.value;
                         if (/^#[0-9A-Fa-f]{0,6}$/.test(v)) updateColor(color.id, v);
                       }}
-                      className="flex-1 bg-[#081220] border border-[#1a2a42] rounded px-1.5 py-0.5 text-[9px] text-slate-200 font-mono outline-none"
+                      className="flex-1 bg-surface-sunken border border-hairline rounded px-1.5 py-0.5 text-[9px] text-slate-200 font-mono outline-none"
                     />
                   </div>
                 </div>
@@ -189,10 +189,10 @@ export function BrandsTab() {
       </section>
 
       {/* Logos Section */}
-      <section className="px-3 py-3 border-b border-[#1a2a42]">
+      <section className="px-3 py-3 border-b border-hairline">
         <div className="flex items-center justify-between mb-2.5">
           <h3 className="text-[10px] uppercase tracking-wider text-slate-500 font-medium">
-            <Star size={10} className="inline mr-1 text-[#f7b500]" />
+            <Star size={10} className="inline mr-1 text-accent" />
             Logos
           </h3>
           <span className="text-[8px] text-slate-600">{logos.length} logo{logos.length !== 1 ? 's' : ''}</span>
@@ -223,7 +223,7 @@ export function BrandsTab() {
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
-            className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] text-[#f7b500] hover:bg-[#f7b500]/10 transition-colors disabled:opacity-50"
+            className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] text-accent hover:bg-accent-wash transition-colors disabled:opacity-50"
           >
             <Upload size={10} />
             {uploading ? 'Uploading...' : 'Import'}
@@ -276,11 +276,11 @@ function BrandAssetCard({
     <div
       className={`group rounded overflow-hidden border transition-all ${
         isLogo
-          ? 'border-[#f7b500]/30 bg-[#f7b500]/5'
-          : 'border-[#1c3155] bg-[#16294a] hover:border-[#2a3044]'
+          ? 'border-accent-dim bg-accent-wash'
+          : 'border-hairline bg-surface-4 hover:border-[#2a3044]'
       }`}
     >
-      <div className="aspect-video bg-[#0a1628] relative overflow-hidden">
+      <div className="aspect-video bg-surface-1 relative overflow-hidden">
         <img
           src={asset.url}
           alt={asset.name}
@@ -289,13 +289,13 @@ function BrandAssetCard({
         />
         {isLogo && (
           <div className="absolute top-1 left-1">
-            <Star size={10} className="text-[#f7b500] fill-[#f7b500]" />
+            <Star size={10} className="text-accent fill-accent" />
           </div>
         )}
         <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5">
           <button
             onClick={() => onToggleLogo(asset.id)}
-            className={`p-1 rounded ${isLogo ? 'bg-[#f7b500]/20 text-[#f7b500]' : 'bg-white/10 text-white/70 hover:text-[#f7b500]'}`}
+            className={`p-1 rounded ${isLogo ? 'bg-accent-wash text-accent' : 'bg-white/10 text-white/70 hover:text-accent'}`}
             title={isLogo ? 'Remove from logos' : 'Mark as logo'}
           >
             <Star size={12} className={isLogo ? 'fill-current' : ''} />

@@ -76,7 +76,7 @@ export function MultiSelectInspector() {
         {tab === 'canvas' && <CanvasContent />}
         {tab === 'stagger' && <StaggerPanel />}
       </div>
-      <nav className="flex-shrink-0 w-[116px] flex flex-col py-1 border-l border-[#1a2a42] bg-[#0b0e15] overflow-y-auto">
+      <nav className="flex-shrink-0 w-[116px] flex flex-col py-1 border-l border-hairline bg-[#0b0e15] overflow-y-auto">
         <NavItem active={tab === 'common'} onClick={() => setTab('common')} icon={<SlidersHorizontal size={13} />} label="Common" />
         <NavItem active={tab === 'align'} onClick={() => setTab('align')} icon={<Sliders size={13} />} label="Align" />
         <NavItem active={tab === 'distribute'} onClick={() => setTab('distribute')} icon={<AlignHorizontalDistributeCenter size={13} />} label="Distribute" />
@@ -97,10 +97,10 @@ function NavItem({ active, onClick, icon, label }: { active: boolean; onClick: (
       onClick={onClick}
       aria-pressed={active}
       className={`relative flex items-center gap-2 px-3 py-2 text-[11px] font-medium text-left transition-colors ${
-        active ? 'text-[#f7b500] bg-[#f7b500]/10' : 'text-slate-500 hover:text-slate-300 hover:bg-white/[0.03]'
+        active ? 'text-accent bg-accent-wash' : 'text-slate-500 hover:text-slate-300 hover:bg-white/[0.03]'
       }`}
     >
-      <span className={`absolute left-0 top-0 bottom-0 w-[2px] transition-colors ${active ? 'bg-[#f7b500]' : 'bg-transparent'}`} />
+      <span className={`absolute left-0 top-0 bottom-0 w-[2px] transition-colors ${active ? 'bg-accent' : 'bg-transparent'}`} />
       <span className="flex-shrink-0">{icon}</span>
       <span className="truncate">{label}</span>
     </button>
@@ -259,7 +259,7 @@ function ActionButton({ icon: Icon, label, onClick, disabled }: { icon: typeof S
       onClick={onClick}
       disabled={disabled}
       title={label}
-      className="flex items-center gap-2 px-3 py-2.5 rounded-md border border-[#1a2a42] bg-[#0a1628]/60 text-slate-400 hover:text-slate-100 hover:bg-[#1a2a42] hover:border-[#2a3f5f] active:bg-[#f7b500]/10 active:text-[#f7b500] active:border-[#f7b500]/30 transition-all duration-100 disabled:opacity-30 disabled:pointer-events-none"
+      className="flex items-center gap-2 px-3 py-2.5 rounded-md border border-hairline bg-[#0a1628]/60 text-slate-400 hover:text-slate-100 hover:bg-surface-4 hover:border-[#2a3f5f] active:bg-accent-wash active:text-accent active:border-accent-dim transition-all duration-100 disabled:opacity-30 disabled:pointer-events-none"
     >
       <Icon size={15} strokeWidth={1.5} />
       <span className="text-[9px] font-medium">{label}</span>
@@ -272,7 +272,7 @@ function NumericInput({ value, onChange, label, min, step = 1 }: { value: number
     <div className="flex items-center gap-2">
       <span className="text-[9px] text-slate-500 w-16 shrink-0">{label}</span>
       <div className="flex items-center gap-0.5 flex-1">
-        <button onClick={() => onChange(value - step)} className="w-5 h-5 flex items-center justify-center rounded border border-[#1a2a42] bg-[#0a1628]/60 text-slate-500 hover:text-slate-300 hover:bg-[#1a2a42] transition-colors">
+        <button onClick={() => onChange(value - step)} className="w-5 h-5 flex items-center justify-center rounded border border-hairline bg-[#0a1628]/60 text-slate-500 hover:text-slate-300 hover:bg-surface-4 transition-colors">
           <Minus size={9} />
         </button>
         <input
@@ -281,9 +281,9 @@ function NumericInput({ value, onChange, label, min, step = 1 }: { value: number
           min={min}
           step={step}
           onChange={(e) => onChange(Number(e.target.value))}
-          className="flex-1 h-5 px-1.5 text-[9px] text-center text-slate-300 bg-[#0a1628] border border-[#1a2a42] rounded outline-none focus:border-[#f7b500]/50"
+          className="flex-1 h-5 px-1.5 text-[9px] text-center text-slate-300 bg-surface-1 border border-hairline rounded outline-none focus:border-accent-dim"
         />
-        <button onClick={() => onChange(value + step)} className="w-5 h-5 flex items-center justify-center rounded border border-[#1a2a42] bg-[#0a1628]/60 text-slate-500 hover:text-slate-300 hover:bg-[#1a2a42] transition-colors">
+        <button onClick={() => onChange(value + step)} className="w-5 h-5 flex items-center justify-center rounded border border-hairline bg-[#0a1628]/60 text-slate-500 hover:text-slate-300 hover:bg-surface-4 transition-colors">
           <Plus size={9} />
         </button>
       </div>
@@ -320,7 +320,7 @@ function ColorRow({ label, value, onChange }: { label: string; value: Vec4; onCh
         type="color"
         value={vec4ToHex(value)}
         onChange={(e) => onChange(hexToVec4(e.target.value, value[3] ?? 1))}
-        className="h-6 w-9 rounded border border-[#1a2a42] bg-transparent cursor-pointer"
+        className="h-6 w-9 rounded border border-hairline bg-transparent cursor-pointer"
       />
       <span className="text-[9px] text-slate-500 font-mono">{vec4ToHex(value)}</span>
     </div>
@@ -382,7 +382,7 @@ function CommonPropertiesContent() {
   const setFontSize = (px: number) => apply('Set Font Size', (l) => (l.type === 'text' ? ({ ...l, animOverrides: { ...l.animOverrides, fontSize: { ...l.animOverrides.fontSize, defaultValue: px } } } as Layer) : l));
   const setVolume = (pct: number) => apply('Set Volume', (l) => (l.type === 'audio' ? ({ ...l, audio: { ...l.audio, volume: { ...l.audio.volume, defaultValue: pct / 100 } } } as Layer) : l));
 
-  const selectCls = 'flex-1 h-5 px-1 text-[9px] text-slate-300 bg-[#0a1628] border border-[#1a2a42] rounded outline-none focus:border-[#f7b500]/50';
+  const selectCls = 'flex-1 h-5 px-1 text-[9px] text-slate-300 bg-surface-1 border border-hairline rounded outline-none focus:border-accent-dim';
 
   return (
     <div className="p-3 space-y-4">
@@ -438,7 +438,7 @@ function CommonPropertiesContent() {
               <button
                 key={p.id}
                 onClick={() => applyAnimationPresetBatch(selection.selectedIds, p.id, 0.6, false)}
-                className="px-2 py-1.5 rounded border border-[#1a2a42] bg-[#0a1628]/60 text-[10px] text-slate-300 hover:text-[#f7b500] hover:border-[#f7b500]/40 transition-colors"
+                className="px-2 py-1.5 rounded border border-hairline bg-[#0a1628]/60 text-[10px] text-slate-300 hover:text-accent hover:border-accent-dim transition-colors"
               >
                 {p.label}
               </button>
@@ -492,7 +492,7 @@ function AlignContent() {
         <div className={`grid grid-cols-3 gap-1 ${isDisabled ? 'opacity-30 pointer-events-none' : ''}`}>
           {alignActions.map(({ axis, icon: Icon, label }) => (
             <button key={axis} onClick={() => executeAlign(axis)} disabled={isDisabled} title={label}
-              className="flex flex-col items-center gap-1 px-2 py-2.5 rounded-md border border-[#1a2a42] bg-[#0a1628]/60 text-slate-400 hover:text-slate-100 hover:bg-[#1a2a42] hover:border-[#2a3f5f] active:bg-[#f7b500]/10 active:text-[#f7b500] active:border-[#f7b500]/30 transition-all duration-100">
+              className="flex flex-col items-center gap-1 px-2 py-2.5 rounded-md border border-hairline bg-[#0a1628]/60 text-slate-400 hover:text-slate-100 hover:bg-surface-4 hover:border-[#2a3f5f] active:bg-accent-wash active:text-accent active:border-accent-dim transition-all duration-100">
               <Icon size={16} strokeWidth={1.5} />
               <span className="text-[8px] font-medium whitespace-nowrap">{label}</span>
             </button>
@@ -507,7 +507,7 @@ function AlignContent() {
           <button
             onClick={() => autoCaptionAudioLayers(audioSelected.map((l) => l.id))}
             title="Transcribe the selected audio on-device (Whisper Small), review the text, then place captions"
-            className="w-full flex items-center justify-center gap-2 px-3 py-3 rounded-md border border-[#f7b500]/40 bg-[#f7b500]/10 text-[#f7b500] font-semibold hover:bg-[#f7b500]/20 hover:border-[#f7b500]/60 active:bg-[#f7b500]/25 transition-all duration-100"
+            className="w-full flex items-center justify-center gap-2 px-3 py-3 rounded-md border border-accent-dim bg-accent-wash text-accent font-semibold hover:bg-accent-wash hover:border-accent-dim active:bg-accent-wash transition-all duration-100"
           >
             <Captions size={16} strokeWidth={2} />
             <span className="text-[11px]">Add Subtitles ({audioSelected.length})</span>
@@ -522,7 +522,7 @@ function AlignContent() {
             onClick={() => useEditorStore.getState().convertSelectionTo3D()}
             disabled={noneToConvert}
             title={noneToConvert ? 'Every selected layer is already 3D (or can’t be 3D)' : 'Enable 3D on all selected layers so a camera can move through them'}
-            className="w-full flex items-center justify-center gap-2 px-3 py-3 rounded-md border border-[#f7b500]/40 bg-[#f7b500]/10 text-[#f7b500] font-semibold hover:bg-[#f7b500]/20 hover:border-[#f7b500]/60 active:bg-[#f7b500]/25 transition-all duration-100 disabled:opacity-30 disabled:pointer-events-none"
+            className="w-full flex items-center justify-center gap-2 px-3 py-3 rounded-md border border-accent-dim bg-accent-wash text-accent font-semibold hover:bg-accent-wash hover:border-accent-dim active:bg-accent-wash transition-all duration-100 disabled:opacity-30 disabled:pointer-events-none"
           >
             <Box size={16} strokeWidth={2} />
             <span className="text-[11px]">Convert all to 3D{noneToConvert ? '' : ` (${convertible.length})`}</span>
@@ -562,8 +562,8 @@ function DistributeContent() {
     <div className="p-3">
       <SelectionHeader count={selectedLayers.length} />
       {selectedLayers.length < 3 && selectedLayers.length >= 2 && (
-        <div className="mb-4 px-2 py-2 bg-[#f7b500]/5 border border-[#f7b500]/20 rounded-md">
-          <p className="text-[9px] text-[#f7b500]/80">Distribution requires at least 3 selected objects.</p>
+        <div className="mb-4 px-2 py-2 bg-accent-wash border border-accent-dim rounded-md">
+          <p className="text-[9px] text-accent">Distribution requires at least 3 selected objects.</p>
         </div>
       )}
       <section className="mb-4">
@@ -572,7 +572,7 @@ function DistributeContent() {
         <div className={`grid grid-cols-2 gap-1.5 ${isDisabled ? 'opacity-30 pointer-events-none' : ''}`}>
           {boundsActions.map(({ mode, icon: Icon, label }) => (
             <button key={mode} onClick={() => executeDistribute(mode)} disabled={isDisabled} title={`Distribute ${label} (Spacing)`}
-              className="flex items-center gap-2 px-3 py-2.5 rounded-md border border-[#1a2a42] bg-[#0a1628]/60 text-slate-400 hover:text-slate-100 hover:bg-[#1a2a42] hover:border-[#2a3f5f] active:bg-[#f7b500]/10 active:text-[#f7b500] active:border-[#f7b500]/30 transition-all duration-100">
+              className="flex items-center gap-2 px-3 py-2.5 rounded-md border border-hairline bg-[#0a1628]/60 text-slate-400 hover:text-slate-100 hover:bg-surface-4 hover:border-[#2a3f5f] active:bg-accent-wash active:text-accent active:border-accent-dim transition-all duration-100">
               <Icon size={15} strokeWidth={1.5} /><span className="text-[9px] font-medium">{label}</span>
             </button>
           ))}
@@ -584,7 +584,7 @@ function DistributeContent() {
         <div className={`grid grid-cols-2 gap-1.5 ${isDisabled ? 'opacity-30 pointer-events-none' : ''}`}>
           {centerActions.map(({ mode, icon: Icon, label }) => (
             <button key={mode} onClick={() => executeDistribute(mode)} disabled={isDisabled} title={`Distribute ${label} (Centers)`}
-              className="flex items-center gap-2 px-3 py-2.5 rounded-md border border-[#1a2a42] bg-[#0a1628]/60 text-slate-400 hover:text-slate-100 hover:bg-[#1a2a42] hover:border-[#2a3f5f] active:bg-[#f7b500]/10 active:text-[#f7b500] active:border-[#f7b500]/30 transition-all duration-100">
+              className="flex items-center gap-2 px-3 py-2.5 rounded-md border border-hairline bg-[#0a1628]/60 text-slate-400 hover:text-slate-100 hover:bg-surface-4 hover:border-[#2a3f5f] active:bg-accent-wash active:text-accent active:border-accent-dim transition-all duration-100">
               <Icon size={15} strokeWidth={1.5} /><span className="text-[9px] font-medium">{label}</span>
             </button>
           ))}

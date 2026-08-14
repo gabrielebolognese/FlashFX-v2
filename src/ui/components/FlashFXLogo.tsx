@@ -26,7 +26,7 @@ export function FlashFXLogo({ size = 20, markOnly = false, className = '' }: Pro
       {!markOnly && (
         <span className="font-bold tracking-tight leading-none" style={{ fontSize: Math.round(size * 0.72) }}>
           <span className="text-slate-100">Flash</span>
-          <span className="text-[#f7b500]">FX</span>
+          <span className="text-accent">FX</span>
         </span>
       )}
     </span>

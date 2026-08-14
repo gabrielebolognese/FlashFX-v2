@@ -40,7 +40,7 @@ export function EmergencyRecoveryOverlay() {
         <button
           onClick={handleReset}
           disabled={resetting}
-          className="mt-4 px-5 py-2.5 rounded-xl text-[13px] font-semibold bg-[#f7b500] text-white hover:bg-[#f7b500] disabled:opacity-60 inline-flex items-center gap-2"
+          className="mt-4 px-5 py-2.5 rounded-xl text-[13px] font-semibold bg-accent text-white hover:bg-accent disabled:opacity-60 inline-flex items-center gap-2"
         >
           <RotateCcw size={15} className={resetting ? 'animate-spin' : ''} />
           {resetting ? 'Rebuilding engine...' : 'Reset Editor'}

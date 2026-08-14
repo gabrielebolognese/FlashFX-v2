@@ -57,7 +57,7 @@ export function PatternEditor({ config, onChange }: PatternEditorProps) {
           {config.enabled && (
             <button
               onClick={() => onChange({ ...createDefaultPattern() })}
-              className="flex items-center gap-1 px-1.5 py-0.5 text-[9px] rounded bg-[#122240] text-slate-500 hover:text-red-400"
+              className="flex items-center gap-1 px-1.5 py-0.5 text-[9px] rounded bg-surface-3 text-slate-500 hover:text-red-400"
               title="Reset"
             >
               <X size={9} />
@@ -68,8 +68,8 @@ export function PatternEditor({ config, onChange }: PatternEditorProps) {
             onClick={toggleEnabled}
             className={`px-1.5 py-0.5 text-[9px] rounded transition-colors ${
               config.enabled
-                ? 'bg-[#f7b500]/15 text-[#ffc83d] ring-1 ring-[#f7b500]/30'
-                : 'bg-[#122240] text-slate-500 hover:text-slate-300'
+                ? 'bg-accent-wash text-accent-hover ring-1 ring-accent'
+                : 'bg-surface-3 text-slate-500 hover:text-slate-300'
             }`}
           >
             {config.enabled ? 'On' : 'Off'}
@@ -80,7 +80,7 @@ export function PatternEditor({ config, onChange }: PatternEditorProps) {
       {expanded && (
         <div className="space-y-2">
           <div
-            className="h-12 rounded border border-[#243a5c]"
+            className="h-12 rounded border border-hairline"
             style={{
               backgroundImage: `url("${previewUri}")`,
               backgroundColor: config.backgroundColor === 'transparent' ? '#081220' : config.backgroundColor,
@@ -99,8 +99,8 @@ export function PatternEditor({ config, onChange }: PatternEditorProps) {
                   onClick={() => update({ patternType: p.value })}
                   className={`px-1.5 py-1 text-[9px] rounded transition-colors ${
                     config.patternType === p.value
-                      ? 'bg-[#f7b500]/15 text-[#ffc83d] ring-1 ring-[#f7b500]/30'
-                      : 'bg-[#122240] text-slate-500 hover:text-slate-300'
+                      ? 'bg-accent-wash text-accent-hover ring-1 ring-accent'
+                      : 'bg-surface-3 text-slate-500 hover:text-slate-300'
                   }`}
                 >
                   {p.label}
@@ -124,7 +124,7 @@ export function PatternEditor({ config, onChange }: PatternEditorProps) {
                 const v = e.target.value.trim();
                 if (/^#[0-9a-fA-F]{0,6}$/.test(v)) update({ color: v });
               }}
-              className="bg-[#122240] text-[9px] font-mono text-slate-300 px-1 py-0.5 rounded border border-[#1a2a42] outline-none w-16 flex-1"
+              className="bg-surface-3 text-[9px] font-mono text-slate-300 px-1 py-0.5 rounded border border-hairline outline-none w-16 flex-1"
             />
             <BrandColorPicker
               onSelect={(rgba) => {
@@ -152,8 +152,8 @@ export function PatternEditor({ config, onChange }: PatternEditorProps) {
               }
               className={`px-1.5 py-0.5 text-[9px] rounded ${
                 config.backgroundColor === 'transparent'
-                  ? 'bg-[#f7b500]/15 text-[#ffc83d] ring-1 ring-[#f7b500]/30'
-                  : 'bg-[#122240] text-slate-500 hover:text-slate-300'
+                  ? 'bg-accent-wash text-accent-hover ring-1 ring-accent'
+                  : 'bg-surface-3 text-slate-500 hover:text-slate-300'
               }`}
             >
               Transparent
@@ -208,7 +208,7 @@ export function PatternEditor({ config, onChange }: PatternEditorProps) {
                 value={config.customSvg ?? ''}
                 onChange={(e) => update({ customSvg: e.target.value })}
                 placeholder='<circle cx="10" cy="10" r="5" fill="#fff"/>'
-                className="w-full bg-[#122240] text-[9px] font-mono text-slate-300 px-2 py-1.5 rounded border border-[#1a2a42] focus:border-[#f7b500]/50 outline-none resize-none min-h-[48px]"
+                className="w-full bg-surface-3 text-[9px] font-mono text-slate-300 px-2 py-1.5 rounded border border-hairline focus:border-accent-dim outline-none resize-none min-h-[48px]"
                 rows={3}
               />
               <p className="text-[8px] text-slate-600">

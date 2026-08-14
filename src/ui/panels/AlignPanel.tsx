@@ -53,7 +53,7 @@ export function AlignPanel({ onClose }: { onClose: () => void }) {
   return (
     <>
       <div className="fixed inset-0 z-40" onClick={onClose} />
-      <div className="absolute top-[52px] left-[300px] z-50 bg-[#0e1c32] border border-[#1a2a42] rounded-lg p-3 shadow-2xl">
+      <div className="absolute top-[52px] left-[300px] z-50 bg-surface-2 border border-hairline rounded-lg p-3 shadow-2xl">
         <div className="flex items-center justify-between mb-2">
           <span className="text-[10px] uppercase tracking-wider text-slate-500 font-medium">Align &amp; Distribute</span>
           <button className="p-0.5 rounded hover:bg-white/10 text-slate-500" onClick={onClose}><X size={13} /></button>
@@ -69,7 +69,7 @@ export function AlignPanel({ onClose }: { onClose: () => void }) {
                 <Btn icon={AlignStartVertical} label="Align Left" onClick={() => align('left', 'Align Left')} />
                 <Btn icon={AlignCenterVertical} label="Align Center" onClick={() => align('centerH', 'Align Center')} />
                 <Btn icon={AlignEndVertical} label="Align Right" onClick={() => align('right', 'Align Right')} />
-                <div className="w-px bg-[#1a2a42] mx-1" />
+                <div className="w-px bg-surface-4 mx-1" />
                 <Btn icon={AlignStartHorizontal} label="Align Top" onClick={() => align('top', 'Align Top')} />
                 <Btn icon={AlignCenterHorizontal} label="Align Middle" onClick={() => align('centerV', 'Align Middle')} />
                 <Btn icon={AlignEndHorizontal} label="Align Bottom" onClick={() => align('bottom', 'Align Bottom')} />

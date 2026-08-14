@@ -67,7 +67,7 @@ export function PreviewControls() {
       : 'Solo (select a layer first)';
 
   return (
-    <div className="h-[28px] min-h-[28px] flex items-center gap-1 px-2 bg-[#081220] border-t border-[#1a2a42] select-none">
+    <div className="h-[28px] min-h-[28px] flex items-center gap-1 px-2 bg-surface-sunken border-t border-hairline select-none">
       {/* Resolution dropdown */}
       <QualitySelect quality={quality} onChange={setQuality} />
 
@@ -177,7 +177,7 @@ function WorkspaceSwitch() {
   const setWorkspace = usePanelStore((s) => s.setEditorWorkspace);
 
   return (
-    <div className="flex items-center gap-0.5 p-0.5 rounded-md bg-[#0e1c32] border border-[#1a2a42]">
+    <div className="flex items-center gap-0.5 p-0.5 rounded-md bg-surface-2 border border-hairline">
       {WORKSPACES.map(({ id, label, icon: Icon, hint }) => {
         const active = workspace === id;
         return (
@@ -187,7 +187,7 @@ function WorkspaceSwitch() {
             title={hint}
             className={`flex items-center gap-1 h-5 px-2 rounded text-[10px] font-medium transition-colors ${
               active
-                ? 'bg-[#f7b500]/10 text-[#ffc83d]'
+                ? 'bg-accent-wash text-accent-hover'
                 : 'text-slate-500 hover:text-slate-200 hover:bg-white/[0.04]'
             }`}
           >
@@ -201,7 +201,7 @@ function WorkspaceSwitch() {
 }
 
 function Divider() {
-  return <div className="w-px h-4 bg-[#1a2a42] mx-1" />;
+  return <div className="w-px h-4 bg-surface-4 mx-1" />;
 }
 
 interface ToggleButtonProps {
@@ -223,8 +223,8 @@ function ToggleButton({ icon, active, onClick, title, disabled, activeColor }: T
         disabled
           ? 'text-slate-700 cursor-not-allowed opacity-50'
           : active
-            ? `${activeColor ?? 'text-[#f7b500]'} bg-[#1a2a42]`
-            : 'text-slate-500 hover:text-slate-200 hover:bg-[#1a2a42]'
+            ? `${activeColor ?? 'text-accent'} bg-surface-4`
+            : 'text-slate-500 hover:text-slate-200 hover:bg-surface-4'
       }`}
     >
       {icon}
@@ -257,7 +257,7 @@ function QualitySelect({ quality, onChange }: QualitySelectProps) {
         className={`flex items-center gap-1 h-6 px-2 rounded text-[10px] font-medium transition-colors ${
           quality !== 'full'
             ? 'bg-amber-500/15 text-amber-400 hover:bg-amber-500/25'
-            : 'bg-[#1a2a42] text-slate-300 hover:bg-[#1c3155]'
+            : 'bg-surface-4 text-slate-300 hover:bg-surface-5'
         }`}
         title="Preview Resolution"
       >
@@ -265,7 +265,7 @@ function QualitySelect({ quality, onChange }: QualitySelectProps) {
         <ChevronDown size={10} />
       </button>
       {open && (
-        <div className="absolute left-0 bottom-full mb-1 z-50 min-w-[100px] rounded-md bg-[#0e1c32] border border-[#243a5c] shadow-xl py-1">
+        <div className="absolute left-0 bottom-full mb-1 z-50 min-w-[100px] rounded-md bg-surface-2 border border-hairline shadow-xl py-1">
           {PREVIEW_QUALITY_ORDER.map((q) => (
             <button
               key={q}
@@ -273,7 +273,7 @@ function QualitySelect({ quality, onChange }: QualitySelectProps) {
                 onChange(q);
                 setOpen(false);
               }}
-              className={`w-full text-left px-2 py-1 text-[10px] hover:bg-[#1a2a42] flex items-center justify-between ${
+              className={`w-full text-left px-2 py-1 text-[10px] hover:bg-surface-4 flex items-center justify-between ${
                 quality === q ? 'text-amber-400' : 'text-slate-300'
               }`}
             >

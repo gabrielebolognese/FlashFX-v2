@@ -143,11 +143,11 @@ export function AiImageModal() {
   return (
     <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => !isBusy && close()}>
       <div
-        className="w-[min(92vw,760px)] max-h-[88vh] overflow-auto bg-[#0d1526] border border-[#1c3155] rounded-xl shadow-2xl p-4"
+        className="w-[min(92vw,760px)] max-h-[88vh] overflow-auto bg-[#0d1526] border border-hairline rounded-xl shadow-2xl p-4"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2 text-[#ffc83d]">
+          <div className="flex items-center gap-2 text-accent-hover">
             <Icon size={16} />
             <span className="text-sm font-semibold">{opTitle(operation)}</span>
             {backend && <span className="text-[9px] text-slate-500 uppercase">· {backend}</span>}
@@ -184,7 +184,7 @@ export function AiImageModal() {
 
         {isBusy && (
           <div className="mt-3 h-1.5 rounded-full bg-[#12203a] overflow-hidden">
-            <div className="h-full bg-[#f7b500] transition-all duration-300" style={{ width: `${status === 'processing' ? 100 : progress}%` }} />
+            <div className="h-full bg-accent transition-all duration-300" style={{ width: `${status === 'processing' ? 100 : progress}%` }} />
           </div>
         )}
 
@@ -197,19 +197,19 @@ export function AiImageModal() {
         {/* Actions */}
         <div className="mt-4 flex items-center justify-end gap-2">
           {status === 'error' && (
-            <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] bg-[#16294a] hover:bg-[#1c3155] text-slate-200" onClick={() => setRunId((n) => n + 1)}>
+            <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] bg-surface-4 hover:bg-surface-5 text-slate-200" onClick={() => setRunId((n) => n + 1)}>
               <RotateCcw size={13} /> Retry
             </button>
           )}
           <button
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] bg-[#16294a] hover:bg-[#1c3155] text-slate-200 disabled:opacity-40"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] bg-surface-4 hover:bg-surface-5 text-slate-200 disabled:opacity-40"
             onClick={handleDownload}
             disabled={status !== 'done'}
           >
             <Download size={13} /> Download
           </button>
           <button
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] bg-[#f7b500]/15 hover:bg-[#f7b500]/25 border border-[#f7b500]/30 text-[#ffc83d] disabled:opacity-40"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] bg-accent-wash hover:bg-accent-wash border border-accent-dim text-accent-hover disabled:opacity-40"
             onClick={handleAddToProject}
             disabled={status !== 'done' || !activeProjectId}
           >

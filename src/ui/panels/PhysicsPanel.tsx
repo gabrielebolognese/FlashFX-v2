@@ -35,9 +35,9 @@ function BindingItem({ binding }: { binding: PhysicsBindingDef }) {
   }[binding.role];
 
   return (
-    <div className="border border-[#1a2a42] rounded-md overflow-hidden">
+    <div className="border border-hairline rounded-md overflow-hidden">
       <div
-        className="flex items-center gap-1.5 px-2 py-1.5 bg-[#0a1628] cursor-pointer hover:bg-[#0d1d35]"
+        className="flex items-center gap-1.5 px-2 py-1.5 bg-surface-1 cursor-pointer hover:bg-[#0d1d35]"
         onClick={() => setExpanded(!expanded)}
       >
         {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
@@ -53,14 +53,14 @@ function BindingItem({ binding }: { binding: PhysicsBindingDef }) {
       </div>
 
       {expanded && (
-        <div className="px-2 py-2 space-y-2.5 bg-[#060f1c]">
+        <div className="px-2 py-2 space-y-2.5 bg-surface-sunken">
           {/* Role */}
           <div>
             <div className="text-[9px] text-slate-500 uppercase tracking-wider mb-1">Role</div>
             <select
               value={binding.role}
               onChange={(e) => updatePhysicsBinding(binding.id, { role: e.target.value as PhysicsRoleDef })}
-              className="w-full bg-[#0a1628] border border-[#1a2a42] rounded px-1.5 py-1 text-[10px] text-slate-300"
+              className="w-full bg-surface-1 border border-hairline rounded px-1.5 py-1 text-[10px] text-slate-300"
             >
               {ROLE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label} - {o.desc}</option>)}
             </select>
@@ -72,7 +72,7 @@ function BindingItem({ binding }: { binding: PhysicsBindingDef }) {
             <select
               value={binding.collider.mode}
               onChange={(e) => updatePhysicsBinding(binding.id, { collider: { ...binding.collider, mode: e.target.value as PhysicsColliderModeDef } })}
-              className="w-full bg-[#0a1628] border border-[#1a2a42] rounded px-1.5 py-1 text-[10px] text-slate-300"
+              className="w-full bg-surface-1 border border-hairline rounded px-1.5 py-1 text-[10px] text-slate-300"
             >
               {COLLIDER_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
@@ -86,28 +86,28 @@ function BindingItem({ binding }: { binding: PhysicsBindingDef }) {
                 Mass
                 <input type="number" value={binding.material.mass} step={0.1} min={0.01}
                   onChange={(e) => updatePhysicsBinding(binding.id, { material: { ...binding.material, mass: Math.max(0.01, +e.target.value) } })}
-                  className="w-full bg-[#0a1628] border border-[#1a2a42] rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
+                  className="w-full bg-surface-1 border border-hairline rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
                 />
               </label>
               <label className="text-[9px] text-slate-500">
                 Bounciness
                 <input type="number" value={binding.material.restitution} step={0.05} min={0} max={1}
                   onChange={(e) => updatePhysicsBinding(binding.id, { material: { ...binding.material, restitution: Math.max(0, Math.min(1, +e.target.value)) } })}
-                  className="w-full bg-[#0a1628] border border-[#1a2a42] rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
+                  className="w-full bg-surface-1 border border-hairline rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
                 />
               </label>
               <label className="text-[9px] text-slate-500">
                 Friction
                 <input type="number" value={binding.material.friction} step={0.05} min={0} max={2}
                   onChange={(e) => updatePhysicsBinding(binding.id, { material: { ...binding.material, friction: Math.max(0, +e.target.value) } })}
-                  className="w-full bg-[#0a1628] border border-[#1a2a42] rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
+                  className="w-full bg-surface-1 border border-hairline rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
                 />
               </label>
               <label className="text-[9px] text-slate-500">
                 Linear Damp
                 <input type="number" value={binding.material.linearDamping} step={0.01} min={0}
                   onChange={(e) => updatePhysicsBinding(binding.id, { material: { ...binding.material, linearDamping: Math.max(0, +e.target.value) } })}
-                  className="w-full bg-[#0a1628] border border-[#1a2a42] rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
+                  className="w-full bg-surface-1 border border-hairline rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
                 />
               </label>
             </div>
@@ -145,7 +145,7 @@ function BindingItem({ binding }: { binding: PhysicsBindingDef }) {
                   Birth Frame
                   <input type="number" value={binding.birthFrame} min={0} step={1}
                     onChange={(e) => updatePhysicsBinding(binding.id, { birthFrame: Math.max(0, Math.round(+e.target.value)) })}
-                    className="w-full bg-[#0a1628] border border-[#1a2a42] rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
+                    className="w-full bg-surface-1 border border-hairline rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
                   />
                 </label>
                 <label className="text-[9px] text-slate-500">
@@ -156,7 +156,7 @@ function BindingItem({ binding }: { binding: PhysicsBindingDef }) {
                       updatePhysicsBinding(binding.id, { endFrame: val });
                     }}
                     placeholder="None"
-                    className="w-full bg-[#0a1628] border border-[#1a2a42] rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
+                    className="w-full bg-surface-1 border border-hairline rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
                   />
                 </label>
               </div>
@@ -172,7 +172,7 @@ function BindingItem({ binding }: { binding: PhysicsBindingDef }) {
               <select
                 value={binding.handoff.velocitySource}
                 onChange={(e) => updatePhysicsBinding(binding.id, { handoff: { ...binding.handoff, velocitySource: e.target.value as PhysicsVelocitySourceDef } })}
-                className="w-full bg-[#0a1628] border border-[#1a2a42] rounded px-1.5 py-0.5 text-[10px] text-slate-300 mb-1.5"
+                className="w-full bg-surface-1 border border-hairline rounded px-1.5 py-0.5 text-[10px] text-slate-300 mb-1.5"
               >
                 <option value="auto-derive">Auto-derive from keyframes</option>
                 <option value="manual">Manual</option>
@@ -183,14 +183,14 @@ function BindingItem({ binding }: { binding: PhysicsBindingDef }) {
                     Speed (px/s)
                     <input type="number" value={binding.handoff.manualMagnitude} step={10}
                       onChange={(e) => updatePhysicsBinding(binding.id, { handoff: { ...binding.handoff, manualMagnitude: +e.target.value } })}
-                      className="w-full bg-[#0a1628] border border-[#1a2a42] rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
+                      className="w-full bg-surface-1 border border-hairline rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
                     />
                   </label>
                   <label className="text-[9px] text-slate-500">
                     Angle (deg)
                     <input type="number" value={binding.handoff.manualAngleDeg} step={5}
                       onChange={(e) => updatePhysicsBinding(binding.id, { handoff: { ...binding.handoff, manualAngleDeg: +e.target.value } })}
-                      className="w-full bg-[#0a1628] border border-[#1a2a42] rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
+                      className="w-full bg-surface-1 border border-hairline rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
                     />
                   </label>
                 </div>
@@ -199,7 +199,7 @@ function BindingItem({ binding }: { binding: PhysicsBindingDef }) {
                   Sample Window (frames)
                   <input type="number" value={binding.handoff.deriveSampleWindow} min={1} max={10} step={1}
                     onChange={(e) => updatePhysicsBinding(binding.id, { handoff: { ...binding.handoff, deriveSampleWindow: Math.max(1, Math.round(+e.target.value)) } })}
-                    className="w-full bg-[#0a1628] border border-[#1a2a42] rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
+                    className="w-full bg-surface-1 border border-hairline rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
                   />
                 </label>
               )}
@@ -265,7 +265,7 @@ export function PhysicsPanel() {
           <select
             value={selectedRole}
             onChange={(e) => setSelectedRole(e.target.value as PhysicsRoleDef)}
-            className="flex-1 bg-[#0a1628] border border-[#1a2a42] rounded px-1.5 py-1 text-[10px] text-slate-300"
+            className="flex-1 bg-surface-1 border border-hairline rounded px-1.5 py-1 text-[10px] text-slate-300"
           >
             {ROLE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>

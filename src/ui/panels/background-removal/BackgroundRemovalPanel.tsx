@@ -69,11 +69,11 @@ export function BackgroundRemovalPanel({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/70 backdrop-blur-sm">
-      <div className="relative w-full max-w-2xl mx-4 rounded-xl overflow-hidden bg-[#0a1628] border border-[#1a2a42] shadow-2xl animate-[fadeIn_0.2s_ease-out]">
+      <div className="relative w-full max-w-2xl mx-4 rounded-xl overflow-hidden bg-surface-1 border border-hairline shadow-2xl animate-[fadeIn_0.2s_ease-out]">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[#1a2a42]">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-hairline">
           <div className="flex items-center gap-2.5">
-            <Scissors size={18} className="text-[#f7b500]" />
+            <Scissors size={18} className="text-accent" />
             <h2 className="text-sm font-semibold text-slate-100 tracking-tight">
               Background Removal
             </h2>
@@ -98,13 +98,13 @@ export function BackgroundRemovalPanel({ onClose }: { onClose: () => void }) {
                 flex flex-col items-center justify-center gap-3 p-10 rounded-lg border-2 border-dashed cursor-pointer
                 transition-all duration-200
                 ${isDragOver
-                  ? 'border-[#f7b500] bg-[#f7b500]/5'
-                  : 'border-[#243a5c] hover:border-[#f7b500]/50 hover:bg-white/[0.02]'
+                  ? 'border-accent bg-accent-wash'
+                  : 'border-hairline hover:border-accent-dim hover:bg-white/[0.02]'
                 }
               `}
             >
-              <div className={`p-3 rounded-full transition-colors ${isDragOver ? 'bg-[#f7b500]/10' : 'bg-white/5'}`}>
-                <Upload size={24} className={isDragOver ? 'text-[#f7b500]' : 'text-slate-400'} />
+              <div className={`p-3 rounded-full transition-colors ${isDragOver ? 'bg-accent-wash' : 'bg-white/5'}`}>
+                <Upload size={24} className={isDragOver ? 'text-accent' : 'text-slate-400'} />
               </div>
               <div className="text-center">
                 <p className="text-sm font-medium text-slate-200">
@@ -125,7 +125,7 @@ export function BackgroundRemovalPanel({ onClose }: { onClose: () => void }) {
           ) : (
             <div className="space-y-4">
               {/* Image Preview */}
-              <div className="relative rounded-lg overflow-hidden bg-[#06101a] border border-[#1a2a42]">
+              <div className="relative rounded-lg overflow-hidden bg-surface-sunken border border-hairline">
                 {/* Checkerboard pattern for transparency */}
                 <div
                   className="absolute inset-0"
@@ -144,7 +144,7 @@ export function BackgroundRemovalPanel({ onClose }: { onClose: () => void }) {
                 {isProcessing && (
                   <div className="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-[2px]">
                     <div className="flex flex-col items-center gap-3">
-                      <Loader2 size={28} className="text-[#f7b500] animate-spin" />
+                      <Loader2 size={28} className="text-accent animate-spin" />
                       <span className="text-xs font-medium text-slate-200">
                         {statusLabel(processingStatus, downloadProgress)}
                       </span>
@@ -156,9 +156,9 @@ export function BackgroundRemovalPanel({ onClose }: { onClose: () => void }) {
               {/* Progress Bar */}
               {isProcessing && (
                 <div className="space-y-1.5">
-                  <div className="h-1.5 rounded-full bg-[#1a2a42] overflow-hidden">
+                  <div className="h-1.5 rounded-full bg-surface-4 overflow-hidden">
                     <div
-                      className="h-full rounded-full bg-gradient-to-r from-[#f7b500] to-[#ffc83d] transition-all duration-300 ease-out"
+                      className="h-full rounded-full bg-gradient-to-r from-accent to-accent-hover transition-all duration-300 ease-out"
                       style={{ width: `${progressWidth}%` }}
                     />
                   </div>
@@ -185,7 +185,7 @@ export function BackgroundRemovalPanel({ onClose }: { onClose: () => void }) {
                     onMouseDown={() => setShowOriginal(true)}
                     onMouseUp={() => setShowOriginal(false)}
                     onMouseLeave={() => setShowOriginal(false)}
-                    className="text-[11px] text-slate-400 hover:text-slate-200 transition-colors px-3 py-1 rounded border border-[#1a2a42] hover:border-[#243a5c]"
+                    className="text-[11px] text-slate-400 hover:text-slate-200 transition-colors px-3 py-1 rounded border border-hairline hover:border-hairline"
                   >
                     Hold to see original
                   </button>
@@ -197,7 +197,7 @@ export function BackgroundRemovalPanel({ onClose }: { onClose: () => void }) {
                 {!processedImage && !isProcessing && (
                   <button
                     onClick={processImage}
-                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-[#f7b500] hover:bg-[#ffc83d] text-[#06101a] text-sm font-semibold transition-colors"
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-accent hover:bg-accent-hover text-[#06101a] text-sm font-semibold transition-colors"
                   >
                     <Scissors size={15} />
                     Remove Background
@@ -206,7 +206,7 @@ export function BackgroundRemovalPanel({ onClose }: { onClose: () => void }) {
                 {processedImage && (
                   <button
                     onClick={downloadResult}
-                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-[#f7b500] hover:bg-[#ffc83d] text-[#06101a] text-sm font-semibold transition-colors"
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-accent hover:bg-accent-hover text-[#06101a] text-sm font-semibold transition-colors"
                   >
                     <Download size={15} />
                     Download PNG
@@ -215,7 +215,7 @@ export function BackgroundRemovalPanel({ onClose }: { onClose: () => void }) {
                 <button
                   onClick={reset}
                   disabled={isProcessing}
-                  className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg border border-[#1a2a42] hover:border-[#243a5c] text-slate-300 hover:text-slate-100 text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg border border-hairline hover:border-hairline text-slate-300 hover:text-slate-100 text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <RotateCcw size={14} />
                   Reset

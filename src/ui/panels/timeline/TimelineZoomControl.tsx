@@ -33,7 +33,7 @@ export function TimelineZoomControl() {
         onClick={handleZoomOut}
         title="Zoom Out (Ctrl + Wheel down)"
         disabled={zoomLevel <= ZOOM_MIN + 0.001}
-        className="w-5 h-5 flex items-center justify-center rounded text-slate-400 hover:text-[#f7b500] hover:bg-[#1a2a42] disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400 transition-colors"
+        className="w-5 h-5 flex items-center justify-center rounded text-slate-400 hover:text-accent hover:bg-surface-4 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400 transition-colors"
       >
         <ZoomOut size={11} />
       </button>
@@ -53,7 +53,7 @@ export function TimelineZoomControl() {
         onClick={handleZoomIn}
         title="Zoom In (Ctrl + Wheel up)"
         disabled={zoomLevel >= ZOOM_MAX - 0.001}
-        className="w-5 h-5 flex items-center justify-center rounded text-slate-400 hover:text-[#f7b500] hover:bg-[#1a2a42] disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400 transition-colors"
+        className="w-5 h-5 flex items-center justify-center rounded text-slate-400 hover:text-accent hover:bg-surface-4 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400 transition-colors"
       >
         <ZoomIn size={11} />
       </button>
@@ -61,7 +61,7 @@ export function TimelineZoomControl() {
       <button
         onClick={handleReset}
         title="Reset zoom (100%)"
-        className="text-[9px] font-mono text-slate-400 hover:text-[#f7b500] px-1.5 h-5 rounded hover:bg-[#1a2a42] transition-colors min-w-[42px] text-center tabular-nums"
+        className="text-[9px] font-mono text-slate-400 hover:text-accent px-1.5 h-5 rounded hover:bg-surface-4 transition-colors min-w-[42px] text-center tabular-nums"
       >
         {percent}%
       </button>
@@ -69,7 +69,7 @@ export function TimelineZoomControl() {
       <button
         onClick={handleReset}
         title="Fit to 100%"
-        className="w-5 h-5 flex items-center justify-center rounded text-slate-400 hover:text-[#f7b500] hover:bg-[#1a2a42] transition-colors"
+        className="w-5 h-5 flex items-center justify-center rounded text-slate-400 hover:text-accent hover:bg-surface-4 transition-colors"
       >
         <Maximize2 size={10} />
       </button>

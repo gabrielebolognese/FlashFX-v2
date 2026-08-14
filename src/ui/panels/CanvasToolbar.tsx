@@ -169,10 +169,10 @@ export function CanvasToolbar() {
   const groups = ['select', 'shape', 'vector', 'media', 'layout', 'advanced'] as const;
 
   return (
-    <div className="h-[28px] min-h-[28px] flex items-center gap-0.5 px-2 bg-[#081220] border-b border-[#1a2a42] select-none">
+    <div className="h-[28px] min-h-[28px] flex items-center gap-0.5 px-2 bg-surface-sunken border-b border-hairline select-none">
       {groups.map((group, gi) => (
         <div key={group} data-tutorial-id={group === 'shape' ? 'shape-tools' : undefined} className="flex items-center">
-          {gi > 0 && <div className="w-px h-4 bg-[#1a2a42] mx-1.5" />}
+          {gi > 0 && <div className="w-px h-4 bg-surface-4 mx-1.5" />}
           {TOOLS.filter((t) => t.group === group).map((tool) => {
             const active = isToolActive(tool);
             return (
@@ -182,8 +182,8 @@ export function CanvasToolbar() {
                 title={tool.shortcut ? `${tool.label} (${tool.shortcut})` : tool.label}
                 className={`w-6 h-6 flex items-center justify-center rounded transition-colors ${
                   active
-                    ? 'bg-[#f7b500]/10 text-[#f7b500]'
-                    : 'text-slate-500 hover:text-slate-200 hover:bg-[#1a2a42]'
+                    ? 'bg-accent-wash text-accent'
+                    : 'text-slate-500 hover:text-slate-200 hover:bg-surface-4'
                 }`}
               >
                 <tool.icon size={13} strokeWidth={1.5} />

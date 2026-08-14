@@ -46,24 +46,24 @@ export function GridSettingsPanel({ onClose }: { onClose: () => void }) {
   return (
     <>
       <div className="fixed inset-0 z-40" onClick={onClose} />
-      <div className="fixed top-[52px] right-4 z-50 w-[280px] bg-[#0e1c32] border border-[#1c3155] rounded-xl shadow-2xl overflow-hidden">
+      <div className="fixed top-[52px] right-4 z-50 w-[280px] bg-surface-2 border border-hairline rounded-xl shadow-2xl overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between px-3 py-2 border-b border-[#1c3155]">
+        <div className="flex items-center justify-between px-3 py-2 border-b border-hairline">
           <div className="flex items-center gap-2">
-            <Grid3x3 size={12} className="text-[#f7b500]" />
+            <Grid3x3 size={12} className="text-accent" />
             <span className="text-[11px] font-semibold text-slate-200">Grid & Guides</span>
           </div>
-          <button onClick={onClose} className="p-0.5 rounded hover:bg-[#1c3155] transition-colors">
+          <button onClick={onClose} className="p-0.5 rounded hover:bg-surface-5 transition-colors">
             <X size={12} className="text-slate-500" />
           </button>
         </div>
 
         <div className="max-h-[60vh] overflow-y-auto">
           {/* Grid Section */}
-          <div className="border-b border-[#1c3155]">
+          <div className="border-b border-hairline">
             <button
               onClick={() => setGridExpanded(!gridExpanded)}
-              className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[#122240] transition-colors"
+              className="w-full flex items-center gap-2 px-3 py-2 hover:bg-surface-3 transition-colors"
             >
               {gridExpanded ? <ChevronDown size={10} className="text-slate-500" /> : <ChevronRight size={10} className="text-slate-500" />}
               <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Grid</span>
@@ -99,7 +99,7 @@ export function GridSettingsPanel({ onClose }: { onClose: () => void }) {
                     max={100}
                     value={Math.round(grid.opacity * 100)}
                     onChange={(e) => setGridOpacity(Number(e.target.value) / 100)}
-                    className="w-full h-1 bg-[#1c3155] rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-2.5 [&::-webkit-slider-thumb]:h-2.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[#f7b500]"
+                    className="w-full h-1 bg-surface-5 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-2.5 [&::-webkit-slider-thumb]:h-2.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-accent"
                   />
                 </div>
               </div>
@@ -110,7 +110,7 @@ export function GridSettingsPanel({ onClose }: { onClose: () => void }) {
           <div>
             <button
               onClick={() => setGuidesExpanded(!guidesExpanded)}
-              className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[#122240] transition-colors"
+              className="w-full flex items-center gap-2 px-3 py-2 hover:bg-surface-3 transition-colors"
             >
               {guidesExpanded ? <ChevronDown size={10} className="text-slate-500" /> : <ChevronRight size={10} className="text-slate-500" />}
               <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Guidelines</span>
@@ -129,7 +129,7 @@ export function GridSettingsPanel({ onClose }: { onClose: () => void }) {
                   <select
                     value={newGuideAxis}
                     onChange={(e) => setNewGuideAxis(e.target.value as 'vertical' | 'horizontal')}
-                    className="bg-[#122240] border border-[#1c3155] rounded text-[9px] text-slate-300 px-1 py-0.5 outline-none focus:border-[#f7b500]/50"
+                    className="bg-surface-3 border border-hairline rounded text-[9px] text-slate-300 px-1 py-0.5 outline-none focus:border-accent-dim"
                   >
                     <option value="vertical">X</option>
                     <option value="horizontal">Y</option>
@@ -140,13 +140,13 @@ export function GridSettingsPanel({ onClose }: { onClose: () => void }) {
                     onChange={(e) => setNewGuidePos(e.target.value)}
                     onKeyDown={(e) => { if (e.key === 'Enter') handleAddGuide(); }}
                     placeholder={newGuideAxis === 'vertical' ? `0-${canvasW}` : `0-${canvasH}`}
-                    className="flex-1 bg-[#122240] border border-[#1c3155] rounded text-[9px] text-slate-300 px-1.5 py-0.5 outline-none focus:border-[#f7b500]/50 placeholder:text-slate-700"
+                    className="flex-1 bg-surface-3 border border-hairline rounded text-[9px] text-slate-300 px-1.5 py-0.5 outline-none focus:border-accent-dim placeholder:text-slate-700"
                   />
                   <button
                     onClick={handleAddGuide}
-                    className="p-1 rounded bg-[#f7b500]/10 border border-[#f7b500]/30 hover:bg-[#f7b500]/15 transition-colors"
+                    className="p-1 rounded bg-accent-wash border border-accent-dim hover:bg-accent-wash transition-colors"
                   >
-                    <Plus size={10} className="text-[#f7b500]" />
+                    <Plus size={10} className="text-accent" />
                   </button>
                 </div>
 
@@ -174,12 +174,12 @@ export function GridSettingsPanel({ onClose }: { onClose: () => void }) {
                           type="number"
                           value={Math.round(g.position)}
                           onChange={(e) => moveGuideline(g.id, Number(e.target.value))}
-                          className="w-12 bg-[#122240] border border-[#1c3155] rounded text-[8px] text-slate-300 px-1 py-0.5 outline-none focus:border-[#f7b500]/50"
+                          className="w-12 bg-surface-3 border border-hairline rounded text-[8px] text-slate-300 px-1 py-0.5 outline-none focus:border-accent-dim"
                         />
-                        <button onClick={() => toggleGuidelineVisibility(g.id)} className="p-0.5 rounded hover:bg-[#1c3155]">
+                        <button onClick={() => toggleGuidelineVisibility(g.id)} className="p-0.5 rounded hover:bg-surface-5">
                           {g.visible ? <Eye size={8} className="text-slate-500" /> : <EyeOff size={8} className="text-slate-600" />}
                         </button>
-                        <button onClick={() => toggleGuidelineLocked(g.id)} className="p-0.5 rounded hover:bg-[#1c3155]">
+                        <button onClick={() => toggleGuidelineLocked(g.id)} className="p-0.5 rounded hover:bg-surface-5">
                           {g.locked ? <Lock size={8} className="text-amber-500" /> : <Unlock size={8} className="text-slate-600" />}
                         </button>
                         <button onClick={() => removeGuideline(g.id)} className="p-0.5 rounded hover:bg-red-500/10 opacity-0 group-hover/guide:opacity-100 transition-opacity">
@@ -218,8 +218,8 @@ function Toggle({ label, active, onToggle, icon: Icon }: {
       onClick={() => onToggle(!active)}
       className={`flex items-center gap-1.5 px-2 py-1 rounded-md border text-[9px] font-medium transition-all ${
         active
-          ? 'border-[#f7b500]/30 bg-[#f7b500]/10 text-[#ffc83d]'
-          : 'border-[#1c3155] bg-transparent text-slate-600 hover:text-slate-400'
+          ? 'border-accent-dim bg-accent-wash text-accent-hover'
+          : 'border-hairline bg-transparent text-slate-600 hover:text-slate-400'
       }`}
     >
       <Icon size={10} />
@@ -246,7 +246,7 @@ function NumberInput({ label, value, onChange, min, max, suffix }: {
           min={min}
           max={max}
           onChange={(e) => onChange(Number(e.target.value))}
-          className="w-full bg-[#122240] border border-[#1c3155] rounded text-[10px] text-slate-300 px-1.5 py-0.5 outline-none focus:border-[#f7b500]/50"
+          className="w-full bg-surface-3 border border-hairline rounded text-[10px] text-slate-300 px-1.5 py-0.5 outline-none focus:border-accent-dim"
         />
         {suffix && <span className="text-[8px] text-slate-600">{suffix}</span>}
       </div>
@@ -258,7 +258,7 @@ function QuickGuideBtn({ label, onClick }: { label: string; onClick: () => void 
   return (
     <button
       onClick={onClick}
-      className="px-1.5 py-0.5 rounded text-[8px] text-slate-500 bg-[#122240] border border-[#1c3155] hover:border-[#f7b500]/30 hover:text-[#f7b500] transition-colors"
+      className="px-1.5 py-0.5 rounded text-[8px] text-slate-500 bg-surface-3 border border-hairline hover:border-accent-dim hover:text-accent transition-colors"
     >
       {label}
     </button>

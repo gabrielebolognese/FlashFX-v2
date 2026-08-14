@@ -152,7 +152,7 @@ export function TimelinePanel() {
 
   return (
     <div
-      className="flex flex-row h-full min-h-0 bg-[#0a1628] relative"
+      className="flex flex-row h-full min-h-0 bg-surface-1 relative"
       onContextMenu={(e) => { e.preventDefault(); showContextMenu(e.clientX, e.clientY, buildTimelineEmptyMenu()); }}
       onDragOver={handleFileDragOver}
       onDragLeave={handleFileDragLeave}
@@ -179,11 +179,11 @@ export function TimelinePanel() {
       )}
       {/* Left tool sidebar (Premiere-style) */}
       <div
-        className="flex-shrink-0 flex flex-col items-center bg-[#081220] border-r border-[#1a2a42]/40"
+        className="flex-shrink-0 flex flex-col items-center bg-surface-sunken border-r border-hairline"
         style={{ width: TOOL_SIDEBAR_WIDTH }}
       >
-        <div className="h-[26px] w-full flex items-center justify-center border-b border-[#1a2a42]/40">
-          <Film size={11} className="text-[#f7b500]" />
+        <div className="h-[26px] w-full flex items-center justify-center border-b border-hairline">
+          <Film size={11} className="text-accent" />
         </div>
 
         <div className="flex flex-col items-center gap-0.5 pt-2 pb-2">
@@ -206,7 +206,7 @@ export function TimelinePanel() {
             disabled={!hasSelection}
           />
 
-          <div className="w-5 h-px bg-[#1a2a42] my-1.5" />
+          <div className="w-5 h-px bg-surface-4 my-1.5" />
 
           <ToolButton
             icon={<ArrowUpToLine size={13} />}
@@ -221,7 +221,7 @@ export function TimelinePanel() {
             disabled={!hasSelection}
           />
 
-          <div className="w-5 h-px bg-[#1a2a42] my-1.5" />
+          <div className="w-5 h-px bg-surface-4 my-1.5" />
 
           <ToolButton
             icon={<ChevronsLeft size={13} />}
@@ -241,7 +241,7 @@ export function TimelinePanel() {
       {/* Timeline body */}
       <div className="flex-1 flex flex-col min-w-0 min-h-0">
         {/* Header */}
-        <div className="h-[26px] min-h-[26px] flex items-center justify-between px-3 border-b border-[#1a2a42]/40 bg-[#081220]">
+        <div className="h-[26px] min-h-[26px] flex items-center justify-between px-3 border-b border-hairline bg-surface-sunken">
           <div className="flex items-center">
             <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Timeline</span>
             <span className="text-[9px] text-slate-600 ml-2">{tracks.length} tracks</span>
@@ -254,7 +254,7 @@ export function TimelinePanel() {
           {/* Ruler row */}
           <div className="flex flex-row flex-shrink-0" style={{ height: 21 }}>
             <div
-              className="flex-shrink-0 border-r border-b border-[#1a2a42]/40 bg-[#081220] flex items-center justify-end pr-2"
+              className="flex-shrink-0 border-r border-b border-hairline bg-surface-sunken flex items-center justify-end pr-2"
               style={{ width: labelColumnWidth }}
             >
               <span className="text-[8px] text-slate-600 uppercase tracking-wider font-mono">
@@ -269,7 +269,7 @@ export function TimelinePanel() {
             {/* Left: per-layer rows with switches (synced vertical scroll via transform) */}
             <div
               ref={labelRef}
-              className="flex-shrink-0 min-h-0 relative overflow-hidden border-r border-[#1a2a42]"
+              className="flex-shrink-0 min-h-0 relative overflow-hidden border-r border-hairline"
               style={{ width: labelColumnWidth }}
               onWheel={handleLabelWheel}
             >
@@ -343,7 +343,7 @@ function ToolButton({ icon, title, onClick, disabled }: {
       className={`w-7 h-7 flex items-center justify-center rounded transition-all ${
         disabled
           ? 'text-slate-700 cursor-not-allowed'
-          : 'text-slate-400 hover:text-yellow-400 hover:bg-[#1a2a42] active:bg-[#1c3155]'
+          : 'text-slate-400 hover:text-yellow-400 hover:bg-surface-4 active:bg-surface-5'
       }`}
     >
       {icon}
@@ -388,7 +388,7 @@ function TimelineVerticalScrollbar({
 
   return (
     <div
-      className="flex-shrink-0 w-[10px] bg-[#081220] border-l border-[#1a2a42] relative"
+      className="flex-shrink-0 w-[10px] bg-surface-sunken border-l border-hairline relative"
       style={{ height: viewportHeight }}
     >
       <div

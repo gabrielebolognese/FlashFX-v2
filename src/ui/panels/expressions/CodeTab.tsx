@@ -124,13 +124,13 @@ function ExpressionEditor({
   const isAutoDisabled = error?.includes('auto-disabled');
 
   return (
-    <div className="border-b border-[#1a2a42] p-3 flex flex-col gap-2">
+    <div className="border-b border-hairline p-3 flex flex-col gap-2">
       {/* Property selector + toggle */}
       <div className="flex items-center gap-2">
         <select
           value={selectedProp}
           onChange={(e) => onSelectProp(e.target.value)}
-          className="flex-1 bg-[#0d1117] border border-[#1a2a42] rounded px-2 py-1.5 text-[11px] text-slate-200 focus:border-[#f7b500]/50 focus:outline-none appearance-none"
+          className="flex-1 bg-[#0d1117] border border-hairline rounded px-2 py-1.5 text-[11px] text-slate-200 focus:border-accent-dim focus:outline-none appearance-none"
         >
           {propNames.map((name) => (
             <option key={name} value={name}>
@@ -162,7 +162,7 @@ function ExpressionEditor({
           onChange={(e) => handleCodeChange(e.target.value)}
           placeholder={`// Expression for ${selectedProp}\n// e.g. value + wiggle(3, 50)`}
           spellCheck={false}
-          className="w-full h-[180px] bg-[#080b10] border border-[#1a2a42] rounded-md px-3 py-2 text-[12px] text-slate-200 font-mono leading-relaxed resize-none focus:border-[#f7b500]/40 focus:outline-none placeholder:text-slate-600"
+          className="w-full h-[180px] bg-[#080b10] border border-hairline rounded-md px-3 py-2 text-[12px] text-slate-200 font-mono leading-relaxed resize-none focus:border-accent-dim focus:outline-none placeholder:text-slate-600"
         />
         {currentDef && !error && (
           <div className="absolute top-2 right-2">
@@ -194,7 +194,7 @@ function ExpressionEditor({
         <button
           onClick={handleApply}
           disabled={!code.trim()}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium rounded bg-[#f7b500]/10 text-[#f7b500] hover:bg-[#f7b500]/20 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium rounded bg-accent-wash text-accent hover:bg-accent-wash disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
         >
           <Play size={11} />
           Apply
@@ -227,7 +227,7 @@ function ExpressionsList({
 
   if (entries.length === 0) {
     return (
-      <div className="border-b border-[#1a2a42] px-3 py-3">
+      <div className="border-b border-hairline px-3 py-3">
         <p className="text-[11px] text-slate-500 mb-2">
           No expressions on this layer yet. Try one of these:
         </p>
@@ -248,7 +248,7 @@ function ExpressionsList({
   }
 
   return (
-    <div className="border-b border-[#1a2a42]">
+    <div className="border-b border-hairline">
       <div className="px-3 py-1.5">
         <span className="text-[10px] uppercase tracking-wider text-slate-500 font-medium">
           Active Expressions
@@ -275,7 +275,7 @@ function ExpressionsList({
                 <CheckCircle2 size={10} className="text-emerald-500/60" />
               )}
               {def.enabled ? (
-                <Zap size={10} className="text-[#f7b500]" />
+                <Zap size={10} className="text-accent" />
               ) : (
                 <Zap size={10} className="text-slate-600" />
               )}
@@ -297,12 +297,12 @@ function ExampleExpression({
   description: string;
 }) {
   return (
-    <div className="bg-[#080b10] border border-[#1a2a42] rounded px-2.5 py-1.5">
+    <div className="bg-[#080b10] border border-hairline rounded px-2.5 py-1.5">
       <div className="flex items-center justify-between">
         <span className="text-[10px] text-slate-400 font-medium">{property}</span>
         <span className="text-[9px] text-slate-600">{description}</span>
       </div>
-      <code className="text-[11px] text-[#f7b500]/70 font-mono">{code}</code>
+      <code className="text-[11px] text-accent font-mono">{code}</code>
     </div>
   );
 }
@@ -351,7 +351,7 @@ function QuickReference() {
               key={item.name}
               className="flex items-baseline gap-2 px-1 py-0.5 rounded hover:bg-white/[0.02]"
             >
-              <code className="text-[10px] text-[#f7b500]/80 font-mono flex-shrink-0 w-[130px] truncate">
+              <code className="text-[10px] text-accent font-mono flex-shrink-0 w-[130px] truncate">
                 {item.name}
               </code>
               <span className="text-[9px] text-slate-500 flex-1 truncate">

@@ -396,8 +396,8 @@ export function Viewport() {
             : 'Disable the camera view and edit in flat 2D (does not affect export).'}
           className={`absolute top-2 right-2 z-20 flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-medium border shadow-sm transition-colors pointer-events-auto ${
             cameraDisabled
-              ? 'bg-[#f7b500] hover:bg-[#ffc21f] border-[#f7b500] text-[#1a1200]'
-              : 'bg-[#0a1628]/85 hover:bg-[#122240] border-[#1a2a42] text-slate-200'
+              ? 'bg-accent hover:bg-[#ffc21f] border-accent text-[#1a1200]'
+              : 'bg-[#0a1628]/85 hover:bg-surface-3 border-hairline text-slate-200'
           }`}
         >
           {cameraDisabled ? <VideoOff size={13} /> : <Video size={13} />}
@@ -405,16 +405,16 @@ export function Viewport() {
         </button>
       )}
       {dragOver && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none bg-[#0a1628]/80 backdrop-blur-sm border-2 border-dashed border-[#f7b500] rounded-lg m-2">
+        <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none bg-[#0a1628]/80 backdrop-blur-sm border-2 border-dashed border-accent rounded-lg m-2">
           <div className="flex flex-col items-center gap-3">
-            <div className="w-16 h-16 rounded-full bg-[#f7b500]/10 border border-[#f7b500]/30 flex items-center justify-center">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-[#f7b500]">
+            <div className="w-16 h-16 rounded-full bg-accent-wash border border-accent-dim flex items-center justify-center">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-accent">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                 <polyline points="7 10 12 15 17 10" />
                 <line x1="12" y1="15" x2="12" y2="3" />
               </svg>
             </div>
-            <span className="text-lg font-semibold text-[#f7b500]">Drop to Canvas</span>
+            <span className="text-lg font-semibold text-accent">Drop to Canvas</span>
             <span className="text-xs text-slate-400">Release to add media to the scene</span>
           </div>
         </div>
@@ -463,14 +463,14 @@ export function Viewport() {
             const rect = containerRef.current?.getBoundingClientRect();
             if (rect) zoomAtPoint(100, rect.width / 2, rect.height / 2, rect.width, rect.height);
           }}
-          className="p-1 rounded bg-[#0e1c32]/80 border border-[#1c3155]/50 text-slate-400 hover:text-slate-200 hover:bg-[#16294a] transition-colors"
+          className="p-1 rounded bg-[#0e1c32]/80 border border-hairline text-slate-400 hover:text-slate-200 hover:bg-surface-4 transition-colors"
           title="Zoom out"
         >
           <ZoomOut size={12} />
         </button>
         <button
           onClick={resetView}
-          className="px-1.5 py-0.5 rounded bg-[#0e1c32]/80 border border-[#1c3155]/50 text-[10px] font-mono text-slate-400 hover:text-slate-200 hover:bg-[#16294a] transition-colors min-w-[40px] text-center"
+          className="px-1.5 py-0.5 rounded bg-[#0e1c32]/80 border border-hairline text-[10px] font-mono text-slate-400 hover:text-slate-200 hover:bg-surface-4 transition-colors min-w-[40px] text-center"
           title="Reset view (fit to screen)"
         >
           {zoomPercent}%
@@ -480,14 +480,14 @@ export function Viewport() {
             const rect = containerRef.current?.getBoundingClientRect();
             if (rect) zoomAtPoint(-100, rect.width / 2, rect.height / 2, rect.width, rect.height);
           }}
-          className="p-1 rounded bg-[#0e1c32]/80 border border-[#1c3155]/50 text-slate-400 hover:text-slate-200 hover:bg-[#16294a] transition-colors"
+          className="p-1 rounded bg-[#0e1c32]/80 border border-hairline text-slate-400 hover:text-slate-200 hover:bg-surface-4 transition-colors"
           title="Zoom in"
         >
           <ZoomIn size={12} />
         </button>
         <button
           onClick={resetView}
-          className="p-1 rounded bg-[#0e1c32]/80 border border-[#1c3155]/50 text-slate-400 hover:text-slate-200 hover:bg-[#16294a] transition-colors"
+          className="p-1 rounded bg-[#0e1c32]/80 border border-hairline text-slate-400 hover:text-slate-200 hover:bg-surface-4 transition-colors"
           title="Fit to screen"
         >
           <Maximize2 size={12} />

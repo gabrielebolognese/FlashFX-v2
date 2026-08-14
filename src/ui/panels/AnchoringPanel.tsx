@@ -46,9 +46,9 @@ function EdgeItem({ edge }: { edge: AnchorEdge }) {
   const targetName = layers.find((l) => l.id === edge.targetLayerId)?.name ?? 'Unknown';
 
   return (
-    <div className="border border-[#1a2a42] rounded-md overflow-hidden">
+    <div className="border border-hairline rounded-md overflow-hidden">
       <div
-        className="flex items-center gap-1.5 px-2 py-1.5 bg-[#0a1628] cursor-pointer hover:bg-[#0d1d35]"
+        className="flex items-center gap-1.5 px-2 py-1.5 bg-surface-1 cursor-pointer hover:bg-[#0d1d35]"
         onClick={() => setExpanded(!expanded)}
       >
         {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
@@ -71,7 +71,7 @@ function EdgeItem({ edge }: { edge: AnchorEdge }) {
       </div>
 
       {expanded && (
-        <div className="px-2 py-2 space-y-2 bg-[#060f1c]">
+        <div className="px-2 py-2 space-y-2 bg-surface-sunken">
           {/* Mappings */}
           <div className="space-y-1.5">
             <div className="text-[10px] text-slate-500 uppercase tracking-wider">Mappings</div>
@@ -84,7 +84,7 @@ function EdgeItem({ edge }: { edge: AnchorEdge }) {
                     newMappings[idx] = { ...mapping, sourceProperty: e.target.value as AnchorPropertyType };
                     updateAnchorEdge(edge.id, { mappings: newMappings });
                   }}
-                  className="bg-[#0a1628] border border-[#1a2a42] rounded px-1 py-0.5 text-slate-300 flex-1"
+                  className="bg-surface-1 border border-hairline rounded px-1 py-0.5 text-slate-300 flex-1"
                 >
                   {PROPERTY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
@@ -96,7 +96,7 @@ function EdgeItem({ edge }: { edge: AnchorEdge }) {
                     newMappings[idx] = { ...mapping, targetProperty: e.target.value as AnchorPropertyType };
                     updateAnchorEdge(edge.id, { mappings: newMappings });
                   }}
-                  className="bg-[#0a1628] border border-[#1a2a42] rounded px-1 py-0.5 text-slate-300 flex-1"
+                  className="bg-surface-1 border border-hairline rounded px-1 py-0.5 text-slate-300 flex-1"
                 >
                   {PROPERTY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
@@ -107,7 +107,7 @@ function EdgeItem({ edge }: { edge: AnchorEdge }) {
                     newMappings[idx] = { ...mapping, transfer: { ...mapping.transfer, type: e.target.value as AnchorTransferType } };
                     updateAnchorEdge(edge.id, { mappings: newMappings });
                   }}
-                  className="bg-[#0a1628] border border-[#1a2a42] rounded px-1 py-0.5 text-slate-300 w-14"
+                  className="bg-surface-1 border border-hairline rounded px-1 py-0.5 text-slate-300 w-14"
                 >
                   {TRANSFER_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
@@ -160,7 +160,7 @@ function EdgeItem({ edge }: { edge: AnchorEdge }) {
                   updateAnchorEdge(edge.id, { physics });
                 }
               }}
-              className="w-full bg-[#0a1628] border border-[#1a2a42] rounded px-1.5 py-0.5 text-[10px] text-slate-300"
+              className="w-full bg-surface-1 border border-hairline rounded px-1.5 py-0.5 text-[10px] text-slate-300"
             >
               {PHYSICS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
@@ -170,21 +170,21 @@ function EdgeItem({ edge }: { edge: AnchorEdge }) {
                   Stiff
                   <input type="number" value={edge.physics.spring.stiffness}
                     onChange={(e) => updateAnchorEdge(edge.id, { physics: { ...edge.physics!, spring: { ...edge.physics!.spring!, stiffness: +e.target.value } } })}
-                    className="w-full bg-[#0a1628] border border-[#1a2a42] rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
+                    className="w-full bg-surface-1 border border-hairline rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
                   />
                 </label>
                 <label className="text-[9px] text-slate-500">
                   Damp
                   <input type="number" value={edge.physics.spring.damping}
                     onChange={(e) => updateAnchorEdge(edge.id, { physics: { ...edge.physics!, spring: { ...edge.physics!.spring!, damping: +e.target.value } } })}
-                    className="w-full bg-[#0a1628] border border-[#1a2a42] rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
+                    className="w-full bg-surface-1 border border-hairline rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
                   />
                 </label>
                 <label className="text-[9px] text-slate-500">
                   Mass
                   <input type="number" value={edge.physics.spring.mass}
                     onChange={(e) => updateAnchorEdge(edge.id, { physics: { ...edge.physics!, spring: { ...edge.physics!.spring!, mass: +e.target.value } } })}
-                    className="w-full bg-[#0a1628] border border-[#1a2a42] rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
+                    className="w-full bg-surface-1 border border-hairline rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
                   />
                 </label>
               </div>
@@ -195,21 +195,21 @@ function EdgeItem({ edge }: { edge: AnchorEdge }) {
                   Length
                   <input type="number" value={edge.physics.rope.length}
                     onChange={(e) => updateAnchorEdge(edge.id, { physics: { ...edge.physics!, rope: { ...edge.physics!.rope!, length: +e.target.value } } })}
-                    className="w-full bg-[#0a1628] border border-[#1a2a42] rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
+                    className="w-full bg-surface-1 border border-hairline rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
                   />
                 </label>
                 <label className="text-[9px] text-slate-500">
                   Stiff
                   <input type="number" value={edge.physics.rope.stiffness}
                     onChange={(e) => updateAnchorEdge(edge.id, { physics: { ...edge.physics!, rope: { ...edge.physics!.rope!, stiffness: +e.target.value } } })}
-                    className="w-full bg-[#0a1628] border border-[#1a2a42] rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
+                    className="w-full bg-surface-1 border border-hairline rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
                   />
                 </label>
                 <label className="text-[9px] text-slate-500">
                   Gravity
                   <input type="number" value={edge.physics.rope.gravity}
                     onChange={(e) => updateAnchorEdge(edge.id, { physics: { ...edge.physics!, rope: { ...edge.physics!.rope!, gravity: +e.target.value } } })}
-                    className="w-full bg-[#0a1628] border border-[#1a2a42] rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
+                    className="w-full bg-surface-1 border border-hairline rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
                   />
                 </label>
               </div>
@@ -220,21 +220,21 @@ function EdgeItem({ edge }: { edge: AnchorEdge }) {
                   Strength
                   <input type="number" value={edge.physics.magnetic.strength} step={0.1}
                     onChange={(e) => updateAnchorEdge(edge.id, { physics: { ...edge.physics!, magnetic: { ...edge.physics!.magnetic!, strength: +e.target.value } } })}
-                    className="w-full bg-[#0a1628] border border-[#1a2a42] rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
+                    className="w-full bg-surface-1 border border-hairline rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
                   />
                 </label>
                 <label className="text-[9px] text-slate-500">
                   Falloff
                   <input type="number" value={edge.physics.magnetic.falloff} step={0.1}
                     onChange={(e) => updateAnchorEdge(edge.id, { physics: { ...edge.physics!, magnetic: { ...edge.physics!.magnetic!, falloff: +e.target.value } } })}
-                    className="w-full bg-[#0a1628] border border-[#1a2a42] rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
+                    className="w-full bg-surface-1 border border-hairline rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
                   />
                 </label>
                 <label className="text-[9px] text-slate-500">
                   MaxDist
                   <input type="number" value={edge.physics.magnetic.maxDistance}
                     onChange={(e) => updateAnchorEdge(edge.id, { physics: { ...edge.physics!, magnetic: { ...edge.physics!.magnetic!, maxDistance: +e.target.value } } })}
-                    className="w-full bg-[#0a1628] border border-[#1a2a42] rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
+                    className="w-full bg-surface-1 border border-hairline rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
                   />
                 </label>
               </div>
@@ -264,7 +264,7 @@ function EdgeItem({ edge }: { edge: AnchorEdge }) {
                   updateAnchorEdge(edge.id, { temporal });
                 }
               }}
-              className="w-full bg-[#0a1628] border border-[#1a2a42] rounded px-1.5 py-0.5 text-[10px] text-slate-300"
+              className="w-full bg-surface-1 border border-hairline rounded px-1.5 py-0.5 text-[10px] text-slate-300"
             >
               {TEMPORAL_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
@@ -273,7 +273,7 @@ function EdgeItem({ edge }: { edge: AnchorEdge }) {
                 Delay (frames)
                 <input type="number" value={edge.temporal.delayFrames ?? 0}
                   onChange={(e) => updateAnchorEdge(edge.id, { temporal: { ...edge.temporal!, delayFrames: +e.target.value } })}
-                  className="w-full bg-[#0a1628] border border-[#1a2a42] rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
+                  className="w-full bg-surface-1 border border-hairline rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
                 />
               </label>
             )}
@@ -282,7 +282,7 @@ function EdgeItem({ edge }: { edge: AnchorEdge }) {
                 Speed Factor
                 <input type="number" value={edge.temporal.speedFactor ?? 1} step={0.1}
                   onChange={(e) => updateAnchorEdge(edge.id, { temporal: { ...edge.temporal!, speedFactor: +e.target.value } })}
-                  className="w-full bg-[#0a1628] border border-[#1a2a42] rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
+                  className="w-full bg-surface-1 border border-hairline rounded px-1 py-0.5 text-[10px] text-slate-300 mt-0.5"
                 />
               </label>
             )}
@@ -325,7 +325,7 @@ export function AnchoringPanel() {
           <select
             value={targetLayerId}
             onChange={(e) => setTargetLayerId(e.target.value)}
-            className="flex-1 bg-[#0a1628] border border-[#1a2a42] rounded px-1.5 py-1 text-[10px] text-slate-300"
+            className="flex-1 bg-surface-1 border border-hairline rounded px-1.5 py-1 text-[10px] text-slate-300"
           >
             <option value="">Select target...</option>
             {availableTargets.map((l) => (

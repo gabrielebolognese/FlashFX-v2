@@ -112,7 +112,7 @@ const LayerKeyframeRow = memo(function LayerKeyframeRow({
 }) {
   const color = LAYER_COLORS[layer.type] ?? '#6b7280';
   return (
-    <div className="flex items-center h-5 border-b border-[#16294a]">
+    <div className="flex items-center h-5 border-b border-hairline">
       <div className="w-[120px] flex-shrink-0 px-2 truncate text-[9px] text-slate-500 flex items-center gap-1">
         <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
         {layer.name}
@@ -213,16 +213,16 @@ export const KeyframeOverview = memo(function KeyframeOverview() {
   }, [durationFrames]);
 
   return (
-    <div ref={containerRef} className="h-full flex flex-col bg-[#0e1c32] overflow-hidden relative">
+    <div ref={containerRef} className="h-full flex flex-col bg-surface-2 overflow-hidden relative">
       {/* Header */}
-      <div className="h-[22px] flex items-center px-3 border-b border-[#1a2a42] flex-shrink-0">
+      <div className="h-[22px] flex items-center px-3 border-b border-hairline flex-shrink-0">
         <span className="text-[10px] font-medium text-slate-400">Keyframe Overview</span>
         <span className="text-[9px] text-slate-600 ml-2">{layersWithKeyframes.length} animated layers</span>
       </div>
 
       {/* Ruler */}
       <div
-        className="h-5 flex-shrink-0 border-b border-[#1a2a42] relative cursor-pointer"
+        className="h-5 flex-shrink-0 border-b border-hairline relative cursor-pointer"
         onClick={handleRulerClick}
       >
         <div className="absolute left-[120px] right-0 top-0 h-full">
@@ -264,10 +264,10 @@ export const KeyframeOverview = memo(function KeyframeOverview() {
       {/* Playhead */}
       <div
         ref={playheadRef}
-        className="absolute top-[22px] bottom-0 w-px bg-[#f7b500] pointer-events-none z-10"
+        className="absolute top-[22px] bottom-0 w-px bg-accent pointer-events-none z-10"
         style={{ transform: 'translateX(120px)' }}
       >
-        <div className="absolute -top-0.5 left-1/2 -translate-x-1/2 w-2 h-2 bg-[#f7b500] rotate-45" />
+        <div className="absolute -top-0.5 left-1/2 -translate-x-1/2 w-2 h-2 bg-accent rotate-45" />
       </div>
     </div>
   );

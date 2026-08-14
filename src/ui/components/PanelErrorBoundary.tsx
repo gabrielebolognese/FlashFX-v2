@@ -29,7 +29,7 @@ export class PanelErrorBoundary extends Component<Props, State> {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="flex flex-col items-center justify-center h-full w-full bg-[#0e1c32] p-4 gap-3">
+        <div className="flex flex-col items-center justify-center h-full w-full bg-surface-2 p-4 gap-3">
           <AlertTriangle size={20} className="text-amber-400" />
           <span className="text-[11px] text-slate-400 text-center">
             {this.props.name} encountered an error
@@ -39,7 +39,7 @@ export class PanelErrorBoundary extends Component<Props, State> {
           </span>
           <button
             onClick={this.handleReset}
-            className="flex items-center gap-1 px-2 py-1 rounded bg-[#1a2a42] text-[10px] text-slate-300 hover:bg-[#242a3a] transition-colors"
+            className="flex items-center gap-1 px-2 py-1 rounded bg-surface-4 text-[10px] text-slate-300 hover:bg-[#242a3a] transition-colors"
           >
             <RefreshCw size={10} />
             Retry
