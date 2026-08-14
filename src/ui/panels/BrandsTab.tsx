@@ -145,7 +145,7 @@ export function BrandsTab() {
             <div key={color.id} className="relative group">
               <button
                 onClick={() => setEditingColorId(editingColorId === color.id ? null : color.id)}
-                className={`w-9 h-9 rounded-lg border-2 transition-all shadow-sm hover:scale-110 ${
+                className={`w-9 h-9 rounded-lg border-2 transition shadow-sm hover:scale-110 ${
                   editingColorId === color.id
                     ? 'border-white/60 scale-110'
                     : 'border-hairline hover:border-white/30'
@@ -274,7 +274,7 @@ function BrandAssetCard({
 }) {
   return (
     <div
-      className={`group rounded overflow-hidden border transition-all ${
+      className={`group rounded overflow-hidden border transition ${
         isLogo
           ? 'border-accent-dim bg-accent-wash'
           : 'border-hairline bg-surface-4 hover:border-[#2a3044]'

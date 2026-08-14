@@ -234,7 +234,7 @@ function SavedAssetCard({
     <div
       onClick={onClick}
       onDoubleClick={onUse}
-      className={`group rounded overflow-hidden border transition-all cursor-pointer ${
+      className={`group rounded overflow-hidden border transition cursor-pointer ${
         isSelected
           ? 'border-accent-dim bg-accent-wash'
           : 'border-hairline bg-surface-4 hover:border-[#2a3044]'

@@ -348,7 +348,7 @@ function FilterControl({
           }`}
         >
           <div
-            className={`absolute top-0.5 w-2.5 h-2.5 rounded-full bg-white transition-all ${
+            className={`absolute top-0.5 w-2.5 h-2.5 rounded-full bg-white transition ${
               value === 1 ? 'left-[15px]' : 'left-[2px]'
             }`}
           />

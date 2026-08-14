@@ -129,7 +129,7 @@ export function BrandColorPicker({ onSelect, currentAlpha }: BrandColorPickerPro
                 <button
                   key={color.id}
                   onClick={() => handleSelect(color.hex)}
-                  className="w-6 h-6 rounded-md border border-hairline hover:border-accent-dim hover:scale-110 transition-all shadow-sm"
+                  className="w-6 h-6 rounded-md border border-hairline hover:border-accent-dim hover:scale-110 transition shadow-sm"
                   style={{ backgroundColor: color.hex }}
                   title={color.hex}
                 />

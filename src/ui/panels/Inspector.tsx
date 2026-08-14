@@ -1418,7 +1418,7 @@ function RemoveBackgroundButton({ layer }: { layer: ImageLayer }) {
       <button
         onClick={handleRemove}
         disabled={isProcessing}
-        className={`w-full relative overflow-hidden flex items-center justify-center gap-2 py-2 rounded-md text-[11px] font-medium transition-all ${
+        className={`w-full relative overflow-hidden flex items-center justify-center gap-2 py-2 rounded-md text-[11px] font-medium transition ${
           isProcessing
             ? 'bg-accent-wash border border-accent-dim text-accent-hover cursor-wait'
             : status === 'done'
@@ -1428,7 +1428,7 @@ function RemoveBackgroundButton({ layer }: { layer: ImageLayer }) {
       >
         {isProcessing && (
           <div
-            className="absolute inset-0 bg-accent-wash transition-all duration-300 ease-out"
+            className="absolute inset-0 bg-accent-wash transition duration-300 ease-out"
             style={{ width: `${progressWidth}%` }}
           />
         )}

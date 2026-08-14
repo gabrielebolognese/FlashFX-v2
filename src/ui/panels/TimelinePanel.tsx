@@ -340,7 +340,7 @@ function ToolButton({ icon, title, onClick, disabled }: {
       title={title}
       onClick={onClick}
       disabled={disabled}
-      className={`w-7 h-7 flex items-center justify-center rounded transition-all ${
+      className={`w-7 h-7 flex items-center justify-center rounded transition ${
         disabled
           ? 'text-slate-700 cursor-not-allowed'
           : 'text-slate-400 hover:text-yellow-400 hover:bg-surface-4 active:bg-surface-5'

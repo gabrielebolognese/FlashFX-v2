@@ -526,7 +526,7 @@ export function InterpolationGraph() {
             <button
               key={prop.id}
               onClick={() => toggleProp(prop.id)}
-              className={`flex items-center flex-shrink-0 transition-all ${active ? 'opacity-100' : 'opacity-40 hover:opacity-70'}`}
+              className={`flex items-center flex-shrink-0 transition ${active ? 'opacity-100' : 'opacity-40 hover:opacity-70'}`}
             >
               <span className="text-[9px] text-slate-300">{prop.name}</span>
             </button>

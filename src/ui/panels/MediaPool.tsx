@@ -663,7 +663,7 @@ function StaticIconsContent({
               <button
                 key={c}
                 onClick={() => setSelectedColor(c)}
-                className={`w-5 h-5 rounded-full border-2 transition-all ${
+                className={`w-5 h-5 rounded-full border-2 transition ${
                   selectedColor === c ? 'border-accent scale-110' : 'border-hairline hover:border-slate-500'
                 }`}
                 style={{ backgroundColor: c }}
@@ -709,7 +709,7 @@ function AssetCard({ asset, isSelected, isDragging, onClick, onDragStart, onDrag
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
       onContextMenu={onContextMenu}
-      className={`group rounded overflow-hidden border transition-all cursor-grab active:cursor-grabbing ${
+      className={`group rounded overflow-hidden border transition cursor-grab active:cursor-grabbing ${
         isSelected
           ? 'border-accent-dim bg-accent-wash'
           : 'border-hairline bg-surface-4 hover:border-[#2a3044]'
@@ -764,7 +764,7 @@ function AssetListRow({ asset, isSelected, isDragging, onClick, onDragStart, onD
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
       onContextMenu={onContextMenu}
-      className={`group flex items-center gap-2 px-1.5 py-1 rounded border transition-all cursor-grab active:cursor-grabbing ${
+      className={`group flex items-center gap-2 px-1.5 py-1 rounded border transition cursor-grab active:cursor-grabbing ${
         isSelected ? 'border-accent-dim bg-accent-wash' : 'border-transparent hover:bg-surface-4'
       } ${isDragging ? 'opacity-50' : ''}`}
     >

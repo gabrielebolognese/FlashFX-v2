@@ -205,7 +205,7 @@ export function CaptionGenerationModal() {
             <div className="space-y-1.5">
               <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-3">
                 <div
-                  className="h-full rounded-full bg-accent transition-all duration-150"
+                  className="h-full rounded-full bg-accent transition duration-150"
                   style={{ width: `${Math.round(download.progress)}%` }}
                 />
               </div>

@@ -216,7 +216,7 @@ function Toggle({ label, active, onToggle, icon: Icon }: {
   return (
     <button
       onClick={() => onToggle(!active)}
-      className={`flex items-center gap-1.5 px-2 py-1 rounded-md border text-[9px] font-medium transition-all ${
+      className={`flex items-center gap-1.5 px-2 py-1 rounded-md border text-[9px] font-medium transition ${
         active
           ? 'border-accent-dim bg-accent-wash text-accent-hover'
           : 'border-hairline bg-transparent text-slate-600 hover:text-slate-400'

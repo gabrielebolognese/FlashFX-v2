@@ -259,7 +259,7 @@ function ActionButton({ icon: Icon, label, onClick, disabled }: { icon: typeof S
       onClick={onClick}
       disabled={disabled}
       title={label}
-      className="flex items-center gap-2 px-3 py-2.5 rounded-md border border-hairline bg-[#0a1628]/60 text-slate-400 hover:text-slate-100 hover:bg-surface-4 hover:border-[#2a3f5f] active:bg-accent-wash active:text-accent active:border-accent-dim transition-all duration-100 disabled:opacity-30 disabled:pointer-events-none"
+      className="flex items-center gap-2 px-3 py-2.5 rounded-md border border-hairline bg-[#0a1628]/60 text-slate-400 hover:text-slate-100 hover:bg-surface-4 hover:border-[#2a3f5f] active:bg-accent-wash active:text-accent active:border-accent-dim transition duration-100 disabled:opacity-30 disabled:pointer-events-none"
     >
       <Icon size={15} strokeWidth={1.5} />
       <span className="text-[9px] font-medium">{label}</span>
@@ -492,7 +492,7 @@ function AlignContent() {
         <div className={`grid grid-cols-3 gap-1 ${isDisabled ? 'opacity-30 pointer-events-none' : ''}`}>
           {alignActions.map(({ axis, icon: Icon, label }) => (
             <button key={axis} onClick={() => executeAlign(axis)} disabled={isDisabled} title={label}
-              className="flex flex-col items-center gap-1 px-2 py-2.5 rounded-md border border-hairline bg-[#0a1628]/60 text-slate-400 hover:text-slate-100 hover:bg-surface-4 hover:border-[#2a3f5f] active:bg-accent-wash active:text-accent active:border-accent-dim transition-all duration-100">
+              className="flex flex-col items-center gap-1 px-2 py-2.5 rounded-md border border-hairline bg-[#0a1628]/60 text-slate-400 hover:text-slate-100 hover:bg-surface-4 hover:border-[#2a3f5f] active:bg-accent-wash active:text-accent active:border-accent-dim transition duration-100">
               <Icon size={16} strokeWidth={1.5} />
               <span className="text-[8px] font-medium whitespace-nowrap">{label}</span>
             </button>
@@ -507,7 +507,7 @@ function AlignContent() {
           <button
             onClick={() => autoCaptionAudioLayers(audioSelected.map((l) => l.id))}
             title="Transcribe the selected audio on-device (Whisper Small), review the text, then place captions"
-            className="w-full flex items-center justify-center gap-2 px-3 py-3 rounded-md border border-accent-dim bg-accent-wash text-accent font-semibold hover:bg-accent-wash hover:border-accent-dim active:bg-accent-wash transition-all duration-100"
+            className="w-full flex items-center justify-center gap-2 px-3 py-3 rounded-md border border-accent-dim bg-accent-wash text-accent font-semibold hover:bg-accent-wash hover:border-accent-dim active:bg-accent-wash transition duration-100"
           >
             <Captions size={16} strokeWidth={2} />
             <span className="text-[11px]">Add Subtitles ({audioSelected.length})</span>
@@ -522,7 +522,7 @@ function AlignContent() {
             onClick={() => useEditorStore.getState().convertSelectionTo3D()}
             disabled={noneToConvert}
             title={noneToConvert ? 'Every selected layer is already 3D (or can’t be 3D)' : 'Enable 3D on all selected layers so a camera can move through them'}
-            className="w-full flex items-center justify-center gap-2 px-3 py-3 rounded-md border border-accent-dim bg-accent-wash text-accent font-semibold hover:bg-accent-wash hover:border-accent-dim active:bg-accent-wash transition-all duration-100 disabled:opacity-30 disabled:pointer-events-none"
+            className="w-full flex items-center justify-center gap-2 px-3 py-3 rounded-md border border-accent-dim bg-accent-wash text-accent font-semibold hover:bg-accent-wash hover:border-accent-dim active:bg-accent-wash transition duration-100 disabled:opacity-30 disabled:pointer-events-none"
           >
             <Box size={16} strokeWidth={2} />
             <span className="text-[11px]">Convert all to 3D{noneToConvert ? '' : ` (${convertible.length})`}</span>
@@ -572,7 +572,7 @@ function DistributeContent() {
         <div className={`grid grid-cols-2 gap-1.5 ${isDisabled ? 'opacity-30 pointer-events-none' : ''}`}>
           {boundsActions.map(({ mode, icon: Icon, label }) => (
             <button key={mode} onClick={() => executeDistribute(mode)} disabled={isDisabled} title={`Distribute ${label} (Spacing)`}
-              className="flex items-center gap-2 px-3 py-2.5 rounded-md border border-hairline bg-[#0a1628]/60 text-slate-400 hover:text-slate-100 hover:bg-surface-4 hover:border-[#2a3f5f] active:bg-accent-wash active:text-accent active:border-accent-dim transition-all duration-100">
+              className="flex items-center gap-2 px-3 py-2.5 rounded-md border border-hairline bg-[#0a1628]/60 text-slate-400 hover:text-slate-100 hover:bg-surface-4 hover:border-[#2a3f5f] active:bg-accent-wash active:text-accent active:border-accent-dim transition duration-100">
               <Icon size={15} strokeWidth={1.5} /><span className="text-[9px] font-medium">{label}</span>
             </button>
           ))}
@@ -584,7 +584,7 @@ function DistributeContent() {
         <div className={`grid grid-cols-2 gap-1.5 ${isDisabled ? 'opacity-30 pointer-events-none' : ''}`}>
           {centerActions.map(({ mode, icon: Icon, label }) => (
             <button key={mode} onClick={() => executeDistribute(mode)} disabled={isDisabled} title={`Distribute ${label} (Centers)`}
-              className="flex items-center gap-2 px-3 py-2.5 rounded-md border border-hairline bg-[#0a1628]/60 text-slate-400 hover:text-slate-100 hover:bg-surface-4 hover:border-[#2a3f5f] active:bg-accent-wash active:text-accent active:border-accent-dim transition-all duration-100">
+              className="flex items-center gap-2 px-3 py-2.5 rounded-md border border-hairline bg-[#0a1628]/60 text-slate-400 hover:text-slate-100 hover:bg-surface-4 hover:border-[#2a3f5f] active:bg-accent-wash active:text-accent active:border-accent-dim transition duration-100">
               <Icon size={15} strokeWidth={1.5} /><span className="text-[9px] font-medium">{label}</span>
             </button>
           ))}
@@ -800,14 +800,14 @@ function ArrangeContent() {
             <div className="flex gap-1.5">
               <button
                 onClick={confirmRandomize}
-                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-md border border-emerald-700/50 bg-emerald-900/30 text-emerald-400 hover:bg-emerald-800/40 hover:border-emerald-600/60 active:bg-emerald-700/40 transition-all duration-100"
+                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-md border border-emerald-700/50 bg-emerald-900/30 text-emerald-400 hover:bg-emerald-800/40 hover:border-emerald-600/60 active:bg-emerald-700/40 transition duration-100"
               >
                 <Check size={13} strokeWidth={2} />
                 <span className="text-[9px] font-semibold">Confirm</span>
               </button>
               <button
                 onClick={undoRandomize}
-                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-md border border-red-800/50 bg-red-900/20 text-red-400 hover:bg-red-800/30 hover:border-red-700/50 active:bg-red-700/30 transition-all duration-100"
+                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-md border border-red-800/50 bg-red-900/20 text-red-400 hover:bg-red-800/30 hover:border-red-700/50 active:bg-red-700/30 transition duration-100"
               >
                 <Undo2 size={13} strokeWidth={2} />
                 <span className="text-[9px] font-semibold">Undo</span>

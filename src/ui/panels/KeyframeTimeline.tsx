@@ -400,7 +400,7 @@ export function KeyframeTimeline() {
         <div className="ml-auto flex items-center gap-1">
           <button
             onClick={() => setSnapToKeyframes(!snapToKeyframes)}
-            className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium transition-all ${
+            className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium transition ${
               snapToKeyframes
                 ? 'bg-accent-wash border border-accent-dim text-accent-hover'
                 : 'border border-transparent text-slate-600 hover:text-slate-400'
@@ -489,7 +489,7 @@ export function KeyframeTimeline() {
                   </span>
                   <button
                     onClick={() => handleAddKeyframe(track)}
-                    className="opacity-0 group-hover/row:opacity-100 p-0.5 text-slate-500 hover:text-yellow-400 transition-all"
+                    className="opacity-0 group-hover/row:opacity-100 p-0.5 text-slate-500 hover:text-yellow-400 transition"
                     title="Add keyframe at current frame"
                   >
                     <Plus size={9} />
@@ -559,7 +559,7 @@ export function KeyframeTimeline() {
                       <div
                         key={keyId}
                         data-kf-id={keyId}
-                        className={`absolute top-1/2 -translate-y-1/2 w-[9px] h-[9px] rotate-45 cursor-pointer transition-all
+                        className={`absolute top-1/2 -translate-y-1/2 w-[9px] h-[9px] rotate-45 cursor-pointer transition
                           ${isKfSelected
                             ? 'bg-yellow-300 border-[1.5px] border-white shadow-[0_0_6px_rgba(250,204,21,0.6)]'
                             : 'bg-yellow-500 border border-yellow-600 hover:bg-yellow-400 hover:scale-125'

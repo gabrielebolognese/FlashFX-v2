@@ -96,7 +96,7 @@ export function BackgroundRemovalPanel({ onClose }: { onClose: () => void }) {
               onClick={() => fileInputRef.current?.click()}
               className={`
                 flex flex-col items-center justify-center gap-3 p-10 rounded-lg border-2 border-dashed cursor-pointer
-                transition-all duration-200
+                transition duration-200
                 ${isDragOver
                   ? 'border-accent bg-accent-wash'
                   : 'border-hairline hover:border-accent-dim hover:bg-white/[0.02]'
@@ -158,7 +158,7 @@ export function BackgroundRemovalPanel({ onClose }: { onClose: () => void }) {
                 <div className="space-y-1.5">
                   <div className="h-1.5 rounded-full bg-surface-4 overflow-hidden">
                     <div
-                      className="h-full rounded-full bg-gradient-to-r from-accent to-accent-hover transition-all duration-300 ease-out"
+                      className="h-full rounded-full bg-gradient-to-r from-accent to-accent-hover transition duration-300 ease-out"
                       style={{ width: `${progressWidth}%` }}
                     />
                   </div>

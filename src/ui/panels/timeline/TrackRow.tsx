@@ -158,7 +158,7 @@ export function TrackRow({
                 }}
                 onPointerEnter={() => { if (!isDragging) setHoveredLayer(layer.id); }}
                 onPointerLeave={() => { if (!isDragging) setHoveredLayer(null); }}
-                className={`flex-shrink-0 flex items-center gap-1 px-1.5 h-[18px] rounded text-[9.5px] font-medium tracking-wide transition-all ${
+                className={`flex-shrink-0 flex items-center gap-1 px-1.5 h-[18px] rounded text-[9.5px] font-medium tracking-wide transition ${
                   isDragSource
                     ? 'opacity-40'
                     : isSelected

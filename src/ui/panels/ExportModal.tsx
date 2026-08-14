@@ -114,7 +114,7 @@ export function ExportModal({ onClose }: ExportModalProps) {
                   <button
                     key={key}
                     onClick={() => setQuality(key)}
-                    className={`py-2 px-2 rounded text-[11px] font-medium transition-all ${
+                    className={`py-2 px-2 rounded text-[11px] font-medium transition ${
                       quality === key
                         ? 'bg-accent text-on-accent'
                         : 'bg-surface-3 text-slate-400 hover:bg-surface-4 hover:text-slate-300'
@@ -262,7 +262,7 @@ export function ExportModal({ onClose }: ExportModalProps) {
                     strokeDasharray={`${2 * Math.PI * 29}`}
                     strokeDashoffset={`${2 * Math.PI * 29 * (1 - progress.percent / 100)}`}
                     strokeLinecap="round"
-                    className="transition-all duration-200"
+                    className="transition duration-200"
                   />
                 </svg>
                 <span className="text-[13px] font-semibold text-accent">{progress.percent}%</span>
@@ -275,7 +275,7 @@ export function ExportModal({ onClose }: ExportModalProps) {
 
             <div className="w-full h-1.5 bg-surface-4 rounded-full overflow-hidden">
               <div
-                className="h-full bg-accent rounded-full transition-all duration-150"
+                className="h-full bg-accent rounded-full transition duration-150"
                 style={{ width: `${progress.percent}%` }}
               />
             </div>
