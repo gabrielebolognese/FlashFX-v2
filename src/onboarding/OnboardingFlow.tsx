@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useOnboardingStore } from './store';
 import { Monitor, Smartphone, MousePointer2, Square, Upload, Check, ArrowRight, MousePointerClick } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { brandColorsDb, brandAssetsDb, libraryId } from '../project-system/storage/libraryDb';
+import { invalidateBrandColorCache } from '../ui/components/BrandColorPicker';
 import { ShaderAnimation } from '../ui/components/ShaderAnimation';
 
 function hexToRgb01(hex: string): [number, number, number] {
@@ -395,7 +396,8 @@ function BrandAssetsStep() {
     const hex = colors[editingIndex];
     if (hex !== '#ffffff') {
       try {
-        await supabase?.from('brand_colors').insert({ hex, sort_order: editingIndex });
+        await brandColorsDb.put({ id: libraryId(), hex, sortOrder: editingIndex });
+        invalidateBrandColorCache();
       } catch { /* swallow */ }
     }
     setEditingIndex(null);
@@ -408,14 +410,25 @@ function BrandAssetsStep() {
     for (const file of Array.from(files)) {
       const url = URL.createObjectURL(file);
       setAssets((prev) => [...prev, { name: file.name, url }]);
+      let width = 0;
+      let height = 0;
+      if (file.type.startsWith('image/')) {
+        const img = new window.Image();
+        img.src = url;
+        await new Promise<void>((resolve) => {
+          img.onload = () => { width = img.naturalWidth; height = img.naturalHeight; resolve(); };
+          img.onerror = () => resolve();
+        });
+      }
       try {
-        await supabase?.from('brand_assets').insert({
+        await brandAssetsDb.put({
+          id: libraryId(),
           name: file.name,
-          url,
-          is_logo: false,
-          sort_order: assets.length,
-          width: 0,
-          height: 0,
+          blob: file,
+          isLogo: false,
+          sortOrder: assets.length,
+          width,
+          height,
         });
       } catch { /* swallow */ }
     }

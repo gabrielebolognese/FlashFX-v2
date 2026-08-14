@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Palette } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
+import { brandColorsDb } from '../../project-system/storage/libraryDb';
 
 interface BrandColor {
   id: string;
@@ -19,12 +19,14 @@ function fetchBrandColors(): Promise<BrandColor[]> {
   if (_fetchPromise) return _fetchPromise;
 
   _fetchPromise = (async () => {
-    if (!supabase) return [];
-    const { data } = await supabase
-      .from('brand_colors')
-      .select('*')
-      .order('sort_order', { ascending: true });
-    _cachedColors = data || [];
+    try {
+      const records = await brandColorsDb.all();
+      _cachedColors = records
+        .sort((a, b) => a.sortOrder - b.sortOrder)
+        .map((r) => ({ id: r.id, hex: r.hex, sort_order: r.sortOrder }));
+    } catch {
+      _cachedColors = [];
+    }
     _lastFetch = Date.now();
     _fetchPromise = null;
     return _cachedColors;

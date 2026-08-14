@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { Plus, Trash2, Upload, Star, Image, Loader2, X } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
 import { invalidateBrandColorCache } from '../components/BrandColorPicker';
+import { brandColorsDb, brandAssetsDb, libraryId } from '../../project-system/storage/libraryDb';
 
 interface BrandColor {
   id: string;
@@ -26,93 +26,110 @@ export function BrandsTab() {
   const [uploading, setUploading] = useState(false);
   const [editingColorId, setEditingColorId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Object URLs we created from stored blobs — revoked on unmount / removal.
+  const urlsRef = useRef<Set<string>>(new Set());
 
-  const fetchBrandData = useCallback(async () => {
-    if (!supabase) return;
-    setLoading(true);
-    const [colorsRes, assetsRes] = await Promise.all([
-      supabase.from('brand_colors').select('*').order('sort_order', { ascending: true }),
-      supabase.from('brand_assets').select('*').order('sort_order', { ascending: true }),
-    ]);
-    if (colorsRes.data) setColors(colorsRes.data);
-    if (assetsRes.data) setAssets(assetsRes.data);
-    setLoading(false);
+  const makeUrl = useCallback((blob: Blob) => {
+    const url = URL.createObjectURL(blob);
+    urlsRef.current.add(url);
+    return url;
   }, []);
 
   useEffect(() => {
-    fetchBrandData();
-  }, [fetchBrandData]);
+    let cancelled = false;
+    (async () => {
+      try {
+        const [colorRecs, assetRecs] = await Promise.all([brandColorsDb.all(), brandAssetsDb.all()]);
+        if (cancelled) return;
+        setColors(
+          colorRecs.sort((a, b) => a.sortOrder - b.sortOrder).map((r) => ({ id: r.id, hex: r.hex, sort_order: r.sortOrder })),
+        );
+        setAssets(
+          assetRecs.sort((a, b) => a.sortOrder - b.sortOrder).map((r) => ({
+            id: r.id, name: r.name, url: makeUrl(r.blob), is_logo: r.isLogo, sort_order: r.sortOrder, width: r.width, height: r.height,
+          })),
+        );
+      } catch {
+        /* empty library on first run / IDB unavailable — fall through to empty state */
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    const urls = urlsRef.current;
+    return () => { cancelled = true; urls.forEach((u) => URL.revokeObjectURL(u)); urls.clear(); };
+  }, [makeUrl]);
 
   const addColor = useCallback(async () => {
-    if (!supabase) return;
-    const nextOrder = colors.length;
-    const { data } = await supabase
-      .from('brand_colors')
-      .insert({ hex: '#3B82F6', sort_order: nextOrder })
-      .select()
-      .maybeSingle();
-    if (data) {
-      setColors((prev) => [...prev, data]);
-      invalidateBrandColorCache();
-    }
+    const record = { id: libraryId(), hex: '#3B82F6', sortOrder: colors.length };
+    await brandColorsDb.put(record);
+    setColors((prev) => [...prev, { id: record.id, hex: record.hex, sort_order: record.sortOrder }]);
+    invalidateBrandColorCache();
   }, [colors.length]);
 
   const updateColor = useCallback(async (id: string, hex: string) => {
-    if (!supabase) return;
-    await supabase.from('brand_colors').update({ hex }).eq('id', id);
+    const rec = colors.find((c) => c.id === id);
     setColors((prev) => prev.map((c) => (c.id === id ? { ...c, hex } : c)));
+    await brandColorsDb.put({ id, hex, sortOrder: rec?.sort_order ?? 0 });
     invalidateBrandColorCache();
-  }, []);
+  }, [colors]);
 
   const removeColor = useCallback(async (id: string) => {
-    if (!supabase) return;
-    await supabase.from('brand_colors').delete().eq('id', id);
+    await brandColorsDb.delete(id);
     setColors((prev) => prev.filter((c) => c.id !== id));
     invalidateBrandColorCache();
   }, []);
 
   const handleImportAssets = useCallback(async (files: FileList | null) => {
-    if (!files || !supabase) return;
+    if (!files) return;
     setUploading(true);
     for (const file of Array.from(files)) {
       if (!file.type.startsWith('image/')) continue;
-      const url = URL.createObjectURL(file);
+      const probe = URL.createObjectURL(file);
       const img = new window.Image();
-      img.src = url;
+      img.src = probe;
       await new Promise<void>((resolve) => {
         img.onload = () => resolve();
         img.onerror = () => resolve();
       });
-      const { data } = await supabase
-        .from('brand_assets')
-        .insert({
-          name: file.name.replace(/\.[^.]+$/, ''),
-          url,
-          is_logo: false,
-          sort_order: assets.length,
-          width: img.naturalWidth || 200,
-          height: img.naturalHeight || 200,
-        })
-        .select()
-        .maybeSingle();
-      if (data) setAssets((prev) => [...prev, data]);
+      const width = img.naturalWidth || 200;
+      const height = img.naturalHeight || 200;
+      URL.revokeObjectURL(probe);
+      const record = {
+        id: libraryId(),
+        name: file.name.replace(/\.[^.]+$/, ''),
+        blob: file,
+        isLogo: false,
+        sortOrder: assets.length,
+        width,
+        height,
+      };
+      await brandAssetsDb.put(record);
+      setAssets((prev) => [...prev, {
+        id: record.id, name: record.name, url: makeUrl(file), is_logo: false, sort_order: record.sortOrder, width, height,
+      }]);
     }
     setUploading(false);
-  }, [assets.length]);
+  }, [assets.length, makeUrl]);
 
   const toggleLogo = useCallback(async (id: string) => {
-    if (!supabase) return;
     const asset = assets.find((a) => a.id === id);
     if (!asset) return;
     const newValue = !asset.is_logo;
-    await supabase.from('brand_assets').update({ is_logo: newValue }).eq('id', id);
     setAssets((prev) => prev.map((a) => (a.id === id ? { ...a, is_logo: newValue } : a)));
+    const rec = (await brandAssetsDb.all()).find((r) => r.id === id);
+    if (rec) await brandAssetsDb.put({ ...rec, isLogo: newValue });
   }, [assets]);
 
   const removeAsset = useCallback(async (id: string) => {
-    if (!supabase) return;
-    await supabase.from('brand_assets').delete().eq('id', id);
-    setAssets((prev) => prev.filter((a) => a.id !== id));
+    await brandAssetsDb.delete(id);
+    setAssets((prev) => {
+      const target = prev.find((a) => a.id === id);
+      if (target && urlsRef.current.has(target.url)) {
+        URL.revokeObjectURL(target.url);
+        urlsRef.current.delete(target.url);
+      }
+      return prev.filter((a) => a.id !== id);
+    });
   }, []);
 
   const logos = assets.filter((a) => a.is_logo).sort((a, b) => a.sort_order - b.sort_order);

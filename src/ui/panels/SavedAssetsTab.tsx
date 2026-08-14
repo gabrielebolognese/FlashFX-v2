@@ -1,8 +1,8 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { Search, Upload, Trash2, Music, Loader2, Bookmark } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
 import { useEditorStore } from '../../store/editor';
 import { useProjectStore } from '../../project-system/hooks/useProjectStore';
+import { savedAssetsDb, libraryId } from '../../project-system/storage/libraryDb';
 
 interface SavedAsset {
   id: string;
@@ -30,21 +30,36 @@ export function SavedAssetsTab() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const urlsRef = useRef<Set<string>>(new Set());
 
-  const fetchAssets = useCallback(async () => {
-    if (!supabase) return;
-    setLoading(true);
-    const { data } = await supabase
-      .from('saved_assets')
-      .select('*')
-      .order('created_at', { ascending: false });
-    if (data) setAssets(data);
-    setLoading(false);
+  const makeUrl = useCallback((blob: Blob) => {
+    const url = URL.createObjectURL(blob);
+    urlsRef.current.add(url);
+    return url;
   }, []);
 
   useEffect(() => {
-    fetchAssets();
-  }, [fetchAssets]);
+    let cancelled = false;
+    (async () => {
+      try {
+        const records = await savedAssetsDb.all();
+        if (cancelled) return;
+        setAssets(
+          records.sort((a, b) => b.createdAt - a.createdAt).map((r) => ({
+            id: r.id, name: r.name, url: makeUrl(r.blob), asset_type: r.assetType,
+            width: r.width, height: r.height, duration: r.duration, mime_type: r.mimeType,
+            created_at: new Date(r.createdAt).toISOString(),
+          })),
+        );
+      } catch {
+        /* empty library on first run / IDB unavailable */
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    const urls = urlsRef.current;
+    return () => { cancelled = true; urls.forEach((u) => URL.revokeObjectURL(u)); urls.clear(); };
+  }, [makeUrl]);
 
   const filteredAssets = useMemo(() => {
     let results = assets;
@@ -59,55 +74,64 @@ export function SavedAssetsTab() {
   }, [assets, filter, searchQuery]);
 
   const handleSaveAsset = useCallback(async (files: FileList | null) => {
-    if (!files || !supabase) return;
+    if (!files) return;
     setUploading(true);
     for (const file of Array.from(files)) {
       const isImage = file.type.startsWith('image/');
       const isAudio = file.type.startsWith('audio/');
       if (!isImage && !isAudio) continue;
 
-      const url = URL.createObjectURL(file);
+      const probe = URL.createObjectURL(file);
       let width = 0;
       let height = 0;
       let duration: number | null = null;
 
       if (isImage) {
         const img = new window.Image();
-        img.src = url;
+        img.src = probe;
         await new Promise<void>((resolve) => {
           img.onload = () => { width = img.naturalWidth; height = img.naturalHeight; resolve(); };
           img.onerror = () => resolve();
         });
-      } else if (isAudio) {
-        const audio = new Audio(url);
+      } else {
+        const audio = new Audio(probe);
         await new Promise<void>((resolve) => {
           audio.onloadedmetadata = () => { duration = audio.duration; resolve(); };
           audio.onerror = () => resolve();
         });
       }
+      URL.revokeObjectURL(probe);
 
-      const { data } = await supabase
-        .from('saved_assets')
-        .insert({
-          name: file.name.replace(/\.[^.]+$/, ''),
-          url,
-          asset_type: isImage ? 'image' : 'audio',
-          width,
-          height,
-          duration,
-          mime_type: file.type,
-        })
-        .select()
-        .maybeSingle();
-      if (data) setAssets((prev) => [data, ...prev]);
+      const record = {
+        id: libraryId(),
+        name: file.name.replace(/\.[^.]+$/, ''),
+        blob: file,
+        assetType: (isImage ? 'image' : 'audio') as 'image' | 'audio',
+        width,
+        height,
+        duration,
+        mimeType: file.type,
+        createdAt: Date.now(),
+      };
+      await savedAssetsDb.put(record);
+      setAssets((prev) => [{
+        id: record.id, name: record.name, url: makeUrl(file), asset_type: record.assetType,
+        width, height, duration, mime_type: file.type, created_at: new Date(record.createdAt).toISOString(),
+      }, ...prev]);
     }
     setUploading(false);
-  }, []);
+  }, [makeUrl]);
 
   const handleRemove = useCallback(async (id: string) => {
-    if (!supabase) return;
-    await supabase.from('saved_assets').delete().eq('id', id);
-    setAssets((prev) => prev.filter((a) => a.id !== id));
+    await savedAssetsDb.delete(id);
+    setAssets((prev) => {
+      const target = prev.find((a) => a.id === id);
+      if (target && urlsRef.current.has(target.url)) {
+        URL.revokeObjectURL(target.url);
+        urlsRef.current.delete(target.url);
+      }
+      return prev.filter((a) => a.id !== id);
+    });
     if (selectedId === id) setSelectedId(null);
   }, [selectedId]);
 
@@ -123,7 +147,7 @@ export function SavedAssetsTab() {
         await addAudio(file, activeProjectId);
       }
     } catch {
-      // Fallback: if blob URL is stale, the asset can't be loaded
+      // The object URL is backed by a stored blob, so this should not normally fail.
     }
   }, [activeProjectId, addImage, addAudio]);
 
