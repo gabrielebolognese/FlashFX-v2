@@ -454,7 +454,7 @@ function Editor() {
           onClick={toggleAiChat}
           className={`flex items-center gap-1.5 px-3 transition-colors border-l border-[#1a2a42] ${
             aiChatOpen
-              ? 'bg-[#f7b500]/8 text-[#f7b500] border-b-2 border-b-[#f7b500]'
+              ? 'bg-surface-4 text-primary border-b-2 border-b-accent'
               : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.03]'
           }`}
           title="Toggle AI Assistant"
@@ -466,7 +466,7 @@ function Editor() {
           onClick={toggleTasks}
           className={`flex items-center gap-1.5 px-3 transition-colors border-l border-[#1a2a42] ${
             tasksOpen
-              ? 'bg-[#f7b500]/8 text-[#f7b500] border-b-2 border-b-[#f7b500]'
+              ? 'bg-surface-4 text-primary border-b-2 border-b-accent'
               : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.03]'
           }`}
           title="Toggle Tasks log"
@@ -479,7 +479,7 @@ function Editor() {
           <button
             onClick={() => setShowExport(true)}
             data-tutorial-id="export"
-            className="flex items-center gap-1.5 px-4 border-l border-[#1a2a42] bg-[#f7b500] hover:bg-[#ffc83d] text-[#0a0f16] text-[11px] font-semibold transition-colors"
+            className="flex items-center gap-1.5 px-4 border-l border-[#1a2a42] bg-accent hover:bg-accent-hover text-on-accent text-[11px] font-semibold transition-colors"
             title="Export video"
           >
             <Download size={13} strokeWidth={2.5} />
@@ -556,7 +556,7 @@ function PanelsMenu() {
               className="w-full px-3 py-1.5 flex items-center justify-between text-[11px] text-slate-300 hover:bg-white/[0.04] transition-colors"
             >
               <span>{item.label}</span>
-              <span className={`w-2 h-2 rounded-full ${panels[item.id].visible ? 'bg-[#f7b500]' : 'bg-slate-700'}`} />
+              <span className={`w-2 h-2 rounded-full ${panels[item.id].visible ? 'bg-accent' : 'bg-slate-700'}`} />
             </button>
           ))}
           <div className="border-t border-[#1a2a42] my-1" />
@@ -575,7 +575,7 @@ function PanelsMenu() {
               });
               setOpen(false);
             }}
-            className="w-full px-3 py-1.5 text-[11px] text-[#f7b500] hover:bg-white/[0.04] transition-colors text-left"
+            className="w-full px-3 py-1.5 text-[11px] text-accent hover:bg-white/[0.04] transition-colors text-left"
           >
             Show All Panels
           </button>

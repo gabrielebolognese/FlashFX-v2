@@ -1,7 +1,9 @@
-import { X, Scissors, Loader2, Check, AlertTriangle, Eye } from 'lucide-react';
+import { Scissors, Loader2, Check, AlertTriangle, Eye } from 'lucide-react';
 import { useState } from 'react';
 import { useSilenceStore } from '../../store/silenceStripper';
 import { THRESHOLD_MIN_DB, THRESHOLD_MAX_DB } from '../../core/silenceDetection';
+import { Modal } from '../primitives/Modal';
+import { Button } from '../primitives/Button';
 
 function Slider({
   label,
@@ -23,8 +25,8 @@ function Slider({
   return (
     <div>
       <div className="flex items-center justify-between mb-1.5">
-        <label className="text-[11px] uppercase tracking-wider text-slate-500 font-medium">{label}</label>
-        <span className="text-[12px] font-mono text-cyan-400">{format(value)}</span>
+        <label className="text-overline uppercase text-tertiary">{label}</label>
+        <span className="text-caption font-mono text-accent">{format(value)}</span>
       </div>
       <input
         type="range"
@@ -33,7 +35,7 @@ function Slider({
         step={step}
         value={value}
         onChange={(e) => onChange(parseFloat(e.target.value))}
-        className="w-full accent-cyan-400 cursor-pointer"
+        className="w-full cursor-pointer [accent-color:var(--ffx-accent)]"
       />
     </div>
   );
@@ -70,220 +72,200 @@ export function SilenceStripperModal() {
   const handleApply = () => { void apply(); };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={!busy ? close : undefined} />
-
-      <div className="relative bg-[#0e1c32] border border-[#1a2a42] rounded-lg shadow-2xl w-full max-w-md overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#1a2a42]">
-          <div className="flex items-center gap-2 min-w-0">
-            <Scissors size={16} className="text-cyan-400 shrink-0" />
-            <h2 className="text-sm font-medium text-slate-200 truncate">Silence Stripper</h2>
-            {targetName && <span className="text-[11px] text-slate-600 truncate">— {targetName}</span>}
+    <Modal
+      onClose={close}
+      dismissable={!busy}
+      icon={<Scissors size={16} />}
+      title={
+        <span className="flex min-w-0 items-baseline gap-2">
+          <span className="truncate">Silence Stripper</span>
+          {targetName && <span className="truncate text-caption text-tertiary">{targetName}</span>}
+        </span>
+      }
+    >
+      {(stage === 'config' || stage === 'preview') && (
+        <div className="space-y-5">
+          <div className="space-y-4">
+            <Slider
+              label="Volume Threshold"
+              value={settings.thresholdDb}
+              min={THRESHOLD_MIN_DB}
+              max={THRESHOLD_MAX_DB}
+              step={1}
+              format={(v) => `${v} dB`}
+              onChange={(v) => setSetting({ thresholdDb: v })}
+            />
+            <Slider
+              label="Minimum Silence Duration"
+              value={settings.minSilenceSec}
+              min={0.1}
+              max={2}
+              step={0.05}
+              format={(v) => `${v.toFixed(2)} s`}
+              onChange={(v) => setSetting({ minSilenceSec: v })}
+            />
+            <Slider
+              label="Padding"
+              value={settings.paddingSec}
+              min={0}
+              max={0.5}
+              step={0.01}
+              format={(v) => `${v.toFixed(2)} s`}
+              onChange={(v) => setSetting({ paddingSec: v })}
+            />
           </div>
-          {!busy && (
-            <button onClick={close} className="text-slate-500 hover:text-slate-300 transition-colors">
-              <X size={16} />
-            </button>
+
+          {stage === 'config' && (
+            <p className="text-caption leading-relaxed text-tertiary">
+              Audio is analyzed locally in your browser, nothing is uploaded. Generate a preview to
+              see which sections will be removed before applying.
+            </p>
+          )}
+
+          {stage === 'preview' && plan && (
+            <div className="space-y-2 rounded-lg border border-hairline bg-surface-sunken p-3">
+              {noSilence ? (
+                <div className="flex items-center gap-2 text-body text-secondary">
+                  <Check size={14} className="text-success" />
+                  No silence detected at this threshold.
+                </div>
+              ) : allSilence ? (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-body text-amber-300">
+                    <AlertTriangle size={14} className="text-amber-400" />
+                    The entire clip is below the threshold.
+                  </div>
+                  <label className="flex cursor-pointer items-center gap-2 text-caption text-secondary">
+                    <input
+                      type="checkbox"
+                      checked={confirmAllSilence}
+                      onChange={(e) => setConfirmAllSilence(e.target.checked)}
+                      className="[accent-color:var(--ffx-accent)]"
+                    />
+                    I understand this will remove the whole clip
+                  </label>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <div className="text-overline uppercase text-tertiary">Cuts</div>
+                    <div className="text-stat text-primary">{plan.cuts}</div>
+                  </div>
+                  <div>
+                    <div className="text-overline uppercase text-tertiary">Time removed</div>
+                    <div className="text-stat text-accent">{removedSec.toFixed(2)}s</div>
+                  </div>
+                </div>
+              )}
+              <div className="flex items-center gap-3 pt-1 text-caption text-tertiary">
+                <span className="flex items-center gap-1">
+                  <span className="inline-block h-2.5 w-2.5 rounded-sm bg-red-500/60" /> Silence
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="inline-block h-2.5 w-2.5 rounded-sm bg-emerald-500/60" /> Kept
+                </span>
+              </div>
+            </div>
+          )}
+
+          {stage === 'config' ? (
+            <Button variant="primary" size="comfortable" block icon={<Eye size={14} />} onClick={() => void runAnalysis()}>
+              Generate Preview
+            </Button>
+          ) : (
+            <div className="flex gap-2">
+              <Button variant="secondary" className="flex-1" onClick={close}>
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                size="comfortable"
+                className="flex-[2]"
+                icon={<Scissors size={14} />}
+                disabled={!canApply && !(allSilence && confirmAllSilence)}
+                onClick={handleApply}
+              >
+                Apply
+              </Button>
+            </div>
           )}
         </div>
+      )}
 
-        {(stage === 'config' || stage === 'preview') && (
-          <div className="p-5 space-y-5">
-            <div className="space-y-4">
-              <Slider
-                label="Volume Threshold"
-                value={settings.thresholdDb}
-                min={THRESHOLD_MIN_DB}
-                max={THRESHOLD_MAX_DB}
-                step={1}
-                format={(v) => `${v} dB`}
-                onChange={(v) => setSetting({ thresholdDb: v })}
-              />
-              <Slider
-                label="Minimum Silence Duration"
-                value={settings.minSilenceSec}
-                min={0.1}
-                max={2}
-                step={0.05}
-                format={(v) => `${v.toFixed(2)} s`}
-                onChange={(v) => setSetting({ minSilenceSec: v })}
-              />
-              <Slider
-                label="Padding"
-                value={settings.paddingSec}
-                min={0}
-                max={0.5}
-                step={0.01}
-                format={(v) => `${v.toFixed(2)} s`}
-                onChange={(v) => setSetting({ paddingSec: v })}
-              />
+      {busy && (
+        <div className="space-y-4">
+          <div className="flex flex-col items-center gap-3 text-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-full border border-accent-dim bg-accent-wash">
+              <Loader2 size={22} className="animate-spin text-accent" />
             </div>
-
-            {stage === 'config' && (
-              <p className="text-[10px] text-slate-600 leading-relaxed">
-                Audio is analyzed locally in your browser — nothing is uploaded. Generate a preview to
-                see which sections will be removed before applying.
-              </p>
-            )}
-
-            {stage === 'preview' && plan && (
-              <div className="rounded-lg border border-[#1a2a42] bg-[#0b0e14] p-3 space-y-2">
-                {noSilence ? (
-                  <div className="flex items-center gap-2 text-[12px] text-slate-300">
-                    <Check size={14} className="text-emerald-400" />
-                    No silence detected at this threshold.
-                  </div>
-                ) : allSilence ? (
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2 text-[12px] text-amber-300">
-                      <AlertTriangle size={14} className="text-amber-400" />
-                      The entire clip is below the threshold.
-                    </div>
-                    <label className="flex items-center gap-2 text-[11px] text-slate-400 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={confirmAllSilence}
-                        onChange={(e) => setConfirmAllSilence(e.target.checked)}
-                        className="accent-cyan-400"
-                      />
-                      I understand this will remove the whole clip
-                    </label>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <div className="text-[10px] uppercase tracking-wider text-slate-600">Cuts</div>
-                      <div className="text-[15px] font-semibold text-slate-200">{plan.cuts}</div>
-                    </div>
-                    <div>
-                      <div className="text-[10px] uppercase tracking-wider text-slate-600">Time removed</div>
-                      <div className="text-[15px] font-semibold text-cyan-400">{removedSec.toFixed(2)}s</div>
-                    </div>
-                  </div>
-                )}
-                <div className="flex items-center gap-3 pt-1 text-[10px] text-slate-600">
-                  <span className="flex items-center gap-1">
-                    <span className="inline-block w-2.5 h-2.5 rounded-sm bg-red-500/60" /> Silence
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <span className="inline-block w-2.5 h-2.5 rounded-sm bg-emerald-500/60" /> Kept
-                  </span>
-                </div>
-              </div>
-            )}
-
-            {stage === 'config' ? (
-              <button
-                onClick={() => void runAnalysis()}
-                className="w-full py-2.5 bg-cyan-400 hover:bg-cyan-300 text-[#0e1c32] rounded-lg text-[12px] font-semibold transition-colors flex items-center justify-center gap-2"
-              >
-                <Eye size={14} />
-                Generate Preview
-              </button>
-            ) : (
-              <div className="flex gap-2">
-                <button
-                  onClick={close}
-                  className="flex-1 py-2 bg-[#122240] hover:bg-[#1a2a42] text-slate-400 hover:text-slate-300 rounded-lg text-[11px] font-medium transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleApply}
-                  disabled={!canApply && !(allSilence && confirmAllSilence)}
-                  className="flex-[2] py-2 bg-cyan-400 hover:bg-cyan-300 disabled:opacity-40 disabled:cursor-not-allowed text-[#0e1c32] rounded-lg text-[12px] font-semibold transition-colors flex items-center justify-center gap-2"
-                >
-                  <Scissors size={14} />
-                  Apply
-                </button>
-              </div>
-            )}
+            <p className="text-title text-primary">
+              {stage === 'analyzing' && 'Analyzing audio'}
+              {stage === 'detecting' && 'Detecting silence'}
+              {stage === 'applying' && 'Applying edits'}
+            </p>
           </div>
-        )}
-
-        {busy && (
-          <div className="p-6 space-y-4">
-            <div className="flex flex-col items-center text-center gap-3">
-              <div className="w-14 h-14 rounded-full bg-cyan-400/10 border border-cyan-400/30 flex items-center justify-center">
-                <Loader2 size={22} className="text-cyan-400 animate-spin" />
-              </div>
-              <p className="text-[13px] text-slate-200 font-medium">
-                {stage === 'analyzing' && 'Analyzing audio'}
-                {stage === 'detecting' && 'Detecting silence'}
-                {stage === 'applying' && 'Applying edits'}
-              </p>
+          {stage === 'analyzing' && (
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-3">
+              <div
+                className="h-full rounded-full bg-accent transition-all duration-150"
+                style={{ width: `${Math.round(progress * 100)}%` }}
+              />
             </div>
-            {stage === 'analyzing' && (
-              <div className="w-full h-1.5 bg-[#1a2a42] rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-cyan-400 rounded-full transition-all duration-150"
-                  style={{ width: `${Math.round(progress * 100)}%` }}
-                />
-              </div>
-            )}
-            {stage !== 'applying' && (
-              <button
-                onClick={cancel}
-                className="w-full py-2 bg-[#122240] hover:bg-[#1a2a42] text-slate-400 hover:text-slate-300 rounded-lg text-[11px] font-medium transition-colors"
-              >
-                Cancel
-              </button>
-            )}
+          )}
+          {stage !== 'applying' && (
+            <Button variant="secondary" block onClick={cancel}>
+              Cancel
+            </Button>
+          )}
+        </div>
+      )}
+
+      {stage === 'done' && stats && (
+        <div className="space-y-4">
+          <div className="flex flex-col items-center gap-3 text-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/10">
+              <Check size={22} className="text-success" />
+            </div>
+            <p className="text-title text-primary">Silence stripped</p>
           </div>
-        )}
+          <div className="grid grid-cols-2 gap-3 rounded-lg border border-hairline bg-surface-sunken p-3">
+            <div>
+              <div className="text-overline uppercase text-tertiary">Cuts</div>
+              <div className="text-stat text-primary">{stats.cuts}</div>
+            </div>
+            <div>
+              <div className="text-overline uppercase text-tertiary">Time saved</div>
+              <div className="text-stat text-accent">{stats.removedSec.toFixed(2)}s</div>
+            </div>
+          </div>
+          <Button variant="primary" size="comfortable" block onClick={close}>
+            Done
+          </Button>
+        </div>
+      )}
 
-        {stage === 'done' && stats && (
-          <div className="p-6 space-y-4">
-            <div className="flex flex-col items-center text-center gap-3">
-              <div className="w-14 h-14 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center">
-                <Check size={22} className="text-emerald-400" />
-              </div>
-              <p className="text-[13px] text-slate-200 font-medium">Silence stripped</p>
+      {stage === 'error' && (
+        <div className="space-y-4">
+          <div className="flex flex-col items-center gap-3 text-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-full border border-red-500/30 bg-red-500/10">
+              <AlertTriangle size={22} className="text-danger" />
             </div>
-            <div className="grid grid-cols-2 gap-3 rounded-lg border border-[#1a2a42] bg-[#0b0e14] p-3">
-              <div>
-                <div className="text-[10px] uppercase tracking-wider text-slate-600">Cuts</div>
-                <div className="text-[15px] font-semibold text-slate-200">{stats.cuts}</div>
-              </div>
-              <div>
-                <div className="text-[10px] uppercase tracking-wider text-slate-600">Time saved</div>
-                <div className="text-[15px] font-semibold text-cyan-400">{stats.removedSec.toFixed(2)}s</div>
-              </div>
-            </div>
-            <button
-              onClick={close}
-              className="w-full py-2.5 bg-cyan-400 hover:bg-cyan-300 text-[#0e1c32] rounded-lg text-[12px] font-semibold transition-colors"
+            <p className="max-w-sm text-body text-danger">{error}</p>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="secondary" className="flex-1" onClick={close}>
+              Close
+            </Button>
+            <Button
+              variant="primary"
+              className="flex-1"
+              onClick={() => useSilenceStore.setState({ stage: 'config', error: null })}
             >
-              Done
-            </button>
+              Try Again
+            </Button>
           </div>
-        )}
-
-        {stage === 'error' && (
-          <div className="p-6 space-y-4">
-            <div className="flex flex-col items-center text-center gap-3">
-              <div className="w-14 h-14 rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center">
-                <AlertTriangle size={22} className="text-red-400" />
-              </div>
-              <p className="text-[12px] text-red-400 max-w-sm">{error}</p>
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={close}
-                className="flex-1 py-2 bg-[#122240] hover:bg-[#1a2a42] text-slate-400 hover:text-slate-300 rounded-lg text-[11px] font-medium transition-colors"
-              >
-                Close
-              </button>
-              <button
-                onClick={() => useSilenceStore.setState({ stage: 'config', error: null })}
-                className="flex-1 py-2 bg-cyan-400 hover:bg-cyan-300 text-[#0e1c32] rounded-lg text-[12px] font-semibold transition-colors"
-              >
-                Try Again
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
+        </div>
+      )}
+    </Modal>
   );
 }

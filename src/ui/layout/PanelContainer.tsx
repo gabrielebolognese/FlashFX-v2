@@ -22,7 +22,7 @@ export function PanelContainer({ id, title, children, canHide = true, direction 
       <div className="flex flex-col items-center w-[24px] min-w-[24px] bg-[#081220]">
         <button
           onClick={() => toggleCollapsed(id)}
-          className="mt-1 p-1 text-slate-600 hover:text-[#f7b500] transition-colors"
+          className="mt-1 p-1 text-slate-600 hover:text-accent transition-colors"
           title={`Expand ${title}`}
         >
           <ChevronsRight size={11} />
@@ -39,7 +39,7 @@ export function PanelContainer({ id, title, children, canHide = true, direction 
       <div className="flex items-center h-[22px] min-h-[22px] bg-[#081220] border-t border-[#1a2a42]/40 px-2 gap-1">
         <button
           onClick={() => toggleCollapsed(id)}
-          className="p-0.5 text-slate-600 hover:text-[#f7b500] transition-colors"
+          className="p-0.5 text-slate-600 hover:text-accent transition-colors"
           title={`Expand ${title}`}
         >
           <ChevronsDown size={10} />
@@ -55,7 +55,7 @@ export function PanelContainer({ id, title, children, canHide = true, direction 
       <div className="flex items-center h-[22px] min-h-[22px] px-2 bg-[#081220] border-b border-[#1a2a42]/40">
         <button
           onClick={() => toggleCollapsed(id)}
-          className="p-0.5 text-slate-600 hover:text-[#f7b500] transition-colors mr-1.5"
+          className="p-0.5 text-slate-600 hover:text-accent transition-colors mr-1.5"
           title="Collapse"
         >
           {isVertical ? <ChevronsUp size={10} /> : <ChevronsLeft size={10} />}

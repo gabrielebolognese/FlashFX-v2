@@ -93,7 +93,7 @@ export function ExportModal({ onClose }: ExportModalProps) {
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#1a2a42]">
           <div className="flex items-center gap-2">
-            <Film size={16} className="text-yellow-400" />
+            <Film size={16} className="text-accent" />
             <h2 className="text-sm font-medium text-slate-200">Export Video</h2>
           </div>
           {!exporting && (
@@ -116,7 +116,7 @@ export function ExportModal({ onClose }: ExportModalProps) {
                     onClick={() => setQuality(key)}
                     className={`py-2 px-2 rounded text-[11px] font-medium transition-all ${
                       quality === key
-                        ? 'bg-yellow-400 text-[#0e1c32]'
+                        ? 'bg-accent text-on-accent'
                         : 'bg-[#122240] text-slate-400 hover:bg-[#1a2a42] hover:text-slate-300'
                     }`}
                   >
@@ -143,7 +143,7 @@ export function ExportModal({ onClose }: ExportModalProps) {
                     }}
                     className={`py-1 px-2.5 rounded text-[11px] transition-colors ${
                       matchingRes?.label === r.label
-                        ? 'bg-[#1a2a42] text-yellow-400 border border-yellow-400/30'
+                        ? 'bg-[#1a2a42] text-accent border border-accent-dim'
                         : 'bg-[#122240] text-slate-400 hover:text-slate-300'
                     }`}
                   >
@@ -156,14 +156,14 @@ export function ExportModal({ onClose }: ExportModalProps) {
                   type="number"
                   value={resolution.width}
                   onChange={(e) => setResolution({ ...resolution, width: Number(e.target.value) })}
-                  className="flex-1 bg-[#122240] text-[11px] text-slate-300 px-2 py-1.5 rounded border border-[#1a2a42] focus:border-yellow-400/50 outline-none"
+                  className="flex-1 bg-[#122240] text-[11px] text-slate-300 px-2 py-1.5 rounded border border-[#1a2a42] focus:border-accent outline-none"
                 />
                 <span className="text-[10px] text-slate-600">x</span>
                 <input
                   type="number"
                   value={resolution.height}
                   onChange={(e) => setResolution({ ...resolution, height: Number(e.target.value) })}
-                  className="flex-1 bg-[#122240] text-[11px] text-slate-300 px-2 py-1.5 rounded border border-[#1a2a42] focus:border-yellow-400/50 outline-none"
+                  className="flex-1 bg-[#122240] text-[11px] text-slate-300 px-2 py-1.5 rounded border border-[#1a2a42] focus:border-accent outline-none"
                 />
                 <span className="text-[10px] text-slate-600">px</span>
               </div>
@@ -179,7 +179,7 @@ export function ExportModal({ onClose }: ExportModalProps) {
                     onClick={() => setFrameRate(fps)}
                     className={`py-1 px-3 rounded text-[11px] transition-colors ${
                       frameRate === fps
-                        ? 'bg-[#1a2a42] text-yellow-400 border border-yellow-400/30'
+                        ? 'bg-[#1a2a42] text-accent border border-accent-dim'
                         : 'bg-[#122240] text-slate-400 hover:text-slate-300'
                     }`}
                   >
@@ -196,10 +196,10 @@ export function ExportModal({ onClose }: ExportModalProps) {
                 className="w-full flex items-center justify-between bg-[#122240] hover:bg-[#1a2a42] rounded-lg px-3 py-2.5 transition-colors"
               >
                 <span className="flex items-center gap-2 text-[11px] text-slate-300">
-                  {includeAudio ? <Volume2 size={13} className="text-yellow-400" /> : <VolumeX size={13} className="text-slate-500" />}
+                  {includeAudio ? <Volume2 size={13} className="text-accent" /> : <VolumeX size={13} className="text-slate-500" />}
                   Include audio
                 </span>
-                <span className={`relative w-8 h-4 rounded-full transition-colors ${includeAudio ? 'bg-yellow-400' : 'bg-[#1a2a42]'}`}>
+                <span className={`relative w-8 h-4 rounded-full transition-colors ${includeAudio ? 'bg-accent' : 'bg-[#1a2a42]'}`}>
                   <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-[#0e1c32] transition-all ${includeAudio ? 'left-4' : 'left-0.5'}`} />
                 </span>
               </button>
@@ -234,7 +234,7 @@ export function ExportModal({ onClose }: ExportModalProps) {
             {/* Export Button */}
             <button
               onClick={handleExport}
-              className="w-full py-2.5 bg-yellow-400 hover:bg-yellow-300 text-[#0e1c32] rounded-lg text-[12px] font-semibold transition-colors flex items-center justify-center gap-2"
+              className="w-full py-2.5 bg-accent hover:bg-accent-hover text-on-accent rounded-lg text-[12px] font-semibold transition-colors flex items-center justify-center gap-2"
             >
               <Download size={14} />
               Export MP4
@@ -257,7 +257,7 @@ export function ExportModal({ onClose }: ExportModalProps) {
                   <circle
                     cx="32" cy="32" r="29"
                     fill="none"
-                    stroke="#facc15"
+                    stroke="#d9a521"
                     strokeWidth="3"
                     strokeDasharray={`${2 * Math.PI * 29}`}
                     strokeDashoffset={`${2 * Math.PI * 29 * (1 - progress.percent / 100)}`}
@@ -265,7 +265,7 @@ export function ExportModal({ onClose }: ExportModalProps) {
                     className="transition-all duration-200"
                   />
                 </svg>
-                <span className="text-[13px] font-semibold text-yellow-400">{progress.percent}%</span>
+                <span className="text-[13px] font-semibold text-accent">{progress.percent}%</span>
               </div>
               <p className="text-[12px] text-slate-300 font-medium mb-1">{progress.message}</p>
               <p className="text-[10px] text-slate-600">
@@ -275,7 +275,7 @@ export function ExportModal({ onClose }: ExportModalProps) {
 
             <div className="w-full h-1.5 bg-[#1a2a42] rounded-full overflow-hidden">
               <div
-                className="h-full bg-yellow-400 rounded-full transition-all duration-150"
+                className="h-full bg-accent rounded-full transition-all duration-150"
                 style={{ width: `${progress.percent}%` }}
               />
             </div>
@@ -293,8 +293,8 @@ export function ExportModal({ onClose }: ExportModalProps) {
         {exportedBlob && !exporting && (
           <div className="p-5 space-y-4">
             <div className="text-center">
-              <div className="w-14 h-14 mx-auto mb-3 rounded-full bg-yellow-400/10 border border-yellow-400/30 flex items-center justify-center">
-                <Check size={24} className="text-yellow-400" />
+              <div className="w-14 h-14 mx-auto mb-3 rounded-full bg-accent-wash border border-accent-dim flex items-center justify-center">
+                <Check size={24} className="text-accent" />
               </div>
               <p className="text-[13px] text-slate-200 font-medium mb-1">Export Complete</p>
               <p className="text-[11px] text-slate-500">
@@ -304,7 +304,7 @@ export function ExportModal({ onClose }: ExportModalProps) {
 
             <button
               onClick={handleDownload}
-              className="w-full py-2.5 bg-yellow-400 hover:bg-yellow-300 text-[#0e1c32] rounded-lg text-[12px] font-semibold transition-colors flex items-center justify-center gap-2"
+              className="w-full py-2.5 bg-accent hover:bg-accent-hover text-on-accent rounded-lg text-[12px] font-semibold transition-colors flex items-center justify-center gap-2"
             >
               <Download size={14} />
               Download MP4

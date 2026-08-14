@@ -8,7 +8,7 @@ import { useAgentBuildStore, type AgentCursorTarget } from './agentBuildStore';
 // reflects `useAgentBuildStore`. The cursor is moved by writing to a ref in an rAF loop (no per-frame
 // React re-render); only clicks and the label cause a render.
 
-const ACCENT = '#f7b500';
+const ACCENT = '#d9a521';
 
 /** Resolve a target descriptor to a screen point, or null if its element isn't in the DOM yet. */
 function resolveTarget(t: AgentCursorTarget | null): { x: number; y: number } | null {
@@ -108,7 +108,7 @@ export function AgentBuildOverlay() {
             />
           )}
           {/* Figma-style arrow cursor — crisp filled pointer, on-brand amber with a dark outline. */}
-          <svg width="26" height="28" viewBox="0 0 24 26" fill="none" style={{ filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.5)) drop-shadow(0 0 5px #f7b50077)' }}>
+          <svg width="26" height="28" viewBox="0 0 24 26" fill="none" style={{ filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.5)) drop-shadow(0 0 5px #d9a52177)' }}>
             <path d="M4 3 L4 20.4 L8.8 16.1 L11.7 22.6 L14.8 21.2 L11.9 14.9 L18.6 14.9 Z" fill={ACCENT} stroke="#0a0f16" strokeWidth="1.4" strokeLinejoin="round" strokeLinecap="round" />
           </svg>
           {/* label chip */}
