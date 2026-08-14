@@ -439,9 +439,11 @@ function InspectorTabContent({ tab, layer }: { tab: InspectorTab; layer: Layer }
         </div>
       </Section>
 
+      {/* Audio layers have no spatial transform or constraints — skip both sections. */}
+      {!isAudio && (
       <Section title="Transform">
-        {/* 2.5D — 3D layer switch. Off for groups, audio (cameras render their own panel above). */}
-        {layer.type !== 'group' && layer.type !== 'audio' && (
+        {/* 2.5D — 3D layer switch. Off for groups (cameras render their own panel above). */}
+        {layer.type !== 'group' && (
           <button
             onClick={() => toggleLayer3D(layer.id)}
             title="Toggle 3D layer (adds Z position + X/Y/Z rotation)"
@@ -545,8 +547,9 @@ function InspectorTabContent({ tab, layer }: { tab: InspectorTab; layer: Layer }
           propPath="transform.opacity"
         />
       </Section>
+      )}
 
-      <ConstraintsSection layer={layer} />
+      {!isAudio && <ConstraintsSection layer={layer} />}
 
       {isText && (
         <TextProperties
