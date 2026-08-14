@@ -41,7 +41,7 @@ export function RenameModal() {
     <div className="fixed inset-0 z-[100] flex items-center justify-center">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={close} />
 
-      <div className="relative bg-surface-2 border border-hairline rounded-lg shadow-2xl w-full max-w-xl overflow-hidden">
+      <div className="relative bg-surface-2 border border-hairline rounded-lg shadow-overlay w-full max-w-xl overflow-hidden">
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-hairline">
           <div className="flex items-center gap-2">
             <Pencil size={16} className="text-cyan-400 shrink-0" />

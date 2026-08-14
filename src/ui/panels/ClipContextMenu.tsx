@@ -58,7 +58,7 @@ export function ClipContextMenu() {
 
   return (
     <div
-      className="fixed z-[120] min-w-[180px] bg-surface-2 border border-hairline rounded-md shadow-2xl py-1"
+      className="fixed z-[120] min-w-[180px] bg-surface-2 border border-hairline rounded-md shadow-overlay py-1"
       style={{ left, top }}
       onPointerDown={(e) => e.stopPropagation()}
       onContextMenu={(e) => e.preventDefault()}

@@ -43,7 +43,7 @@ export function SceneSwitcher() {
         <ChevronDown size={12} className="text-slate-500" />
       </button>
       {open && (
-        <div className="absolute top-full right-0 mt-0.5 z-[60] bg-surface-2 border border-hairline rounded-md shadow-2xl py-1 min-w-[210px] max-h-[380px] overflow-y-auto">
+        <div className="absolute top-full right-0 mt-0.5 z-[60] bg-surface-2 border border-hairline rounded-md shadow-overlay py-1 min-w-[210px] max-h-[380px] overflow-y-auto">
           <div className="px-3 py-1 text-[9px] uppercase tracking-wider text-slate-600">Scenes</div>
           {scenes.map((id) => (
             <button

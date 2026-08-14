@@ -1303,7 +1303,7 @@ function ResizeTooltip({
   const startFrame = state.previewInPoint;
   return (
     <div
-      className="fixed z-[100] pointer-events-none px-2 py-1 rounded-md bg-[#0e1c32]/95 border border-hairline shadow-lg text-[10px] font-mono tabular-nums whitespace-nowrap"
+      className="fixed z-[100] pointer-events-none px-2 py-1 rounded-md bg-[#0e1c32]/95 border border-hairline shadow-overlay text-[10px] font-mono tabular-nums whitespace-nowrap"
       style={{
         left: state.cursorClientX + 14,
         top: state.cursorClientY - 36,

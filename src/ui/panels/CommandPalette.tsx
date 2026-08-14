@@ -72,7 +72,7 @@ export function CommandPalette() {
       className="fixed inset-0 z-[10000] flex items-start justify-center pt-[12vh] bg-black/40"
       onPointerDown={(e) => { if (e.target === e.currentTarget) close(); }}
     >
-      <div className="w-[min(640px,92vw)] max-h-[70vh] flex flex-col rounded-xl overflow-hidden bg-surface-2 border border-hairline shadow-2xl">
+      <div className="w-[min(640px,92vw)] max-h-[70vh] flex flex-col rounded-xl overflow-hidden bg-surface-2 border border-hairline shadow-overlay">
         <div className="flex items-center gap-2 px-3 h-11 border-b border-hairline">
           <Search size={15} className="text-slate-500 shrink-0" />
           <input

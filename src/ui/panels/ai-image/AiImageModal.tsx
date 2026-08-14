@@ -143,7 +143,7 @@ export function AiImageModal() {
   return (
     <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => !isBusy && close()}>
       <div
-        className="w-[min(92vw,760px)] max-h-[88vh] overflow-auto bg-[#0d1526] border border-hairline rounded-xl shadow-2xl p-4"
+        className="w-[min(92vw,760px)] max-h-[88vh] overflow-auto bg-[#0d1526] border border-hairline rounded-xl shadow-overlay p-4"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-3">

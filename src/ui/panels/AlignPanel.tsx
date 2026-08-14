@@ -53,7 +53,7 @@ export function AlignPanel({ onClose }: { onClose: () => void }) {
   return (
     <>
       <div className="fixed inset-0 z-40" onClick={onClose} />
-      <div className="absolute top-[52px] left-[300px] z-50 bg-surface-2 border border-hairline rounded-lg p-3 shadow-2xl">
+      <div className="absolute top-[52px] left-[300px] z-50 bg-surface-2 border border-hairline rounded-lg p-3 shadow-overlay">
         <div className="flex items-center justify-between mb-2">
           <span className="text-[10px] uppercase tracking-wider text-slate-500 font-medium">Align &amp; Distribute</span>
           <button className="p-0.5 rounded hover:bg-white/10 text-slate-500" onClick={onClose}><X size={13} /></button>

@@ -163,7 +163,7 @@ export function TimelinePanel() {
         <CompositionBreadcrumb />
       </div>
       {dragKind && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none bg-[#0a1628]/80 backdrop-blur-sm border-2 border-dashed border-sky-400 rounded-lg m-2">
+        <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none bg-[#0a1628]/80 border-2 border-dashed border-sky-400 rounded-lg m-2">
           <div className="flex flex-col items-center gap-3">
             <div className="w-14 h-14 rounded-full bg-sky-400/10 border border-sky-400/30 flex items-center justify-center">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-sky-400">

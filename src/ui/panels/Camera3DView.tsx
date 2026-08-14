@@ -427,7 +427,7 @@ function OrthoView({ label, hAxis, vAxis, W, H, eye, poi, fov, apertureMm, fStop
       {menu && (
         <>
           <div className="fixed inset-0 z-20" onClick={() => setMenu(null)} onContextMenu={(e) => { e.preventDefault(); setMenu(null); }} />
-          <div className="absolute z-30 min-w-[140px] rounded-md border border-hairline bg-surface-sunken py-1 shadow-xl text-[11px] text-slate-200"
+          <div className="absolute z-30 min-w-[140px] rounded-md border border-hairline bg-surface-sunken py-1 shadow-overlay text-[11px] text-slate-200"
             style={{ left: Math.min(menu.x, EW - 150), top: Math.min(menu.y, EH - 120) }}>
             {menu.kind === 'segment' ? (
               <>

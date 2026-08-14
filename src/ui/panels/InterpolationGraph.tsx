@@ -641,7 +641,7 @@ export function InterpolationGraph() {
       {/* Context menu for presets */}
       {contextMenu && (
         <div
-          className="fixed z-50 bg-[#1a1e28] border border-hairline rounded shadow-xl py-1 min-w-[140px]"
+          className="fixed z-50 bg-[#1a1e28] border border-hairline rounded shadow-overlay py-1 min-w-[140px]"
           style={{ left: contextMenu.x, top: contextMenu.y }}
           onClick={(e) => e.stopPropagation()}
         >

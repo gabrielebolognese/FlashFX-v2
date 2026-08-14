@@ -548,7 +548,7 @@ function PanelsMenu() {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-1 z-50 bg-surface-2 border border-hairline rounded-lg shadow-2xl py-1 min-w-[160px] backdrop-blur-sm">
+        <div className="absolute right-0 top-full mt-1 z-50 bg-surface-2 border border-hairline rounded-lg shadow-overlay py-1 min-w-[160px]">
           {items.map((item) => (
             <button
               key={item.id}
@@ -619,7 +619,7 @@ function App() {
         onClick={() => { void launchTutorial(); }}
         title="Replay the tutorial"
         aria-label="Replay the tutorial"
-        className="fixed bottom-3 left-3 z-50 flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-[#0a1628]/90 border border-hairline text-slate-400 hover:text-slate-100 hover:border-hairline shadow-lg backdrop-blur-sm transition-colors"
+        className="fixed bottom-3 left-3 z-50 flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-[#0a1628]/90 border border-hairline text-slate-400 hover:text-slate-100 hover:border-hairline shadow-overlay transition-colors"
       >
         <GraduationCap size={14} />
         <span className="text-[11px] font-medium">Tutorial</span>

@@ -405,7 +405,7 @@ export function Viewport() {
         </button>
       )}
       {dragOver && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none bg-[#0a1628]/80 backdrop-blur-sm border-2 border-dashed border-accent rounded-lg m-2">
+        <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none bg-[#0a1628]/80 border-2 border-dashed border-accent rounded-lg m-2">
           <div className="flex flex-col items-center gap-3">
             <div className="w-16 h-16 rounded-full bg-accent-wash border border-accent-dim flex items-center justify-center">
               <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-accent">

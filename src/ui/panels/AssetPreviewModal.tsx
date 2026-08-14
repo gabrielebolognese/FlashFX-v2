@@ -41,13 +41,13 @@ export function AssetPreviewModal() {
         {!url ? (
           <div className="text-slate-300 text-sm">Preview unavailable.</div>
         ) : kind === 'video' ? (
-          <video src={url} controls autoPlay className="max-w-[90vw] max-h-[80vh] rounded-lg shadow-2xl" />
+          <video src={url} controls autoPlay className="max-w-[90vw] max-h-[80vh] rounded-lg shadow-overlay" />
         ) : kind === 'audio' ? (
-          <div className="p-8 bg-[#0f1826] rounded-lg shadow-2xl min-w-[320px]">
+          <div className="p-8 bg-[#0f1826] rounded-lg shadow-overlay min-w-[320px]">
             <audio src={url} controls autoPlay className="w-full" />
           </div>
         ) : (
-          <img src={url} alt={asset?.name ?? 'preview'} className="max-w-[90vw] max-h-[80vh] rounded-lg shadow-2xl object-contain" />
+          <img src={url} alt={asset?.name ?? 'preview'} className="max-w-[90vw] max-h-[80vh] rounded-lg shadow-overlay object-contain" />
         )}
         {asset?.name && <div className="text-slate-200 text-sm truncate max-w-[80vw]">{asset.name}</div>}
       </div>

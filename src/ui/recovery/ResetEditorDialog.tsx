@@ -19,7 +19,7 @@ export function ResetEditorDialog() {
 
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="w-[440px] rounded-xl bg-surface-2 border border-[#1f2636] shadow-2xl overflow-hidden">
+      <div className="w-[440px] rounded-xl bg-surface-2 border border-[#1f2636] shadow-overlay overflow-hidden">
         <div className="flex items-center gap-2.5 px-5 py-4 border-b border-hairline">
           <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-amber-500/10">
             <RotateCcw size={16} className="text-amber-400" />

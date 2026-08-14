@@ -20,7 +20,7 @@ export function TransformDialog({ onClose }: { onClose: () => void }) {
   return (
     <>
       <div className="fixed inset-0 z-[90]" onClick={onClose} />
-      <div className="fixed left-1/2 top-24 -translate-x-1/2 z-[91] w-[280px] bg-surface-2 border border-hairline rounded-lg p-4 shadow-2xl">
+      <div className="fixed left-1/2 top-24 -translate-x-1/2 z-[91] w-[280px] bg-surface-2 border border-hairline rounded-lg p-4 shadow-overlay">
         <div className="flex items-center justify-between mb-3">
           <span className="text-[11px] font-semibold text-slate-200">Transform</span>
           <button className="p-0.5 rounded hover:bg-white/10 text-slate-500" onClick={onClose}><X size={14} /></button>

@@ -477,7 +477,7 @@ export function Toolbar() {
       {showSettings && (
         <>
           <div className="fixed inset-0 z-30" onClick={() => setShowSettings(false)} />
-          <div className="absolute top-[52px] left-[320px] z-50 bg-surface-2 border border-hairline rounded-lg p-3 shadow-xl w-56">
+          <div className="absolute top-[52px] left-[320px] z-50 bg-surface-2 border border-hairline rounded-lg p-3 shadow-overlay w-56">
             <div className="text-[10px] uppercase tracking-wider text-slate-500 font-medium mb-2">Composition</div>
             <div className="space-y-2">
               <SettingRow label="Width" value={composition.settings.width} onChange={(v) => setCompositionSetting('width', v)} />
@@ -571,7 +571,7 @@ function MenuDropdown({
         {label}
       </button>
       {isOpen && (
-        <div className="absolute top-full left-0 mt-0.5 z-50 bg-surface-2 border border-hairline rounded-md shadow-2xl shadow-black/50 py-1 min-w-[200px]">
+        <div className="absolute top-full left-0 mt-0.5 z-50 bg-surface-2 border border-hairline rounded-md shadow-overlay shadow-black/50 py-1 min-w-[200px]">
           {items.map((item, i) => {
             if (item.divider) return <div key={i} className="h-px bg-surface-4 my-1 mx-2" />;
             if (item.submenu) {
@@ -582,7 +582,7 @@ function MenuDropdown({
                     <span className="text-slate-600">›</span>
                   </button>
                   {openSub === i && (
-                    <div className="absolute left-full top-0 -mt-1 ml-0.5 z-50 bg-surface-2 border border-hairline rounded-md shadow-2xl py-1 min-w-[200px] max-h-[340px] overflow-y-auto">
+                    <div className="absolute left-full top-0 -mt-1 ml-0.5 z-50 bg-surface-2 border border-hairline rounded-md shadow-overlay py-1 min-w-[200px] max-h-[340px] overflow-y-auto">
                       {item.submenu.length === 0 ? (
                         <div className="px-3 py-1 text-[11px] text-slate-600">No recent projects</div>
                       ) : item.submenu.map((sub, j) => (
@@ -742,7 +742,7 @@ function ToolbarColorControl({ type }: { type: 'fill' | 'stroke' | 'background' 
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-1 z-50 bg-surface-2 border border-hairline rounded-lg p-3 shadow-xl shadow-black/50 w-48">
+        <div className="absolute right-0 top-full mt-1 z-50 bg-surface-2 border border-hairline rounded-lg p-3 shadow-overlay shadow-black/50 w-48">
           <div className="text-[10px] text-slate-400 font-medium mb-2">
             {type === 'fill' ? 'Default Fill Color' : type === 'stroke' ? 'Default Stroke Color' : 'Background Color'}
           </div>
@@ -826,7 +826,7 @@ function ShortcutsModal({ onClose }: { onClose: () => void }) {
     <>
       <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm" onClick={onClose} />
       <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
-        <div className="bg-surface-2 border border-hairline rounded-xl shadow-2xl w-[520px] max-h-[70vh] overflow-hidden pointer-events-auto">
+        <div className="bg-surface-2 border border-hairline rounded-xl shadow-overlay w-[520px] max-h-[70vh] overflow-hidden pointer-events-auto">
           <div className="px-5 py-3 border-b border-hairline flex items-center justify-between">
             <h2 className="text-[12px] font-semibold text-slate-200">Keyboard Shortcuts</h2>
             <button onClick={onClose} className="text-[11px] text-slate-500 hover:text-slate-300 transition-colors">ESC</button>

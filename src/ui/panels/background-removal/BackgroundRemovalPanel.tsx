@@ -69,7 +69,7 @@ export function BackgroundRemovalPanel({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/70 backdrop-blur-sm">
-      <div className="relative w-full max-w-2xl mx-4 rounded-xl overflow-hidden bg-surface-1 border border-hairline shadow-2xl animate-[fadeIn_0.2s_ease-out]">
+      <div className="relative w-full max-w-2xl mx-4 rounded-xl overflow-hidden bg-surface-1 border border-hairline shadow-overlay animate-[fadeIn_0.2s_ease-out]">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-hairline">
           <div className="flex items-center gap-2.5">

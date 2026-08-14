@@ -74,7 +74,7 @@ export function QuickTextPanel() {
 
   return (
     <div
-      className="fixed z-[80] w-[256px] rounded-lg border border-[#26364f] bg-[#0d1524] shadow-2xl shadow-black/50 select-none"
+      className="fixed z-[80] w-[256px] rounded-lg border border-[#26364f] bg-[#0d1524] shadow-overlay shadow-black/50 select-none"
       style={{ left: Math.max(8, left), top: Math.max(8, top) }}
       onPointerDown={(e) => e.stopPropagation()}
       onKeyDown={(e) => e.stopPropagation()}

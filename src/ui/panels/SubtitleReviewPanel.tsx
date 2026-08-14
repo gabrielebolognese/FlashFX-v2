@@ -23,7 +23,7 @@ export function SubtitleReviewPanel() {
   };
 
   return (
-    <div className="fixed right-4 top-16 z-[85] w-80 max-h-[70vh] flex flex-col rounded-lg border border-[#26364f] bg-[#0d1524] shadow-2xl shadow-black/50 select-none">
+    <div className="fixed right-4 top-16 z-[85] w-80 max-h-[70vh] flex flex-col rounded-lg border border-[#26364f] bg-[#0d1524] shadow-overlay shadow-black/50 select-none">
       <div className="h-9 flex-shrink-0 flex items-center gap-2 px-3 border-b border-hairline">
         <Captions size={14} className="text-accent" />
         <span className="text-[12px] font-semibold text-slate-200">Review subtitles</span>

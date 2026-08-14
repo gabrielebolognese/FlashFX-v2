@@ -160,7 +160,7 @@ export function BrandsTab() {
                 <X size={8} />
               </button>
               {editingColorId === color.id && (
-                <div className="absolute top-11 left-0 z-10 bg-[#0d1520] border border-hairline rounded-lg p-2 shadow-xl">
+                <div className="absolute top-11 left-0 z-10 bg-[#0d1520] border border-hairline rounded-lg p-2 shadow-overlay">
                   <input
                     type="color"
                     value={color.hex}

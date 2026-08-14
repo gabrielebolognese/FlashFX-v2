@@ -2092,7 +2092,7 @@ function ColorStyleRow({ label, layerId, slot, rawColor, onRawChange }: {
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-6 z-50 w-44 bg-surface-2 border border-hairline rounded-md shadow-xl p-1 text-[11px]">
+          <div className="absolute right-0 top-6 z-50 w-44 bg-surface-2 border border-hairline rounded-md shadow-overlay p-1 text-[11px]">
             {linked && <div className="px-1.5 py-1 text-slate-500">Linked: {linked.name}</div>}
             <div className="max-h-40 overflow-y-auto">
               {colorStyles.map((s) => (
@@ -2398,7 +2398,7 @@ function MaskSection({ layerId, currentFrame }: { layerId: string; currentFrame:
                 <Plus size={11} />
               </button>
               {addMenuOpen && (
-                <div className="absolute top-full left-0 mt-1 z-50 bg-[#0d1f38] border border-hairline rounded shadow-lg py-0.5 min-w-[100px]">
+                <div className="absolute top-full left-0 mt-1 z-50 bg-[#0d1f38] border border-hairline rounded shadow-overlay py-0.5 min-w-[100px]">
                   {MASK_TYPES.map(({ type, label, icon: Icon }) => (
                     <button
                       key={type}

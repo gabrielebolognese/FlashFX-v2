@@ -15,7 +15,7 @@ export function ImageSizePrompt() {
 
   return (
     <div className="absolute top-3 left-1/2 -translate-x-1/2 z-40 pointer-events-auto max-w-[92%]">
-      <div className="flex items-center gap-3 rounded-lg border border-accent-dim bg-[#0d1219]/95 backdrop-blur px-3 py-2 shadow-lg shadow-black/40">
+      <div className="flex items-center gap-3 rounded-lg border border-accent-dim bg-[#0d1219]/95 px-3 py-2 shadow-overlay shadow-black/40">
         <ImageOff size={16} className="text-accent flex-shrink-0" />
         <div className="text-[11px] leading-tight text-slate-300 min-w-0">
           <div className="font-semibold text-slate-100">This image is larger than the canvas</div>

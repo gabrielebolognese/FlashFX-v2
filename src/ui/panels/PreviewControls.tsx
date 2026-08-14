@@ -265,7 +265,7 @@ function QualitySelect({ quality, onChange }: QualitySelectProps) {
         <ChevronDown size={10} />
       </button>
       {open && (
-        <div className="absolute left-0 bottom-full mb-1 z-50 min-w-[100px] rounded-md bg-surface-2 border border-hairline shadow-xl py-1">
+        <div className="absolute left-0 bottom-full mb-1 z-50 min-w-[100px] rounded-md bg-surface-2 border border-hairline shadow-overlay py-1">
           {PREVIEW_QUALITY_ORDER.map((q) => (
             <button
               key={q}

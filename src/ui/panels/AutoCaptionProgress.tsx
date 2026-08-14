@@ -19,7 +19,7 @@ export function AutoCaptionProgress() {
 
   return (
     <div
-      className="fixed bottom-4 right-4 z-[90] w-72 rounded-lg border border-[#26364f] bg-[#0d1524] shadow-2xl shadow-black/50 p-3 select-none cursor-pointer hover:border-[#33456a]"
+      className="fixed bottom-4 right-4 z-[90] w-72 rounded-lg border border-[#26364f] bg-[#0d1524] shadow-overlay shadow-black/50 p-3 select-none cursor-pointer hover:border-[#33456a]"
       onClick={openTasks}
       title="Open Tasks for the full log"
     >
