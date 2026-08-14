@@ -427,18 +427,6 @@ function InspectorTabContent({ tab, layer }: { tab: InspectorTab; layer: Layer }
   // Default: Properties (basic).
   return (
     <>
-      <Section title="Layer">
-        <StringInput
-          label="Name"
-          value={layer.name}
-          onChange={(v) => updateLayerProperty(layer.id, 'name', v)}
-        />
-        <div className="flex items-center gap-2 mt-1">
-          <label className="text-caption text-slate-500 w-14 flex-shrink-0">Type</label>
-          <span className="text-caption text-slate-400 capitalize">{layer.type}</span>
-        </div>
-      </Section>
-
       {/* Audio layers have no spatial transform or constraints — skip both sections. */}
       {!isAudio && (
       <Section title="Transform">
@@ -549,8 +537,6 @@ function InspectorTabContent({ tab, layer }: { tab: InspectorTab; layer: Layer }
       </Section>
       )}
 
-      {!isAudio && <ConstraintsSection layer={layer} />}
-
       {isText && (
         <TextProperties
           layer={layer as TextLayer}
@@ -618,6 +604,21 @@ function InspectorTabContent({ tab, layer }: { tab: InspectorTab; layer: Layer }
       {layer.type === 'layoutContainer' && (
         <LayoutContainerPanel layer={layer as LayoutContainerLayer} />
       )}
+
+      {!isAudio && <ConstraintsSection layer={layer} />}
+
+      {/* Name/type sit BELOW the more important properties (transform, type-specific, constraints). */}
+      <Section title="Layer">
+        <StringInput
+          label="Name"
+          value={layer.name}
+          onChange={(v) => updateLayerProperty(layer.id, 'name', v)}
+        />
+        <div className="flex items-center gap-2 mt-1">
+          <label className="text-caption text-slate-500 w-14 flex-shrink-0">Type</label>
+          <span className="text-caption text-slate-400 capitalize">{layer.type}</span>
+        </div>
+      </Section>
 
       {/* Show child override panel if this layer is inside a layout */}
       {(() => {
