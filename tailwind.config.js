@@ -49,6 +49,18 @@ export default {
         ui: 'var(--ffx-font-ui)',
         mono: 'var(--ffx-font-mono)',
       },
+      // 7-step type scale (Premium UI System 2). Each utility bakes in
+      // line-height + tracking + weight; weights stay 400/500/600. Added
+      // alongside the numeric defaults (text-xs…) so migration is opt-in.
+      fontSize: {
+        overline: ['10px', { lineHeight: '12px', letterSpacing: '0.4px', fontWeight: '600' }],
+        caption: ['11px', { lineHeight: '14px', letterSpacing: '0.05px', fontWeight: '500' }],
+        body: ['12px', { lineHeight: '16px', letterSpacing: '0px', fontWeight: '450' }],
+        'body-strong': ['12px', { lineHeight: '16px', letterSpacing: '0px', fontWeight: '600' }],
+        title: ['13px', { lineHeight: '18px', letterSpacing: '-0.1px', fontWeight: '600' }],
+        stat: ['15px', { lineHeight: '20px', letterSpacing: '-0.2px', fontWeight: '600' }],
+        display: ['22px', { lineHeight: '26px', letterSpacing: '-0.4px', fontWeight: '600' }],
+      },
       borderRadius: {
         sm: 'var(--ffx-radius-sm)',
         DEFAULT: 'var(--ffx-radius-md)',
