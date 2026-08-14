@@ -11,6 +11,10 @@ function getDragThreshold(): number {
   return getSettingValue<number>('editor.dragThreshold') ?? 3;
 }
 
+/** A bounded property sweeps its full min..max range over roughly this many pixels of drag,
+ *  so small-range props (opacity 0-1, volume/pitch +/-24) scrub far slower than wide ones. */
+const DRAG_PIXELS_FOR_FULL_RANGE = 300;
+
 interface DragInputProps {
   value: number;
   onChange: (value: number) => void;
@@ -58,10 +62,18 @@ export function DragInput({
   }, [min, max]);
 
   const getMultiplier = useCallback((e: MouseEvent | PointerEvent) => {
-    if (e.altKey) return step * 10;
-    if (e.shiftKey) return step * 0.1;
-    return step;
-  }, [step]);
+    // Range-aware base sensitivity: for a clamped property, one full drag (~DRAG_PIXELS_FOR_FULL_RANGE
+    // px) covers its whole min..max, so a +/-24 or 0..1 property moves several times slower than a
+    // wide/unbounded one. Unbounded props (position, rotation) fall back to `step` per pixel — the
+    // existing feel the user is happy with. Alt = coarser, Shift = finer, as before.
+    let base = step;
+    if (min !== undefined && max !== undefined && Number.isFinite(min) && Number.isFinite(max) && max > min) {
+      base = (max - min) / DRAG_PIXELS_FOR_FULL_RANGE;
+    }
+    if (e.altKey) return base * 10;
+    if (e.shiftKey) return base * 0.1;
+    return base;
+  }, [min, max, step]);
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     if (editing) return;
