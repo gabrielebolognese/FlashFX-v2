@@ -251,6 +251,16 @@ input[type="number"] {
   will-change: transform;
 }
 
+/* Dynamic Island entrance — the one place the spring overshoot is allowed. Keeps
+   the translateX(-50%) centering while scaling in (transform + opacity only). */
+@keyframes ffxIslandIn {
+  from { opacity: 0; transform: translateX(-50%) scale(0.92); }
+  to   { opacity: 1; transform: translateX(-50%) scale(1); }
+}
+.animate-ffx-island {
+  animation: ffxIslandIn var(--ffx-dur-large) var(--ffx-ease-spring);
+}
+
 /* Respect the OS "reduce motion" preference: collapse transitions/animations to
    near-instant. The playhead/ruler already carry no transitions, so scrubbing and
    playback are unaffected. See docs/PREMIUM-UI-SYSTEM.md motion spec. */

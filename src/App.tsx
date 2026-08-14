@@ -17,6 +17,8 @@ import { ResetEditorDialog } from './ui/recovery/ResetEditorDialog';
 import { EmergencyRecoveryOverlay } from './ui/recovery/EmergencyRecoveryOverlay';
 import { CaptionGenerationModal } from './ui/panels/CaptionGenerationModal';
 import { AutoCaptionProgress } from './ui/panels/AutoCaptionProgress';
+import { DynamicIsland } from './ui/island/DynamicIsland';
+import { useIslandStore } from './ui/island/islandStore';
 import { SubtitleReviewPanel } from './ui/panels/SubtitleReviewPanel';
 import { SilenceStripperModal } from './ui/panels/SilenceStripperModal';
 import { RenameModal } from './ui/panels/RenameModal';
@@ -87,7 +89,11 @@ function Editor() {
       if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S') && !e.shiftKey) {
         e.preventDefault();
         const { activeProjectId, saveCurrentProject } = useProjectStore.getState();
-        if (activeProjectId) saveCurrentProject().catch((err) => console.error('Save failed:', err));
+        if (activeProjectId) {
+          saveCurrentProject()
+            .then(() => useIslandStore.getState().toast('Saved', { tone: 'success', icon: 'check' }))
+            .catch((err) => { console.error('Save failed:', err); useIslandStore.getState().error('Save failed'); });
+        }
         return;
       }
 
@@ -498,6 +504,7 @@ function Editor() {
       <EmergencyRecoveryOverlay />
       <ClipContextMenu />
       <CaptionGenerationModal />
+      <DynamicIsland />
       <AutoCaptionProgress />
       <SubtitleReviewPanel />
       <SilenceStripperModal />
