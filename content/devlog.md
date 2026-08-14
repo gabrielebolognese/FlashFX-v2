@@ -1,5 +1,52 @@
 # Devlog
 
+## 2026-08-13
+
+A short day: one audio fix, then three AI-pipeline milestones (M1 orchestrator, M2 auto-fix, M3
+metadata persistence). 4 commits (plus the previous day's devlog), net +486/−26 across 11 files.
+typecheck 0 and lint at the 127 baseline throughout. The AI work is all proven with Node harnesses
+and a fake model client — no API key touched yet; that's the next milestone (M4, a key-holding
+Supabase edge function), which is the first one that needs the founder.
+
+- The audio waveform now stretches and compacts as you zoom and scroll, instead of only being
+  accurate when the whole clip fits on screen.
+  - Number: 1 file, +23/−8.
+  - Hard part: the clip element is clamped to the viewport (`clipLeft = max(0, inX)`,
+    `clipRight = min(containerWidth, outX)`), so its width is only the VISIBLE slice — but the
+    waveform strips were mapping the WHOLE clip's peak window across that slice, squeezing the entire
+    waveform into the visible part once a clip ran past the viewport. Fix derives the visible frame
+    sub-window from the clamp (`hiddenLeftFrames = (clipLeft − inX)/frameWidth`,
+    `visibleFrames = barWidth/frameWidth`) and maps only that source sub-range (× playbackRate for
+    video). Canvas size is unchanged — still bounded by the viewport.
+
+- internal: the AI pipeline is now one call. `generate(description, canvas, …, client)` runs
+  Director → compilePlan → Coder(per panel) → compile() into a committed-ready composition. Before,
+  the stages only ran in isolation (a dev fixture, or a Node runner that printed fragments).
+  - Number: `verify:generate`, 1 check (a fake client returns a Director plan, then a valid fragment
+    per panel parsed out of each request).
+  - Hard part: nothing structural — it's the glue the earlier stages were built to slot into. The
+    interesting part was making it deterministic and fully testable with a fake client so the whole
+    thing can be proven without a key.
+
+- internal: the pipeline auto-fixes the errors only assembly can see. After compile(), `generate()`
+  attributes each error to a panel (by `panelId`, or by which fragment the offending layer came
+  from) and re-runs that panel's Coder with the errors fed back, bounded to 2 rounds; anything left
+  stays in the report.
+  - Number: `verify:generate` +2 checks (auto-fixed in one round; a stubborn error stops at the cap).
+  - Hard part: constructing a test error that PASSES the Coder's own validation but FAILS assembly —
+    a fragment layer whose `parentId` points at a missing sibling. `validateCoderFragment` never
+    checks parentId, but assembly flags `dangling-parent`, so it's exactly the cross-stage case the
+    loop exists for. The Coder gained a `feedback` field that seeds the repair note into its first
+    request.
+
+- internal: an AI-generated scene's regeneration inputs (brief/styleContract/panelPlan/seed/digest/
+  tier) now survive save/load, so a reopened project can still be edited/regenerated.
+  - Number: `verify:aimeta`, 3 checks (round-trips unchanged / absent → undefined / malformed → dropped).
+  - Hard part: the diagnosis. The file serializer already preserved `aiMeta`; the real gap was the
+    editor STORE never putting it into the document it saves (and dropping it on load and on commit).
+    Fix is store plumbing: an `aiMeta` field, `getDocument()` includes it, `loadDocument()` reads it,
+    and `commitAiComposition` stores it as part of the undoable snapshot.
+
 ## 2026-08-12
 
 Text-system continuation, then a full day on audio/captions, plus the AI Coder stage. 14 commits,
