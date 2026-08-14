@@ -37,7 +37,7 @@ function Pill({ cx, cy, label }: { cx: number; cy: number; label: string }) {
 export function MeasureOverlay({ segments, extras = [], scaleX, scaleY }: MeasureOverlayProps) {
   if (segments.length === 0 && extras.length === 0) return null;
   return (
-    <svg className="absolute inset-0 w-full h-full pointer-events-none z-40 overflow-visible">
+    <svg className="absolute inset-0 w-full h-full pointer-events-none z-canvas-banner overflow-visible">
       {segments.map((s, i) => {
         const x1 = s.x1 * scaleX, y1 = s.y1 * scaleY, x2 = s.x2 * scaleX, y2 = s.y2 * scaleY;
         const horiz = Math.abs(y1 - y2) < 0.01; // horizontal segment → vertical caps

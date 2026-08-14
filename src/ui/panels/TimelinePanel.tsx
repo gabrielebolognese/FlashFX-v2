@@ -159,7 +159,7 @@ export function TimelinePanel() {
       onDrop={handleFileDrop}
     >
       {/* Precomp breadcrumb (renders nothing at the root composition). */}
-      <div className="absolute top-0 left-0 right-0 z-40">
+      <div className="absolute top-0 left-0 right-0 z-canvas-banner">
         <CompositionBreadcrumb />
       </div>
       {dragKind && (

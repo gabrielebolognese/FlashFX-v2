@@ -20,6 +20,7 @@ export function DynamicIsland() {
   const tone = useIslandStore((s) => s.tone);
   const progress = useIslandStore((s) => s.progress);
   const icon = useIslandStore((s) => s.icon);
+  const onCancel = useIslandStore((s) => s.onCancel);
   const dismiss = useIslandStore((s) => s.dismiss);
   const openTasks = usePanelStore((s) => s.openTasks);
 
@@ -48,6 +49,16 @@ export function DynamicIsland() {
         <span className="max-w-[240px] truncate text-primary">{message}</span>
         {showRing && (
           <span className="tabular-nums text-tertiary">{Math.round((progress ?? 0) * 100)}%</span>
+        )}
+        {mode === 'progress' && onCancel && (
+          <button
+            type="button"
+            title="Cancel"
+            onClick={(e) => { e.stopPropagation(); onCancel(); }}
+            className="ml-0.5 rounded p-0.5 text-tertiary transition-colors hover:bg-white/5 hover:text-primary"
+          >
+            <X size={12} />
+          </button>
         )}
         {mode === 'error' && (
           <button

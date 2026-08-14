@@ -100,7 +100,7 @@ export function BrandColorPicker({ onSelect, currentAlpha }: BrandColorPickerPro
       {open && (
         <div
           ref={popupRef}
-          className="absolute z-[100] top-full right-0 mt-1 w-[160px] bg-[#0d1b30] border border-hairline rounded-lg shadow-overlay shadow-black/50 overflow-hidden"
+          className="absolute z-modal top-full right-0 mt-1 w-[160px] bg-[#0d1b30] border border-hairline rounded-lg shadow-overlay shadow-black/50 overflow-hidden"
         >
           <div className="px-2.5 py-1.5 border-b border-hairline">
             <span className="text-[9px] font-medium text-slate-400 uppercase tracking-wider">Brand Colors</span>

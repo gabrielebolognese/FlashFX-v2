@@ -16,8 +16,10 @@ interface IslandState {
   /** 0..1 for a determinate ring, or null for indeterminate. */
   progress: number | null;
   icon: IslandIcon;
+  /** Optional cancel handler shown as an X while in progress mode. */
+  onCancel: (() => void) | null;
   /** Show a running task. Persists until setProgress completes or dismiss(). */
-  showProgress: (message: string, progress?: number | null, icon?: IslandIcon) => void;
+  showProgress: (message: string, progress?: number | null, icon?: IslandIcon, onCancel?: (() => void) | null) => void;
   /** Update a running task's value/label without restarting the entrance. */
   setProgress: (progress: number | null, message?: string) => void;
   /** Transient success/info toast that auto-collapses. */
@@ -39,20 +41,21 @@ export const useIslandStore = create<IslandState>((set) => ({
   tone: 'accent',
   progress: null,
   icon: null,
-  showProgress: (message, progress = null, icon = 'loader') => {
+  onCancel: null,
+  showProgress: (message, progress = null, icon = 'loader', onCancel = null) => {
     clearTimer();
-    set({ mode: 'progress', message, progress, icon, tone: 'accent' });
+    set({ mode: 'progress', message, progress, icon, tone: 'accent', onCancel });
   },
   setProgress: (progress, message) =>
     set((s) => (s.mode === 'progress' ? { progress, message: message ?? s.message } : {})),
   toast: (message, opts = {}) => {
     clearTimer();
-    set({ mode: 'toast', message, tone: opts.tone ?? 'success', icon: opts.icon ?? 'check', progress: null });
+    set({ mode: 'toast', message, tone: opts.tone ?? 'success', icon: opts.icon ?? 'check', progress: null, onCancel: null });
     hideTimer = setTimeout(() => set({ mode: 'idle' }), opts.durationMs ?? 2600);
   },
   error: (message) => {
     clearTimer();
-    set({ mode: 'error', message, tone: 'danger', icon: 'alert', progress: null });
+    set({ mode: 'error', message, tone: 'danger', icon: 'alert', progress: null, onCancel: null });
   },
-  dismiss: () => { clearTimer(); set({ mode: 'idle' }); },
+  dismiss: () => { clearTimer(); set({ mode: 'idle', onCancel: null }); },
 }));

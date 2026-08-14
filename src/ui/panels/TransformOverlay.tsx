@@ -1056,7 +1056,7 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
         const { x, y } = clampHud(hud.cx, hud.cy, boxW, 22, window.innerWidth, window.innerHeight);
         return (
           <div
-            className="fixed z-[9999] pointer-events-none px-1.5 py-0.5 rounded"
+            className="fixed z-top pointer-events-none px-1.5 py-0.5 rounded"
             style={{
               left: x,
               top: y,

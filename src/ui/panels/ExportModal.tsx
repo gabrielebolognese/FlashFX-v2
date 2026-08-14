@@ -86,7 +86,7 @@ export function ExportModal({ onClose }: ExportModalProps) {
   const matchingRes = RESOLUTION_PRESETS.find((r) => r.width === resolution.width && r.height === resolution.height);
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center">
+    <div className="fixed inset-0 z-modal flex items-center justify-center">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={!exporting ? onClose : undefined} />
 
       <div className="relative bg-surface-2 border border-hairline rounded-lg shadow-overlay w-full max-w-md overflow-hidden">

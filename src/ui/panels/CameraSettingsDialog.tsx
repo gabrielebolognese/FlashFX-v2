@@ -74,7 +74,7 @@ export function CameraSettingsDialog({ layer, onClose }: { layer: CameraLayer; o
   const setFStop = (n: number) => setAperture(apertureForFStop(zoom, Math.max(0.1, n)));
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
+    <div className="fixed inset-0 z-modal flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
       <div className="w-[880px] max-w-[94vw] max-h-[92vh] overflow-y-auto bg-[#111821] border border-[#2a3a50] rounded-lg shadow-overlay shadow-black/50" onClick={(e) => e.stopPropagation()}>
         <div className="px-4 py-3 border-b border-hairline flex items-center gap-2">
           <Video size={15} className="text-amber-400" />

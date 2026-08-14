@@ -45,7 +45,7 @@ export function GridSettingsPanel({ onClose }: { onClose: () => void }) {
 
   return (
     <>
-      <div className="fixed inset-0 z-40" onClick={onClose} />
+      <div className="fixed inset-0 z-canvas-banner" onClick={onClose} />
       <div className="fixed top-[52px] right-4 z-50 w-[280px] bg-surface-2 border border-hairline rounded-xl shadow-overlay overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-3 py-2 border-b border-hairline">

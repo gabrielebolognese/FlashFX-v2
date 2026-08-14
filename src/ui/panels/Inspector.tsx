@@ -2091,7 +2091,7 @@ function ColorStyleRow({ label, layerId, slot, rawColor, onRawChange }: {
       <button onClick={() => setOpen((o) => !o)} title="Link to style" className={`p-1 rounded hover:bg-white/5 ${linked ? 'text-cyan-400' : 'text-slate-600'}`}><Link2 size={12} /></button>
       {open && (
         <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="fixed inset-0 z-canvas-banner" onClick={() => setOpen(false)} />
           <div className="absolute right-0 top-6 z-50 w-44 bg-surface-2 border border-hairline rounded-md shadow-overlay p-1 text-caption">
             {linked && <div className="px-1.5 py-1 text-slate-500">Linked: {linked.name}</div>}
             <div className="max-h-40 overflow-y-auto">

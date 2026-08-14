@@ -19,7 +19,7 @@ export function CanvasSnapGuides({ lines, scaleX, scaleY }: CanvasSnapGuidesProp
   if (lines.length === 0) return null;
 
   return (
-    <svg className="absolute inset-0 w-full h-full pointer-events-none z-40 overflow-visible">
+    <svg className="absolute inset-0 w-full h-full pointer-events-none z-canvas-banner overflow-visible">
       {lines.map((line, i) => {
         const color = COLORS[line.kind];
         if (line.axis === 'x') {

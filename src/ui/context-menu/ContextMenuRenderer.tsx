@@ -18,7 +18,7 @@ export function ContextMenuRenderer() {
   return (
     <div
       ref={backdropRef}
-      className="fixed inset-0 z-[9999]"
+      className="fixed inset-0 z-top"
       onMouseDown={(e) => {
         if (e.target === backdropRef.current) hide();
       }}

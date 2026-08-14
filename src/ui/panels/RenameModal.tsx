@@ -38,7 +38,7 @@ export function RenameModal() {
   const apply = () => { renameLayers(selectedIds, pattern); close(); };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center">
+    <div className="fixed inset-0 z-modal flex items-center justify-center">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={close} />
 
       <div className="relative bg-surface-2 border border-hairline rounded-lg shadow-overlay w-full max-w-xl overflow-hidden">

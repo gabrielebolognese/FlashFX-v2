@@ -434,7 +434,7 @@ export function Toolbar() {
       </div>
 
       {/* Row 2: Toolbar with action buttons */}
-      <div className="h-[28px] bg-[#0a1628]/60 border-t border-hairline flex items-center px-2 gap-0.5 relative z-40">
+      <div className="h-[28px] bg-[#0a1628]/60 border-t border-hairline flex items-center px-2 gap-0.5 relative z-canvas-banner">
         <ToolbarButton icon={FilePlus} label="New" onClick={handleNewProject} />
         <ToolbarButton icon={FolderOpen} label="Open" onClick={handleNewProject} />
         <ToolbarButton icon={Save} label="Save" onClick={handleSave} />
