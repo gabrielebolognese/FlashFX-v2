@@ -17,24 +17,24 @@ interface TrackRowProps {
 function clipColor(layer: Layer): string {
   if (layer.labelColor) return layer.labelColor;
   switch (layer.type) {
-    // Muted, desaturated role tints — matches TrackArea.getClipColor.
-    case 'video': return '#4d7089';
-    case 'text': return '#7a6b9e';
-    case 'image': return '#4d7089';
-    case 'audio': return '#4f8a68';
-    case 'group': return '#5a6472';
-    case 'camera': return '#8a7f5a';
+    // Full-saturation role colours — matches TrackArea.getClipColor.
+    case 'video': return '#22c55e';
+    case 'text': return '#3b82f6';
+    case 'image': return '#22c55e';
+    case 'audio': return '#f59e0b';
+    case 'group': return '#6b7280';
+    case 'camera': return '#eab308';
     case 'shape': {
       const shape = (layer as ShapeLayer).shape;
       switch (shape.type) {
-        case 'rectangle': return '#9a5f5f';
-        case 'circle': return '#4f8a68';
-        case 'star': return '#8a7f5a';
-        case 'polygon': return '#a0764e';
-        default: return '#5a6472';
+        case 'rectangle': return '#ef4444';
+        case 'circle': return '#22c55e';
+        case 'star': return '#eab308';
+        case 'polygon': return '#f97316';
+        default: return '#6b7280';
       }
     }
-    default: return '#5a6472';
+    default: return '#6b7280';
   }
 }
 

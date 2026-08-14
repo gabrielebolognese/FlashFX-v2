@@ -54,29 +54,29 @@ const SCRUB_MAX_SPEED = 18; // px per rAF tick at maximum proximity
 function getClipColor(layer: Layer): string {
   if (layer.labelColor) return layer.labelColor;
   switch (layer.type) {
-    // Muted, desaturated role tints — never candy-bright (they read on a dark well).
-    case 'video': return '#4d7089';
-    case 'text': return '#7a6b9e';
-    case 'image': return '#4d7089';
-    case 'audio': return '#4f8a68';
-    case 'group': return '#5a6472';
-    case 'particle': return '#8a6ba8';
-    case 'animationItem': return '#a0764e';
-    case 'fieldSampled': return '#4d8a8a';
-    case 'generativePattern': return '#6a6ba8';
-    case 'lottieIcon': return '#7a6b9e';
-    case 'camera': return '#8a7f5a';
+    // Full-saturation role colours — clips stay vibrant against the dark well.
+    case 'video': return '#22c55e';
+    case 'text': return '#3b82f6';
+    case 'image': return '#22c55e';
+    case 'audio': return '#f59e0b';
+    case 'group': return '#6b7280';
+    case 'particle': return '#e879f9';
+    case 'animationItem': return '#f97316';
+    case 'fieldSampled': return '#06b6d4';
+    case 'generativePattern': return '#8b5cf6';
+    case 'lottieIcon': return '#a78bfa';
+    case 'camera': return '#eab308';
     case 'shape': {
       const shape = (layer as ShapeLayer).shape;
       switch (shape.type) {
-        case 'rectangle': return '#9a5f5f';
-        case 'circle': return '#4f8a68';
-        case 'star': return '#8a7f5a';
-        case 'polygon': return '#a0764e';
-        default: return '#5a6472';
+        case 'rectangle': return '#ef4444';
+        case 'circle': return '#22c55e';
+        case 'star': return '#eab308';
+        case 'polygon': return '#f97316';
+        default: return '#6b7280';
       }
     }
-    default: return '#5a6472';
+    default: return '#6b7280';
   }
 }
 
