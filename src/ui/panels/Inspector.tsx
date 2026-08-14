@@ -93,11 +93,11 @@ function FontFamilyRow({ value, onPick }: { value: string; onPick: (family: stri
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-center gap-1">
-        <label className="text-[10px] text-slate-500 w-14 flex-shrink-0">Family</label>
+        <label className="text-caption text-slate-500 w-14 flex-shrink-0">Family</label>
         <select
           value={value}
           onChange={(e) => onPick(e.target.value)}
-          className="flex-1 min-w-0 bg-surface-3 text-[10px] text-slate-300 px-1 py-0.5 rounded border border-hairline outline-none"
+          className="flex-1 min-w-0 bg-surface-3 text-caption text-slate-300 px-1 py-0.5 rounded border border-hairline outline-none"
         >
           {FONT_GROUPS.map((g) => (
             <optgroup key={g.category} label={g.category}>
@@ -173,11 +173,11 @@ function TextGradientControl({ fill, onChange }: { fill?: TextGradientFill; onCh
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-center gap-1">
-        <label className="text-[10px] text-slate-500 w-14 flex-shrink-0">Gradient</label>
+        <label className="text-caption text-slate-500 w-14 flex-shrink-0">Gradient</label>
         <select
           value={kind}
           onChange={(e) => setKind(e.target.value)}
-          className="flex-1 bg-surface-3 text-[10px] text-slate-300 px-1 py-0.5 rounded border border-hairline outline-none"
+          className="flex-1 bg-surface-3 text-caption text-slate-300 px-1 py-0.5 rounded border border-hairline outline-none"
         >
           <option value="none">Solid</option>
           <option value="linear">Linear</option>
@@ -191,13 +191,13 @@ function TextGradientControl({ fill, onChange }: { fill?: TextGradientFill; onCh
           <ColorInput label="End" value={[end.color[0], end.color[1], end.color[2], end.opacity] as Vec4} onChange={(v) => setStop('end', v)} />
           {kind !== 'radial' && (
             <div className="flex items-center gap-1">
-              <label className="text-[10px] text-slate-500 w-14 flex-shrink-0">Angle</label>
+              <label className="text-caption text-slate-500 w-14 flex-shrink-0">Angle</label>
               <input
                 type="range" min={0} max={360} value={fill.angle}
                 onChange={(e) => onChange({ ...fill, angle: Number(e.target.value) })}
                 className="flex-1"
               />
-              <span className="text-[10px] text-slate-400 w-8 text-right">{Math.round(fill.angle)}°</span>
+              <span className="text-caption text-slate-400 w-8 text-right">{Math.round(fill.angle)}°</span>
             </div>
           )}
         </>
@@ -303,7 +303,7 @@ function NavItem({
     <button
       onClick={onClick}
       aria-pressed={active}
-      className={`relative flex items-center gap-2 px-3 py-2 text-[11px] font-medium text-left transition-colors ${
+      className={`relative flex items-center gap-2 px-3 py-2 text-caption font-medium text-left transition-colors ${
         active
           ? 'text-accent bg-accent-wash'
           : 'text-slate-500 hover:text-slate-300 hover:bg-white/[0.03]'
@@ -434,8 +434,8 @@ function InspectorTabContent({ tab, layer }: { tab: InspectorTab; layer: Layer }
           onChange={(v) => updateLayerProperty(layer.id, 'name', v)}
         />
         <div className="flex items-center gap-2 mt-1">
-          <label className="text-[10px] text-slate-500 w-14 flex-shrink-0">Type</label>
-          <span className="text-[10px] text-slate-400 capitalize">{layer.type}</span>
+          <label className="text-caption text-slate-500 w-14 flex-shrink-0">Type</label>
+          <span className="text-caption text-slate-400 capitalize">{layer.type}</span>
         </div>
       </Section>
 
@@ -447,7 +447,7 @@ function InspectorTabContent({ tab, layer }: { tab: InspectorTab; layer: Layer }
           <button
             onClick={() => toggleLayer3D(layer.id)}
             title="Toggle 3D layer (adds Z position + X/Y/Z rotation)"
-            className={`flex items-center gap-1.5 mb-1.5 px-2 py-1 rounded text-[11px] border transition-colors ${
+            className={`flex items-center gap-1.5 mb-1.5 px-2 py-1 rounded text-caption border transition-colors ${
               layer.is3D
                 ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
                 : 'bg-surface-3 border-hairline text-slate-400 hover:text-slate-200'
@@ -713,11 +713,11 @@ function ShapeProperties({
             return (
               <div className="space-y-1">
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] uppercase tracking-wide text-slate-500">Corners</span>
+                  <span className="text-overline uppercase tracking-wide text-slate-500">Corners</span>
                   <button
                     title="Use one uniform corner radius"
                     onClick={() => updateLayerProperty(layer.id, 'shape.cornerRadii', undefined)}
-                    className="text-[10px] text-cyan-400 hover:text-cyan-300"
+                    className="text-caption text-cyan-400 hover:text-cyan-300"
                   >
                     Uniform
                   </button>
@@ -791,9 +791,9 @@ function ShapeProperties({
 
       {shape.type === 'polygon' && (
         <div className="flex items-center gap-1">
-          <label className="text-[10px] text-slate-500 w-14 flex-shrink-0">Vertices</label>
-          <span className="text-[10px] text-slate-400">{(shape as PolygonShape).vertices.length}</span>
-          <span className="text-[10px] text-slate-600 ml-1">
+          <label className="text-caption text-slate-500 w-14 flex-shrink-0">Vertices</label>
+          <span className="text-caption text-slate-400">{(shape as PolygonShape).vertices.length}</span>
+          <span className="text-caption text-slate-600 ml-1">
             ({(shape as PolygonShape).closed ? 'closed' : 'open'})
           </span>
         </div>
@@ -855,13 +855,13 @@ function SegmentedControl({
 }) {
   return (
     <div className="flex items-center gap-1">
-      <label className="text-[10px] text-slate-500 w-14 flex-shrink-0">{label}</label>
+      <label className="text-caption text-slate-500 w-14 flex-shrink-0">{label}</label>
       <div className="flex flex-1 rounded overflow-hidden border border-[#23293a]">
         {options.map(([val, name]) => (
           <button
             key={val}
             onClick={() => onChange(val)}
-            className={`flex-1 text-[10px] py-1 transition-colors ${
+            className={`flex-1 text-caption py-1 transition-colors ${
               value === val
                 ? 'bg-accent-wash text-accent-hover'
                 : 'bg-surface-2 text-slate-400 hover:text-slate-200 hover:bg-surface-3'
@@ -880,7 +880,7 @@ function StripSilenceButton({ layerId }: { layerId: string }) {
   return (
     <button
       onClick={() => openSilence(layerId)}
-      className="w-full mt-1 flex items-center justify-center gap-1.5 py-1.5 rounded bg-surface-3 hover:bg-surface-4 text-[10px] text-slate-300 hover:text-cyan-400 transition-colors"
+      className="w-full mt-1 flex items-center justify-center gap-1.5 py-1.5 rounded bg-surface-3 hover:bg-surface-4 text-caption text-slate-300 hover:text-cyan-400 transition-colors"
     >
       <Scissors size={11} className="text-cyan-400" />
       Strip Silence
@@ -928,7 +928,7 @@ function EffectsSection({ layer }: { layer: Layer }) {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5">
           <Zap size={12} className="text-cyan-400" />
-          <span className="text-[11px] text-slate-300">Motion Blur</span>
+          <span className="text-caption text-slate-300">Motion Blur</span>
         </div>
         <button
           role="switch"
@@ -945,8 +945,8 @@ function EffectsSection({ layer }: { layer: Layer }) {
       {enabled && (
         <div className="mt-2 space-y-1.5">
           <div className="flex items-center justify-between">
-            <label className="text-[10px] text-slate-500">Shutter Angle</label>
-            <span className="text-[10px] text-cyan-400 font-mono">{Math.round(shutter)}° · {shutterHint(shutter)}</span>
+            <label className="text-caption text-slate-500">Shutter Angle</label>
+            <span className="text-caption text-cyan-400 font-mono">{Math.round(shutter)}° · {shutterHint(shutter)}</span>
           </div>
           <input
             type="range"
@@ -967,7 +967,7 @@ function EffectsSection({ layer }: { layer: Layer }) {
       <div className="mt-3 pt-3 border-t border-hairline flex items-center justify-between">
         <div className="flex items-center gap-1.5">
           <Moon size={12} className="text-cyan-400" />
-          <span className="text-[11px] text-slate-300">Shadow</span>
+          <span className="text-caption text-slate-300">Shadow</span>
         </div>
         <button
           role="switch"
@@ -989,7 +989,7 @@ function EffectsSection({ layer }: { layer: Layer }) {
             onChange={(v) => updateLayerProperty(layer.id, 'shadow.color', v)}
           />
           <div className="flex items-center gap-1">
-            <label className="text-[10px] text-slate-500 w-14 flex-shrink-0">Opacity</label>
+            <label className="text-caption text-slate-500 w-14 flex-shrink-0">Opacity</label>
             <input
               type="range"
               min={0}
@@ -999,7 +999,7 @@ function EffectsSection({ layer }: { layer: Layer }) {
               onChange={(e) => updateLayerProperty(layer.id, 'shadow.color', [shadow.color[0], shadow.color[1], shadow.color[2], parseFloat(e.target.value)])}
               className="flex-1 accent-cyan-400 cursor-pointer"
             />
-            <span className="text-[10px] text-cyan-400 font-mono w-8 text-right">{Math.round(shadow.color[3] * 100)}%</span>
+            <span className="text-caption text-cyan-400 font-mono w-8 text-right">{Math.round(shadow.color[3] * 100)}%</span>
           </div>
 
           <ShadowSlider
@@ -1020,7 +1020,7 @@ function EffectsSection({ layer }: { layer: Layer }) {
           />
 
           <div className="flex items-center justify-between pt-1">
-            <label className="text-[10px] text-slate-500">Shadow Only</label>
+            <label className="text-caption text-slate-500">Shadow Only</label>
             <button
               role="switch"
               aria-checked={shadow.onlyShadow}
@@ -1038,7 +1038,7 @@ function EffectsSection({ layer }: { layer: Layer }) {
       <div className="mt-3 pt-3 border-t border-hairline flex items-center justify-between">
         <div className="flex items-center gap-1.5">
           <Sparkles size={12} className="text-cyan-400" />
-          <span className="text-[11px] text-slate-300">Glow</span>
+          <span className="text-caption text-slate-300">Glow</span>
         </div>
         <button
           role="switch"
@@ -1055,7 +1055,7 @@ function EffectsSection({ layer }: { layer: Layer }) {
       {glowEnabled && glow && (
         <div className="mt-2 space-y-2">
           <div className="flex items-center gap-1">
-            <label className="text-[10px] text-slate-500 w-14 flex-shrink-0">Mode</label>
+            <label className="text-caption text-slate-500 w-14 flex-shrink-0">Mode</label>
             <div className="flex-1 flex gap-1">
               {GLOW_MODES.map((m) => (
                 <button
@@ -1095,7 +1095,7 @@ function EffectsSection({ layer }: { layer: Layer }) {
           )}
 
           <div className="flex items-center justify-between pt-1">
-            <label className="text-[10px] text-slate-500">Glow Only</label>
+            <label className="text-caption text-slate-500">Glow Only</label>
             <button
               role="switch"
               aria-checked={glow.onlyGlow}
@@ -1113,7 +1113,7 @@ function EffectsSection({ layer }: { layer: Layer }) {
       <div className="mt-3 pt-3 border-t border-hairline flex items-center justify-between">
         <div className="flex items-center gap-1.5">
           <Aperture size={12} className="text-cyan-400" />
-          <span className="text-[11px] text-slate-300">Blur</span>
+          <span className="text-caption text-slate-300">Blur</span>
         </div>
         <button
           role="switch"
@@ -1130,7 +1130,7 @@ function EffectsSection({ layer }: { layer: Layer }) {
       {blurEnabled && blur && (
         <div className="mt-2 space-y-2">
           <div className="flex items-center gap-1">
-            <label className="text-[10px] text-slate-500 w-14 flex-shrink-0">Type</label>
+            <label className="text-caption text-slate-500 w-14 flex-shrink-0">Type</label>
             <div className="flex-1 flex gap-1">
               {BLUR_TYPES.map((bt) => (
                 <button
@@ -1212,8 +1212,8 @@ function ShadowSlider({
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between">
-        <label className="text-[10px] text-slate-500">{label}</label>
-        <span className="text-[10px] text-cyan-400 font-mono">{value.toFixed(precision)}{suffix}</span>
+        <label className="text-caption text-slate-500">{label}</label>
+        <span className="text-caption text-cyan-400 font-mono">{value.toFixed(precision)}{suffix}</span>
       </div>
       <input
         type="range"
@@ -1245,20 +1245,20 @@ function VideoProperties({
     <Section title="Video">
       <div className="space-y-1.5">
         <div className="flex items-center gap-1">
-          <label className="text-[10px] text-slate-500 w-14 flex-shrink-0">Source</label>
-          <span className="text-[10px] text-slate-400 truncate">{video.sourceWidth}x{video.sourceHeight}</span>
+          <label className="text-caption text-slate-500 w-14 flex-shrink-0">Source</label>
+          <span className="text-caption text-slate-400 truncate">{video.sourceWidth}x{video.sourceHeight}</span>
         </div>
         <div className="flex items-center gap-1">
-          <label className="text-[10px] text-slate-500 w-14 flex-shrink-0">Duration</label>
-          <span className="text-[10px] text-slate-400">{formatDuration(video.sourceDuration)}</span>
+          <label className="text-caption text-slate-500 w-14 flex-shrink-0">Duration</label>
+          <span className="text-caption text-slate-400">{formatDuration(video.sourceDuration)}</span>
         </div>
         <div className="flex items-center gap-1">
-          <label className="text-[10px] text-slate-500 w-14 flex-shrink-0">FPS</label>
-          <span className="text-[10px] text-slate-400">{video.sourceFrameRate}</span>
+          <label className="text-caption text-slate-500 w-14 flex-shrink-0">FPS</label>
+          <span className="text-caption text-slate-400">{video.sourceFrameRate}</span>
         </div>
         <LockAspectToggle layer={layer} />
         <div className="flex items-center gap-1">
-          <label className="text-[10px] text-slate-500 w-14 flex-shrink-0">Offset</label>
+          <label className="text-caption text-slate-500 w-14 flex-shrink-0">Offset</label>
           <DragInput
             value={video.startOffset}
             onChange={(v) => updateLayerProperty(layer.id, 'video.startOffset', Math.max(0, Math.round(v)))}
@@ -1268,7 +1268,7 @@ function VideoProperties({
           />
         </div>
         <div className="flex items-center gap-1">
-          <label className="text-[10px] text-slate-500 w-14 flex-shrink-0">Speed</label>
+          <label className="text-caption text-slate-500 w-14 flex-shrink-0">Speed</label>
           <DragInput
             value={video.playbackRate}
             onChange={(v) => updateLayerProperty(layer.id, 'video.playbackRate', Math.max(0.1, v))}
@@ -1280,7 +1280,7 @@ function VideoProperties({
           />
         </div>
         <div className="flex items-center gap-1">
-          <label className="text-[10px] text-slate-500 w-14 flex-shrink-0">Muted</label>
+          <label className="text-caption text-slate-500 w-14 flex-shrink-0">Muted</label>
           <button
             onClick={() => updateLayerProperty(layer.id, 'video.muted', !video.muted)}
             className={`px-1.5 py-0.5 text-[9px] rounded ${
@@ -1304,11 +1304,11 @@ function LockAspectToggle({ layer }: { layer: ImageLayer | VideoLayer }) {
   const locked = layer.lockAspect !== false;
   return (
     <div className="flex items-center gap-2">
-      <label className="text-[10px] text-slate-500 w-14 flex-shrink-0">Aspect</label>
+      <label className="text-caption text-slate-500 w-14 flex-shrink-0">Aspect</label>
       <button
         onClick={() => updateLayerProperty(layer.id, 'lockAspect', !locked)}
         title={locked ? 'Corner-resize keeps the aspect ratio (hold Shift to free it)' : 'Corner-resize is free (hold Shift to lock)'}
-        className={`flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-medium transition-colors ${locked ? 'bg-accent-wash text-accent' : 'bg-surface-3 text-slate-400 hover:text-slate-200'}`}
+        className={`flex items-center gap-1.5 px-2 py-1 rounded text-caption font-medium transition-colors ${locked ? 'bg-accent-wash text-accent' : 'bg-surface-3 text-slate-400 hover:text-slate-200'}`}
       >
         {locked ? <Lock size={11} /> : <Unlock size={11} />}
         {locked ? 'Locked' : 'Free'}
@@ -1335,16 +1335,16 @@ function ImageProperties({
       <Section title="Image">
         <div className="space-y-1.5">
           <div className="flex items-center gap-1">
-            <label className="text-[10px] text-slate-500 w-14 flex-shrink-0">Size</label>
-            <span className="text-[10px] text-slate-400">{image.sourceWidth}x{image.sourceHeight}</span>
+            <label className="text-caption text-slate-500 w-14 flex-shrink-0">Size</label>
+            <span className="text-caption text-slate-400">{image.sourceWidth}x{image.sourceHeight}</span>
           </div>
           <div className="flex items-center gap-1">
-            <label className="text-[10px] text-slate-500 w-14 flex-shrink-0">Format</label>
-            <span className="text-[10px] text-slate-400">{image.format.replace('image/', '').toUpperCase()}</span>
+            <label className="text-caption text-slate-500 w-14 flex-shrink-0">Format</label>
+            <span className="text-caption text-slate-400">{image.format.replace('image/', '').toUpperCase()}</span>
           </div>
           <div className="flex items-center gap-1">
-            <label className="text-[10px] text-slate-500 w-14 flex-shrink-0">File Size</label>
-            <span className="text-[10px] text-slate-400">{formatSize(image.fileSize)}</span>
+            <label className="text-caption text-slate-500 w-14 flex-shrink-0">File Size</label>
+            <span className="text-caption text-slate-400">{formatSize(image.fileSize)}</span>
           </div>
           <LockAspectToggle layer={layer} />
         </div>
@@ -1418,7 +1418,7 @@ function RemoveBackgroundButton({ layer }: { layer: ImageLayer }) {
       <button
         onClick={handleRemove}
         disabled={isProcessing}
-        className={`w-full relative overflow-hidden flex items-center justify-center gap-2 py-2 rounded-md text-[11px] font-medium transition ${
+        className={`w-full relative overflow-hidden flex items-center justify-center gap-2 py-2 rounded-md text-caption font-medium transition ${
           isProcessing
             ? 'bg-accent-wash border border-accent-dim text-accent-hover cursor-wait'
             : status === 'done'
@@ -1486,7 +1486,7 @@ function AudioProperties({
     <Section title="Audio">
       <div className="space-y-1.5">
         <div className="flex items-center gap-1">
-          <label className="text-[10px] text-slate-500 w-14 flex-shrink-0">Muted</label>
+          <label className="text-caption text-slate-500 w-14 flex-shrink-0">Muted</label>
           <button
             onClick={() => updateLayerProperty(layer.id, 'audio.muted', !audio.muted)}
             className={`px-1.5 py-0.5 text-[9px] rounded ${
@@ -1499,16 +1499,16 @@ function AudioProperties({
           </button>
         </div>
         <div className="flex items-center gap-1">
-          <label className="text-[10px] text-slate-500 w-14 flex-shrink-0">Duration</label>
-          <span className="text-[10px] text-slate-400">{formatDuration(audio.sourceDuration)}</span>
+          <label className="text-caption text-slate-500 w-14 flex-shrink-0">Duration</label>
+          <span className="text-caption text-slate-400">{formatDuration(audio.sourceDuration)}</span>
         </div>
         <div className="flex items-center gap-1">
-          <label className="text-[10px] text-slate-500 w-14 flex-shrink-0">Sample</label>
-          <span className="text-[10px] text-slate-400">{(audio.sampleRate / 1000).toFixed(1)} kHz</span>
+          <label className="text-caption text-slate-500 w-14 flex-shrink-0">Sample</label>
+          <span className="text-caption text-slate-400">{(audio.sampleRate / 1000).toFixed(1)} kHz</span>
         </div>
         <div className="flex items-center gap-1">
-          <label className="text-[10px] text-slate-500 w-14 flex-shrink-0">Channels</label>
-          <span className="text-[10px] text-slate-400">{audio.channels === 1 ? 'Mono' : audio.channels === 2 ? 'Stereo' : `${audio.channels}ch`}</span>
+          <label className="text-caption text-slate-500 w-14 flex-shrink-0">Channels</label>
+          <span className="text-caption text-slate-400">{audio.channels === 1 ? 'Mono' : audio.channels === 2 ? 'Stereo' : `${audio.channels}ch`}</span>
         </div>
         <NumberDragInput
           label="Volume"
@@ -1549,7 +1549,7 @@ function AutoCaptionButton({ layerId }: { layerId: string }) {
       onClick={() => autoCaptionAudioLayers([layerId])}
       disabled={active}
       title="Transcribe this clip on-device (Whisper Small) and add subtitles to the timeline"
-      className="w-full mt-1 flex items-center justify-center gap-1.5 py-1.5 rounded bg-surface-3 hover:bg-surface-4 text-[10px] text-slate-300 hover:text-accent transition-colors disabled:opacity-50 disabled:hover:text-slate-300"
+      className="w-full mt-1 flex items-center justify-center gap-1.5 py-1.5 rounded bg-surface-3 hover:bg-surface-4 text-caption text-slate-300 hover:text-accent transition-colors disabled:opacity-50 disabled:hover:text-slate-300"
     >
       <Captions size={11} className="text-accent" />
       {active ? 'Auto-Captioning…' : 'Auto-Caption'}
@@ -1588,13 +1588,13 @@ function TextMotionControlSection({ layer }: { layer: TextLayer }) {
     <Section title="Text Motion Control">
       <div className="space-y-2">
         <div>
-          <label className="text-[10px] text-slate-500 block mb-1">Split Mode</label>
+          <label className="text-caption text-slate-500 block mb-1">Split Mode</label>
           <div className="grid grid-cols-2 gap-1">
             {MODES.map((m) => (
               <button
                 key={m.id}
                 onClick={() => setMode(m.id)}
-                className={`text-[11px] px-2 py-1 rounded border transition-colors ${
+                className={`text-caption px-2 py-1 rounded border transition-colors ${
                   mode === m.id
                     ? 'border-accent text-accent bg-accent-wash'
                     : 'border-hairline text-slate-400 hover:text-slate-200 hover:bg-white/[0.03]'
@@ -1607,7 +1607,7 @@ function TextMotionControlSection({ layer }: { layer: TextLayer }) {
         </div>
 
         <div>
-          <label className="text-[10px] text-slate-500 block mb-1">Stagger Delay</label>
+          <label className="text-caption text-slate-500 block mb-1">Stagger Delay</label>
           <div className="flex items-center gap-1">
             <input
               type="number"
@@ -1615,12 +1615,12 @@ function TextMotionControlSection({ layer }: { layer: TextLayer }) {
               step={unit === 'seconds' ? 0.01 : 1}
               value={amount}
               onChange={(e) => setAmount(parseFloat(e.target.value) || 0)}
-              className="flex-1 bg-surface-3 text-[11px] text-slate-300 px-1.5 py-1 rounded border border-hairline focus:border-accent-dim outline-none"
+              className="flex-1 bg-surface-3 text-caption text-slate-300 px-1.5 py-1 rounded border border-hairline focus:border-accent-dim outline-none"
             />
             <div className="flex rounded border border-hairline overflow-hidden">
               <button
                 onClick={() => setUnit('seconds')}
-                className={`text-[10px] px-2 py-1 transition-colors ${
+                className={`text-caption px-2 py-1 transition-colors ${
                   unit === 'seconds' ? 'bg-accent-wash text-accent' : 'text-slate-500 hover:text-slate-300'
                 }`}
               >
@@ -1628,7 +1628,7 @@ function TextMotionControlSection({ layer }: { layer: TextLayer }) {
               </button>
               <button
                 onClick={() => setUnit('frames')}
-                className={`text-[10px] px-2 py-1 transition-colors ${
+                className={`text-caption px-2 py-1 transition-colors ${
                   unit === 'frames' ? 'bg-accent-wash text-accent' : 'text-slate-500 hover:text-slate-300'
                 }`}
               >
@@ -1644,7 +1644,7 @@ function TextMotionControlSection({ layer }: { layer: TextLayer }) {
         <button
           onClick={handleConvert}
           disabled={!canConvert}
-          className={`w-full flex items-center justify-center gap-1.5 text-[11px] font-medium px-2 py-1.5 rounded transition-colors ${
+          className={`w-full flex items-center justify-center gap-1.5 text-caption font-medium px-2 py-1.5 rounded transition-colors ${
             canConvert
               ? 'bg-accent text-white hover:bg-accent'
               : 'bg-surface-3 text-slate-600 cursor-not-allowed'
@@ -1685,7 +1685,7 @@ function TextProperties({
           <textarea
             value={fullText}
             onChange={(e) => updateLayerProperty(layer.id, 'content.spans', [{ text: e.target.value, style: style }])}
-            className="w-full bg-surface-3 text-[11px] text-slate-300 px-2 py-1.5 rounded border border-hairline focus:border-accent-dim outline-none resize-none min-h-[48px]"
+            className="w-full bg-surface-3 text-caption text-slate-300 px-2 py-1.5 rounded border border-hairline focus:border-accent-dim outline-none resize-none min-h-[48px]"
             rows={3}
             maxLength={500}
           />
@@ -1693,7 +1693,7 @@ function TextProperties({
         </div>
 
         <div className="flex items-center gap-1">
-          <label className="text-[10px] text-slate-500 w-14 flex-shrink-0">Bounding</label>
+          <label className="text-caption text-slate-500 w-14 flex-shrink-0">Bounding</label>
           <div className="flex gap-0.5">
             {(['auto', 'fixedWidth', 'fixed'] as const).map((bbType) => (
               <button
@@ -1717,7 +1717,7 @@ function TextProperties({
 
         {lc.boundingBox.type !== 'auto' && (
           <div className="flex items-center gap-1">
-            <label className="text-[10px] text-slate-500 w-14 flex-shrink-0">Box</label>
+            <label className="text-caption text-slate-500 w-14 flex-shrink-0">Box</label>
             <div className="flex gap-1 flex-1">
               <input
                 type="number"
@@ -1727,14 +1727,14 @@ function TextProperties({
                   if (lc.boundingBox.type === 'fixed') updateLayerProperty(layer.id, 'layoutConfig.boundingBox', { type: 'fixed', width: w, height: lc.boundingBox.height });
                   else updateLayerProperty(layer.id, 'layoutConfig.boundingBox', { type: 'fixedWidth', width: w });
                 }}
-                className="w-1/2 bg-surface-3 text-[10px] text-slate-300 px-1 py-0.5 rounded border border-hairline outline-none"
+                className="w-1/2 bg-surface-3 text-caption text-slate-300 px-1 py-0.5 rounded border border-hairline outline-none"
               />
               {lc.boundingBox.type === 'fixed' && (
                 <input
                   type="number"
                   value={Math.round(lc.boundingBox.height)}
                   onChange={(e) => updateLayerProperty(layer.id, 'layoutConfig.boundingBox', { type: 'fixed', width: lc.boundingBox.type === 'fixed' ? lc.boundingBox.width : 300, height: Math.max(8, Number(e.target.value)) })}
-                  className="w-1/2 bg-surface-3 text-[10px] text-slate-300 px-1 py-0.5 rounded border border-hairline outline-none"
+                  className="w-1/2 bg-surface-3 text-caption text-slate-300 px-1 py-0.5 rounded border border-hairline outline-none"
                 />
               )}
             </div>
@@ -1761,11 +1761,11 @@ function TextProperties({
             />
 
             <div className="flex items-center gap-1">
-              <label className="text-[10px] text-slate-500 w-14 flex-shrink-0">Weight</label>
+              <label className="text-caption text-slate-500 w-14 flex-shrink-0">Weight</label>
               <select
                 value={style.fontWeight}
                 onChange={(e) => updateLayerProperty(layer.id, 'content.spans[0].style.fontWeight', Number(e.target.value))}
-                className="flex-1 bg-surface-3 text-[10px] text-slate-300 px-1 py-0.5 rounded border border-hairline outline-none"
+                className="flex-1 bg-surface-3 text-caption text-slate-300 px-1 py-0.5 rounded border border-hairline outline-none"
               >
                 {[100, 200, 300, 400, 500, 600, 700, 800, 900].map((w) => (
                   <option key={w} value={w}>{w}</option>
@@ -1774,7 +1774,7 @@ function TextProperties({
             </div>
 
             <div className="flex items-center gap-1">
-              <label className="text-[10px] text-slate-500 w-14 flex-shrink-0">Style</label>
+              <label className="text-caption text-slate-500 w-14 flex-shrink-0">Style</label>
               <div className="flex gap-0.5">
                 <button
                   onClick={() => updateLayerProperty(layer.id, 'content.spans[0].style.fontStyle', style.fontStyle === 'italic' ? 'normal' : 'italic')}
@@ -1854,7 +1854,7 @@ function TextProperties({
 
           <Section title="Alignment & Layout">
             <div className="flex items-center gap-1">
-              <label className="text-[10px] text-slate-500 w-14 flex-shrink-0">H Align</label>
+              <label className="text-caption text-slate-500 w-14 flex-shrink-0">H Align</label>
               <div className="flex gap-0.5">
                 {(['left', 'center', 'right'] as const).map((align) => (
                   <button
@@ -1874,7 +1874,7 @@ function TextProperties({
 
             {lc.boundingBox.type === 'fixed' && (
               <div className="flex items-center gap-1">
-                <label className="text-[10px] text-slate-500 w-14 flex-shrink-0">V Align</label>
+                <label className="text-caption text-slate-500 w-14 flex-shrink-0">V Align</label>
                 <div className="flex gap-0.5">
                   {(['top', 'middle', 'bottom'] as const).map((align) => (
                     <button
@@ -1894,7 +1894,7 @@ function TextProperties({
             )}
 
             <div className="flex items-center gap-1">
-              <label className="text-[10px] text-slate-500 w-14 flex-shrink-0">Transform</label>
+              <label className="text-caption text-slate-500 w-14 flex-shrink-0">Transform</label>
               <div className="flex gap-0.5">
                 {(['none', 'uppercase', 'lowercase', 'capitalize'] as const).map((t) => (
                   <button
@@ -1914,7 +1914,7 @@ function TextProperties({
 
             {lc.boundingBox.type !== 'auto' && (
               <div className="flex items-center gap-1">
-                <label className="text-[10px] text-slate-500 w-14 flex-shrink-0">Overflow</label>
+                <label className="text-caption text-slate-500 w-14 flex-shrink-0">Overflow</label>
                 <div className="flex gap-0.5">
                   {(['visible', 'clip', 'truncate'] as const).map((o) => (
                     <button
@@ -1936,7 +1936,7 @@ function TextProperties({
 
           <Section title="Decoration">
             <div className="flex items-center gap-1">
-              <label className="text-[10px] text-slate-500 w-14 flex-shrink-0">Style</label>
+              <label className="text-caption text-slate-500 w-14 flex-shrink-0">Style</label>
               <div className="flex gap-0.5">
                 <button
                   onClick={() => updateLayerProperty(layer.id, 'content.spans[0].style.underline', !style.underline)}
@@ -1970,11 +1970,11 @@ function LottieIconSection({ layer }: { layer: LottieIconLayer }) {
   return (
     <div className="border-b border-hairline">
       <div className="px-3 py-1.5 bg-surface-sunken">
-        <span className="text-[10px] uppercase tracking-wider text-slate-500 font-medium">Lottie Animation</span>
+        <span className="text-overline uppercase tracking-wider text-slate-500 font-medium">Lottie Animation</span>
       </div>
       <div className="px-3 py-2 space-y-2">
         <div className="flex items-center gap-2">
-          <label className="text-[10px] text-slate-500 w-20 flex-shrink-0">Color</label>
+          <label className="text-caption text-slate-500 w-20 flex-shrink-0">Color</label>
           <input
             type="color"
             value={lottie.color}
@@ -1984,7 +1984,7 @@ function LottieIconSection({ layer }: { layer: LottieIconLayer }) {
           <span className="text-[9px] text-slate-500 font-mono">{lottie.color}</span>
         </div>
         <div className="flex items-center gap-2">
-          <label className="text-[10px] text-slate-500 w-20 flex-shrink-0">Start Frame</label>
+          <label className="text-caption text-slate-500 w-20 flex-shrink-0">Start Frame</label>
           <DragInput
             value={lottie.startFrame}
             onChange={(v) => updateLayerProperty(layer.id, 'lottieIcon.startFrame', Math.max(0, Math.round(v)))}
@@ -1994,16 +1994,16 @@ function LottieIconSection({ layer }: { layer: LottieIconLayer }) {
           />
         </div>
         <div className="flex items-center gap-2">
-          <label className="text-[10px] text-slate-500 w-20 flex-shrink-0">Total Frames</label>
-          <span className="text-[10px] text-slate-300">{lottie.totalFrames}</span>
+          <label className="text-caption text-slate-500 w-20 flex-shrink-0">Total Frames</label>
+          <span className="text-caption text-slate-300">{lottie.totalFrames}</span>
         </div>
         <div className="flex items-center gap-2">
-          <label className="text-[10px] text-slate-500 w-20 flex-shrink-0">Frame Rate</label>
-          <span className="text-[10px] text-slate-300">{lottie.frameRate} fps</span>
+          <label className="text-caption text-slate-500 w-20 flex-shrink-0">Frame Rate</label>
+          <span className="text-caption text-slate-300">{lottie.frameRate} fps</span>
         </div>
         <div className="flex items-center gap-2">
-          <label className="text-[10px] text-slate-500 w-20 flex-shrink-0">Size</label>
-          <span className="text-[10px] text-slate-300">{lottie.sourceWidth} x {lottie.sourceHeight}</span>
+          <label className="text-caption text-slate-500 w-20 flex-shrink-0">Size</label>
+          <span className="text-caption text-slate-300">{lottie.sourceWidth} x {lottie.sourceHeight}</span>
         </div>
       </div>
     </div>
@@ -2025,7 +2025,7 @@ const V_CONSTRAINT_OPTS: { mode: ReframeAxisMode; label: string }[] = [
 function ConstraintRow({ label, opts, value, onChange }: { label: string; opts: { mode: ReframeAxisMode; label: string }[]; value: ReframeAxisMode; onChange: (m: ReframeAxisMode) => void }) {
   return (
     <div className="flex items-center gap-2">
-      <label className="text-[10px] text-slate-500 w-14 flex-shrink-0">{label}</label>
+      <label className="text-caption text-slate-500 w-14 flex-shrink-0">{label}</label>
       <div className="flex flex-1 rounded border border-hairline overflow-hidden">
         {opts.map((o) => (
           <button
@@ -2046,7 +2046,7 @@ function ConstraintsSection({ layer }: { layer: Layer }) {
   if (layer.parentId !== null) {
     return (
       <Section title="Constraints">
-        <div className="text-[10px] text-slate-500">Pinned to parent — reframe constraints apply to top-level layers only.</div>
+        <div className="text-caption text-slate-500">Pinned to parent — reframe constraints apply to top-level layers only.</div>
       </Section>
     );
   }
@@ -2092,7 +2092,7 @@ function ColorStyleRow({ label, layerId, slot, rawColor, onRawChange }: {
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-6 z-50 w-44 bg-surface-2 border border-hairline rounded-md shadow-overlay p-1 text-[11px]">
+          <div className="absolute right-0 top-6 z-50 w-44 bg-surface-2 border border-hairline rounded-md shadow-overlay p-1 text-caption">
             {linked && <div className="px-1.5 py-1 text-slate-500">Linked: {linked.name}</div>}
             <div className="max-h-40 overflow-y-auto">
               {colorStyles.map((s) => (
@@ -2115,7 +2115,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   return (
     <div className="border-b border-hairline">
       <div className="px-3 py-1.5 bg-surface-sunken">
-        <span className="text-[10px] uppercase tracking-wider text-slate-500 font-medium">{title}</span>
+        <span className="text-overline uppercase tracking-wider text-slate-500 font-medium">{title}</span>
       </div>
       <div className="px-3 py-2 space-y-1">{children}</div>
     </div>
@@ -2125,12 +2125,12 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function StringInput({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
   return (
     <div className="flex items-center gap-2">
-      <label className="text-[10px] text-slate-500 w-14 flex-shrink-0">{label}</label>
+      <label className="text-caption text-slate-500 w-14 flex-shrink-0">{label}</label>
       <input
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="flex-1 bg-surface-3 text-[11px] text-slate-300 px-1.5 py-0.5 rounded border border-hairline focus:border-accent-dim outline-none"
+        className="flex-1 bg-surface-3 text-caption text-slate-300 px-1.5 py-0.5 rounded border border-hairline focus:border-accent-dim outline-none"
       />
     </div>
   );
@@ -2251,7 +2251,7 @@ function Vec2DragInput({
       data-prop={propPath}
       className={`flex items-center gap-0.5 rounded transition-shadow ${highlighted ? 'ring-2 ring-accent shadow-[0_0_12px_2px_#f7b50055]' : ''}`}
     >
-      <span className="text-[10px] text-slate-500 w-14 flex-shrink-0">{label}</span>
+      <span className="text-caption text-slate-500 w-14 flex-shrink-0">{label}</span>
       <div className="flex-1 flex gap-1 min-w-0">
         <div className="flex-1 flex items-center gap-0.5 min-w-0">
           {labels && <span className="text-[9px] text-slate-600">{labels[0]}</span>}
@@ -2285,7 +2285,7 @@ function ColorInput({
 
   return (
     <div className="flex items-center gap-1">
-      <label className="text-[10px] text-slate-500 w-14 flex-shrink-0">{label}</label>
+      <label className="text-caption text-slate-500 w-14 flex-shrink-0">{label}</label>
       <input
         type="color"
         value={hex}
@@ -2298,7 +2298,7 @@ function ColorInput({
         }}
         className="w-6 h-5 bg-transparent border-0 cursor-pointer p-0"
       />
-      <span className="text-[10px] text-slate-500 font-mono flex-1">{hex}</span>
+      <span className="text-caption text-slate-500 font-mono flex-1">{hex}</span>
       <BrandColorPicker onSelect={onChange} currentAlpha={value[3]} />
     </div>
   );
@@ -2360,7 +2360,7 @@ function MaskSection({ layerId, currentFrame }: { layerId: string; currentFrame:
         {/* Mask list */}
         <div className="rounded border border-hairline bg-[#0d1f38] overflow-visible relative">
           {masks.length === 0 ? (
-            <div className="px-2 py-3 text-center text-[10px] text-slate-500">No masks</div>
+            <div className="px-2 py-3 text-center text-caption text-slate-500">No masks</div>
           ) : (
             <div className="max-h-[420px] overflow-y-auto">
               {masks.map((m, idx) => (
@@ -2379,7 +2379,7 @@ function MaskSection({ layerId, currentFrame }: { layerId: string; currentFrame:
                   >
                     {m.enabled !== false ? <Eye size={10} /> : <EyeOff size={10} />}
                   </button>
-                  <span className={`flex-1 text-[10px] truncate ${m.id === selectedMaskId ? 'text-yellow-300' : 'text-slate-300'}`}>
+                  <span className={`flex-1 text-caption truncate ${m.id === selectedMaskId ? 'text-yellow-300' : 'text-slate-300'}`}>
                     {m.name || `Mask ${idx + 1}`}
                   </span>
                   <span className="text-[9px] text-slate-500 capitalize">{m.type}</span>
@@ -2403,7 +2403,7 @@ function MaskSection({ layerId, currentFrame }: { layerId: string; currentFrame:
                     <button
                       key={type}
                       onClick={() => handleAdd(type)}
-                      className="flex items-center gap-1.5 w-full px-2 py-1 text-[10px] text-slate-300 hover:bg-yellow-500/10 hover:text-yellow-300 transition-colors"
+                      className="flex items-center gap-1.5 w-full px-2 py-1 text-caption text-slate-300 hover:bg-yellow-500/10 hover:text-yellow-300 transition-colors"
                     >
                       <Icon size={10} />
                       {label}
@@ -2452,11 +2452,11 @@ function MaskSection({ layerId, currentFrame }: { layerId: string; currentFrame:
         {mask && (
           <div className="space-y-2 pt-1 border-t border-hairline">
             <div className="flex items-center gap-1">
-              <label className="text-[10px] text-slate-500 w-14 flex-shrink-0">Type</label>
+              <label className="text-caption text-slate-500 w-14 flex-shrink-0">Type</label>
               <select
                 value={mask.type}
                 onChange={(e) => updateMaskProperty(layerId, mask.id, 'type', e.target.value as MaskType)}
-                className="flex-1 bg-surface-4 border border-hairline rounded px-1.5 py-0.5 text-[10px] text-slate-300 outline-none"
+                className="flex-1 bg-surface-4 border border-hairline rounded px-1.5 py-0.5 text-caption text-slate-300 outline-none"
               >
                 {MASK_TYPES.map((opt) => (
                   <option key={opt.type} value={opt.type}>{opt.label}</option>
@@ -2517,7 +2517,7 @@ function MaskSection({ layerId, currentFrame }: { layerId: string; currentFrame:
 
             {(mask.type === 'star' || mask.type === 'polygon') && (
               <div className="flex items-center gap-1">
-                <label className="text-[10px] text-slate-500 w-14 flex-shrink-0">Points</label>
+                <label className="text-caption text-slate-500 w-14 flex-shrink-0">Points</label>
                 <DragInput
                   value={mask.points}
                   onChange={(v) => updateMaskProperty(layerId, mask.id, 'points', Math.max(3, Math.round(v)))}
@@ -2543,7 +2543,7 @@ function MaskSection({ layerId, currentFrame }: { layerId: string; currentFrame:
             )}
 
             <div className="flex items-center gap-1">
-              <label className="text-[10px] text-slate-500 w-14 flex-shrink-0">Invert</label>
+              <label className="text-caption text-slate-500 w-14 flex-shrink-0">Invert</label>
               <button
                 onClick={() => updateMaskProperty(layerId, mask.id, 'inverted', !mask.inverted)}
                 className={`px-2 py-0.5 text-[9px] rounded border transition-colors ${
@@ -2617,7 +2617,7 @@ function MotionPathSection({ layerId }: { layerId: string }) {
       {!activePath ? (
         <button
           onClick={handleCreate}
-          className="w-full px-2 py-1.5 text-[10px] rounded bg-accent-wash border border-accent-dim text-accent hover:bg-accent-wash transition-colors flex items-center justify-center gap-1.5"
+          className="w-full px-2 py-1.5 text-caption rounded bg-accent-wash border border-accent-dim text-accent hover:bg-accent-wash transition-colors flex items-center justify-center gap-1.5"
         >
           <Route size={11} />
           Create Motion Path
