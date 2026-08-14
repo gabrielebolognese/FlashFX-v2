@@ -181,6 +181,21 @@ input[type="number"] {
   scrollbar-width: none;
 }
 
+/* Blurred materials — ONLY for surfaces that float over STATIC content
+   (menus, popovers, command palette, the dynamic island). Never over the live
+   WebGPU viewport/timeline. Ship a semi-opaque fallback bg so they stay cheap
+   and readable if blur is dropped. See docs/PREMIUM-UI-SYSTEM.md material rules. */
+.ffx-material-menu {
+  background: var(--ffx-material-menu-bg);
+  backdrop-filter: var(--ffx-material-blur);
+  -webkit-backdrop-filter: var(--ffx-material-blur);
+}
+.ffx-material-island {
+  background: var(--ffx-material-island-bg);
+  backdrop-filter: var(--ffx-material-blur-island);
+  -webkit-backdrop-filter: var(--ffx-material-blur-island);
+}
+
 /* Panel subtle depth */
 .panel-surface {
   background: linear-gradient(180deg, var(--ffx-surface-2) 0%, var(--ffx-surface-1) 100%);
