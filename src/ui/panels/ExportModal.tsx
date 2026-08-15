@@ -3,6 +3,7 @@ import { X, Download, Film, Zap, Crown, Check, Volume2, VolumeX } from 'lucide-r
 import { useEditorStore } from '../../store/editor';
 import { exportToMp4, downloadBlob, formatFileSize, estimateDuration, type ExportProgress, type ExportSettings } from '../../codec/exporter';
 import { compositionHasAudio } from '../../codec/audioMixer';
+import { trackEvent, captureError } from '../../lib/telemetry';
 
 interface ExportModalProps {
   onClose: () => void;
@@ -59,12 +60,17 @@ export function ExportModal({ onClose }: ExportModalProps) {
       includeAudio: hasAudio && includeAudio,
     };
 
+    trackEvent('export_started', { width: resolution.width, height: resolution.height, frameRate, quality });
+
     try {
       const blob = await exportToMp4(composition, settings, setProgress, controller.signal, useEditorStore.getState().getComposition);
       setExportedBlob(blob);
+      trackEvent('export_completed', { width: resolution.width, height: resolution.height, frameRate, bytes: blob.size });
     } catch (e) {
       if ((e as Error).message !== 'Export cancelled') {
         setError((e as Error).message);
+        trackEvent('export_failed', { message: (e as Error).message });
+        captureError(e, { kind: 'export' });
       }
     } finally {
       setExporting(false);
