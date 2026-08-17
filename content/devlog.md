@@ -1,5 +1,54 @@
 # Devlog
 
+## 2026-08-15
+
+A pivot day: the premium-UI renovation finished the day before, so this was planning plus the first
+productization work. Two commits, 7 files, +431/−15. typecheck 0, lint at the 127 baseline, build
+green. No backend, no new dependencies, no keys — deliberately the part that needs nobody else.
+
+- internal: a grounded MVP→product roadmap, written after auditing what's actually built vs. what
+  only looks built.
+  - Number: 2 parallel audit passes (commercial plumbing; reliability/UX) feeding a 197-line
+    `docs/PRODUCT-ROADMAP.md`.
+  - Hard part: the reframe, not the writing. The starting assumption was "add auth + billing." The
+    audit showed the opposite shape — the editor engine is the strong part (export actually works,
+    crash recovery is real, ~40 templates exist) and the product SHELL is what's missing entirely (no
+    auth, billing, cloud sync, analytics, legal, landing), plus a few sharp reliability edges (no root
+    error boundary, zero analytics so you'd launch blind, no unsupported-browser gate). So the plan
+    sequences trust/reliability BEFORE accounts, not after them.
+
+- On a browser with no WebGPU (Safari, Firefox without the flag, older browsers) FlashFX now shows a
+  clean "use Chrome or Edge" screen instead of booting the entire app and then dead-ending in an
+  infinite "reset" loop.
+  - Number: one synchronous `'gpu' in navigator` check before the app renders; 1 new screen.
+  - Hard part: recognizing the existing recovery overlay was the wrong message for this case. It
+    offers a "reset and rebuild" that loops forever on a browser that can never run the renderer —
+    which is correct for a driver/adapter failure on a capable browser, but a dead-end for a browser
+    that lacks WebGPU entirely. A cheap pre-flight splits the two.
+
+- A crash in the app shell (the toolbar, a modal, the dashboard, onboarding) no longer white-screens
+  the whole editor. It shows a reload screen that says the work is saved locally.
+  - Number: 1 root error boundary around `<App/>`; the per-panel boundaries already existed.
+  - Hard part: nothing structural — the gap was that panel-level boundaries by definition don't catch
+    throws OUTSIDE the panels, and there were no `window.onerror` / `unhandledrejection` handlers at
+    all, so uncaught async errors and rejected promises were completely invisible.
+
+- Switching tabs or closing the tab within ~2 seconds of an edit no longer drops that edit.
+  - Number: autosave now flushes on `visibilitychange` (hidden) / `pagehide`, closing the 2s debounce
+    window.
+  - Hard part: the debounce that keeps autosave cheap is exactly what loses the tail on a fast close.
+    The fix flushes the pending save at hide/close time instead of waiting the timer out; the tricky
+    bit is that `pagehide`/`visibilitychange` are the only points that fire reliably before the tab
+    goes away.
+
+- internal: a vendor-agnostic telemetry seam (`captureError` / `trackEvent`) plus the first
+  activation-funnel events (export started / completed / failed).
+  - Number: 1 file; a single future `setTelemetrySink()` call routes everything to Sentry/PostHog with
+    no other change to the codebase.
+  - Hard part: none technically. The point was to add the seam NOW — routing to the console and
+    installing the global error handlers — so the app stops being blind, without committing to an SDK
+    or keys before the founder has set those accounts up.
+
 ## 2026-08-13
 
 A short day: one audio fix, then three AI-pipeline milestones (M1 orchestrator, M2 auto-fix, M3
