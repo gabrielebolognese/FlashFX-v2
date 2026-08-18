@@ -339,7 +339,7 @@ function ShapeModeCard({ selected, onClick, title, desc, mode, recommended }: {
 function ShapeModeDemo({ mode }: { mode: 'fast' | 'drag' }) {
   return (
     <div className="relative m-4 mb-2 aspect-video overflow-hidden rounded-lg border border-hairline bg-surface-2">
-      {/* mini tool rail — the rectangle tool flashes when "clicked" in fast mode */}
+      {/* mini tool rail; the rectangle tool flashes when "clicked" in fast mode */}
       <div className="absolute inset-y-0 left-0 flex w-[14%] flex-col items-center gap-1 border-r border-hairline bg-surface-3 pt-1.5">
         <div className={`h-3.5 w-3.5 rounded-sm border ${mode === 'fast' ? 'ffx-demo-tool-fast' : 'border-hairline bg-surface-4'}`} />
         <div className="h-3.5 w-3.5 rounded-full border border-hairline bg-surface-4" />
@@ -348,7 +348,7 @@ function ShapeModeDemo({ mode }: { mode: 'fast' | 'drag' }) {
       {/* the shape being created */}
       {mode === 'fast' ? (
         <>
-          {/* click ripple on the canvas — makes it clear the shape lands where you click */}
+          {/* click ripple on the canvas; makes it clear the shape lands where you click */}
           <span
             className="ffx-demo-click-fast absolute rounded-full border border-accent"
             style={{ left: '44%', top: '44%', width: '16px', height: '16px' }}
