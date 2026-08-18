@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, lazy, Suspense } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Toolbar } from './ui/panels/Toolbar';
 import { SceneSwitcher } from './ui/panels/SceneSwitcher';
 import { PanelLayout } from './ui/layout/PanelLayout';
@@ -39,7 +39,6 @@ import { TutorialRunner } from './tutorial/TutorialRunner';
 import { launchTutorial } from './tutorial/launch';
 import { AgentBuildOverlay } from './ui/agent-build/AgentBuildOverlay';
 
-const LazyIntroPopup = lazy(() => import('@/components/ui/IntroPopup').then(m => ({ default: m.IntroPopup })));
 
 function Editor() {
   const createGroup = useEditorStore((s) => s.createGroup);
@@ -513,9 +512,6 @@ function Editor() {
       <SettingsCssInjector />
       <CommandPalette />
       <TutorialRunner />
-      <Suspense fallback={null}>
-        <LazyIntroPopup />
-      </Suspense>
       <AgentBuildOverlay />
     </div>
   );
