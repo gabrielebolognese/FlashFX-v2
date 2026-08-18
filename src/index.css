@@ -261,6 +261,49 @@ input[type="number"] {
   animation: ffxIslandIn var(--ffx-dur-large) var(--ffx-ease-spring);
 }
 
+/* Onboarding shape-creation demos: a looping cursor showing fast-click vs
+   drag-to-create. Cosmetic and one-off (not a hot path) — left/top + transform.
+   Positions are % within each demo's relative canvas. */
+@keyframes ffxDemoCursorFast {
+  0%   { left: 60%; top: 78%; }
+  18%  { left: 6%;  top: 22%; }
+  24%  { left: 6%;  top: 29%; }
+  30%  { left: 6%;  top: 22%; }
+  46%  { left: 46%; top: 44%; }
+  88%  { left: 46%; top: 44%; }
+  100% { left: 60%; top: 78%; }
+}
+@keyframes ffxDemoToolFast {
+  0%, 20%   { background-color: var(--ffx-surface-4); border-color: var(--ffx-hairline); }
+  24%, 32%  { background-color: var(--ffx-accent); border-color: var(--ffx-accent); }
+  40%, 100% { background-color: var(--ffx-surface-4); border-color: var(--ffx-hairline); }
+}
+@keyframes ffxDemoRectFast {
+  0%, 30%   { opacity: 0; transform: scale(0.6); }
+  36%       { opacity: 1; transform: scale(1); }
+  88%       { opacity: 1; transform: scale(1); }
+  96%, 100% { opacity: 0; transform: scale(0.9); }
+}
+@keyframes ffxDemoCursorDrag {
+  0%, 16% { left: 26%; top: 28%; }
+  58%     { left: 74%; top: 80%; }
+  84%     { left: 74%; top: 80%; }
+  100%    { left: 26%; top: 28%; }
+}
+@keyframes ffxDemoRectDrag {
+  0%, 16% { opacity: 0; transform: scale(0, 0); }
+  20%     { opacity: 1; }
+  58%     { opacity: 1; transform: scale(1, 1); }
+  84%     { opacity: 1; transform: scale(1, 1); }
+  94%     { opacity: 1; }
+  100%    { opacity: 0; transform: scale(0, 0); }
+}
+.ffx-demo-cursor-fast { animation: ffxDemoCursorFast 4.5s ease-in-out infinite; }
+.ffx-demo-cursor-drag { animation: ffxDemoCursorDrag 4.5s ease-in-out infinite; }
+.ffx-demo-tool-fast   { animation: ffxDemoToolFast 4.5s ease-in-out infinite; }
+.ffx-demo-rect-fast   { animation: ffxDemoRectFast 4.5s ease-in-out infinite; }
+.ffx-demo-rect-drag   { animation: ffxDemoRectDrag 4.5s ease-in-out infinite; }
+
 /* Respect the OS "reduce motion" preference: collapse transitions/animations to
    near-instant. The playhead/ruler already carry no transitions, so scrubbing and
    playback are unaffected. See docs/PREMIUM-UI-SYSTEM.md motion spec. */

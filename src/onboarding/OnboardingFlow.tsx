@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useOnboardingStore } from './store';
-import { Monitor, Smartphone, MousePointer2, Square, Upload, Check, ArrowRight, MousePointerClick } from 'lucide-react';
+import { Monitor, Smartphone, MousePointer2, Upload, Check, ArrowRight, MousePointerClick } from 'lucide-react';
 import { brandColorsDb, brandAssetsDb, libraryId } from '../project-system/storage/libraryDb';
 import { invalidateBrandColorCache } from '../ui/components/BrandColorPicker';
 
@@ -198,9 +198,12 @@ function BgColorStep() {
 
   return (
     <div className="flex flex-col items-center text-center">
-      <h2 className="text-2xl font-light text-primary mb-8">
+      <h2 className="text-2xl font-light text-primary mb-3">
         <TypewriterText text="Choose your default background color" duration={2000} onComplete={() => setTitleDone(true)} />
       </h2>
+      <p className="mb-8 max-w-md text-sm leading-relaxed text-secondary">
+        This becomes the background of every new project. You can change it anytime while editing.
+      </p>
       {titleDone && (
         <FadeIn delay={200}>
           <div className="relative flex items-center gap-6">
@@ -254,8 +257,10 @@ function ShapeModeStep() {
       {titleDone && (
         <>
           <FadeIn>
-            <p className="text-sm text-secondary mb-8">
-              <TypewriterText text="Choose your preferred shape creation method." duration={1500} />
+            <p className="mb-8 max-w-lg text-sm leading-relaxed text-secondary">
+              Pick how new shapes are drawn. Fast creation drops a shape at a set size the moment you
+              click the tool; drag to create lets you draw it out to any size. You can always change
+              this later in the editor.
             </p>
           </FadeIn>
           <FadeIn delay={300} className="flex items-center gap-8">
@@ -305,25 +310,7 @@ function ShapeModeCard({ selected, onClick, title, desc, mode }: {
           : 'border-hairline bg-surface-1 hover:border-hairline hover:bg-surface-2'
       }`}
     >
-      {/* Two 16:9 video placeholders */}
-      <div className="p-4 pb-2">
-        <div className="flex gap-2">
-          <div className="flex-1 aspect-video rounded-lg bg-surface-2 border border-hairline flex items-center justify-center">
-            {mode === 'fast' ? (
-              <MousePointer2 size={18} className="text-tertiary" />
-            ) : (
-              <Square size={18} className="text-tertiary" />
-            )}
-          </div>
-          <div className="flex-1 aspect-video rounded-lg bg-surface-2 border border-hairline flex items-center justify-center">
-            {mode === 'fast' ? (
-              <MousePointer2 size={18} className="text-muted" />
-            ) : (
-              <Square size={18} className="text-muted" />
-            )}
-          </div>
-        </div>
-      </div>
+      <ShapeModeDemo mode={mode} />
       <div className="px-4 pb-4 pt-2">
         <h3 className="text-sm font-semibold text-primary mb-1">{title}</h3>
         <p className="text-xs text-secondary leading-relaxed">{desc}</p>
@@ -334,6 +321,42 @@ function ShapeModeCard({ selected, onClick, title, desc, mode }: {
         )}
       </div>
     </button>
+  );
+}
+
+// A looping mini-editor demo of each shape-creation mode.
+// fast: the cursor clicks the rectangle tool and a rectangle appears.
+// drag: the cursor presses and drags on the canvas and the rectangle grows to fit.
+function ShapeModeDemo({ mode }: { mode: 'fast' | 'drag' }) {
+  return (
+    <div className="relative m-4 mb-2 aspect-video overflow-hidden rounded-lg border border-hairline bg-surface-2">
+      {/* mini tool rail — the rectangle tool flashes when "clicked" in fast mode */}
+      <div className="absolute inset-y-0 left-0 flex w-[14%] flex-col items-center gap-1 border-r border-hairline bg-surface-3 pt-1.5">
+        <div className={`h-3.5 w-3.5 rounded-sm border ${mode === 'fast' ? 'ffx-demo-tool-fast' : 'border-hairline bg-surface-4'}`} />
+        <div className="h-3.5 w-3.5 rounded-full border border-hairline bg-surface-4" />
+      </div>
+
+      {/* the shape being created */}
+      {mode === 'fast' ? (
+        <div
+          className="ffx-demo-rect-fast absolute rounded-sm border border-accent bg-accent-wash"
+          style={{ left: '44%', top: '40%', width: '38px', height: '24px' }}
+        />
+      ) : (
+        <div
+          className="ffx-demo-rect-drag absolute rounded-sm border border-accent bg-accent-wash"
+          style={{ left: '26%', top: '28%', width: '48%', height: '52%', transformOrigin: 'top left' }}
+        />
+      )}
+
+      {/* animated cursor */}
+      <MousePointer2
+        size={13}
+        fill="white"
+        className={`absolute text-white ${mode === 'fast' ? 'ffx-demo-cursor-fast' : 'ffx-demo-cursor-drag'}`}
+        style={{ left: '46%', top: '44%', filter: 'drop-shadow(0 1px 1.5px rgba(0,0,0,0.7))' }}
+      />
+    </div>
   );
 }
 
@@ -416,8 +439,9 @@ function BrandAssetsStep() {
       {titleDone && (
         <>
           <FadeIn>
-            <p className="text-sm text-secondary mb-10">
-              <TypewriterText text="Click a circle to set your brand colors. Import logos and assets below." duration={2000} />
+            <p className="mb-10 max-w-lg text-sm leading-relaxed text-secondary">
+              Optional. Set your brand colours and import your logos so they&apos;re one click away in
+              the editor. You can add or change these anytime.
             </p>
           </FadeIn>
 
@@ -502,8 +526,9 @@ function ContentTypeStep() {
       {titleDone && (
         <>
           <FadeIn>
-            <p className="text-sm text-secondary mb-8">
-              <TypewriterText text="This sets your default project format." duration={1500} />
+            <p className="mb-8 max-w-lg text-sm leading-relaxed text-secondary">
+              This sets your default project format and canvas size. You can still pick either format
+              for any individual project later.
             </p>
           </FadeIn>
           <FadeIn delay={300} className="flex items-center gap-6">
