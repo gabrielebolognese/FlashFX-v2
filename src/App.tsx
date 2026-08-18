@@ -595,6 +595,19 @@ function App() {
   const shapeMode = useOnboardingStore((s) => s.shapeMode);
   const contentType = useOnboardingStore((s) => s.contentType);
 
+  // First run: launch the onboarding wizard once, ever. Mark it seen immediately so a
+  // refresh mid-flow doesn't restart it; it stays re-openable via start().
+  useEffect(() => {
+    try {
+      if (!localStorage.getItem('flashfx_onboarding_seen')) {
+        localStorage.setItem('flashfx_onboarding_seen', 'true');
+        useOnboardingStore.getState().start();
+      }
+    } catch {
+      /* localStorage unavailable — skip onboarding rather than block boot */
+    }
+  }, []);
+
   useEffect(() => {
     if (onboardingStep !== 'done') return;
     // Store background color preference for new projects
