@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useOnboardingStore } from './store';
-import { Monitor, Smartphone, MousePointer2, Upload, Check, ArrowRight, MousePointerClick } from 'lucide-react';
+import { Monitor, Smartphone, MousePointer2, Upload, Check, ArrowRight, MousePointerClick, Sparkles } from 'lucide-react';
 import { brandColorsDb, brandAssetsDb, libraryId } from '../project-system/storage/libraryDb';
 import { invalidateBrandColorCache } from '../ui/components/BrandColorPicker';
 
@@ -268,15 +268,16 @@ function ShapeModeStep() {
               selected={shapeMode === 'fast'}
               onClick={() => setShapeMode('fast')}
               title="Fast Creation"
-              desc="Click a tool and the shape appears instantly at a default size."
+              desc="Pick the tool, then click once on the canvas — the shape drops in at a set size."
               mode="fast"
             />
             <ShapeModeCard
               selected={shapeMode === 'drag'}
               onClick={() => setShapeMode('drag')}
               title="Drag to Create"
-              desc="Click and drag on the canvas to define the shape's size."
+              desc="Pick the tool, then drag on the canvas to draw the shape at any size you want."
               mode="drag"
+              recommended
             />
           </FadeIn>
           <FadeIn delay={500} className="mt-8">
@@ -294,12 +295,13 @@ function ShapeModeStep() {
   );
 }
 
-function ShapeModeCard({ selected, onClick, title, desc, mode }: {
+function ShapeModeCard({ selected, onClick, title, desc, mode, recommended }: {
   selected: boolean;
   onClick: () => void;
   title: string;
   desc: string;
   mode: 'fast' | 'drag';
+  recommended?: boolean;
 }) {
   return (
     <button
@@ -312,7 +314,14 @@ function ShapeModeCard({ selected, onClick, title, desc, mode }: {
     >
       <ShapeModeDemo mode={mode} />
       <div className="px-4 pb-4 pt-2">
-        <h3 className="text-sm font-semibold text-primary mb-1">{title}</h3>
+        <div className="mb-1 flex items-center gap-2">
+          <h3 className="text-sm font-semibold text-primary">{title}</h3>
+          {recommended && (
+            <span className="rounded-full bg-accent-wash px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent">
+              Recommended
+            </span>
+          )}
+        </div>
         <p className="text-xs text-secondary leading-relaxed">{desc}</p>
         {selected && (
           <div className="mt-3 flex items-center gap-1 text-accent text-xs font-medium">
@@ -338,10 +347,17 @@ function ShapeModeDemo({ mode }: { mode: 'fast' | 'drag' }) {
 
       {/* the shape being created */}
       {mode === 'fast' ? (
-        <div
-          className="ffx-demo-rect-fast absolute rounded-sm border border-accent bg-accent-wash"
-          style={{ left: '44%', top: '40%', width: '38px', height: '24px' }}
-        />
+        <>
+          {/* click ripple on the canvas — makes it clear the shape lands where you click */}
+          <span
+            className="ffx-demo-click-fast absolute rounded-full border border-accent"
+            style={{ left: '44%', top: '44%', width: '16px', height: '16px' }}
+          />
+          <div
+            className="ffx-demo-rect-fast absolute rounded-sm border border-accent bg-accent-wash"
+            style={{ left: '42%', top: '41%', width: '38px', height: '24px' }}
+          />
+        </>
       ) : (
         <div
           className="ffx-demo-rect-drag absolute rounded-sm border border-accent bg-accent-wash"
@@ -440,13 +456,20 @@ function BrandAssetsStep() {
         <>
           <FadeIn>
             <p className="mb-10 max-w-lg text-sm leading-relaxed text-secondary">
-              Optional. Set your brand colours and import your logos so they&apos;re one click away in
-              the editor. You can add or change these anytime.
+              Optional, but handy. Your brand kit is a saved set of colours and logos that follows you
+              into every project, so you don&apos;t have to re-pick them each time. Set them up now or
+              skip and add them later — you can always change them.
             </p>
           </FadeIn>
 
           {/* Colors: 5 clickable circles */}
           <FadeIn delay={300} className="w-full">
+            <div className="mb-3">
+              <h3 className="text-sm font-semibold text-primary">Brand colours</h3>
+              <p className="mx-auto max-w-md text-xs leading-relaxed text-tertiary">
+                Click a circle to pick a colour. These become quick-pick swatches in every colour picker in the editor.
+              </p>
+            </div>
             <div className="flex items-center justify-center gap-5 mb-10">
               {colors.map((c, i) => (
                 <button
@@ -475,6 +498,12 @@ function BrandAssetsStep() {
           {/* Assets: import button + row */}
           <FadeIn delay={500} className="w-full">
             <div className="flex flex-col items-center">
+              <div className="mb-3 text-center">
+                <h3 className="text-sm font-semibold text-primary">Logos &amp; assets</h3>
+                <p className="mx-auto max-w-md text-xs leading-relaxed text-tertiary">
+                  Import images you reuse often — logos, watermarks, overlays. They&apos;ll be one click away in the media pool.
+                </p>
+              </div>
               {assets.length > 0 && (
                 <div className="flex items-center gap-3 mb-5 flex-wrap justify-center">
                   {assets.map((a, i) => (
@@ -541,6 +570,13 @@ function ContentTypeStep() {
               aspect="landscape"
             />
             <ContentCard
+              selected={contentType === 'both'}
+              onClick={() => setContentType('both')}
+              title="Both"
+              desc="A mix of both - you'll choose the format for each project."
+              aspect="both"
+            />
+            <ContentCard
               selected={contentType === 'short'}
               onClick={() => setContentType('short')}
               icon={<Smartphone size={32} className="text-accent" />}
@@ -567,10 +603,10 @@ function ContentTypeStep() {
 function ContentCard({ selected, onClick, icon, title, desc, aspect }: {
   selected: boolean;
   onClick: () => void;
-  icon: React.ReactNode;
+  icon?: React.ReactNode;
   title: string;
   desc: string;
-  aspect: 'landscape' | 'portrait';
+  aspect: 'landscape' | 'portrait' | 'both';
 }) {
   return (
     <button
@@ -581,12 +617,25 @@ function ContentCard({ selected, onClick, icon, title, desc, aspect }: {
           : 'border-hairline bg-surface-1 hover:border-hairline hover:bg-surface-2'
       }`}
     >
-      <div className={`w-full bg-surface-2 flex items-center justify-center ${aspect === 'landscape' ? 'h-28' : 'h-36'}`}>
-        <div className={`border border-hairline rounded flex items-center justify-center ${
-          aspect === 'landscape' ? 'w-24 h-14' : 'w-14 h-24'
-        }`} style={{ backgroundColor: 'var(--ffx-surface-1)' }}>
-          {icon}
-        </div>
+      <div className={`w-full bg-surface-2 flex items-center justify-center gap-2 ${
+        aspect === 'landscape' ? 'h-28' : aspect === 'portrait' ? 'h-36' : 'h-32'
+      }`}>
+        {aspect === 'both' ? (
+          <>
+            <div className="flex h-10 w-16 items-center justify-center rounded border border-hairline" style={{ backgroundColor: 'var(--ffx-surface-1)' }}>
+              <Monitor size={16} className="text-info" />
+            </div>
+            <div className="flex h-14 w-9 items-center justify-center rounded border border-hairline" style={{ backgroundColor: 'var(--ffx-surface-1)' }}>
+              <Smartphone size={16} className="text-accent" />
+            </div>
+          </>
+        ) : (
+          <div className={`border border-hairline rounded flex items-center justify-center ${
+            aspect === 'landscape' ? 'w-24 h-14' : 'w-14 h-24'
+          }`} style={{ backgroundColor: 'var(--ffx-surface-1)' }}>
+            {icon}
+          </div>
+        )}
       </div>
       <div className="p-4">
         <h3 className="text-sm font-semibold text-primary mb-1">{title}</h3>
@@ -605,7 +654,6 @@ function TutorialStep() {
   const complete = useOnboardingStore((s) => s.complete);
   const setWantsTutorial = useOnboardingStore((s) => s.setWantsTutorial);
   const [titleDone, setTitleDone] = useState(false);
-  const [subtitleDone, setSubtitleDone] = useState(false);
 
   const handleYes = () => {
     setWantsTutorial(true);
@@ -618,22 +666,28 @@ function TutorialStep() {
   };
 
   return (
-    <div className="flex flex-col items-center text-center">
-      <h2 className="text-2xl font-light text-primary mb-3">
-        <TypewriterText text="Would you like to see a tutorial project?" duration={2200} onComplete={() => setTitleDone(true)} />
+    <div className="flex max-w-xl flex-col items-center text-center">
+      <h2 className="mb-4 text-3xl font-light text-primary md:text-4xl">
+        <TypewriterText text="Start with an example project?" onComplete={() => setTitleDone(true)} />
       </h2>
       {titleDone && (
-        <FadeIn>
-          <p className="text-sm text-accent font-medium mb-8">
-            <TypewriterText text="EXTREMELY recommended if you never used the software" duration={1800} onComplete={() => setSubtitleDone(true)} />
-          </p>
-        </FadeIn>
-      )}
-      {subtitleDone && (
-        <FadeIn delay={200} className="flex items-center gap-4">
-          <OnboardingButton onClick={handleYes} variant="primary">Yes</OnboardingButton>
-          <OnboardingButton onClick={handleNo} variant="secondary">No</OnboardingButton>
-        </FadeIn>
+        <>
+          <FadeIn>
+            <div className="mb-4 inline-flex items-center gap-1.5 rounded-full bg-accent-wash px-3 py-1 text-sm font-semibold text-accent">
+              <Sparkles size={14} /> Highly recommended
+            </div>
+            <p className="mb-9 max-w-lg text-base leading-relaxed text-secondary">
+              We&apos;ll open a ready-made project so you can look around and see how layers, the
+              timeline, and keyframes fit together. If you&apos;ve never used FlashFX, this is the
+              fastest way to get comfortable — you learn by poking at something real instead of
+              staring at a blank canvas.
+            </p>
+          </FadeIn>
+          <FadeIn delay={200} className="flex items-center gap-4">
+            <OnboardingButton onClick={handleYes} variant="primary">Yes, open the example</OnboardingButton>
+            <OnboardingButton onClick={handleNo} variant="secondary">Skip for now</OnboardingButton>
+          </FadeIn>
+        </>
       )}
     </div>
   );

@@ -265,22 +265,30 @@ input[type="number"] {
    drag-to-create. Cosmetic and one-off (not a hot path) — left/top + transform.
    Positions are % within each demo's relative canvas. */
 @keyframes ffxDemoCursorFast {
-  0%   { left: 60%; top: 78%; }
-  18%  { left: 6%;  top: 22%; }
-  24%  { left: 6%;  top: 29%; }
-  30%  { left: 6%;  top: 22%; }
-  46%  { left: 46%; top: 44%; }
-  88%  { left: 46%; top: 44%; }
-  100% { left: 60%; top: 78%; }
+  0%   { left: 62%; top: 80%; }
+  16%  { left: 6%;  top: 22%; }   /* to the rectangle tool */
+  22%  { left: 6%;  top: 29%; }   /* click the tool */
+  28%  { left: 6%;  top: 22%; }
+  46%  { left: 48%; top: 46%; }   /* over to the canvas */
+  52%  { left: 48%; top: 51%; }   /* click on the canvas */
+  58%  { left: 48%; top: 46%; }
+  88%  { left: 48%; top: 46%; }
+  100% { left: 62%; top: 80%; }
 }
 @keyframes ffxDemoToolFast {
-  0%, 20%   { background-color: var(--ffx-surface-4); border-color: var(--ffx-hairline); }
-  24%, 32%  { background-color: var(--ffx-accent); border-color: var(--ffx-accent); }
-  40%, 100% { background-color: var(--ffx-surface-4); border-color: var(--ffx-hairline); }
+  0%, 14%   { background-color: var(--ffx-surface-4); border-color: var(--ffx-hairline); }
+  20%, 28%  { background-color: var(--ffx-accent); border-color: var(--ffx-accent); }
+  34%, 100% { background-color: var(--ffx-surface-4); border-color: var(--ffx-hairline); }
+}
+@keyframes ffxDemoClickFast {
+  0%, 48%  { opacity: 0; transform: scale(0.2); }
+  52%      { opacity: 0.9; transform: scale(0.5); }
+  62%      { opacity: 0; transform: scale(1.6); }
+  100%     { opacity: 0; transform: scale(0.2); }
 }
 @keyframes ffxDemoRectFast {
-  0%, 30%   { opacity: 0; transform: scale(0.6); }
-  36%       { opacity: 1; transform: scale(1); }
+  0%, 52%   { opacity: 0; transform: scale(0.6); }
+  58%       { opacity: 1; transform: scale(1); }
   88%       { opacity: 1; transform: scale(1); }
   96%, 100% { opacity: 0; transform: scale(0.9); }
 }
@@ -301,6 +309,7 @@ input[type="number"] {
 .ffx-demo-cursor-fast { animation: ffxDemoCursorFast 4.5s ease-in-out infinite; }
 .ffx-demo-cursor-drag { animation: ffxDemoCursorDrag 4.5s ease-in-out infinite; }
 .ffx-demo-tool-fast   { animation: ffxDemoToolFast 4.5s ease-in-out infinite; }
+.ffx-demo-click-fast  { animation: ffxDemoClickFast 4.5s ease-in-out infinite; }
 .ffx-demo-rect-fast   { animation: ffxDemoRectFast 4.5s ease-in-out infinite; }
 .ffx-demo-rect-drag   { animation: ffxDemoRectDrag 4.5s ease-in-out infinite; }
 

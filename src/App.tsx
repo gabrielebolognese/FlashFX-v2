@@ -616,9 +616,12 @@ function App() {
     if (shapeMode) {
       localStorage.setItem('ffx-shape-creation-mode', shapeMode);
     }
-    // Store content type preference
-    if (contentType) {
+    // Store content type preference. "Both" clears the default so new projects fall back to
+    // Long form and the user picks per project (CreateProjectModal only understands long/short).
+    if (contentType === 'long' || contentType === 'short') {
       localStorage.setItem('ffx-default-video-format', contentType);
+    } else if (contentType === 'both') {
+      localStorage.removeItem('ffx-default-video-format');
     }
   }, [onboardingStep, bgColor, shapeMode, contentType]);
 

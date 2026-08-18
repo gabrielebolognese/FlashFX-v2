@@ -12,7 +12,7 @@ export type OnboardingStep =
   | 'done';
 
 export type ShapeCreationMode = 'fast' | 'drag';
-export type ContentType = 'long' | 'short';
+export type ContentType = 'long' | 'short' | 'both';
 
 interface OnboardingState {
   active: boolean;
