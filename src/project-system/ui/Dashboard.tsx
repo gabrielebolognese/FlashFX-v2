@@ -4,7 +4,8 @@ import { ProjectGrid, type ProjectSection } from './ProjectGrid';
 import { TemplatesGallery } from './TemplatesGallery';
 import { DashboardHeader } from './DashboardHeader';
 import { CreateProjectModal } from './CreateProjectModal';
-import { Clock, FolderOpen, Star, Trash2, Film, LayoutTemplate } from 'lucide-react';
+import { Clock, FolderOpen, Star, Trash2, Film, LayoutTemplate, GraduationCap } from 'lucide-react';
+import { useOnboardingStore } from '../../onboarding/store';
 import { TutorialLaunch } from '../../tutorial/TutorialLaunch';
 import { hasSeenTutorial } from '../../tutorial/launch';
 import { MeetTheFounder } from './MeetTheFounder';
@@ -83,6 +84,14 @@ export function Dashboard() {
         {/* Sidebar footer */}
         <div className="px-3 py-3 border-t border-[#1c2433] space-y-1">
           <AccountMenu />
+          <button
+            type="button"
+            onClick={() => useOnboardingStore.getState().start()}
+            className="flex w-full items-center gap-2.5 rounded-md px-2 py-[6px] text-[12px] font-medium text-slate-400 transition-colors hover:bg-[#141c28] hover:text-slate-200"
+          >
+            <GraduationCap size={13} className="text-slate-500" />
+            <span className="flex-1 text-left">Do onboarding</span>
+          </button>
           <MeetTheFounder />
           <div className="flex items-center gap-2 px-2 py-1.5">
             <Film size={12} className="text-slate-500" />
