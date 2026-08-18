@@ -3,6 +3,8 @@ import { useOnboardingStore } from './store';
 import { Monitor, Smartphone, MousePointer2, Upload, Check, ArrowRight, MousePointerClick, Sparkles } from 'lucide-react';
 import { brandColorsDb, brandAssetsDb, libraryId } from '../project-system/storage/libraryDb';
 import { invalidateBrandColorCache } from '../ui/components/BrandColorPicker';
+import { useProjectStore } from '../project-system/hooks/useProjectStore';
+import { useTutorialIntroStore, TUTORIAL_EXAMPLE_FPS, TUTORIAL_EXAMPLE_DURATION_FRAMES } from '../tutorial/introStore';
 
 function hexToRgb01(hex: string): [number, number, number] {
   const h = hex.replace('#', '');
@@ -657,7 +659,18 @@ function TutorialStep() {
 
   const handleYes = () => {
     setWantsTutorial(true);
+    // Signal the editor-mounted <TutorialIntro> to run the example flow, then open a fresh
+    // example project (the intro waits ~2s in it, then plays the bar-chart-race choreography).
+    useTutorialIntroStore.getState().requestIntro();
     complete();
+    void useProjectStore.getState().createAndOpenProject({
+      name: 'Tutorial Example',
+      width: 1920,
+      height: 1080,
+      frameRate: TUTORIAL_EXAMPLE_FPS,
+      durationFrames: TUTORIAL_EXAMPLE_DURATION_FRAMES,
+      videoFormat: 'long',
+    });
   };
 
   const handleNo = () => {

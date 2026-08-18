@@ -36,6 +36,7 @@ import { usePathEditStore } from './store/pathEdit';
 import { resolveExitStep } from './core/selection';
 import { OnboardingFlow, useOnboardingStore } from './onboarding';
 import { TutorialRunner } from './tutorial/TutorialRunner';
+import { TutorialIntro } from './tutorial/TutorialIntro';
 import { launchTutorial } from './tutorial/launch';
 import { AgentBuildOverlay } from './ui/agent-build/AgentBuildOverlay';
 
@@ -512,6 +513,7 @@ function Editor() {
       <SettingsCssInjector />
       <CommandPalette />
       <TutorialRunner />
+      <TutorialIntro />
       <AgentBuildOverlay />
     </div>
   );
