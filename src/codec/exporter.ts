@@ -32,12 +32,22 @@ export async function exportToMp4(
   // Without it, resolveFrame gets no ResolveContext and every precomp renders blank.
   getComposition?: (id: string) => Composition | undefined,
 ): Promise<Blob> {
-  const width = settings.width ?? composition.settings.width;
-  const height = settings.height ?? composition.settings.height;
+  // H.264 requires even dimensions; round down so an odd custom size doesn't fail the encoder.
+  const width = Math.max(2, Math.floor((settings.width ?? composition.settings.width) / 2) * 2);
+  const height = Math.max(2, Math.floor((settings.height ?? composition.settings.height) / 2) * 2);
   const frameRate = settings.frameRate ?? composition.settings.frameRate;
   const bitrate = settings.bitrate ?? 8_000_000;
   const codec = settings.codec ?? 'avc1.42001f';
   const totalFrames = composition.settings.durationFrames;
+
+  // Pre-flight: fail fast and clearly on an empty/invalid composition rather than
+  // spinning up the renderer + encoder only to produce a broken file.
+  if (!Number.isFinite(totalFrames) || totalFrames <= 0) {
+    throw new Error('Nothing to export — the composition has no frames.');
+  }
+  if (!Number.isFinite(frameRate) || frameRate <= 0) {
+    throw new Error('Nothing to export — invalid frame rate.');
+  }
 
   onProgress?.({
     phase: 'initializing',
@@ -194,6 +204,17 @@ export async function exportToMp4(
     message: 'Building MP4 file...',
   });
 
+  // Validate the encode actually produced video before muxing — otherwise we'd hand back a
+  // structurally-broken (empty) MP4 that plays as nothing.
+  if (encodedChunks.length === 0) {
+    renderer.destroy();
+    frameScheduler.releaseBufferedFrames();
+    throw new Error('Export produced no video frames. Please try again.');
+  }
+  if (encodedChunks.length !== totalFrames) {
+    console.warn(`[export] encoded ${encodedChunks.length} chunk(s) for ${totalFrames} frame(s).`);
+  }
+
   for (const { chunk, meta } of encodedChunks) {
     muxer.addVideoChunk(chunk, meta);
   }
@@ -209,6 +230,12 @@ export async function exportToMp4(
   frameScheduler.releaseBufferedFrames();
 
   const blob = new Blob([target.buffer], { type: 'video/mp4' });
+
+  // Final sanity check — a valid MP4 with even one frame is always well over 1KB (container
+  // boxes + at least one encoded frame). Anything smaller is broken; don't hand it back as "done".
+  if (blob.size < 1024) {
+    throw new Error('Export produced an empty or invalid file. Please try again.');
+  }
 
   onProgress?.({
     phase: 'done',

@@ -12,6 +12,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.app.json",
+    "test": "node scripts/test-all.mjs",
     "verify:cloner": "node scripts/verify-cloner.mjs",
     "verify:rangeselector": "node scripts/verify-rangeselector.mjs",
     "verify:caption-window": "node scripts/verify-caption-window.mjs",
