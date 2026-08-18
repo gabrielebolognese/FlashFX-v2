@@ -7,6 +7,7 @@ import { hydrateCustomFonts } from './engine/customFonts';
 import { installGlobalErrorHandlers, trackEvent } from './lib/telemetry';
 import { RootErrorBoundary } from './ui/RootErrorBoundary';
 import { UnsupportedBrowser } from './ui/UnsupportedBrowser';
+import { useAuthStore } from './auth/store';
 
 // Route uncaught errors + unhandled promise rejections into telemetry before anything else runs.
 installGlobalErrorHandlers();
@@ -34,6 +35,10 @@ if (!('gpu' in navigator)) {
   if (import.meta.env.DEV) {
     import('./ai/devHook').then((m) => m.installAiDevHook()).catch(() => {});
   }
+
+  // Hydrate any existing auth session + subscribe to changes (null-guarded: a no-op
+  // until Supabase is configured, so the local-first app is unaffected).
+  useAuthStore.getState().init();
 
   trackEvent('app_boot');
 

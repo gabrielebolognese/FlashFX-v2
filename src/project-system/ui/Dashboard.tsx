@@ -8,6 +8,7 @@ import { Clock, FolderOpen, Star, Trash2, Film, LayoutTemplate } from 'lucide-re
 import { TutorialLaunch } from '../../tutorial/TutorialLaunch';
 import { hasSeenTutorial } from '../../tutorial/launch';
 import { MeetTheFounder } from './MeetTheFounder';
+import { AccountMenu } from '../../auth/AccountMenu';
 
 type NavSection = 'recents' | 'all' | 'templates' | 'starred' | 'trash';
 
@@ -81,6 +82,7 @@ export function Dashboard() {
 
         {/* Sidebar footer */}
         <div className="px-3 py-3 border-t border-[#1c2433] space-y-1">
+          <AccountMenu />
           <MeetTheFounder />
           <div className="flex items-center gap-2 px-2 py-1.5">
             <Film size={12} className="text-slate-500" />
