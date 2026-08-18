@@ -3,7 +3,6 @@ import { useOnboardingStore } from './store';
 import { Monitor, Smartphone, MousePointer2, Square, Upload, Check, ArrowRight, MousePointerClick } from 'lucide-react';
 import { brandColorsDb, brandAssetsDb, libraryId } from '../project-system/storage/libraryDb';
 import { invalidateBrandColorCache } from '../ui/components/BrandColorPicker';
-import { ShaderAnimation } from '../ui/components/ShaderAnimation';
 
 function hexToRgb01(hex: string): [number, number, number] {
   const h = hex.replace('#', '');
@@ -31,8 +30,7 @@ export function OnboardingFlow() {
   const showSkipButton = step !== 'welcome' && step !== 'askOnboarding';
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center overflow-hidden">
-      <AnimatedBackground />
+    <div className="fixed inset-0 z-top flex items-center justify-center overflow-hidden bg-surface-sunken">
       <div className="relative z-10 flex flex-col items-center justify-center w-full h-full px-8">
         {step === 'welcome' && <WelcomeStep />}
         {step === 'askOnboarding' && <AskOnboardingStep />}
@@ -46,7 +44,7 @@ export function OnboardingFlow() {
       {showSkipButton && (
         <button
           onClick={skip}
-          className="absolute bottom-5 right-5 z-20 text-xs text-slate-500 hover:text-slate-300 transition-colors px-3 py-1.5 rounded hover:bg-white/5"
+          className="absolute bottom-5 right-5 z-20 text-caption text-tertiary hover:text-secondary transition-colors px-3 py-1.5 rounded hover:bg-white/5"
         >
           Skip onboarding
         </button>
@@ -55,42 +53,15 @@ export function OnboardingFlow() {
   );
 }
 
-function AnimatedBackground() {
-  return (
-    <div className="absolute inset-0 overflow-hidden">
-      <ShaderAnimation />
-      <div className="absolute inset-0 bg-black/30" />
-    </div>
-  );
-}
-
-function TypewriterText({ text, className, onComplete, duration = 2500 }: { text: string; className?: string; onComplete?: () => void; duration?: number }) {
-  const [displayed, setDisplayed] = useState('');
-  const [done, setDone] = useState(false);
-
-  useEffect(() => {
-    setDisplayed('');
-    setDone(false);
-    let i = 0;
-    const intervalMs = Math.max(15, Math.floor(duration / text.length));
-    const interval = setInterval(() => {
-      i++;
-      setDisplayed(text.slice(0, i));
-      if (i >= text.length) {
-        clearInterval(interval);
-        setDone(true);
-        onComplete?.();
-      }
-    }, intervalMs);
-    return () => clearInterval(interval);
-  }, [text, duration]);
-
-  return (
-    <span className={className}>
-      {displayed}
-      {!done && <span className="animate-pulse">|</span>}
-    </span>
-  );
+// Plain text (the typewriter animation and its shader background were removed). The name +
+// onComplete are kept so the steps' progressive reveals still work: onComplete fires once on
+// mount, so gated content appears immediately. `duration` is accepted (callers still pass it)
+// but ignored.
+function TypewriterText({ text, className, onComplete }: { text: string; className?: string; onComplete?: () => void; duration?: number }) {
+  const cb = useRef(onComplete);
+  cb.current = onComplete;
+  useEffect(() => { cb.current?.(); }, []);
+  return <span className={className}>{text}</span>;
 }
 
 function FadeIn({ children, delay = 0, className = '' }: { children: React.ReactNode; delay?: number; className?: string }) {
@@ -112,11 +83,11 @@ function OnboardingButton({ children, onClick, variant = 'primary', className = 
   variant?: 'primary' | 'secondary' | 'ghost';
   className?: string;
 }) {
-  const base = 'rounded-lg text-sm font-medium transition-all duration-200 cursor-pointer';
+  const base = 'rounded-md text-sm font-medium transition-colors duration-200 cursor-pointer';
   const variants = {
-    primary: 'bg-[#f7b500] text-[#0a1628] hover:bg-[#ffc83d] shadow-lg shadow-[#f7b500]/20 hover:shadow-[#f7b500]/30 hover:scale-[1.03]',
-    secondary: 'bg-[#1a2a42] text-slate-200 hover:bg-[#243554] border border-[#2a3a50]',
-    ghost: 'text-slate-400 hover:text-slate-200 hover:bg-white/5',
+    primary: 'bg-accent text-on-accent hover:bg-accent-hover',
+    secondary: 'bg-surface-3 text-primary hover:bg-surface-4 border border-hairline',
+    ghost: 'text-secondary hover:text-primary hover:bg-white/5',
   };
 
   if (variant === 'primary') {
@@ -141,7 +112,7 @@ function WelcomeStep() {
 
   return (
     <div className="flex flex-col items-center text-center">
-      <h1 className="text-4xl md:text-5xl font-light text-white tracking-tight">
+      <h1 className="text-4xl md:text-5xl font-light text-primary tracking-tight">
         <TypewriterText text="Welcome to FlashFX" onComplete={() => setTypewriterDone(true)} />
       </h1>
       {typewriterDone && (
@@ -163,16 +134,16 @@ function AskOnboardingStep() {
 
   return (
     <div className="flex flex-col items-center text-center">
-      <h1 className="text-4xl md:text-5xl font-light text-white tracking-tight">
+      <h1 className="text-4xl md:text-5xl font-light text-primary tracking-tight">
         Welcome to FlashFX
       </h1>
-      <p className="text-xl text-slate-200 mt-6">
+      <p className="text-xl text-primary mt-6">
         <TypewriterText text="Do you want to start onboarding?" duration={1800} onComplete={() => setSubtitleDone(true)} />
       </p>
       {subtitleDone && (
         <>
           <FadeIn delay={200}>
-            <p className="text-sm text-slate-500 mt-3">
+            <p className="text-sm text-tertiary mt-3">
               <TypewriterText text="(will make you have everything set up to edit faster)" duration={1500} onComplete={() => setHintDone(true)} />
             </p>
           </FadeIn>
@@ -198,7 +169,7 @@ function LetsStartStep() {
 
   return (
     <div className="flex flex-col items-center text-center">
-      <h2 className="text-3xl font-light text-white">
+      <h2 className="text-3xl font-light text-primary">
         <TypewriterText text="Let's start with your defaults." duration={2000} onComplete={() => setTypewriterDone(true)} />
       </h2>
       {typewriterDone && (
@@ -227,22 +198,22 @@ function BgColorStep() {
 
   return (
     <div className="flex flex-col items-center text-center">
-      <h2 className="text-2xl font-light text-white mb-8">
+      <h2 className="text-2xl font-light text-primary mb-8">
         <TypewriterText text="Choose your default background color" duration={2000} onComplete={() => setTitleDone(true)} />
       </h2>
       {titleDone && (
         <FadeIn delay={200}>
           <div className="relative flex items-center gap-6">
             <div className="flex flex-col items-end gap-2">
-              <p className="text-xs text-slate-400 whitespace-nowrap flex items-center gap-1.5">
-                <MousePointerClick size={12} className="text-slate-500" />
+              <p className="text-xs text-secondary whitespace-nowrap flex items-center gap-1.5">
+                <MousePointerClick size={12} className="text-tertiary" />
                 <TypewriterText text="click to change" duration={1000} />
               </p>
-              <div className="text-[10px] text-slate-600 font-mono">{hex.toUpperCase()}</div>
+              <div className="text-[10px] text-muted font-mono">{hex.toUpperCase()}</div>
             </div>
             <button
               onClick={() => colorInputRef.current?.click()}
-              className="w-80 h-80 rounded-2xl border-2 border-[#2a3a50]/50 shadow-2xl cursor-pointer transition-all duration-300 hover:border-[#f7b500]/40 hover:shadow-[0_0_40px_rgba(247,181,0,0.1)] relative overflow-hidden"
+              className="w-80 h-80 rounded-2xl border-2 border-hairline shadow-overlay cursor-pointer transition-all duration-300 hover:border-accent relative overflow-hidden"
               style={{ backgroundColor: hex }}
             >
               <div className="absolute inset-0 flex items-center justify-center opacity-10">
@@ -277,13 +248,13 @@ function ShapeModeStep() {
 
   return (
     <div className="flex flex-col items-center text-center">
-      <h2 className="text-2xl font-light text-white mb-2">
+      <h2 className="text-2xl font-light text-primary mb-2">
         <TypewriterText text="How would you like to create shapes?" duration={2000} onComplete={() => setTitleDone(true)} />
       </h2>
       {titleDone && (
         <>
           <FadeIn>
-            <p className="text-sm text-slate-400 mb-8">
+            <p className="text-sm text-secondary mb-8">
               <TypewriterText text="Choose your preferred shape creation method." duration={1500} />
             </p>
           </FadeIn>
@@ -330,34 +301,34 @@ function ShapeModeCard({ selected, onClick, title, desc, mode }: {
       onClick={onClick}
       className={`w-72 rounded-xl border-2 transition-all duration-200 text-left cursor-pointer overflow-hidden ${
         selected
-          ? 'border-[#f7b500] bg-[#f7b500]/5 shadow-lg shadow-[#f7b500]/10'
-          : 'border-[#1a2a42] bg-[#0a1628]/80 hover:border-[#2a3a50] hover:bg-[#0e1c32]'
+          ? 'border-accent bg-accent-wash shadow-overlay'
+          : 'border-hairline bg-surface-1 hover:border-hairline hover:bg-surface-2'
       }`}
     >
       {/* Two 16:9 video placeholders */}
       <div className="p-4 pb-2">
         <div className="flex gap-2">
-          <div className="flex-1 aspect-video rounded-lg bg-[#0e1c32] border border-[#1a2a42] flex items-center justify-center">
+          <div className="flex-1 aspect-video rounded-lg bg-surface-2 border border-hairline flex items-center justify-center">
             {mode === 'fast' ? (
-              <MousePointer2 size={18} className="text-[#f7b500]/40" />
+              <MousePointer2 size={18} className="text-tertiary" />
             ) : (
-              <Square size={18} className="text-[#3898ec]/40" />
+              <Square size={18} className="text-tertiary" />
             )}
           </div>
-          <div className="flex-1 aspect-video rounded-lg bg-[#0e1c32] border border-[#1a2a42] flex items-center justify-center">
+          <div className="flex-1 aspect-video rounded-lg bg-surface-2 border border-hairline flex items-center justify-center">
             {mode === 'fast' ? (
-              <MousePointer2 size={18} className="text-[#f7b500]/20" />
+              <MousePointer2 size={18} className="text-muted" />
             ) : (
-              <Square size={18} className="text-[#3898ec]/20" />
+              <Square size={18} className="text-muted" />
             )}
           </div>
         </div>
       </div>
       <div className="px-4 pb-4 pt-2">
-        <h3 className="text-sm font-semibold text-white mb-1">{title}</h3>
-        <p className="text-xs text-slate-400 leading-relaxed">{desc}</p>
+        <h3 className="text-sm font-semibold text-primary mb-1">{title}</h3>
+        <p className="text-xs text-secondary leading-relaxed">{desc}</p>
         {selected && (
-          <div className="mt-3 flex items-center gap-1 text-[#f7b500] text-xs font-medium">
+          <div className="mt-3 flex items-center gap-1 text-accent text-xs font-medium">
             <Check size={12} /> Selected
           </div>
         )}
@@ -438,14 +409,14 @@ function BrandAssetsStep() {
 
   return (
     <div className="flex flex-col items-center text-center max-w-xl">
-      <h2 className="text-2xl font-light text-white mb-2">
+      <h2 className="text-2xl font-light text-primary mb-2">
         <TypewriterText text="Set up your brand" duration={1800} onComplete={() => setTitleDone(true)} />
       </h2>
 
       {titleDone && (
         <>
           <FadeIn>
-            <p className="text-sm text-slate-400 mb-10">
+            <p className="text-sm text-secondary mb-10">
               <TypewriterText text="Click a circle to set your brand colors. Import logos and assets below." duration={2000} />
             </p>
           </FadeIn>
@@ -459,7 +430,7 @@ function BrandAssetsStep() {
                   onClick={() => handleColorClick(i)}
                   className={`w-14 h-14 rounded-full border-2 transition-all duration-200 cursor-pointer hover:scale-110 hover:shadow-lg ${
                     c === '#ffffff'
-                      ? 'border-[#2a3a50] hover:border-slate-400'
+                      ? 'border-hairline hover:border-slate-400'
                       : 'border-transparent shadow-md'
                   }`}
                   style={{ backgroundColor: c }}
@@ -483,7 +454,7 @@ function BrandAssetsStep() {
               {assets.length > 0 && (
                 <div className="flex items-center gap-3 mb-5 flex-wrap justify-center">
                   {assets.map((a, i) => (
-                    <div key={i} className="w-14 h-14 rounded-lg border border-[#2a3a50] overflow-hidden bg-[#0e1c32] shadow-md">
+                    <div key={i} className="w-14 h-14 rounded-lg border border-hairline overflow-hidden bg-surface-2 shadow-md">
                       <img src={a.url} alt={a.name} className="w-full h-full object-cover" />
                     </div>
                   ))}
@@ -491,7 +462,7 @@ function BrandAssetsStep() {
               )}
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="flex items-center gap-2.5 px-5 py-2.5 text-sm font-medium text-slate-200 bg-[#1a2a42]/80 rounded-lg hover:bg-[#243554] transition-all duration-200 border border-[#2a3a50] hover:border-[#3a4a60] hover:scale-[1.02]"
+                className="flex items-center gap-2.5 px-5 py-2.5 text-sm font-medium text-primary bg-surface-3 rounded-lg hover:bg-surface-4 transition-all duration-200 border border-hairline hover:border-hairline hover:scale-[1.02]"
               >
                 <Upload size={14} />
                 {uploading ? 'Importing...' : 'Import Assets'}
@@ -525,13 +496,13 @@ function ContentTypeStep() {
 
   return (
     <div className="flex flex-col items-center text-center">
-      <h2 className="text-2xl font-light text-white mb-2">
+      <h2 className="text-2xl font-light text-primary mb-2">
         <TypewriterText text="What will you create the most?" duration={2000} onComplete={() => setTitleDone(true)} />
       </h2>
       {titleDone && (
         <>
           <FadeIn>
-            <p className="text-sm text-slate-400 mb-8">
+            <p className="text-sm text-secondary mb-8">
               <TypewriterText text="This sets your default project format." duration={1500} />
             </p>
           </FadeIn>
@@ -539,7 +510,7 @@ function ContentTypeStep() {
             <ContentCard
               selected={contentType === 'long'}
               onClick={() => setContentType('long')}
-              icon={<Monitor size={32} className="text-[#3898ec]" />}
+              icon={<Monitor size={32} className="text-info" />}
               title="Long Form Content"
               desc="Horizontal (16:9) - YouTube, presentations, ads"
               aspect="landscape"
@@ -547,7 +518,7 @@ function ContentTypeStep() {
             <ContentCard
               selected={contentType === 'short'}
               onClick={() => setContentType('short')}
-              icon={<Smartphone size={32} className="text-[#f7b500]" />}
+              icon={<Smartphone size={32} className="text-accent" />}
               title="Short Form Content"
               desc="Vertical (9:16) - Reels, TikTok, Shorts"
               aspect="portrait"
@@ -581,22 +552,22 @@ function ContentCard({ selected, onClick, icon, title, desc, aspect }: {
       onClick={onClick}
       className={`w-56 rounded-xl border-2 transition-all duration-200 text-left cursor-pointer overflow-hidden ${
         selected
-          ? 'border-[#f7b500] bg-[#f7b500]/5 shadow-lg shadow-[#f7b500]/10'
-          : 'border-[#1a2a42] bg-[#0a1628]/80 hover:border-[#2a3a50] hover:bg-[#0e1c32]'
+          ? 'border-accent bg-accent-wash shadow-overlay'
+          : 'border-hairline bg-surface-1 hover:border-hairline hover:bg-surface-2'
       }`}
     >
-      <div className={`w-full bg-[#0e1c32] flex items-center justify-center ${aspect === 'landscape' ? 'h-28' : 'h-36'}`}>
-        <div className={`border border-[#2a3a50] rounded flex items-center justify-center ${
+      <div className={`w-full bg-surface-2 flex items-center justify-center ${aspect === 'landscape' ? 'h-28' : 'h-36'}`}>
+        <div className={`border border-hairline rounded flex items-center justify-center ${
           aspect === 'landscape' ? 'w-24 h-14' : 'w-14 h-24'
-        }`} style={{ backgroundColor: 'rgba(10, 22, 40, 0.8)' }}>
+        }`} style={{ backgroundColor: 'var(--ffx-surface-1)' }}>
           {icon}
         </div>
       </div>
       <div className="p-4">
-        <h3 className="text-sm font-semibold text-white mb-1">{title}</h3>
-        <p className="text-xs text-slate-400 leading-relaxed">{desc}</p>
+        <h3 className="text-sm font-semibold text-primary mb-1">{title}</h3>
+        <p className="text-xs text-secondary leading-relaxed">{desc}</p>
         {selected && (
-          <div className="mt-2 flex items-center gap-1 text-[#f7b500] text-xs font-medium">
+          <div className="mt-2 flex items-center gap-1 text-accent text-xs font-medium">
             <Check size={12} /> Selected
           </div>
         )}
@@ -623,12 +594,12 @@ function TutorialStep() {
 
   return (
     <div className="flex flex-col items-center text-center">
-      <h2 className="text-2xl font-light text-white mb-3">
+      <h2 className="text-2xl font-light text-primary mb-3">
         <TypewriterText text="Would you like to see a tutorial project?" duration={2200} onComplete={() => setTitleDone(true)} />
       </h2>
       {titleDone && (
         <FadeIn>
-          <p className="text-sm text-[#f7b500] font-medium mb-8">
+          <p className="text-sm text-accent font-medium mb-8">
             <TypewriterText text="EXTREMELY recommended if you never used the software" duration={1800} onComplete={() => setSubtitleDone(true)} />
           </p>
         </FadeIn>
