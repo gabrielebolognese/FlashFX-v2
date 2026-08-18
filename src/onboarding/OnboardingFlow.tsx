@@ -268,7 +268,7 @@ function ShapeModeStep() {
               selected={shapeMode === 'fast'}
               onClick={() => setShapeMode('fast')}
               title="Fast Creation"
-              desc="Pick the tool, then click once on the canvas — the shape drops in at a set size."
+              desc="Pick the tool, then click once on the canvas. The shape drops in at a set size."
               mode="fast"
             />
             <ShapeModeCard
@@ -449,16 +449,16 @@ function BrandAssetsStep() {
   return (
     <div className="flex flex-col items-center text-center max-w-xl">
       <h2 className="text-2xl font-light text-primary mb-2">
-        <TypewriterText text="Set up your brand" duration={1800} onComplete={() => setTitleDone(true)} />
+        <TypewriterText text="Set up your brand (optional)" duration={1800} onComplete={() => setTitleDone(true)} />
       </h2>
 
       {titleDone && (
         <>
           <FadeIn>
             <p className="mb-10 max-w-lg text-sm leading-relaxed text-secondary">
-              Optional, but handy. Your brand kit is a saved set of colours and logos that follows you
-              into every project, so you don&apos;t have to re-pick them each time. Set them up now or
-              skip and add them later — you can always change them.
+              Your brand kit is a saved set of colours and logos that follows you into every project,
+              so you don&apos;t have to re-pick them each time. Set them up now, or skip and add them
+              later. You can always change them.
             </p>
           </FadeIn>
 
@@ -501,7 +501,7 @@ function BrandAssetsStep() {
               <div className="mb-3 text-center">
                 <h3 className="text-sm font-semibold text-primary">Logos &amp; assets</h3>
                 <p className="mx-auto max-w-md text-xs leading-relaxed text-tertiary">
-                  Import images you reuse often — logos, watermarks, overlays. They&apos;ll be one click away in the media pool.
+                  Import images you reuse often, like logos, watermarks and overlays. They&apos;ll be one click away in the media pool.
                 </p>
               </div>
               {assets.length > 0 && (
@@ -679,7 +679,7 @@ function TutorialStep() {
             <p className="mb-9 max-w-lg text-base leading-relaxed text-secondary">
               We&apos;ll open a ready-made project so you can look around and see how layers, the
               timeline, and keyframes fit together. If you&apos;ve never used FlashFX, this is the
-              fastest way to get comfortable — you learn by poking at something real instead of
+              fastest way to get comfortable. You learn by poking at something real instead of
               staring at a blank canvas.
             </p>
           </FadeIn>
