@@ -44,6 +44,12 @@ function getAcceptString(category: AssetCategory): string {
   return 'video/mp4,video/quicktime,video/webm';
 }
 
+// The Library tab browses a shared Google Drive stock-asset folder via the drive-assets edge
+// function, which needs a Google service account. Hidden until a new account is connected — flip
+// LIBRARY_ENABLED to true to restore it; all the code (src/library/, driveService, the edge
+// function) is left intact.
+const LIBRARY_ENABLED = false;
+
 const TABS: { id: PoolTab; label: string; icon: React.ReactNode; disabled?: boolean }[] = [
   { id: 'images', label: 'Images', icon: <Image size={13} /> },
   { id: 'videos', label: 'Videos', icon: <Film size={13} /> },
@@ -52,7 +58,7 @@ const TABS: { id: PoolTab; label: string; icon: React.ReactNode; disabled?: bool
   { id: 'icons', label: 'Icons', icon: <Sparkles size={13} /> },
   { id: 'brands', label: 'Brands', icon: <Palette size={13} /> },
   { id: 'saved', label: 'Saved', icon: <Bookmark size={13} /> },
-  { id: 'library', label: 'Library', icon: <BookOpen size={13} /> },
+  ...(LIBRARY_ENABLED ? [{ id: 'library' as const, label: 'Library', icon: <BookOpen size={13} /> }] : []),
 ];
 
 export function MediaPool() {
