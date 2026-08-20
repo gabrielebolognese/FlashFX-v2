@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { ReactNode } from 'react';
 import { Coffee, Globe, Instagram, Linkedin, Youtube, Twitter, ExternalLink } from 'lucide-react';
 import { Modal } from '../../ui/primitives/Modal';
+import portrait from './ports.png';
 
 interface LinkItem {
   label: string;
@@ -68,7 +69,7 @@ export function MeetTheFounder() {
         className="group relative mx-auto block aspect-square w-full max-w-[150px] overflow-hidden rounded-xl bg-gradient-to-br from-yellow-400 to-orange-500 p-1.5 shadow-overlay transition hover:brightness-105"
         title="Meet the Founder"
       >
-        <img src="/ports.png" alt="Gabriele Bolognese" className="h-full w-full rounded-lg object-cover" />
+        <img src={portrait} alt="Gabriele Bolognese" className="h-full w-full rounded-lg object-cover" />
         <span className="pointer-events-none absolute inset-x-1.5 bottom-1.5 rounded-b-lg bg-gradient-to-t from-black/75 to-transparent px-2 pb-1.5 pt-6 text-center text-[11px] font-semibold text-white">
           Meet the Founder
         </span>
@@ -79,7 +80,7 @@ export function MeetTheFounder() {
           <div className="space-y-4">
             <div className="flex items-center gap-3">
               <img
-                src="/ports.png"
+                src={portrait}
                 alt="Gabriele Bolognese"
                 className="h-16 w-16 flex-shrink-0 rounded-full border-2 border-accent-dim object-cover"
               />
