@@ -37,6 +37,8 @@ import { resolveExitStep } from './core/selection';
 import { OnboardingFlow, useOnboardingStore } from './onboarding';
 import { TutorialRunner } from './tutorial/TutorialRunner';
 import { TutorialIntro } from './tutorial/TutorialIntro';
+import { ConsentBanner } from './legal/ConsentBanner';
+import { LegalModal } from './legal/LegalModal';
 import { launchTutorial } from './tutorial/launch';
 import { AgentBuildOverlay } from './ui/agent-build/AgentBuildOverlay';
 
@@ -514,6 +516,8 @@ function Editor() {
       <CommandPalette />
       <TutorialRunner />
       <TutorialIntro />
+      <ConsentBanner />
+      <LegalModal />
       <AgentBuildOverlay />
     </div>
   );

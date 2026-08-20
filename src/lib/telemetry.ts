@@ -10,6 +10,8 @@
 //     trackEvent:   (name, props) => posthog.capture(name, props),
 //   });
 
+import { hasAnalyticsConsent } from '../legal/consentStore';
+
 export type TelemetryContext = Record<string, unknown>;
 
 interface TelemetrySink {
@@ -35,12 +37,18 @@ export function captureError(error: unknown, context?: TelemetryContext): void {
   console.error('[telemetry] error', error, context ?? '');
 }
 
-/** Record a product event (activation funnel, feature usage). Never throws. */
+/**
+ * Record a product event (activation funnel, feature usage). Never throws. Only forwarded
+ * to the provider once the user has granted analytics consent — before that it's a no-op
+ * (dev console only), so no analytics leave the device without opt-in.
+ */
 export function trackEvent(name: string, props?: TelemetryContext): void {
-  try {
-    sink.trackEvent?.(name, props);
-  } catch {
-    /* swallow */
+  if (hasAnalyticsConsent()) {
+    try {
+      sink.trackEvent?.(name, props);
+    } catch {
+      /* swallow */
+    }
   }
   if (import.meta.env.DEV) console.debug('[telemetry] event', name, props ?? '');
 }
