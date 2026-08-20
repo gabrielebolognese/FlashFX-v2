@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-export type LegalDoc = 'privacy' | 'terms';
+export type LegalDoc = 'privacy' | 'terms' | 'return';
 
 interface LegalState {
   doc: LegalDoc | null;

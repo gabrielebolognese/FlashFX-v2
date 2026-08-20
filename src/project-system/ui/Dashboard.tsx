@@ -98,10 +98,12 @@ export function Dashboard() {
             <Film size={12} className="text-slate-500" />
             <span className="text-[11px] text-slate-500">Motion Graphics Editor</span>
           </div>
-          <div className="flex items-center gap-1.5 px-2 text-[10px] text-slate-600">
+          <div className="flex flex-wrap items-center gap-1.5 px-2 text-[10px] text-slate-600">
             <button type="button" onClick={() => useLegalStore.getState().open('privacy')} className="hover:text-slate-400 transition-colors">Privacy</button>
             <span>·</span>
             <button type="button" onClick={() => useLegalStore.getState().open('terms')} className="hover:text-slate-400 transition-colors">Terms</button>
+            <span>·</span>
+            <button type="button" onClick={() => useLegalStore.getState().open('return')} className="hover:text-slate-400 transition-colors">Refunds</button>
           </div>
         </div>
       </aside>
