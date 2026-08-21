@@ -1,8 +1,7 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, lazy, Suspense } from 'react';
 import { Toolbar } from './ui/panels/Toolbar';
 import { SceneSwitcher } from './ui/panels/SceneSwitcher';
 import { PanelLayout } from './ui/layout/PanelLayout';
-import { BuilderLayout } from './ui/layout/BuilderLayout';
 import { useEditorStore } from './store/editor';
 import { useHistoryStore } from './store/history';
 import { useTimelineStore } from './store/timeline';
@@ -42,6 +41,10 @@ import { LegalModal } from './legal/LegalModal';
 import { launchTutorial } from './tutorial/launch';
 import { AgentBuildOverlay } from './ui/agent-build/AgentBuildOverlay';
 
+// The Animation Builder is a whole authoring mode whose toggle is hidden from the public UI
+// (workspace is effectively always 'editor'), so lazy-load it: its code stays out of the main
+// bundle entirely unless the builder is ever re-exposed and entered.
+const BuilderLayout = lazy(() => import('./ui/layout/BuilderLayout').then((m) => ({ default: m.BuilderLayout })));
 
 function Editor() {
   const createGroup = useEditorStore((s) => s.createGroup);
@@ -497,7 +500,9 @@ function Editor() {
         {workspace === 'editor' && <PanelsMenu />}
       </div>
       <div className="flex-1 flex flex-row min-h-0 min-w-0">
-        {workspace === 'editor' ? <PanelLayout /> : <BuilderLayout />}
+        <Suspense fallback={<div className="flex-1" />}>
+          {workspace === 'editor' ? <PanelLayout /> : <BuilderLayout />}
+        </Suspense>
         {showAiChat && <AiChatPanel />}
         {tasksOpen && <TasksPanel />}
       </div>
