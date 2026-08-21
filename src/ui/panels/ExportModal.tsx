@@ -4,6 +4,7 @@ import { useEditorStore } from '../../store/editor';
 import { exportToMp4, downloadBlob, formatFileSize, estimateDuration, type ExportProgress, type ExportSettings } from '../../codec/exporter';
 import { compositionHasAudio } from '../../codec/audioMixer';
 import { trackEvent, captureError } from '../../lib/telemetry';
+import { classifyExportMemory, readDeviceMemoryGB } from '../../codec/exportMemory';
 
 interface ExportModalProps {
   onClose: () => void;
@@ -59,6 +60,39 @@ export function ExportModal({ onClose }: ExportModalProps) {
       codec: preset.codec,
       includeAudio: hasAudio && includeAudio,
     };
+
+    // Pre-flight memory guard: the export holds all encoded video + the whole muxed MP4 in RAM,
+    // so long/4K exports can OOM the tab. Block the impossible ones and warn on the risky ones
+    // before spinning up the encoder.
+    const memReport = classifyExportMemory(
+      {
+        width: resolution.width,
+        height: resolution.height,
+        frameRate,
+        durationFrames: totalFrames,
+        bitrate: preset.bitrate,
+        includeAudio: hasAudio && includeAudio,
+        hasVideo: composition.layers.some((l) => l.type === 'video'),
+      },
+      readDeviceMemoryGB(),
+    );
+    if (memReport.verdict === 'block') {
+      setExporting(false);
+      abortRef.current = null;
+      setError(`This export ${memReport.reason} and would likely crash the tab. Try a lower resolution, a lower quality preset, or a shorter range.`);
+      trackEvent('export_blocked', { reason: memReport.reason, peakBytes: memReport.peakBytes });
+      return;
+    }
+    if (memReport.verdict === 'warn') {
+      const proceed = window.confirm(
+        `This export may use ~${(memReport.peakBytes / 1024 ** 3).toFixed(1)} GB of memory and could crash the tab.\n\nExport anyway?`,
+      );
+      if (!proceed) {
+        setExporting(false);
+        abortRef.current = null;
+        return;
+      }
+    }
 
     trackEvent('export_started', { width: resolution.width, height: resolution.height, frameRate, quality });
 
