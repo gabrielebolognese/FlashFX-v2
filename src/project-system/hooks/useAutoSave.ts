@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useEditorStore } from '../../store/editor';
 import { useProjectStore } from './useProjectStore';
 import { captureError } from '../../lib/telemetry';
+import { useIslandStore } from '../../ui/island/islandStore';
 
 export function useAutoSave() {
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
@@ -21,6 +22,9 @@ export function useAutoSave() {
       dirtyRef.current = false;
       useProjectStore.getState().saveCurrentProject().catch((err) => {
         captureError(err, { kind: 'autosave' });
+        // A persistent save failure (storage full, private mode, disk full) means the user is
+        // silently losing work — surface it so they can export a backup.
+        useIslandStore.getState().error('Could not save your changes. Export your project to keep a backup.');
       });
     }, 2000);
     return () => {

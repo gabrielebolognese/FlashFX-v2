@@ -15,6 +15,7 @@ import {
 } from '../storage/db';
 import type { ProjectScene, ProjectPreview } from '../types';
 import { serializeDocument, deserializeDocument } from './serialization';
+import { captureError } from '../../lib/telemetry';
 import type { SceneDocument } from '../../core/types';
 import { createComposition } from '../../core/factory';
 import { videoAssetStore } from '../../engine/video/videoAssetStore';
@@ -78,7 +79,14 @@ export async function getProjectMetadata(id: string): Promise<ProjectMetadata | 
 export async function loadProjectScene(id: string): Promise<SceneDocument | null> {
   const scene = await getScene(id);
   if (!scene) return null;
-  return deserializeDocument(scene.data);
+  try {
+    return deserializeDocument(scene.data);
+  } catch (err) {
+    // A corrupt / unreadable scene must never crash the open flow (or the app). Report it
+    // and fail gracefully so the dashboard and other projects stay usable.
+    captureError(err, { kind: 'project-load', projectId: id });
+    return null;
+  }
 }
 
 export async function saveProjectScene(id: string, document: SceneDocument): Promise<void> {

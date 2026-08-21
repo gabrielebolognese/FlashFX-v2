@@ -20,6 +20,7 @@ import { exportProjectToFile, importProjectFromFile } from '../services/ffx';
 import type { Composition, SceneDocument } from '../../core/types';
 import { usePanelStore } from '../../store/panels';
 import { useEditorStore } from '../../store/editor';
+import { useIslandStore } from '../../ui/island/islandStore';
 
 export type SortField = 'name' | 'modifiedAt' | 'createdAt';
 export type SortDirection = 'asc' | 'desc';
@@ -100,6 +101,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       const metadata = await getProjectMetadata(id);
       usePanelStore.getState().setVideoFormat(metadata?.videoFormat ?? 'long');
       set({ activeProjectId: id, view: 'editor' });
+    } else {
+      useIslandStore.getState().error("Couldn't open this project. The file may be corrupted or missing.");
     }
     return doc;
   },
