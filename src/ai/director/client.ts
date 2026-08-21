@@ -1,5 +1,4 @@
 import type { AnthropicRequest } from './request';
-import { DIRECTOR_TOOL_NAME } from './request';
 
 // The network call lives behind this small interface. The Worker session will supply a different
 // implementation (a fetch to the app's own endpoint); swapping it is one line, not a refactor.
@@ -53,6 +52,9 @@ export interface AnthropicClientOptions {
   fetchImpl?: typeof fetch;
   baseUrl?: string;
   anthropicVersion?: string;
+  /** Direct browser→Anthropic calls (BYOK) require this opt-in header; the API rejects them
+   *  otherwise. Leave off for Node and for a same-origin proxy (which injects the key server-side). */
+  dangerousDirectBrowserAccess?: boolean;
 }
 
 export function createAnthropicClient(opts: AnthropicClientOptions): DirectorClient {
@@ -61,15 +63,17 @@ export function createAnthropicClient(opts: AnthropicClientOptions): DirectorCli
   const version = opts.anthropicVersion ?? '2023-06-01';
   return {
     async createMessage(req: AnthropicRequest): Promise<ClientResponse> {
+      const headers: Record<string, string> = {
+        'content-type': 'application/json',
+        'x-api-key': opts.apiKey,
+        'anthropic-version': version,
+        // Prompt caching is GA, but sending the beta header is harmless and explicit.
+        'anthropic-beta': 'prompt-caching-2024-07-31',
+      };
+      if (opts.dangerousDirectBrowserAccess) headers['anthropic-dangerous-direct-browser-access'] = 'true';
       const res = await fetchImpl(`${baseUrl}/v1/messages`, {
         method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-api-key': opts.apiKey,
-          'anthropic-version': version,
-          // Prompt caching is GA, but sending the beta header is harmless and explicit.
-          'anthropic-beta': 'prompt-caching-2024-07-31',
-        },
+        headers,
         body: JSON.stringify(req),
       });
       if (!res.ok) {
@@ -81,9 +85,16 @@ export function createAnthropicClient(opts: AnthropicClientOptions): DirectorCli
         usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number };
         stop_reason?: string;
       };
-      const toolBlock = (json.content ?? []).find((b) => b.type === 'tool_use' && b.name === DIRECTOR_TOOL_NAME);
+      // Match the block for the tool this request FORCED (Director and Coder force different tools
+      // through the same client), falling back to the first tool_use block. A prior version pinned
+      // the Director's tool name here, so the same client silently failed the Coder stage.
+      const wanted = req.tool_choice?.name;
+      const blocks = json.content ?? [];
+      const toolBlock =
+        blocks.find((b) => b.type === 'tool_use' && (!wanted || b.name === wanted)) ??
+        blocks.find((b) => b.type === 'tool_use');
       if (!toolBlock) {
-        throw new Error(`[director] model did not return a tool call (stop_reason=${json.stop_reason}); a truncated or prose reply is unrecoverable`);
+        throw new Error(`[ai] model did not return a tool call (stop_reason=${json.stop_reason}); a truncated or prose reply is unrecoverable`);
       }
       const u = json.usage ?? {};
       return {

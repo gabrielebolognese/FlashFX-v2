@@ -14,6 +14,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.app.json",
     "test": "node scripts/test-all.mjs",
     "verify:cloner": "node scripts/verify-cloner.mjs",
+    "verify:ai-client": "node scripts/verify-ai-client.mjs",
     "verify:export-memory": "node scripts/verify-export-memory.mjs",
     "verify:load-resilience": "node scripts/verify-load-resilience.mjs",
     "verify:rangeselector": "node scripts/verify-rangeselector.mjs",

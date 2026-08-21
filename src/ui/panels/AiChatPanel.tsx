@@ -1,59 +1,24 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import {
-  Sparkles, X, Plus, Send, Paperclip, HardDrive, Image as ImageIcon, Hash, AtSign,
-  Copy, ThumbsUp, ThumbsDown, RotateCcw, ChevronDown, Square, Loader2, Check, Circle,
-} from 'lucide-react';
+import { Sparkles, X, Plus, Send, Square, KeyRound, Check, Trash2 } from 'lucide-react';
 import { usePanelStore } from '../../store/panels';
 import { useEditorStore } from '../../store/editor';
 import { useProjectStore } from '../../project-system/hooks/useProjectStore';
-import { useAiChatStore, EMPTY_CONVERSATION, convKey, type AiMsg, type Attachment, type AttachKind } from '../../store/aiChat';
-import { runBlackjackDemo, runGalaxyDemo, type Step } from './aiChatDemo';
+import { useAiChatStore, EMPTY_CONVERSATION, convKey, type AiMsg } from '../../store/aiChat';
+import { useAiSettingsStore, isAiConfigured, makeAiClient } from '../../store/aiSettings';
+import { useIslandStore } from '../island/islandStore';
 
-// VS Code / Copilot-style AI assistant - MOCKUP (no model). Assistant responses are borderless plain
-// text with a thinking loader → streaming → a response timer; the user turn sits in a subtle box.
-// The single seam for a real model is streamResponse() below: swap its body for a streaming client and
-// the whole UI (thinking, token streaming, elapsed timer, stop, done state) already works.
-// The conversation lives in useAiChatStore (persisted per project) so it survives closing/reopening
-// the panel and reopening the project; only the in-flight generation state is local to this component.
+// AI assistant, wired to the REAL pipeline (Director → Coder → assemble → auto-fix). A prompt
+// generates a whole scene and commits it as ONE undo step (Ctrl+Z reverts). The heavy engine (+zod
+// +prompts) is dynamically imported on first generate so it stays out of the initial bundle.
+// Model access is BYOK: the user's own Anthropic key lives only in their browser (see store/aiSettings);
+// the app ships with no key. Multi-turn editing isn't supported yet — each prompt builds a fresh scene.
 
 type Msg = AiMsg;
 
 let uid = 0;
-// Include a random suffix so ids don't collide with a conversation restored from a previous session
+// Random suffix so ids don't collide with a conversation restored from a previous session
 // (where the module-level counter has reset to 0).
 const nextId = () => `m${++uid}_${Math.random().toString(36).slice(2, 8)}`;
-
-const REPLIES = [
-  'Done. I added a position + scale keyframe intro with an ease-out and enabled an outer glow on the title. Scrub the timeline to preview, or tell me to tweak the easing.',
-  "Here's what I changed:\n• Split the value text into per-digit odometers\n• Staggered the bars on a 40ms grid index\n• Rescaled the axis from the shared max\nWant motion blur on the reorder swaps too?",
-  'I turned the selection into a data-bound repeater - 40 clips are now two repeaters, so adding rows is just a data change. Ask me to reorder them and they animate live.',
-];
-
-// The model seam. Currently streams a canned reply word-by-word after a short "thinking" delay.
-// Returns a cancel handle. Replace the body with a real streaming client (SSE / fetch stream); keep
-// the onToken / onDone(ms) contract and the UI is unchanged.
-function streamResponse(prompt: string, cb: { onToken: (t: string) => void; onDone: (ms: number) => void }): { cancel: () => void } {
-  let cancelled = false;
-  const timers: number[] = [];
-  const reply = REPLIES[Math.abs(hash(prompt)) % REPLIES.length];
-  const tokens = reply.split(/(\s+)/); // keep whitespace so streaming looks natural
-  const start = Date.now();
-  timers.push(window.setTimeout(function think() {
-    let i = 0;
-    const tick = () => {
-      if (cancelled) return;
-      if (i < tokens.length) {
-        cb.onToken(tokens[i]); i++;
-        timers.push(window.setTimeout(tick, 24 + Math.random() * 46));
-      } else {
-        cb.onDone(Date.now() - start);
-      }
-    };
-    tick();
-  }, 480 + Math.random() * 420));
-  return { cancel: () => { cancelled = true; timers.forEach(clearTimeout); } };
-}
-function hash(s: string): number { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return h; }
 const fmt = (ms: number) => `${(ms / 1000).toFixed(1)}s`;
 
 export function AiChatPanel() {
@@ -62,89 +27,88 @@ export function AiChatPanel() {
 
   // Conversation is stored per project and persisted to localStorage; the panel reads its slice.
   const conv = useAiChatStore((s) => s.byProject[convKey(activeProjectId)] ?? EMPTY_CONVERSATION);
-  const { messages, draft, attachments } = conv;
+  const { messages, draft } = conv;
   const setMessagesFor = useAiChatStore((s) => s.setMessages);
   const setDraftFor = useAiChatStore((s) => s.setDraft);
-  const setAttachmentsFor = useAiChatStore((s) => s.setAttachments);
   const clearConversation = useAiChatStore((s) => s.clearConversation);
   const settleStreaming = useAiChatStore((s) => s.settleStreaming);
-  // Bind the setters to the current project so call sites stay terse.
   const setMessages = useCallback((u: Msg[] | ((p: Msg[]) => Msg[])) => setMessagesFor(activeProjectId, u), [setMessagesFor, activeProjectId]);
   const setDraft = useCallback((v: string) => setDraftFor(activeProjectId, v), [setDraftFor, activeProjectId]);
-  const setAttachments = useCallback((u: Attachment[] | ((p: Attachment[]) => Attachment[])) => setAttachmentsFor(activeProjectId, u), [setAttachmentsFor, activeProjectId]);
 
-  // Transient, per-mount generation state — a half-finished stream can't survive an unmount.
+  const apiKey = useAiSettingsStore((s) => s.apiKey);
+  const proxyUrl = useAiSettingsStore((s) => s.proxyUrl);
+  const configured = isAiConfigured({ apiKey, proxyUrl });
+
+  // Transient, per-mount generation state — a half-finished generation can't survive an unmount.
   const [generating, setGenerating] = useState(false);
   const [elapsed, setElapsed] = useState(0);
-  const genRef = useRef<{ cancel: () => void } | null>(null);
+  const [showKey, setShowKey] = useState(false);
+  const abortedRef = useRef(false);
   const tickRef = useRef<number | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const stopTick = useCallback(() => { if (tickRef.current) { clearInterval(tickRef.current); tickRef.current = null; } }, []);
-  useEffect(() => () => { genRef.current?.cancel(); stopTick(); }, [stopTick]);
+  useEffect(() => () => { abortedRef.current = true; stopTick(); }, [stopTick]);
   // On (re)open or project switch, clear any streaming flag left by a mid-generation close.
   useEffect(() => { settleStreaming(activeProjectId); }, [activeProjectId, settleStreaming]);
   useEffect(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight }); }, [messages]);
 
   const stop = useCallback(() => {
-    genRef.current?.cancel(); genRef.current = null; stopTick(); setGenerating(false);
-    setMessages((m) => m.map((x) => (x.streaming ? { ...x, streaming: false } : x)));
+    // The in-flight request can't be aborted mid-call (no signal threaded through the pipeline yet),
+    // so Stop detaches the UI and discards the result when it resolves — nothing is committed.
+    abortedRef.current = true; stopTick(); setGenerating(false);
+    setMessages((m) => m.map((x) => (x.streaming ? { ...x, streaming: false, text: x.text || 'Stopped.' } : x)));
   }, [stopTick, setMessages]);
 
-  const send = useCallback(() => {
+  const send = useCallback(async () => {
     const text = draft.trim();
     if (!text || generating) return;
-    // Release focus back to the editor so global shortcuts (Space to play, arrows, etc.) work again
-    // instead of being swallowed by the composer. Sending a message ends the "typing" intent.
+    if (!configured) { setShowKey(true); return; }
+    const client = makeAiClient({ apiKey, proxyUrl });
+    if (!client) { setShowKey(true); return; }
+    // Release focus back to the editor so global shortcuts (Space to play, etc.) work again.
     textareaRef.current?.blur();
-    // Scripted demo: the FIRST message builds the blackjack scene; the SECOND builds a galaxy with a
-    // live animated build. (messages length is 0 before the first exchange, 2 before the second.)
-    const scene = messages.length === 0 ? 'blackjack' : messages.length === 2 ? 'galaxy' : null;
-    const userMsg: Msg = { id: nextId(), role: 'user', text, attachments: attachments.length ? attachments : undefined };
+
+    const comp = useEditorStore.getState().composition;
+    const canvas = { width: comp.settings.width, height: comp.settings.height };
+    const fps = comp.settings.frameRate;
+    const seed = (Date.now() >>> 0) % 100000; // runtime UI seed → variety across regenerations
+
+    const userMsg: Msg = { id: nextId(), role: 'user', text };
     const asstId = nextId();
     setMessages((m) => [...m, userMsg, { id: asstId, role: 'assistant', text: '', streaming: true }]);
-    setDraft(''); setAttachments([]);
+    setDraft('');
     setGenerating(true); setElapsed(0);
+    abortedRef.current = false;
     const start = Date.now();
     tickRef.current = window.setInterval(() => setElapsed(Date.now() - start), 100);
     const patch = (fn: (x: Msg) => Msg) => setMessages((m) => m.map((x) => (x.id === asstId ? fn(x) : x)));
-    const finish = (ms: number) => { stopTick(); setGenerating(false); genRef.current = null; patch((x) => ({ ...x, streaming: false, ms })); };
-    const common = {
-      appendToken: (t: string) => patch((x) => ({ ...x, text: x.text + t })),
-      setSteps: (steps: Step[]) => patch((x) => ({ ...x, steps })),
-      done: finish,
-    };
-    if (scene === 'blackjack') {
-      genRef.current = runBlackjackDemo({
-        ...common,
-        insert: () => {},
-        animate: (cbs) => {
-          try { return useEditorStore.getState().insertAnimationTemplateAnimated('blackjack', { perLayerMs: 90, ...cbs }); }
-          catch { cbs.onDone(); return { cancel: () => {} }; }
-        },
-      });
-    } else if (scene === 'galaxy') {
-      genRef.current = runGalaxyDemo({
-        ...common,
-        insert: () => {},
-        animate: (cbs) => {
-          try { return useEditorStore.getState().insertAnimationTemplateAnimated('galaxy', { perLayerMs: 90, ...cbs }); }
-          catch { cbs.onDone(); return { cancel: () => {} }; }
-        },
-      });
-    } else {
-      genRef.current = streamResponse(text, {
-        onToken: (t) => patch((x) => ({ ...x, text: x.text + t })),
-        onDone: finish,
-      });
-    }
-  }, [draft, generating, attachments, messages.length, stopTick, setMessages, setDraft, setAttachments]);
 
-  const attach = (kind: AttachKind) => {
-    const names: Record<AttachKind, string> = { file: 'timeline.ffx', drive: 'brand_kit.zip', image: 'reference.png' };
-    setAttachments((a) => [...a, { id: nextId(), name: names[kind], kind }]);
-  };
+    try {
+      const { generateScene, commitScene } = await import('../../ai/browserGenerate');
+      const result = await generateScene({ description: text, client, canvas, fps, seed });
+      if (abortedRef.current) return; // user hit Stop — drop the result, commit nothing
+      const s = commitScene(result);
+      const plural = (n: number) => (n === 1 ? '' : 's');
+      const parts = [`Built ${s.layers} layer${plural(s.layers)} across ${s.panels} panel${plural(s.panels)}`];
+      if (s.clonersBuilt) parts.push(`${s.clonersBuilt} cloner${plural(s.clonersBuilt)}`);
+      let summary = parts.join(', ') + '.';
+      if (s.repairs) summary += ` ${s.repairs} auto-fix round${plural(s.repairs)}.`;
+      if (s.errors) summary += ` ${s.errors} issue${plural(s.errors)} left in the report.`;
+      summary += ` ~$${s.costUsd.toFixed(2)}. Ctrl+Z to undo.`;
+      patch((x) => ({ ...x, text: summary, streaming: false, ms: Date.now() - start }));
+    } catch (e) {
+      if (abortedRef.current) return;
+      const msg = e instanceof Error ? e.message : String(e);
+      const hint = /401|403|api[_-]?key|authentication/i.test(msg) ? ' Check your API key in the key menu.' : '';
+      patch((x) => ({ ...x, text: `Generation failed: ${msg}${hint}`, streaming: false, ms: Date.now() - start }));
+      useIslandStore.getState().error('AI generation failed');
+    } finally {
+      stopTick(); setGenerating(false);
+    }
+  }, [draft, generating, configured, apiKey, proxyUrl, setMessages, setDraft, stopTick]);
+
   const newChat = () => { stop(); clearConversation(activeProjectId); };
 
   return (
@@ -153,63 +117,48 @@ export function AiChatPanel() {
       <div className="h-9 flex-shrink-0 flex items-center gap-2 px-3 border-b border-hairline">
         <Sparkles size={14} className="text-accent" />
         <span className="text-[12px] font-semibold text-slate-200">AI Assistant</span>
-        <span className="text-[9px] px-1.5 py-0.5 rounded bg-surface-3 text-slate-500 font-medium">Mockup</span>
         <div className="ml-auto flex items-center gap-1">
+          <button
+            title={configured ? 'Model connected — manage key' : 'Connect your Anthropic key'}
+            className={`p-1 rounded hover:bg-white/5 ${configured ? 'text-emerald-400' : 'text-amber-400'}`}
+            onClick={() => setShowKey((v) => !v)}
+          >
+            <KeyRound size={13} />
+          </button>
           <button title="New chat" className="p-1 rounded text-slate-500 hover:text-slate-200 hover:bg-white/5" onClick={newChat}><Plus size={13} /></button>
           <button title="Close" className="p-1 rounded text-slate-500 hover:text-slate-200 hover:bg-white/5" onClick={toggleAiChat}><X size={13} /></button>
         </div>
       </div>
 
+      {showKey && <KeyPanel onClose={() => setShowKey(false)} />}
+
       {/* Conversation */}
       <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-3 py-3 space-y-4">
         {messages.length === 0 && (
-          <div className="h-full flex flex-col items-center justify-center text-center gap-2 text-slate-600 px-2">
+          <div className="h-full flex flex-col items-center justify-center text-center gap-2 text-slate-600 px-3">
             <Sparkles size={22} />
-            <p className="text-[12px] leading-relaxed">Ask the assistant to build, edit, or animate your scene.</p>
+            <p className="text-[12px] leading-relaxed">Describe a scene and the assistant will build it — layers, motion, and palette — onto the canvas.</p>
+            {!configured && (
+              <button onClick={() => setShowKey(true)} className="mt-1 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-surface-3 border border-hairline text-[11px] text-amber-300 hover:bg-white/5">
+                <KeyRound size={12} /> Connect your Anthropic key to start
+              </button>
+            )}
           </div>
         )}
         {messages.map((m) => m.role === 'user' ? (
           <div key={m.id} className="rounded-md bg-[#111a28] border border-hairline px-3 py-2">
-            {m.attachments && (
-              <div className="flex flex-wrap gap-1 mb-1.5">
-                {m.attachments.map((a) => <AttachChip key={a.id} a={a} />)}
-              </div>
-            )}
             <p className="text-[12px] leading-snug text-slate-200 whitespace-pre-wrap">{m.text}</p>
           </div>
         ) : (
           <div key={m.id} className="pl-0.5">
-            {/* Borderless assistant response (VS Code style) */}
             <div className="flex items-center gap-1.5 mb-1 text-[11px] text-slate-500">
               <Sparkles size={11} className="text-accent" />
               <span className="font-medium text-slate-400">FlashFX AI</span>
-              {m.streaming && m.text === '' && <ThinkingDots elapsed={elapsed} />}
+              {m.streaming && <ThinkingDots elapsed={elapsed} />}
               {!m.streaming && m.ms != null && <span>· {fmt(m.ms)}</span>}
             </div>
             {m.text && (
-              <p className="text-[12.5px] leading-relaxed text-slate-300 whitespace-pre-wrap">
-                {m.text}{m.streaming && <span className="inline-block w-[6px] h-[13px] -mb-[2px] ml-[1px] bg-slate-400 animate-pulse" />}
-              </p>
-            )}
-            {m.steps && m.steps.length > 0 && (
-              <div className="mt-2 rounded-md border border-hairline bg-[#0e1726] px-2.5 py-2 space-y-1.5">
-                {m.steps.map((s) => (
-                  <div key={s.key} className="flex items-center gap-2 text-[11px]">
-                    <StepIcon status={s.status} />
-                    <span className={s.status === 'pending' ? 'text-slate-600' : s.status === 'running' ? 'text-slate-200' : 'text-slate-400'}>{s.label}</span>
-                    {s.detail && <span className="ml-auto text-[10px] font-mono text-slate-500">{s.detail}</span>}
-                  </div>
-                ))}
-              </div>
-            )}
-            {!m.streaming && m.ms != null && (
-              <div className="flex items-center gap-1 mt-1.5 text-slate-600">
-                <IconBtn title="Copy"><Copy size={12} /></IconBtn>
-                <IconBtn title="Good response"><ThumbsUp size={12} /></IconBtn>
-                <IconBtn title="Bad response"><ThumbsDown size={12} /></IconBtn>
-                <IconBtn title="Regenerate"><RotateCcw size={12} /></IconBtn>
-                <span className="ml-1 text-[10px]">Generated in {fmt(m.ms)}</span>
-              </div>
+              <p className="text-[12.5px] leading-relaxed text-slate-300 whitespace-pre-wrap">{m.text}</p>
             )}
           </div>
         ))}
@@ -217,52 +166,91 @@ export function AiChatPanel() {
 
       {/* Composer */}
       <div className="flex-shrink-0 p-2 border-t border-hairline">
-        {attachments.length > 0 && (
-          <div className="flex flex-wrap gap-1 mb-1.5">
-            {attachments.map((a) => (
-              <AttachChip key={a.id} a={a} onRemove={() => setAttachments((x) => x.filter((y) => y.id !== a.id))} />
-            ))}
-          </div>
-        )}
-        <div className="rounded-lg bg-[#0e1726] border border-hairline focus-within:border-hairline">
+        <div className="rounded-lg bg-[#0e1726] border border-hairline">
           <textarea
             ref={textareaRef}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); } }}
             rows={2}
-            placeholder="Ask to build, edit, or animate…  (# for context, @ for a layer)"
+            placeholder={configured ? 'Describe a scene to build…' : 'Connect a key, then describe a scene…'}
             className="w-full bg-transparent resize-none text-[12px] text-slate-200 placeholder:text-slate-600 focus:outline-none px-2.5 py-2 max-h-32"
           />
-          {/* Toolbar of (mockup) composer actions */}
           <div className="flex items-center gap-0.5 px-1.5 pb-1.5">
-            <ToolBtn title="Attach file" onClick={() => attach('file')}><Paperclip size={13} /></ToolBtn>
-            <ToolBtn title="Add from Drive" onClick={() => attach('drive')}><HardDrive size={13} /></ToolBtn>
-            <ToolBtn title="Add image" onClick={() => attach('image')}><ImageIcon size={13} /></ToolBtn>
-            <ToolBtn title="Add context" onClick={() => setDraft(draft + '#')}><Hash size={13} /></ToolBtn>
-            <ToolBtn title="Reference a layer" onClick={() => setDraft(draft + '@')}><AtSign size={13} /></ToolBtn>
-            <button title="Model" className="ml-1 flex items-center gap-1 px-1.5 h-6 rounded text-[10.5px] text-slate-400 hover:text-slate-200 hover:bg-white/5">
-              FlashFX AI <ChevronDown size={11} />
-            </button>
+            <span className="text-[10px] text-slate-600 px-1">Opus builds a full scene · one undo step</span>
             <div className="ml-auto">
               {generating ? (
                 <button onClick={stop} title="Stop" className="flex items-center justify-center w-7 h-7 rounded-md text-slate-200 bg-surface-4 hover:bg-[#33445e]"><Square size={11} fill="currentColor" /></button>
               ) : (
-                <button onClick={send} disabled={!draft.trim()} title="Send" className={`flex items-center justify-center w-7 h-7 rounded-md transition-colors ${draft.trim() ? 'text-on-accent bg-accent hover:bg-[#ffc21a]' : 'text-slate-600 bg-surface-3'}`}><Send size={13} /></button>
+                <button onClick={() => void send()} disabled={!draft.trim()} title="Generate" className={`flex items-center justify-center w-7 h-7 rounded-md transition-colors ${draft.trim() ? 'text-on-accent bg-accent hover:bg-[#ffc21a]' : 'text-slate-600 bg-surface-3'}`}><Send size={13} /></button>
               )}
             </div>
           </div>
         </div>
-        <p className="mt-1 text-[9px] text-slate-600 text-center">Mockup - no model connected. Enter to send · Shift+Enter for newline</p>
+        <p className="mt-1 text-[9px] text-slate-600 text-center">Enter to send · Shift+Enter for newline</p>
       </div>
     </aside>
   );
 }
 
-function StepIcon({ status }: { status: Step['status'] }) {
-  if (status === 'done') return <Check size={12} className="text-emerald-400 flex-shrink-0" />;
-  if (status === 'running') return <Loader2 size={12} className="text-accent flex-shrink-0 animate-spin" />;
-  return <Circle size={12} className="text-slate-700 flex-shrink-0" />;
+// BYOK key manager. The key is the user's own and lives only in their browser (localStorage).
+function KeyPanel({ onClose }: { onClose: () => void }) {
+  const apiKey = useAiSettingsStore((s) => s.apiKey);
+  const proxyUrl = useAiSettingsStore((s) => s.proxyUrl);
+  const setApiKey = useAiSettingsStore((s) => s.setApiKey);
+  const setProxyUrl = useAiSettingsStore((s) => s.setProxyUrl);
+  const clear = useAiSettingsStore((s) => s.clear);
+  const [key, setKey] = useState(apiKey);
+  const [proxy, setProxy] = useState(proxyUrl);
+
+  const save = () => { setApiKey(key); setProxyUrl(proxy); onClose(); };
+
+  return (
+    <div className="flex-shrink-0 border-b border-hairline bg-[#0b1320] px-3 py-2.5 space-y-2">
+      <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-300">
+        <KeyRound size={12} className="text-amber-400" /> Model access
+      </div>
+      <label className="block">
+        <span className="text-[10px] text-slate-500">Anthropic API key</span>
+        <input
+          type="password"
+          value={key}
+          onChange={(e) => setKey(e.target.value)}
+          placeholder="sk-ant-…"
+          spellCheck={false}
+          autoComplete="off"
+          className="mt-0.5 w-full bg-[#0e1726] border border-hairline rounded px-2 py-1 text-[11px] text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-accent"
+        />
+      </label>
+      <label className="block">
+        <span className="text-[10px] text-slate-500">Proxy URL (optional — advanced)</span>
+        <input
+          type="text"
+          value={proxy}
+          onChange={(e) => setProxy(e.target.value)}
+          placeholder="https://your-proxy.example.com"
+          spellCheck={false}
+          autoComplete="off"
+          className="mt-0.5 w-full bg-[#0e1726] border border-hairline rounded px-2 py-1 text-[11px] text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-accent"
+        />
+      </label>
+      <p className="text-[9.5px] leading-relaxed text-slate-600">
+        Your key is stored only in this browser and sent directly to Anthropic (or your proxy). It is never
+        uploaded to FlashFX. Set a proxy to keep the key server-side instead.
+      </p>
+      <div className="flex items-center gap-1.5">
+        <button onClick={save} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-accent text-on-accent text-[11px] font-medium hover:bg-[#ffc21a]">
+          <Check size={12} /> Save
+        </button>
+        {(apiKey || proxyUrl) && (
+          <button onClick={() => { clear(); setKey(''); setProxy(''); }} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-surface-3 border border-hairline text-[11px] text-slate-300 hover:bg-white/5">
+            <Trash2 size={12} /> Remove
+          </button>
+        )}
+        <button onClick={onClose} className="ml-auto px-2 py-1 text-[11px] text-slate-500 hover:text-slate-300">Close</button>
+      </div>
+    </div>
+  );
 }
 
 function ThinkingDots({ elapsed }: { elapsed: number }) {
@@ -271,25 +259,7 @@ function ThinkingDots({ elapsed }: { elapsed: number }) {
       <span className="flex gap-0.5">
         {[0, 1, 2].map((i) => <span key={i} className="w-1 h-1 rounded-full bg-accent animate-bounce" style={{ animationDelay: `${i * 120}ms` }} />)}
       </span>
-      <span className="text-slate-500">Thinking… {fmt(elapsed)}</span>
+      <span className="text-slate-500">Generating… {fmt(elapsed)}</span>
     </span>
   );
-}
-
-function AttachChip({ a, onRemove }: { a: Attachment; onRemove?: () => void }) {
-  const Icon = a.kind === 'drive' ? HardDrive : a.kind === 'image' ? ImageIcon : Paperclip;
-  return (
-    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-surface-3 border border-hairline text-[10px] text-slate-300">
-      <Icon size={10} className="text-slate-500" />
-      {a.name}
-      {onRemove && <button onClick={onRemove} className="text-slate-500 hover:text-slate-200"><X size={10} /></button>}
-    </span>
-  );
-}
-
-function ToolBtn({ title, onClick, children }: { title: string; onClick: () => void; children: React.ReactNode }) {
-  return <button title={title} onClick={onClick} className="w-7 h-7 flex items-center justify-center rounded text-slate-500 hover:text-slate-200 hover:bg-white/5 transition-colors">{children}</button>;
-}
-function IconBtn({ title, children }: { title: string; children: React.ReactNode }) {
-  return <button title={title} className="p-1 rounded hover:text-slate-300 hover:bg-white/5 transition-colors">{children}</button>;
 }
