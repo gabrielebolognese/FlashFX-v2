@@ -37,6 +37,14 @@ export function deserializeDocument(data: string): SceneDocument {
   for (const id of Object.keys(rawComps)) {
     compositions[id] = validateComposition(rawComps[id]);
   }
+  // Degenerate / corrupt input with no valid compositions (e.g. an empty object, or a document
+  // whose compositions map is missing/all-invalid): synthesize one default composition so the
+  // document is always usable. A missing root would otherwise crash the editor when it renders
+  // compositions[rootCompositionId].
+  if (Object.keys(compositions).length === 0) {
+    const fallback = validateComposition(raw);
+    compositions[fallback.id] = fallback;
+  }
   const ids = Object.keys(compositions);
   const rootCompositionId =
     raw && raw.rootCompositionId && compositions[raw.rootCompositionId] ? raw.rootCompositionId : ids[0];

@@ -15,6 +15,7 @@
     "test": "node scripts/test-all.mjs",
     "verify:cloner": "node scripts/verify-cloner.mjs",
     "verify:export-memory": "node scripts/verify-export-memory.mjs",
+    "verify:load-resilience": "node scripts/verify-load-resilience.mjs",
     "verify:rangeselector": "node scripts/verify-rangeselector.mjs",
     "verify:caption-window": "node scripts/verify-caption-window.mjs",
     "verify:coder": "node scripts/verify-coder.mjs",
