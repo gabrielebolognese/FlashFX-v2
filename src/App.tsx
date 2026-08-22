@@ -43,6 +43,7 @@ import { AgentBuildOverlay } from './ui/agent-build/AgentBuildOverlay';
 import { useAuthStore } from './auth/store';
 import { AuthGate } from './auth/AuthGate';
 import { AuthConfirm } from './auth/AuthConfirm';
+import { refreshPlan } from './billing/checkout';
 
 // The Animation Builder is a whole authoring mode whose toggle is hidden from the public UI
 // (workspace is effectively always 'editor'), so lazy-load it: its code stays out of the main
@@ -616,6 +617,11 @@ function App() {
     try { return new URLSearchParams(window.location.search).get('auth_confirm') === '1'; }
     catch { return false; }
   });
+
+  // Load the account's plan on sign-in (billing sets it later; stays 'free' until then).
+  useEffect(() => {
+    if (authStatus === 'signed-in') void refreshPlan();
+  }, [authStatus]);
 
   // First run: launch the onboarding wizard once, ever. Mark it seen immediately so a
   // refresh mid-flow doesn't restart it; it stays re-openable via start().

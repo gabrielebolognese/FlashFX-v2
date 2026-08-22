@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { UserRound, KeyRound, HardDrive, Cloud, ShieldCheck, AlertTriangle, LogOut } from 'lucide-react';
+import { UserRound, KeyRound, HardDrive, Cloud, ShieldCheck, AlertTriangle, LogOut, Sparkles } from 'lucide-react';
 import { Modal } from '../ui/primitives/Modal';
 import { Button } from '../ui/primitives/Button';
 import { Input } from '../ui/primitives/Input';
@@ -7,7 +7,8 @@ import { useAuthStore } from './store';
 import { useProjectStore } from '../project-system/hooks/useProjectStore';
 import { deleteAllProjects, deleteAllAssets, getLocalStorageStats } from '../project-system/services/accountData';
 import { getCloudMediaUsage } from '../project-system/services/cloudSync';
-import { currentPlan } from '../billing/plans';
+import { usePlanStore } from '../billing/plans';
+import { UpgradeModal } from '../billing/UpgradeModal';
 import { useIslandStore } from '../ui/island/islandStore';
 
 type DangerAction = 'projects' | 'assets' | 'account';
@@ -37,8 +38,10 @@ export function AccountSettingsModal({ onClose }: { onClose: () => void }) {
   const [savingPw, setSavingPw] = useState(false);
   const [pwMsg, setPwMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
+  const plan = usePlanStore((s) => s.plan);
   const [stats, setStats] = useState<{ used: number; quota: number } | null>(null);
   const [cloudUsage, setCloudUsage] = useState<{ used: number; limit: number } | null>(null);
+  const [showUpgrade, setShowUpgrade] = useState(false);
   const [armed, setArmed] = useState<DangerAction | null>(null);
   const [busy, setBusy] = useState<DangerAction | null>(null);
 
@@ -99,7 +102,7 @@ export function AccountSettingsModal({ onClose }: { onClose: () => void }) {
 
   const usedPct = stats && stats.quota > 0 ? Math.min(100, (stats.used / stats.quota) * 100) : 0;
   const cloudPct = cloudUsage && cloudUsage.limit > 0 ? Math.min(100, (cloudUsage.used / cloudUsage.limit) * 100) : 0;
-  const planLabel = currentPlan() === 'pro' ? 'Pro' : 'Free';
+  const planLabel = plan === 'pro' ? 'Pro' : 'Free';
 
   return (
     <Modal onClose={onClose} size="md" icon={<UserRound size={16} />} title="Account">
@@ -124,6 +127,15 @@ export function AccountSettingsModal({ onClose }: { onClose: () => void }) {
           >
             <LogOut size={12} /> Log out
           </button>
+          {plan === 'free' && (
+            <button
+              type="button"
+              onClick={() => setShowUpgrade(true)}
+              className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-md bg-[#f7b500] py-1.5 text-[11.5px] font-semibold text-[#0a0f16] transition-colors hover:bg-[#ffc83d]"
+            >
+              <Sparkles size={12} /> Upgrade to Pro
+            </button>
+          )}
         </div>
 
         {/* Profile */}
@@ -223,6 +235,7 @@ export function AccountSettingsModal({ onClose }: { onClose: () => void }) {
           </div>
         </Section>
       </div>
+      {showUpgrade && <UpgradeModal onClose={() => setShowUpgrade(false)} />}
     </Modal>
   );
 }
