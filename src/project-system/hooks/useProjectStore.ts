@@ -76,7 +76,11 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   loadProjects: async () => {
     set({ loading: true });
     // Erase any trashed projects whose retention window (7d, or 30d if starred) has elapsed.
-    try { await purgeExpiredTrash(); } catch (err) { console.error('Trash purge failed:', err); }
+    try {
+      const purged = await purgeExpiredTrash();
+      // Tombstone the purged ids so they propagate as deletes and don't resurrect from the cloud.
+      if (cloudAvailable()) purged.forEach((id) => recordLocalDelete(id));
+    } catch (err) { console.error('Trash purge failed:', err); }
     const metadataList = await listProjects();
 
     const cards: ProjectCard[] = await Promise.all(
