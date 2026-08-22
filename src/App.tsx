@@ -42,6 +42,7 @@ import { launchTutorial } from './tutorial/launch';
 import { AgentBuildOverlay } from './ui/agent-build/AgentBuildOverlay';
 import { useAuthStore } from './auth/store';
 import { AuthGate } from './auth/AuthGate';
+import { AuthConfirm } from './auth/AuthConfirm';
 
 // The Animation Builder is a whole authoring mode whose toggle is hidden from the public UI
 // (workspace is effectively always 'editor'), so lazy-load it: its code stays out of the main
@@ -609,6 +610,12 @@ function App() {
   const contentType = useOnboardingStore((s) => s.contentType);
   const authEnabled = useAuthStore((s) => s.enabled);
   const authStatus = useAuthStore((s) => s.status);
+  // Email-confirmation landing (?auth_confirm=1 from the custom verification email). Read once at
+  // boot so it survives the auth store hydrating.
+  const [isAuthConfirm] = useState(() => {
+    try { return new URLSearchParams(window.location.search).get('auth_confirm') === '1'; }
+    catch { return false; }
+  });
 
   // First run: launch the onboarding wizard once, ever. Mark it seen immediately so a
   // refresh mid-flow doesn't restart it; it stays re-openable via start().
@@ -639,6 +646,11 @@ function App() {
       localStorage.removeItem('ffx-default-video-format');
     }
   }, [onboardingStep, bgColor, shapeMode, contentType]);
+
+  // Email confirmation link → branded confirm screen (verifies the token, then continues into the app).
+  if (isAuthConfirm) {
+    return <AuthConfirm />;
+  }
 
   // Account gate: when accounts are enabled (Supabase configured), a visitor must sign in before
   // reaching the dashboard/editor — so projects are created only with an account. When accounts are
