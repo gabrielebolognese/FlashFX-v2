@@ -40,6 +40,8 @@ import { ConsentBanner } from './legal/ConsentBanner';
 import { LegalModal } from './legal/LegalModal';
 import { launchTutorial } from './tutorial/launch';
 import { AgentBuildOverlay } from './ui/agent-build/AgentBuildOverlay';
+import { useAuthStore } from './auth/store';
+import { AuthGate } from './auth/AuthGate';
 
 // The Animation Builder is a whole authoring mode whose toggle is hidden from the public UI
 // (workspace is effectively always 'editor'), so lazy-load it: its code stays out of the main
@@ -605,6 +607,8 @@ function App() {
   const bgColor = useOnboardingStore((s) => s.bgColor);
   const shapeMode = useOnboardingStore((s) => s.shapeMode);
   const contentType = useOnboardingStore((s) => s.contentType);
+  const authEnabled = useAuthStore((s) => s.enabled);
+  const authStatus = useAuthStore((s) => s.status);
 
   // First run: launch the onboarding wizard once, ever. Mark it seen immediately so a
   // refresh mid-flow doesn't restart it; it stays re-openable via start().
@@ -635,6 +639,14 @@ function App() {
       localStorage.removeItem('ffx-default-video-format');
     }
   }, [onboardingStep, bgColor, shapeMode, contentType]);
+
+  // Account gate: when accounts are enabled (Supabase configured), a visitor must sign in before
+  // reaching the dashboard/editor — so projects are created only with an account. When accounts are
+  // NOT enabled (no Supabase env), skip the gate so the app stays local-first and runs with zero
+  // backend. Placed after all hooks (never gate before a hook runs).
+  if (authEnabled && authStatus !== 'signed-in') {
+    return <AuthGate loading={authStatus === 'loading'} />;
+  }
 
   if (onboardingActive) {
     return <OnboardingFlow />;
