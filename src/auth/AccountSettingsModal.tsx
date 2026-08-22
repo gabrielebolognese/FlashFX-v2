@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { UserRound, KeyRound, HardDrive, Cloud, ShieldCheck, AlertTriangle, LogOut, Sparkles } from 'lucide-react';
+import { UserRound, KeyRound, Trash2, AlertTriangle, LogOut, ShieldCheck, Sparkles, type LucideIcon } from 'lucide-react';
 import { Modal } from '../ui/primitives/Modal';
 import { Button } from '../ui/primitives/Button';
 import { Input } from '../ui/primitives/Input';
@@ -11,7 +11,7 @@ import { usePlanStore } from '../billing/plans';
 import { UpgradeModal } from '../billing/UpgradeModal';
 import { useIslandStore } from '../ui/island/islandStore';
 
-type DangerAction = 'projects' | 'assets' | 'account';
+type Dialog = 'password' | 'projects' | 'media' | 'account' | null;
 
 function formatBytes(n: number): string {
   if (!n || n < 1024) return `${Math.max(0, Math.round(n || 0))} B`;
@@ -19,273 +19,215 @@ function formatBytes(n: number): string {
   let v = n / 1024;
   let i = 0;
   while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
-  return `${v.toFixed(1)} ${units[i]}`;
+  return `${v < 10 ? v.toFixed(1) : Math.round(v)} ${units[i]}`;
 }
 
 export function AccountSettingsModal({ onClose }: { onClose: () => void }) {
   const user = useAuthStore((s) => s.user);
-  const updateDisplayName = useAuthStore((s) => s.updateDisplayName);
-  const updatePassword = useAuthStore((s) => s.updatePassword);
   const signOut = useAuthStore((s) => s.signOut);
   const loadProjects = useProjectStore((s) => s.loadProjects);
-
-  const [name, setName] = useState(user?.displayName ?? '');
-  const [savingName, setSavingName] = useState(false);
-  const [nameMsg, setNameMsg] = useState<{ ok: boolean; text: string } | null>(null);
-
-  const [pw1, setPw1] = useState('');
-  const [pw2, setPw2] = useState('');
-  const [savingPw, setSavingPw] = useState(false);
-  const [pwMsg, setPwMsg] = useState<{ ok: boolean; text: string } | null>(null);
-
   const plan = usePlanStore((s) => s.plan);
-  const [stats, setStats] = useState<{ used: number; quota: number } | null>(null);
-  const [cloudUsage, setCloudUsage] = useState<{ used: number; limit: number } | null>(null);
+
+  const [local, setLocal] = useState<{ used: number; quota: number } | null>(null);
+  const [cloud, setCloud] = useState<{ used: number; limit: number } | null>(null);
+  const [dialog, setDialog] = useState<Dialog>(null);
   const [showUpgrade, setShowUpgrade] = useState(false);
-  const [armed, setArmed] = useState<DangerAction | null>(null);
-  const [busy, setBusy] = useState<DangerAction | null>(null);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     let alive = true;
-    getLocalStorageStats()
-      .then((s) => { if (alive) setStats({ used: s.usedBytes, quota: s.estimatedQuota }); })
-      .catch(() => { /* storage stats are best-effort */ });
-    getCloudMediaUsage()
-      .then((u) => { if (alive && u) setCloudUsage({ used: u.usedBytes, limit: u.limitBytes }); })
-      .catch(() => { /* cloud usage is best-effort */ });
+    getLocalStorageStats().then((s) => { if (alive) setLocal({ used: s.usedBytes, quota: s.estimatedQuota }); }).catch(() => {});
+    getCloudMediaUsage().then((u) => { if (alive && u) setCloud({ used: u.usedBytes, limit: u.limitBytes }); }).catch(() => {});
     return () => { alive = false; };
   }, []);
 
   const initials = ((user?.displayName || user?.email || '?').trim()[0] ?? '?').toUpperCase();
+  const planLabel = plan === 'pro' ? 'Pro' : 'Free';
 
-  const saveName = async () => {
-    setSavingName(true); setNameMsg(null);
-    const res = await updateDisplayName(name);
-    setSavingName(false);
-    setNameMsg(res.ok ? { ok: true, text: 'Saved.' } : { ok: false, text: res.error ?? 'Could not save.' });
-  };
-
-  const savePassword = async () => {
-    if (pw1.length < 6) { setPwMsg({ ok: false, text: 'Password must be at least 6 characters.' }); return; }
-    if (pw1 !== pw2) { setPwMsg({ ok: false, text: 'Passwords do not match.' }); return; }
-    setSavingPw(true); setPwMsg(null);
-    const res = await updatePassword(pw1);
-    setSavingPw(false);
-    if (res.ok) { setPw1(''); setPw2(''); setPwMsg({ ok: true, text: 'Password updated.' }); }
-    else setPwMsg({ ok: false, text: res.error ?? 'Could not update password.' });
-  };
-
-  const runDanger = async (action: DangerAction) => {
-    setBusy(action); setArmed(null);
+  const run = async (action: 'projects' | 'media' | 'account') => {
+    setBusy(true);
     try {
       if (action === 'projects') {
         const n = await deleteAllProjects();
         await loadProjects();
         useIslandStore.getState().toast(`Deleted ${n} project${n === 1 ? '' : 's'}`, { tone: 'success', icon: 'check' });
-      } else if (action === 'assets') {
+      } else if (action === 'media') {
         await deleteAllAssets();
-        useIslandStore.getState().toast('Deleted all library assets', { tone: 'success', icon: 'check' });
+        useIslandStore.getState().toast('Deleted library assets', { tone: 'success', icon: 'check' });
       } else {
-        // Delete account: wipe all local data + sign out. Removing the account RECORD itself needs a
-        // server (service-role) function — wired later; sign-out is the closest client-side step.
         await deleteAllProjects();
         await deleteAllAssets();
         await signOut();
-        return; // sign-out unmounts the dashboard (and this modal) via the auth gate
+        return; // sign-out unmounts this
       }
+      setDialog(null);
     } catch {
-      useIslandStore.getState().error('Something went wrong. Some items may not have been deleted.');
+      useIslandStore.getState().error('Something went wrong.');
     } finally {
-      setBusy(null);
+      setBusy(false);
     }
   };
 
-  const usedPct = stats && stats.quota > 0 ? Math.min(100, (stats.used / stats.quota) * 100) : 0;
-  const cloudPct = cloudUsage && cloudUsage.limit > 0 ? Math.min(100, (cloudUsage.used / cloudUsage.limit) * 100) : 0;
-  const planLabel = plan === 'pro' ? 'Pro' : 'Free';
-
   return (
-    <Modal onClose={onClose} size="md" icon={<UserRound size={16} />} title="Account">
-      <div className="max-h-[72vh] space-y-4 overflow-y-auto pr-1">
-        {/* Identity + quick sign out */}
-        <div>
-          <div className="flex items-center gap-2.5">
-            {user?.avatarUrl ? (
-              <img src={user.avatarUrl} alt="" className="h-9 w-9 flex-shrink-0 rounded-full object-cover" />
-            ) : (
-              <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#f7b500] to-[#e09000] text-[14px] font-bold text-[#0a0f16]">{initials}</span>
-            )}
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-[13px] font-semibold text-slate-100">{user?.displayName ?? 'Your account'}</div>
-              <div className="truncate text-[11px] text-slate-500">{user?.email ?? ''}</div>
+    <Modal onClose={onClose} size="sm" icon={<UserRound size={16} />} title="Account">
+      <div className="space-y-4">
+        {/* Big profile */}
+        <div className="flex items-center gap-4">
+          {user?.avatarUrl ? (
+            <img src={user.avatarUrl} alt="" className="h-16 w-16 flex-shrink-0 rounded-full object-cover" />
+          ) : (
+            <span className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#f7b500] to-[#e09000] text-[26px] font-bold text-[#0a0f16]">{initials}</span>
+          )}
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-[17px] font-semibold text-slate-100">{user?.displayName ?? 'Your account'}</div>
+            <div className="truncate text-[12px] text-slate-500">{user?.email ?? ''}</div>
+            <div className="mt-1.5 flex items-center gap-2">
+              <span className="rounded bg-surface-3 px-1.5 py-0.5 text-[10px] font-medium text-slate-400">{planLabel} plan</span>
+              {plan === 'free' && (
+                <button onClick={() => setShowUpgrade(true)} className="flex items-center gap-1 text-[11px] font-semibold text-[#f7b500] hover:underline">
+                  <Sparkles size={11} /> Upgrade
+                </button>
+              )}
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => void signOut()}
-            className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-md border border-hairline bg-surface-1 py-1.5 text-[11px] font-medium text-slate-300 transition-colors hover:bg-white/5 hover:text-slate-100"
-          >
-            <LogOut size={12} /> Log out
-          </button>
-          {plan === 'free' && (
-            <button
-              type="button"
-              onClick={() => setShowUpgrade(true)}
-              className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-md bg-[#f7b500] py-1.5 text-[11.5px] font-semibold text-[#0a0f16] transition-colors hover:bg-[#ffc83d]"
-            >
-              <Sparkles size={12} /> Upgrade to Pro
-            </button>
-          )}
         </div>
 
-        {/* Profile */}
-        <Section title="Profile">
-          <label className="block text-[11px] text-slate-500">Full name</label>
-          <div className="mt-1 flex gap-2">
-            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" />
-            <Button variant="secondary" size="comfortable" onClick={() => void saveName()} disabled={savingName || name.trim() === (user?.displayName ?? '')}>
-              {savingName ? 'Saving…' : 'Save'}
-            </Button>
-          </div>
-          {nameMsg && <p className={`mt-1 text-[11px] ${nameMsg.ok ? 'text-success' : 'text-danger'}`}>{nameMsg.text}</p>}
-        </Section>
+        {/* Log out + 2FA */}
+        <div className="grid grid-cols-2 gap-2">
+          <button onClick={() => void signOut()} className="flex items-center justify-center gap-1.5 rounded-md border border-hairline bg-surface-1 py-1.5 text-[11px] font-medium text-slate-300 transition-colors hover:bg-white/5 hover:text-slate-100">
+            <LogOut size={12} /> Log out
+          </button>
+          <button disabled title="Coming soon" className="flex items-center justify-center gap-1.5 rounded-md border border-hairline bg-surface-1 py-1.5 text-[11px] font-medium text-slate-500 opacity-70">
+            <ShieldCheck size={12} /> 2FA · Soon
+          </button>
+        </div>
 
-        {/* Security */}
-        <Section title="Security" icon={<ShieldCheck size={12} />}>
-          <label className="block text-[11px] text-slate-500">Change password</label>
-          <div className="mt-1 space-y-2">
-            <Input type="password" autoComplete="new-password" placeholder="New password" value={pw1} onChange={(e) => setPw1(e.target.value)} minLength={6} />
-            <div className="flex gap-2">
-              <Input type="password" autoComplete="new-password" placeholder="Confirm new password" value={pw2} onChange={(e) => setPw2(e.target.value)} minLength={6} />
-              <Button variant="secondary" size="comfortable" onClick={() => void savePassword()} disabled={savingPw || !pw1 || !pw2}>
-                {savingPw ? 'Saving…' : 'Update'}
-              </Button>
-            </div>
-          </div>
-          {pwMsg && <p className={`mt-1 text-[11px] ${pwMsg.ok ? 'text-success' : 'text-danger'}`}>{pwMsg.text}</p>}
+        {/* Storage (compact) */}
+        <div className="space-y-2">
+          <StorageBar label={`Cloud · ${planLabel}`} used={cloud?.used} total={cloud?.limit} />
+          <StorageBar label="Device" used={local?.used} total={local?.quota} />
+        </div>
 
-          <div className="mt-4 flex items-center justify-between rounded-lg border border-hairline bg-surface-1 px-3 py-2">
-            <div className="flex items-center gap-2">
-              <KeyRound size={13} className="text-slate-500" />
-              <div>
-                <div className="text-[12px] text-slate-200">Two-factor authentication</div>
-                <div className="text-[10.5px] text-slate-500">Add an extra layer of security at sign-in.</div>
-              </div>
-            </div>
-            <SoonButton label="Set up" />
-          </div>
-        </Section>
-
-        {/* Storage */}
-        <Section title="Storage" icon={<HardDrive size={12} />}>
-          <div className="rounded-lg border border-hairline bg-surface-1 px-3 py-2">
-            <div className="flex items-center justify-between text-[11px]">
-              <span className="text-slate-300">On this device (local)</span>
-              <span className="text-slate-500">{stats ? `${formatBytes(stats.used)} of ${formatBytes(stats.quota)}` : '…'}</span>
-            </div>
-            <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-[#1a2233]">
-              <div className="h-full rounded-full bg-[#f7b500]" style={{ width: `${usedPct}%` }} />
-            </div>
-          </div>
-          <div className="mt-2 rounded-lg border border-hairline bg-surface-1 px-3 py-2">
-            <div className="flex items-center justify-between text-[11px]">
-              <span className="flex items-center gap-1.5 text-slate-300"><Cloud size={12} className="text-slate-500" /> Cloud media ({planLabel} plan)</span>
-              <span className="text-slate-500">{cloudUsage ? `${formatBytes(cloudUsage.used)} of ${formatBytes(cloudUsage.limit)}` : '—'}</span>
-            </div>
-            <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-[#1a2233]">
-              <div className="h-full rounded-full bg-[#f7b500]" style={{ width: `${cloudPct}%` }} />
-            </div>
-          </div>
-        </Section>
-
-        {/* Danger zone */}
-        <Section title="Danger zone" icon={<AlertTriangle size={12} className="text-danger" />}>
-          <div className="space-y-2">
-            <DangerRow
-              label="Delete all projects"
-              desc="Permanently removes every project and its media from this device."
-              cta="Delete projects"
-              armed={armed === 'projects'}
-              busy={busy === 'projects'}
-              onArm={() => setArmed('projects')}
-              onCancel={() => setArmed(null)}
-              onConfirm={() => void runDanger('projects')}
-            />
-            <DangerRow
-              label="Delete all assets"
-              desc="Clears your saved media library and brand kit."
-              cta="Delete assets"
-              armed={armed === 'assets'}
-              busy={busy === 'assets'}
-              onArm={() => setArmed('assets')}
-              onCancel={() => setArmed(null)}
-              onConfirm={() => void runDanger('assets')}
-            />
-            <DangerRow
-              label="Delete account"
-              desc="Erases all local projects and assets and signs you out. Removing the account record itself is coming soon."
-              cta="Delete account"
-              icon={<LogOut size={12} />}
-              armed={armed === 'account'}
-              busy={busy === 'account'}
-              onArm={() => setArmed('account')}
-              onCancel={() => setArmed(null)}
-              onConfirm={() => void runDanger('account')}
-            />
-          </div>
-        </Section>
+        {/* Actions grid */}
+        <div className="grid grid-cols-3 gap-2">
+          <GridButton icon={KeyRound} label="Password" onClick={() => setDialog('password')} />
+          <GridButton icon={Trash2} label="Projects" danger onClick={() => setDialog('projects')} />
+          <GridButton icon={Trash2} label="Media" danger onClick={() => setDialog('media')} />
+        </div>
+        <button
+          onClick={() => setDialog('account')}
+          className="w-full rounded-md border border-red-500/40 py-2 text-[12px] font-semibold text-danger transition-colors hover:bg-red-500/10"
+        >
+          Delete account
+        </button>
       </div>
+
       {showUpgrade && <UpgradeModal onClose={() => setShowUpgrade(false)} />}
+      {dialog === 'password' && <ChangePasswordModal onClose={() => setDialog(null)} />}
+      {dialog === 'projects' && (
+        <ConfirmDialog title="Delete all projects?" body="Permanently removes every project and its media from this device." confirmLabel="Delete projects" busy={busy} onConfirm={() => void run('projects')} onClose={() => setDialog(null)} />
+      )}
+      {dialog === 'media' && (
+        <ConfirmDialog title="Delete all media?" body="Clears your saved media library and brand kit." confirmLabel="Delete media" busy={busy} onConfirm={() => void run('media')} onClose={() => setDialog(null)} />
+      )}
+      {dialog === 'account' && (
+        <ConfirmDialog title="Delete account?" body="Erases all local projects and assets and signs you out." phrase="DELETE" confirmLabel="Delete account" busy={busy} onConfirm={() => void run('account')} onClose={() => setDialog(null)} />
+      )}
     </Modal>
   );
 }
 
-function Section({ title, icon, children }: { title: string; icon?: React.ReactNode; children: React.ReactNode }) {
+function StorageBar({ label, used, total }: { label: string; used?: number; total?: number }) {
+  const pct = used != null && total && total > 0 ? Math.min(100, (used / total) * 100) : 0;
   return (
-    <section>
-      <h3 className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-        {icon}
-        {title}
-      </h3>
-      {children}
-    </section>
+    <div>
+      <div className="flex items-center justify-between text-[10.5px]">
+        <span className="text-slate-400">{label}</span>
+        <span className="text-slate-600">{used != null && total != null ? `${formatBytes(used)} / ${formatBytes(total)}` : '—'}</span>
+      </div>
+      <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-[#1a2233]">
+        <div className="h-full rounded-full bg-[#f7b500]" style={{ width: `${pct}%` }} />
+      </div>
+    </div>
   );
 }
 
-function SoonButton({ label }: { label: string }) {
+function GridButton({ icon: Icon, label, danger, onClick }: {
+  icon: LucideIcon; label: string; danger?: boolean; onClick: () => void;
+}) {
   return (
-    <button type="button" disabled title="Coming soon" className="flex items-center gap-1.5 rounded-md border border-hairline bg-surface-3 px-2.5 py-1 text-[11px] text-slate-500 opacity-70">
+    <button
+      onClick={onClick}
+      className={`flex flex-col items-center justify-center gap-1.5 rounded-lg border py-3 text-[11px] font-medium transition-colors ${
+        danger ? 'border-red-500/30 text-red-300 hover:bg-red-500/10' : 'border-hairline text-slate-300 hover:bg-white/5'
+      }`}
+    >
+      <Icon size={16} />
       {label}
-      <span className="rounded bg-surface-4 px-1 py-px text-[9px]">Soon</span>
     </button>
   );
 }
 
-function DangerRow({ label, desc, cta, icon, armed, busy, onArm, onCancel, onConfirm }: {
-  label: string; desc: string; cta: string; icon?: React.ReactNode;
-  armed: boolean; busy: boolean; onArm: () => void; onCancel: () => void; onConfirm: () => void;
+// GitHub-style confirmation: a warning modal with a red confirm button. For the nuclear action
+// (account deletion) `phrase` requires typing an exact word before the button enables.
+function ConfirmDialog({ title, body, confirmLabel, phrase, busy, onConfirm, onClose }: {
+  title: string; body: string; confirmLabel: string; phrase?: string; busy?: boolean; onConfirm: () => void; onClose: () => void;
 }) {
+  const [typed, setTyped] = useState('');
+  const ready = !phrase || typed.trim() === phrase;
   return (
-    <div className="rounded-lg border border-red-500/25 bg-red-500/[0.04] px-3 py-2">
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <div className="text-[12px] font-medium text-slate-200">{label}</div>
-          <div className="text-[10.5px] leading-snug text-slate-500">{desc}</div>
-        </div>
-        {armed ? (
-          <div className="flex flex-shrink-0 items-center gap-1.5">
-            <button type="button" onClick={onCancel} disabled={busy} className="rounded-md px-2 py-1 text-[11px] text-slate-400 hover:text-slate-200">Cancel</button>
-            <button type="button" onClick={onConfirm} disabled={busy} className="rounded-md bg-danger px-2.5 py-1 text-[11px] font-semibold text-white hover:opacity-90 disabled:opacity-60">
-              {busy ? 'Deleting…' : 'Confirm'}
-            </button>
+    <Modal onClose={onClose} size="sm" icon={<AlertTriangle size={16} className="text-danger" />} title={title}>
+      <div className="space-y-3">
+        <p className="text-[12px] leading-relaxed text-slate-400">{body}</p>
+        {phrase && (
+          <div className="space-y-1">
+            <p className="text-[11px] text-slate-500">Type <span className="font-mono font-semibold text-slate-300">{phrase}</span> to confirm</p>
+            <Input value={typed} onChange={(e) => setTyped(e.target.value)} placeholder={phrase} autoFocus />
           </div>
-        ) : (
-          <button type="button" onClick={onArm} className="flex flex-shrink-0 items-center gap-1.5 rounded-md border border-red-500/40 px-2.5 py-1 text-[11px] font-medium text-danger hover:bg-red-500/10">
-            {icon}
-            {cta}
-          </button>
         )}
+        <div className="flex justify-end gap-2 pt-1">
+          <Button variant="secondary" size="comfortable" onClick={onClose} disabled={busy}>Cancel</Button>
+          <button
+            onClick={onConfirm}
+            disabled={!ready || busy}
+            className="rounded-md bg-danger px-3 py-1.5 text-[12px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+          >
+            {busy ? 'Working…' : confirmLabel}
+          </button>
+        </div>
       </div>
-    </div>
+    </Modal>
+  );
+}
+
+function ChangePasswordModal({ onClose }: { onClose: () => void }) {
+  const updatePassword = useAuthStore((s) => s.updatePassword);
+  const [pw1, setPw1] = useState('');
+  const [pw2, setPw2] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const save = async () => {
+    if (pw1.length < 6) { setMsg({ ok: false, text: 'At least 6 characters.' }); return; }
+    if (pw1 !== pw2) { setMsg({ ok: false, text: 'Passwords don’t match.' }); return; }
+    setBusy(true); setMsg(null);
+    const res = await updatePassword(pw1);
+    setBusy(false);
+    if (res.ok) { setMsg({ ok: true, text: 'Password updated.' }); setPw1(''); setPw2(''); }
+    else setMsg({ ok: false, text: res.error ?? 'Could not update.' });
+  };
+
+  return (
+    <Modal onClose={onClose} size="sm" icon={<KeyRound size={16} />} title="Change password">
+      <div className="space-y-2.5">
+        <Input type="password" autoComplete="new-password" placeholder="New password" value={pw1} onChange={(e) => setPw1(e.target.value)} minLength={6} autoFocus />
+        <Input type="password" autoComplete="new-password" placeholder="Confirm password" value={pw2} onChange={(e) => setPw2(e.target.value)} minLength={6} />
+        {msg && <p className={`text-[11px] ${msg.ok ? 'text-success' : 'text-danger'}`}>{msg.text}</p>}
+        <div className="flex justify-end gap-2 pt-1">
+          <Button variant="secondary" size="comfortable" onClick={onClose}>Close</Button>
+          <Button variant="primary" size="comfortable" onClick={() => void save()} disabled={busy || !pw1 || !pw2}>{busy ? 'Saving…' : 'Update'}</Button>
+        </div>
+      </div>
+    </Modal>
   );
 }
