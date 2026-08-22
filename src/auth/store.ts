@@ -35,6 +35,10 @@ interface AuthState {
   signInWithOAuth: (provider: 'google') => Promise<AuthResult>;
   sendPasswordReset: (email: string) => Promise<AuthResult>;
   signOut: () => Promise<void>;
+  /** Update the account's display name (stored in user_metadata.full_name). */
+  updateDisplayName: (name: string) => Promise<AuthResult>;
+  /** Set a new password for the signed-in account. */
+  updatePassword: (newPassword: string) => Promise<AuthResult>;
 }
 
 let initialized = false;
@@ -110,5 +114,20 @@ export const useAuthStore = create<AuthState>((set) => ({
     if (!supabase) return;
     await supabase.auth.signOut().catch((e) => captureError(e, { kind: 'auth-signout' }));
     trackEvent('auth_sign_out');
+  },
+
+  updateDisplayName: async (name) => {
+    if (!supabase) return { ok: false, error: DISABLED_MSG };
+    const { data, error } = await supabase.auth.updateUser({ data: { full_name: name.trim() } });
+    if (error) return { ok: false, error: error.message };
+    set({ user: toAuthUser(data.user) });
+    return { ok: true };
+  },
+
+  updatePassword: async (newPassword) => {
+    if (!supabase) return { ok: false, error: DISABLED_MSG };
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) return { ok: false, error: error.message };
+    return { ok: true };
   },
 }));

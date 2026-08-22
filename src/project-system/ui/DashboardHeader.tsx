@@ -4,6 +4,8 @@ import { useProjectStore } from '../hooks/useProjectStore';
 import type { SortField } from '../hooks/useProjectStore';
 import { FFX_EXTENSION } from '../services/ffx';
 import { FlashFXLogo } from '../../ui/components/FlashFXLogo';
+import { useAuthStore } from '../../auth/store';
+import { AccountSettingsModal } from '../../auth/AccountSettingsModal';
 
 interface Props {
   onCreateNew: () => void;
@@ -23,8 +25,13 @@ export function DashboardHeader({ onCreateNew, title = 'Recents', showSort = tru
   const importProject = useProjectStore((s) => s.importProject);
   const openProject = useProjectStore((s) => s.openProject);
 
+  const authStatus = useAuthStore((s) => s.status);
+  const user = useAuthStore((s) => s.user);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
+  const [showAccount, setShowAccount] = useState(false);
+  const initials = ((user?.displayName || user?.email || '?').trim()[0] ?? '?').toUpperCase();
 
   const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -111,6 +118,18 @@ export function DashboardHeader({ onCreateNew, title = 'Recents', showSort = tru
         <Plus size={12} strokeWidth={2.5} />
         <span>New</span>
       </button>
+
+      {/* Account avatar → settings */}
+      {authStatus === 'signed-in' && (
+        <button
+          onClick={() => setShowAccount(true)}
+          title="Account settings"
+          className="ml-1 flex h-7 w-7 flex-shrink-0 items-center justify-center overflow-hidden rounded-full border border-[#2a3548] bg-[#141c28] text-[11px] font-semibold text-slate-200 transition-colors hover:border-[#f7b500]/50"
+        >
+          {user?.avatarUrl ? <img src={user.avatarUrl} alt="" className="h-full w-full object-cover" /> : initials}
+        </button>
+      )}
+      {showAccount && <AccountSettingsModal onClose={() => setShowAccount(false)} />}
     </header>
   );
 }
