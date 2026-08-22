@@ -16,6 +16,7 @@
     "verify:cloner": "node scripts/verify-cloner.mjs",
     "verify:ai-client": "node scripts/verify-ai-client.mjs",
     "verify:cloud-sync": "node scripts/verify-cloudsync.mjs",
+    "verify:plans": "node scripts/verify-plans.mjs",
     "verify:export-memory": "node scripts/verify-export-memory.mjs",
     "verify:load-resilience": "node scripts/verify-load-resilience.mjs",
     "verify:rangeselector": "node scripts/verify-rangeselector.mjs",

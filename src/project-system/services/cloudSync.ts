@@ -5,6 +5,7 @@ import { getAllMetadata, getMetadata, putMetadata, getScene, putScene } from '..
 import { deleteProject } from './projects';
 import { videoAssetStore } from '../../engine/video/videoAssetStore';
 import { planSync, type SyncItem } from './cloudSyncPlan';
+import { currentPlan, mediaSyncAllowed, fitsMediaQuota, assetWithinLimit, planLimits } from '../../billing/plans';
 import type { ProjectMetadata } from '../types';
 
 // Client I/O for cloud project sync (Phase 2). Scene JSON + a metadata blob live in the
@@ -22,14 +23,19 @@ export type CloudSyncStatus = 'idle' | 'syncing' | 'synced' | 'error';
 interface CloudSyncState {
   status: CloudSyncStatus;
   lastSyncedAt: number | null;
+  /** True when a push couldn't upload some media because the plan's storage cap was hit. */
+  mediaCapped: boolean;
   setStatus: (s: CloudSyncStatus) => void;
   markSynced: () => void;
+  setMediaCapped: (v: boolean) => void;
 }
 export const useCloudSyncStore = create<CloudSyncState>((set) => ({
   status: 'idle',
   lastSyncedAt: null,
+  mediaCapped: false,
   setStatus: (status) => set({ status }),
   markSynced: () => set({ status: 'synced', lastSyncedAt: Date.now() }),
+  setMediaCapped: (mediaCapped) => set({ mediaCapped }),
 }));
 
 function uid(): string | null {
@@ -59,7 +65,7 @@ function clearTombstone(id: string): void {
   if (id in t) { delete t[id]; writeTombstones(t); }
 }
 
-interface CloudAssetMeta { fileName: string; mimeType: string; rotation: number; sampleTimestamps: number[] | null }
+interface CloudAssetMeta { fileName: string; mimeType: string; rotation: number; fileSize: number; sampleTimestamps: number[] | null }
 interface CloudMetaBlob { metadata?: ProjectMetadata; assets?: Record<string, CloudAssetMeta> }
 
 async function listCloud(): Promise<SyncItem[]> {
@@ -71,23 +77,53 @@ async function listCloud(): Promise<SyncItem[]> {
   }));
 }
 
-async function pushAssets(userId: string, projectId: string): Promise<Record<string, CloudAssetMeta>> {
+/** Total cloud media bytes already used by the account (summed from stored asset metadata),
+ *  optionally excluding one project (so a re-push of that project doesn't double-count itself). */
+async function accountMediaUsage(excludeProjectId?: string): Promise<number> {
+  if (!supabase) return 0;
+  const { data, error } = await supabase.from('cloud_projects').select('id, meta').eq('deleted', false);
+  if (error || !data) return 0;
+  let total = 0;
+  for (const row of data as { id: string; meta: CloudMetaBlob | null }[]) {
+    if (excludeProjectId && row.id === excludeProjectId) continue;
+    for (const a of Object.values(row.meta?.assets ?? {})) total += a.fileSize ?? 0;
+  }
+  return total;
+}
+
+/** Upload a project's media up to the plan quota. Returns the stored asset map and whether any asset
+ *  was skipped for being over the per-asset or total-storage cap. */
+async function pushAssets(userId: string, projectId: string, usedBytes: number): Promise<{ map: Record<string, CloudAssetMeta>; capped: boolean }> {
   const map: Record<string, CloudAssetMeta> = {};
-  if (!supabase) return map;
+  const plan = currentPlan();
   const metas = await videoAssetStore.listProjectAssets(projectId);
+  if (!supabase || !mediaSyncAllowed(plan)) return { map, capped: metas.length > 0 };
+
+  let used = usedBytes;
+  let capped = false;
   for (const m of metas) {
+    if (!assetWithinLimit(m.fileSize, plan) || !fitsMediaQuota(used, m.fileSize, plan)) { capped = true; continue; }
     const blob = await videoAssetStore.getAsset(projectId, m.assetId);
     if (!blob) continue;
     const full = await videoAssetStore.getAssetMeta(projectId, m.assetId);
     await supabase.storage.from(BUCKET).upload(`${userId}/${projectId}/${m.assetId}`, blob, { upsert: true, contentType: m.mimeType });
+    used += m.fileSize;
     map[m.assetId] = {
       fileName: m.fileName,
       mimeType: m.mimeType,
       rotation: m.rotation,
+      fileSize: m.fileSize,
       sampleTimestamps: full?.sampleTimestamps ? Array.from(full.sampleTimestamps) : null,
     };
   }
-  return map;
+  return { map, capped };
+}
+
+/** Current account cloud media usage + the plan's limit, for the account panel. Null if unavailable. */
+export async function getCloudMediaUsage(): Promise<{ usedBytes: number; limitBytes: number } | null> {
+  if (!cloudAvailable()) return null;
+  const usedBytes = await accountMediaUsage();
+  return { usedBytes, limitBytes: planLimits(currentPlan()).cloudMediaBytes };
 }
 
 async function pullAssets(userId: string, projectId: string, assets: Record<string, CloudAssetMeta>): Promise<void> {
@@ -108,7 +144,8 @@ export async function pushProject(id: string): Promise<void> {
   const meta = await getMetadata(id);
   const scene = await getScene(id);
   if (!meta || !scene) return;
-  const assets = await pushAssets(userId, id);
+  const usedBytes = await accountMediaUsage(id);
+  const { map: assets, capped } = await pushAssets(userId, id, usedBytes);
   await supabase.from('cloud_projects').upsert({
     id,
     user_id: userId,
@@ -119,6 +156,7 @@ export async function pushProject(id: string): Promise<void> {
     updated_at: new Date(meta.modifiedAt).toISOString(),
   });
   clearTombstone(id);
+  if (capped) useCloudSyncStore.getState().setMediaCapped(true);
 }
 
 /** Mark a project deleted in the cloud so the delete propagates to other devices. */
@@ -144,6 +182,7 @@ async function pullProject(id: string): Promise<void> {
 /** Reconcile local ⇄ cloud and execute the plan. Best-effort; individual items fail in isolation. */
 export async function syncAll(): Promise<void> {
   if (!cloudAvailable()) return;
+  useCloudSyncStore.getState().setMediaCapped(false); // recomputed by the pushes below
   const localMeta = await getAllMetadata();
   const tombstones = readTombstones();
   const local: SyncItem[] = [

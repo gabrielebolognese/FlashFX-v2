@@ -141,14 +141,17 @@ export function DashboardHeader({ onCreateNew, title = 'Recents', showSort = tru
 function CloudStatus() {
   const status = useCloudSyncStore((s) => s.status);
   const lastSyncedAt = useCloudSyncStore((s) => s.lastSyncedAt);
+  const mediaCapped = useCloudSyncStore((s) => s.mediaCapped);
   const title =
-    status === 'syncing' ? 'Syncing to cloud…'
+    mediaCapped ? 'Cloud storage full — some media isn’t synced. Upgrade for more space.'
+    : status === 'syncing' ? 'Syncing to cloud…'
     : status === 'error' ? 'Cloud sync unavailable — your work is saved on this device'
     : lastSyncedAt ? 'Projects synced to your account'
     : 'Cloud sync';
   return (
     <span title={title} className="flex h-7 w-7 items-center justify-center">
       {status === 'syncing' ? <Loader2 size={13} className="animate-spin text-slate-400" />
+        : mediaCapped ? <CloudOff size={13} className="text-amber-500/80" />
         : status === 'error' ? <CloudOff size={13} className="text-amber-500/80" />
         : status === 'synced' ? <Cloud size={13} className="text-emerald-500/80" />
         : <Cloud size={13} className="text-slate-600" />}

@@ -6,6 +6,8 @@ import { Input } from '../ui/primitives/Input';
 import { useAuthStore } from './store';
 import { useProjectStore } from '../project-system/hooks/useProjectStore';
 import { deleteAllProjects, deleteAllAssets, getLocalStorageStats } from '../project-system/services/accountData';
+import { getCloudMediaUsage } from '../project-system/services/cloudSync';
+import { currentPlan } from '../billing/plans';
 import { useIslandStore } from '../ui/island/islandStore';
 
 type DangerAction = 'projects' | 'assets' | 'account';
@@ -36,6 +38,7 @@ export function AccountSettingsModal({ onClose }: { onClose: () => void }) {
   const [pwMsg, setPwMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   const [stats, setStats] = useState<{ used: number; quota: number } | null>(null);
+  const [cloudUsage, setCloudUsage] = useState<{ used: number; limit: number } | null>(null);
   const [armed, setArmed] = useState<DangerAction | null>(null);
   const [busy, setBusy] = useState<DangerAction | null>(null);
 
@@ -44,6 +47,9 @@ export function AccountSettingsModal({ onClose }: { onClose: () => void }) {
     getLocalStorageStats()
       .then((s) => { if (alive) setStats({ used: s.usedBytes, quota: s.estimatedQuota }); })
       .catch(() => { /* storage stats are best-effort */ });
+    getCloudMediaUsage()
+      .then((u) => { if (alive && u) setCloudUsage({ used: u.usedBytes, limit: u.limitBytes }); })
+      .catch(() => { /* cloud usage is best-effort */ });
     return () => { alive = false; };
   }, []);
 
@@ -92,6 +98,8 @@ export function AccountSettingsModal({ onClose }: { onClose: () => void }) {
   };
 
   const usedPct = stats && stats.quota > 0 ? Math.min(100, (stats.used / stats.quota) * 100) : 0;
+  const cloudPct = cloudUsage && cloudUsage.limit > 0 ? Math.min(100, (cloudUsage.used / cloudUsage.limit) * 100) : 0;
+  const planLabel = currentPlan() === 'pro' ? 'Pro' : 'Free';
 
   return (
     <Modal onClose={onClose} size="md" icon={<UserRound size={16} />} title="Account">
@@ -167,12 +175,14 @@ export function AccountSettingsModal({ onClose }: { onClose: () => void }) {
               <div className="h-full rounded-full bg-[#f7b500]" style={{ width: `${usedPct}%` }} />
             </div>
           </div>
-          <div className="mt-2 flex items-center justify-between rounded-lg border border-hairline bg-surface-1 px-3 py-2">
-            <div className="flex items-center gap-2">
-              <Cloud size={13} className="text-slate-500" />
-              <span className="text-[12px] text-slate-300">Cloud storage</span>
+          <div className="mt-2 rounded-lg border border-hairline bg-surface-1 px-3 py-2">
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="flex items-center gap-1.5 text-slate-300"><Cloud size={12} className="text-slate-500" /> Cloud media ({planLabel} plan)</span>
+              <span className="text-slate-500">{cloudUsage ? `${formatBytes(cloudUsage.used)} of ${formatBytes(cloudUsage.limit)}` : '—'}</span>
             </div>
-            <span className="rounded bg-surface-3 px-1.5 py-0.5 text-[9.5px] font-medium text-slate-500">Coming soon</span>
+            <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-[#1a2233]">
+              <div className="h-full rounded-full bg-[#f7b500]" style={{ width: `${cloudPct}%` }} />
+            </div>
           </div>
         </Section>
 
