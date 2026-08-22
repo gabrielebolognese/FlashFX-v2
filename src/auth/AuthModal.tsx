@@ -8,6 +8,11 @@ import { useAuthStore } from './store';
 
 type Mode = 'signin' | 'signup' | 'reset';
 
+// Google sign-in is hidden until a Google Cloud OAuth client is configured (the prior Google
+// account was abandoned). Email + password is the live method. Flip this on once OAuth is set up in
+// the Supabase dashboard — the wiring (store.signInWithOAuth) is already in place.
+const GOOGLE_AUTH_ENABLED = false;
+
 export function AuthModal({ onClose }: { onClose: () => void }) {
   const enabled = useAuthStore((s) => s.enabled);
   const signIn = useAuthStore((s) => s.signInWithEmail);
@@ -48,7 +53,7 @@ export function AuthModal({ onClose }: { onClose: () => void }) {
         </p>
       ) : (
         <div className="space-y-4">
-          {mode !== 'reset' && (
+          {GOOGLE_AUTH_ENABLED && mode !== 'reset' && (
             <>
               <Button variant="secondary" size="comfortable" block onClick={() => void oauth('google')}>
                 Continue with Google
