@@ -95,18 +95,27 @@ export function AccountSettingsModal({ onClose }: { onClose: () => void }) {
 
   return (
     <Modal onClose={onClose} size="md" icon={<UserRound size={16} />} title="Account">
-      <div className="max-h-[70vh] space-y-6 overflow-y-auto pr-1">
-        {/* Identity */}
-        <div className="flex items-center gap-3">
-          {user?.avatarUrl ? (
-            <img src={user.avatarUrl} alt="" className="h-11 w-11 rounded-full object-cover" />
-          ) : (
-            <span className="flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-[#f7b500] to-[#e09000] text-[16px] font-bold text-[#0a0f16]">{initials}</span>
-          )}
-          <div className="min-w-0">
-            <div className="truncate text-[13px] font-semibold text-slate-100">{user?.displayName ?? 'Your account'}</div>
-            <div className="truncate text-[11px] text-slate-500">{user?.email ?? ''}</div>
+      <div className="max-h-[72vh] space-y-4 overflow-y-auto pr-1">
+        {/* Identity + quick sign out */}
+        <div>
+          <div className="flex items-center gap-2.5">
+            {user?.avatarUrl ? (
+              <img src={user.avatarUrl} alt="" className="h-9 w-9 flex-shrink-0 rounded-full object-cover" />
+            ) : (
+              <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#f7b500] to-[#e09000] text-[14px] font-bold text-[#0a0f16]">{initials}</span>
+            )}
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-[13px] font-semibold text-slate-100">{user?.displayName ?? 'Your account'}</div>
+              <div className="truncate text-[11px] text-slate-500">{user?.email ?? ''}</div>
+            </div>
           </div>
+          <button
+            type="button"
+            onClick={() => void signOut()}
+            className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-md border border-hairline bg-surface-1 py-1.5 text-[11px] font-medium text-slate-300 transition-colors hover:bg-white/5 hover:text-slate-100"
+          >
+            <LogOut size={12} /> Log out
+          </button>
         </div>
 
         {/* Profile */}
@@ -135,7 +144,7 @@ export function AccountSettingsModal({ onClose }: { onClose: () => void }) {
           </div>
           {pwMsg && <p className={`mt-1 text-[11px] ${pwMsg.ok ? 'text-success' : 'text-danger'}`}>{pwMsg.text}</p>}
 
-          <div className="mt-4 flex items-center justify-between rounded-lg border border-hairline bg-surface-1 px-3 py-2.5">
+          <div className="mt-4 flex items-center justify-between rounded-lg border border-hairline bg-surface-1 px-3 py-2">
             <div className="flex items-center gap-2">
               <KeyRound size={13} className="text-slate-500" />
               <div>
@@ -149,7 +158,7 @@ export function AccountSettingsModal({ onClose }: { onClose: () => void }) {
 
         {/* Storage */}
         <Section title="Storage" icon={<HardDrive size={12} />}>
-          <div className="rounded-lg border border-hairline bg-surface-1 px-3 py-2.5">
+          <div className="rounded-lg border border-hairline bg-surface-1 px-3 py-2">
             <div className="flex items-center justify-between text-[11px]">
               <span className="text-slate-300">On this device (local)</span>
               <span className="text-slate-500">{stats ? `${formatBytes(stats.used)} of ${formatBytes(stats.quota)}` : '…'}</span>
@@ -158,7 +167,7 @@ export function AccountSettingsModal({ onClose }: { onClose: () => void }) {
               <div className="h-full rounded-full bg-[#f7b500]" style={{ width: `${usedPct}%` }} />
             </div>
           </div>
-          <div className="mt-2 flex items-center justify-between rounded-lg border border-hairline bg-surface-1 px-3 py-2.5">
+          <div className="mt-2 flex items-center justify-between rounded-lg border border-hairline bg-surface-1 px-3 py-2">
             <div className="flex items-center gap-2">
               <Cloud size={13} className="text-slate-500" />
               <span className="text-[12px] text-slate-300">Cloud storage</span>
@@ -211,7 +220,7 @@ export function AccountSettingsModal({ onClose }: { onClose: () => void }) {
 function Section({ title, icon, children }: { title: string; icon?: React.ReactNode; children: React.ReactNode }) {
   return (
     <section>
-      <h3 className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+      <h3 className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
         {icon}
         {title}
       </h3>
@@ -234,7 +243,7 @@ function DangerRow({ label, desc, cta, icon, armed, busy, onArm, onCancel, onCon
   armed: boolean; busy: boolean; onArm: () => void; onCancel: () => void; onConfirm: () => void;
 }) {
   return (
-    <div className="rounded-lg border border-red-500/25 bg-red-500/[0.04] px-3 py-2.5">
+    <div className="rounded-lg border border-red-500/25 bg-red-500/[0.04] px-3 py-2">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
           <div className="text-[12px] font-medium text-slate-200">{label}</div>
