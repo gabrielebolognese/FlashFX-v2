@@ -17,6 +17,7 @@ import {
   purgeExpiredTrash,
 } from '../services/projects';
 import { exportProjectToFile, importProjectFromFile } from '../services/ffx';
+import { cloudAvailable, pushProject, pushTombstone, recordLocalDelete, syncAll, useCloudSyncStore } from '../services/cloudSync';
 import type { Composition, SceneDocument } from '../../core/types';
 import { usePanelStore } from '../../store/panels';
 import { useEditorStore } from '../../store/editor';
@@ -37,6 +38,8 @@ interface ProjectState {
 
   // Actions
   loadProjects: () => Promise<void>;
+  /** Reconcile local projects with the cloud (best-effort), then refresh the list. No-op offline. */
+  syncCloud: () => Promise<void>;
   createAndOpenProject: (options: CreateProjectOptions) => Promise<void>;
   openProject: (id: string) => Promise<SceneDocument | null>;
   closeProject: () => Promise<void>;
@@ -148,6 +151,11 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     if (card?.previewUrl) URL.revokeObjectURL(card.previewUrl);
     await deleteProject(id);
     set({ projects: projects.filter((p) => p.metadata.id !== id) });
+    // Propagate the delete to the cloud so it doesn't resurrect on the next sync (best-effort).
+    if (cloudAvailable()) {
+      recordLocalDelete(id);
+      pushTombstone(id).catch(() => {});
+    }
   },
 
   toggleStar: async (id) => {
@@ -198,11 +206,31 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     await get().openProject(metadata.id);
   },
 
+  syncCloud: async () => {
+    if (!cloudAvailable()) return;
+    const sync = useCloudSyncStore.getState();
+    if (sync.status === 'syncing') return;
+    sync.setStatus('syncing');
+    try {
+      await syncAll();
+      await get().loadProjects();
+      useCloudSyncStore.getState().markSynced();
+    } catch {
+      useCloudSyncStore.getState().setStatus('error');
+    }
+  },
+
   saveCurrentProject: async () => {
     const { activeProjectId } = get();
     if (!activeProjectId) return;
     // Persist the full multi-composition document (registry + root).
     await saveProjectScene(activeProjectId, useEditorStore.getState().getDocument());
+    // Best-effort cloud backup — never blocks or fails the local save.
+    if (cloudAvailable()) {
+      pushProject(activeProjectId)
+        .then(() => useCloudSyncStore.getState().markSynced())
+        .catch(() => useCloudSyncStore.getState().setStatus('error'));
+    }
   },
 
   savePreview: async (blob) => {

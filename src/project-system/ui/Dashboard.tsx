@@ -38,6 +38,8 @@ export function Dashboard() {
 
   useEffect(() => {
     loadProjects();
+    // Reconcile with the cloud in the background (no-op when offline / signed out).
+    void useProjectStore.getState().syncCloud();
   }, [loadProjects]);
 
   const navItems: { id: NavSection; label: string; icon: React.ReactNode; count?: number }[] = [

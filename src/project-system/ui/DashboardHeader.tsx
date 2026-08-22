@@ -1,10 +1,11 @@
 import { useRef, useState } from 'react';
-import { Search, Plus, ArrowUpDown, Upload } from 'lucide-react';
+import { Search, Plus, ArrowUpDown, Upload, Cloud, CloudOff, Loader2 } from 'lucide-react';
 import { useProjectStore } from '../hooks/useProjectStore';
 import type { SortField } from '../hooks/useProjectStore';
 import { FFX_EXTENSION } from '../services/ffx';
 import { FlashFXLogo } from '../../ui/components/FlashFXLogo';
 import { useAuthStore } from '../../auth/store';
+import { useCloudSyncStore } from '../services/cloudSync';
 import { AccountSettingsModal } from '../../auth/AccountSettingsModal';
 
 interface Props {
@@ -119,6 +120,9 @@ export function DashboardHeader({ onCreateNew, title = 'Recents', showSort = tru
         <span>New</span>
       </button>
 
+      {/* Cloud sync status */}
+      {authStatus === 'signed-in' && <CloudStatus />}
+
       {/* Account avatar → settings */}
       {authStatus === 'signed-in' && (
         <button
@@ -131,5 +135,23 @@ export function DashboardHeader({ onCreateNew, title = 'Recents', showSort = tru
       )}
       {showAccount && <AccountSettingsModal onClose={() => setShowAccount(false)} />}
     </header>
+  );
+}
+
+function CloudStatus() {
+  const status = useCloudSyncStore((s) => s.status);
+  const lastSyncedAt = useCloudSyncStore((s) => s.lastSyncedAt);
+  const title =
+    status === 'syncing' ? 'Syncing to cloud…'
+    : status === 'error' ? 'Cloud sync unavailable — your work is saved on this device'
+    : lastSyncedAt ? 'Projects synced to your account'
+    : 'Cloud sync';
+  return (
+    <span title={title} className="flex h-7 w-7 items-center justify-center">
+      {status === 'syncing' ? <Loader2 size={13} className="animate-spin text-slate-400" />
+        : status === 'error' ? <CloudOff size={13} className="text-amber-500/80" />
+        : status === 'synced' ? <Cloud size={13} className="text-emerald-500/80" />
+        : <Cloud size={13} className="text-slate-600" />}
+    </span>
   );
 }
