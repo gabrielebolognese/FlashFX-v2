@@ -39,14 +39,19 @@ export async function startCheckout(): Promise<CheckoutResult> {
   }
 }
 
-/** Read the account's plan from the webhook-written subscription source into the plan store.
- *  Called on sign-in; a no-op (stays 'free') until billing is connected. */
+/** Read the account's plan from the webhook-written `subscriptions` row into the plan store.
+ *  Called on sign-in. Decoupled from BILLING_ENABLED (which only gates buying): the moment the
+ *  webhook writes an active Pro subscription, the user gets Pro. Missing table / no row → 'free'. */
 export async function refreshPlan(): Promise<void> {
-  if (!supabase || !BILLING_ENABLED) { usePlanStore.getState().setPlan('free'); return; }
+  const setPlan = usePlanStore.getState().setPlan;
   const userId = useAuthStore.getState().user?.id;
-  if (!userId) { usePlanStore.getState().setPlan('free'); return; }
-  // TODO(paddle): read the subscription row the webhook maintains, e.g.
-  //   const { data } = await supabase.from('subscriptions').select('status').eq('user_id', userId).maybeSingle();
-  //   usePlanStore.getState().setPlan(data?.status === 'active' ? 'pro' : 'free');
-  usePlanStore.getState().setPlan('free');
+  if (!supabase || !userId) { setPlan('free'); return; }
+  try {
+    const { data, error } = await supabase.from('subscriptions').select('plan, status').eq('user_id', userId).maybeSingle();
+    if (error || !data) { setPlan('free'); return; }
+    const active = data.status === 'active' || data.status === 'trialing';
+    setPlan(active && data.plan === 'pro' ? 'pro' : 'free');
+  } catch {
+    setPlan('free');
+  }
 }
