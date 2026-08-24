@@ -572,7 +572,9 @@ function expandTextGlyphs(
     }
     advPrev = advNext;
   }
-  return stamps.length > 0 ? stamps : null;
+  // Return the stamp list even when empty (every glyph currently hidden) — an empty result must draw
+  // nothing, NOT fall back to rendering the whole string. null is reserved for "can't expand" above.
+  return stamps;
 }
 
 function resolveTextLayer(layer: TextLayer, frame: number, getStyle?: StyleLookup): ResolvedText {
