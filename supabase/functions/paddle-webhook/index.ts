@@ -80,12 +80,12 @@ Deno.serve(async (req: Request) => {
   if (!userId) return new Response("no user mapping", { status: 200 });
 
   const status = typeof data["status"] === "string" ? (data["status"] as string) : "inactive";
-  const active = status === "active" || status === "trialing";
+  const isActive = status === "active" || status === "trialing";
 
   if (type === "subscription.created" || type === "subscription.updated") {
     await upsertSubscription({
       user_id: userId,
-      plan: active ? "pro" : "free",
+      plan: isActive ? "pro" : "free",
       status,
       paddle_customer_id: data["customer_id"] ?? null,
       paddle_subscription_id: data["id"] ?? null,
