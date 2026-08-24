@@ -26,7 +26,8 @@ import type {
   Track,
 } from './types';
 import type { ResolvedMotionBlur, ResolvedShadow, ResolvedBlur, LayerShadow, LayerGlow, LayerBlur, ResolvedGlow } from './types';
-import { measureText } from '../engine/textAtlas';
+import { measureText, getTextLayout, measureAdvance } from '../engine/textAtlas';
+import { accumulateGlyphDeltas, type ResolvedTextAnimator } from './textAnimator';
 import { evaluateMotionPathAtFrame } from './motionPath';
 import { computeInstanceTransforms, selectClonerRenderPath, buildDataBoundSources } from '../cloner';
 import type { ClonerLayer } from '../cloner/types';
@@ -501,6 +502,77 @@ function composeTransforms(parent: ResolvedTransform, child: ResolvedTransform):
     rotationX: parent.rotationX + child.rotationX,
     rotationY: parent.rotationY + child.rotationY,
   };
+}
+
+// Per-character text animation: expand a text layer with active animators into per-glyph stamps —
+// mirrors the cloner, so the renderer draws each glyph as a normal 1-char text quad (ZERO renderer
+// changes). SINGLE VISUAL LINE ONLY for now (no hard breaks / wrapping); multi-line falls back to a
+// normal single render (returns null) so placement is never wrong. BROWSER-GATED: glyph x/y come
+// from canvas measurement (OffscreenCanvas) and need an in-browser eyeball; the per-glyph delta math
+// is unit-tested (scripts/verify-textanimator.mjs).
+function expandTextGlyphs(
+  layer: TextLayer,
+  baseText: ResolvedText,
+  world: ResolvedTransform,
+  frame: number,
+  common: Pick<ResolvedLayer, 'visible' | 'blendMode' | 'motionBlur' | 'shadow' | 'glow' | 'blur' | 'layerType'>,
+): ResolvedLayer[] | null {
+  const active = (layer.animators ?? []).filter((a) => a.enabled);
+  const content = baseText.content;
+  if (active.length === 0 || !content) return null;
+
+  const layout = getTextLayout(baseText);
+  // Only the clean single-line case: bail (normal render) on hard breaks or word-wrap.
+  if (layout.lines.length !== 1 || content.includes('\n') || layout.lines[0] !== content) return null;
+
+  const resolvedAnims: ResolvedTextAnimator[] = active.map((a) => ({
+    splitMode: a.splitMode,
+    selector: a.offset ? { ...a.selector, offset: evaluateNumber(a.offset, frame) } : a.selector,
+    delta: a.delta,
+  }));
+  const deltas = accumulateGlyphDeltas(content, resolvedAnims);
+
+  const { canvasWidth, padding } = layout;
+  const lineW = measureAdvance(baseText, content, content.length);
+  const lineStartX =
+    baseText.textAlign === 'center' ? (canvasWidth - lineW) / 2
+    : baseText.textAlign === 'right' ? canvasWidth - padding - lineW
+    : padding;
+  const halfFont = baseText.fontSize / 2;
+
+  const stamps: ResolvedLayer[] = [];
+  let advPrev = 0;
+  for (let j = 0; j < content.length; j++) {
+    const advNext = measureAdvance(baseText, content, j + 1);
+    const ch = content[j];
+    const d = deltas[j];
+    // Skip whitespace (no glyph) and fully-transparent glyphs (cheap — a reveal hides many).
+    if (ch.trim() !== '' && d.opacity > 0.001) {
+      const stampText: ResolvedText = { ...baseText, content: ch, measuredWidth: 0, measuredHeight: 0 };
+      const m = measureText(stampText);
+      stampText.measuredWidth = m.width;
+      stampText.measuredHeight = m.height;
+      const centerX = lineStartX + advPrev + (advNext - advPrev) / 2;
+      // Offset from the layer's pivot (anchor value cancels: the whole-text and stamp renders share
+      // the same pivot). Scale/rotate pivot at the glyph centre. y-centre ≈ line top + fontSize/2.
+      const child: ResolvedTransform = {
+        positionX: centerX - world.anchorX + d.tx,
+        positionY: padding + halfFont - world.anchorY + d.ty,
+        rotation: d.rotation,
+        scaleX: d.sx,
+        scaleY: d.sy,
+        anchorX: m.width / 2,
+        anchorY: padding + halfFont,
+        opacity: d.opacity,
+        positionZ: 0,
+        rotationX: 0,
+        rotationY: 0,
+      };
+      stamps.push({ ...common, id: `${layer.id}#g${j}`, transform: composeTransforms(world, child), text: stampText });
+    }
+    advPrev = advNext;
+  }
+  return stamps.length > 0 ? stamps : null;
 }
 
 function resolveTextLayer(layer: TextLayer, frame: number, getStyle?: StyleLookup): ResolvedText {
@@ -1087,20 +1159,21 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
 
       if (layer.type === 'text') {
         const resolvedText = resolveTextLayer(layer, frame, getStyle);
-        resolvedLayers.push({
-          id: layer.id,
-          visible: true,
-          blendMode: layer.blendMode,
-          transform: worldTransform,
-          text: resolvedText,
-          mask: resolveMask(layer.masks, frame),
-          masks: resolveMasks(layer.masks, frame),
-          motionBlur,
-          shadow,
-          glow,
-          blur,
-          layerType: 'text',
-        });
+        const common = { visible: true as const, blendMode: layer.blendMode, motionBlur, shadow, glow, blur, layerType: 'text' as const };
+        // Per-character animators expand into per-glyph stamps (single-line); plain text is untouched.
+        const glyphStamps = expandTextGlyphs(layer, resolvedText, worldTransform, frame, common);
+        if (glyphStamps) {
+          resolvedLayers.push(...glyphStamps);
+        } else {
+          resolvedLayers.push({
+            id: layer.id,
+            transform: worldTransform,
+            text: resolvedText,
+            mask: resolveMask(layer.masks, frame),
+            masks: resolveMasks(layer.masks, frame),
+            ...common,
+          });
+        }
       } else if (layer.type === 'video') {
         const resolvedVideo = resolveVideoLayer(layer, frame, settings.frameRate);
         if (resolvedVideo) {
