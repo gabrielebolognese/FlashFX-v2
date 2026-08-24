@@ -11,6 +11,9 @@ import type { LayerConstraints } from './reframe';
 // type-only cycle has no runtime dependency.
 import type { Mat4 } from './mat4';
 import type { ResolvedCamera } from './camera3d';
+// Per-character text animation reuses the pure range-selector primitive (type-only import; the
+// primitive imports nothing back, so there is no runtime cycle).
+import type { RangeSelectorConfig } from '../text/rangeSelector';
 
 export type Vec2 = [number, number];
 export type Vec4 = [number, number, number, number];
@@ -393,6 +396,35 @@ export interface ShapeLayer {
   outPoint: number;
 }
 
+export type TextSplitMode = 'character' | 'word' | 'line';
+
+/** Per-unit property deltas an animator applies, scaled by the selector weight (value = base + delta·weight). */
+export interface TextAnimatorDelta {
+  /** Opacity multiplier delta: opacity *= (1 + this·weight). -1 → fully transparent at full weight. */
+  opacity?: number;
+  /** Position offset in px at full weight. */
+  position?: Vec2;
+  /** Fractional scale delta per axis: scale *= (1 + this·weight). */
+  scale?: Vec2;
+  /** Rotation in degrees at full weight. */
+  rotation?: number;
+}
+
+/**
+ * A text animator: a range selector (reused from src/text/rangeSelector) over a split unit
+ * (character/word/line) plus the property deltas it drives. Keyframe `offset` for a time-based
+ * reveal — when present it overrides selector.offset per frame. Multiple animators stack
+ * (positions/rotations add; scale/opacity multiply).
+ */
+export interface TextAnimator {
+  enabled: boolean;
+  splitMode: TextSplitMode;
+  selector: RangeSelectorConfig;
+  /** Optional keyframed override of selector.offset (the reveal driver). */
+  offset?: AnimatableProperty;
+  delta: TextAnimatorDelta;
+}
+
 export interface TextLayer {
   id: string;
   type: 'text';
@@ -414,6 +446,8 @@ export interface TextLayer {
   content: TextContent;
   layoutConfig: TextLayoutConfig;
   animOverrides: TextAnimatableOverrides;
+  /** Per-character animators (range-selector driven). Empty/absent → plain text (unchanged path). */
+  animators?: TextAnimator[];
   /** M21 — linked color styles for text fill/stroke. */
   fillStyleId?: string;
   strokeStyleId?: string;

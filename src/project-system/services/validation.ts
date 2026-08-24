@@ -19,6 +19,7 @@ import type {
   ColorWheelValues,
   TextContent,
   TextLayoutConfig,
+  TextAnimator,
   TextAnimatableOverrides,
   TextSpanStyle,
   Track,
@@ -38,6 +39,25 @@ import type { LayerConstraints } from '../../core/reframe';
 
 function isObject(v: unknown): v is Record<string, unknown> {
   return v !== null && typeof v === 'object' && !Array.isArray(v);
+}
+
+// Preserve text animators through save/load (the text case rebuilds via a whitelist). Lenient: keeps
+// well-formed entries (a selector + delta object), coerces enabled/splitMode, drops garbage.
+function ensureTextAnimators(raw: unknown): TextAnimator[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: TextAnimator[] = [];
+  for (const a of raw) {
+    if (!isObject(a) || !isObject(a.selector) || !isObject(a.delta)) continue;
+    const splitMode = a.splitMode === 'word' || a.splitMode === 'line' ? a.splitMode : 'character';
+    out.push({
+      enabled: typeof a.enabled === 'boolean' ? a.enabled : true,
+      splitMode,
+      selector: a.selector as unknown as TextAnimator['selector'],
+      delta: a.delta as unknown as TextAnimator['delta'],
+      ...(isObject(a.offset) ? { offset: a.offset as unknown as TextAnimator['offset'] } : {}),
+    });
+  }
+  return out.length ? out : undefined;
 }
 
 function ensureAnimatableProperty(val: unknown, name: string, valueType: 'number' | 'vec2', defaultValue: number | [number, number]): AnimatableProperty {
@@ -379,6 +399,7 @@ function validateLayer(raw: unknown): Layer | null {
         animOverrides = ensureTextAnimOverrides(undefined);
       }
 
+      const animators = ensureTextAnimators(r.animators);
       return {
         ...baseFields,
         type: 'text',
@@ -388,6 +409,7 @@ function validateLayer(raw: unknown): Layer | null {
         // M21 — preserve linked-style refs.
         ...(typeof r.fillStyleId === 'string' ? { fillStyleId: r.fillStyleId } : {}),
         ...(typeof r.strokeStyleId === 'string' ? { strokeStyleId: r.strokeStyleId } : {}),
+        ...(animators ? { animators } : {}),
       } as TextLayer;
     }
     case 'group': {
