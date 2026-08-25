@@ -198,28 +198,26 @@ fn fs(in: VertexOutput) -> @location(0) vec4f {
 `;
 
 const MASK_WGSL = /* wgsl */ `
+// N-pointed star SDF (mask variant — identical math to starSDF). Inside < 0.
 fn mask_starSDF(p: vec2f, points: f32, outerR: f32, innerR: f32) -> f32 {
-  let n = max(points, 3.0);
-  let an = 3.14159265 / n;
-  let en = 3.14159265 / n;
-  let acs = vec2f(cos(an), sin(an));
-  let ecs = vec2f(cos(en), sin(en));
-  var q = vec2f(abs(p.x), p.y);
-  let angle = atan2(q.y, q.x);
-  let sector = floor(angle / (2.0 * an) + 0.5);
-  let sectorAngle = sector * 2.0 * an;
-  let cosA = cos(sectorAngle);
-  let sinA = sin(sectorAngle);
-  q = vec2f(q.x * cosA + q.y * sinA, -q.x * sinA + q.y * cosA);
-  q = q - vec2f(outerR, 0.0);
-  let innerDir = vec2f(innerR * ecs.x - outerR, innerR * ecs.y);
-  let edgeDir = normalize(innerDir);
-  let proj = dot(q, edgeDir);
-  let clamped = clamp(proj, 0.0, length(innerDir));
-  let closest = edgeDir * clamped;
-  let d = length(q - closest);
-  let side = sign(q.x * edgeDir.y - q.y * edgeDir.x);
-  return d * side;
+  let pi = 3.14159265;
+  let n = max(points, 2.0);
+  let an = pi / n;
+  let R = max(outerR, 1e-4);
+  let ri = clamp(innerR, 1e-4, R);
+  var a = atan2(p.y, p.x) + pi * 0.5;
+  a = a - 2.0 * an * floor(a / (2.0 * an) + 0.5);
+  a = abs(a);
+  let r = length(p);
+  let q = vec2f(r * cos(a), r * sin(a));
+  let vOut = vec2f(R, 0.0);
+  let vIn = vec2f(ri * cos(an), ri * sin(an));
+  let e = vIn - vOut;
+  let w = q - vOut;
+  let t = clamp(dot(w, e) / dot(e, e), 0.0, 1.0);
+  let d = length(w - e * t);
+  let cr = e.x * w.y - e.y * w.x;
+  return select(d, -d, cr > 0.0);
 }
 
 fn mask_ngonSDF(p: vec2f, r: f32, n: f32) -> f32 {
@@ -392,31 +390,32 @@ fn circleSDF(p: vec2f, r: f32) -> f32 {
   return length(p) - r;
 }
 
+// N-pointed star SDF. Reflect the point into one point-sector, then measure the signed distance to
+// that point's edge — the segment from the outer tip to the adjacent inner vertex. Inside < 0.
 fn starSDF(p: vec2f, points: f32, outerR: f32, innerR: f32) -> f32 {
-  let n = max(points, 3.0);
-  let an = 3.14159265 / n;
-  let en = 3.14159265 / n;
-  let acs = vec2f(cos(an), sin(an));
-  let ecs = vec2f(cos(en), sin(en));
+  let pi = 3.14159265;
+  let n = max(points, 2.0);
+  let an = pi / n;                 // half of a point's angular span
+  let R = max(outerR, 1e-4);
+  let ri = clamp(innerR, 1e-4, R);
 
-  var q = vec2f(abs(p.x), p.y);
-  let angle = atan2(q.y, q.x);
-  let sector = floor(angle / (2.0 * an) + 0.5);
-  let sectorAngle = sector * 2.0 * an;
-  let cosA = cos(sectorAngle);
-  let sinA = sin(sectorAngle);
-  q = vec2f(q.x * cosA + q.y * sinA, -q.x * sinA + q.y * cosA);
+  // Tips sit at -pi/2 + k*(2*an) (top first, matching the vector geometry). Shift so tips are at
+  // multiples of 2*an, fold to [-an, an], mirror to [0, an].
+  var a = atan2(p.y, p.x) + pi * 0.5;
+  a = a - 2.0 * an * floor(a / (2.0 * an) + 0.5);
+  a = abs(a);
+  let r = length(p);
+  let q = vec2f(r * cos(a), r * sin(a));   // tip along +x, edge sweeps toward +y
 
-  q = q - vec2f(outerR, 0.0);
-  let dir = normalize(vec2f(-acs.y, acs.x));
-  let innerDir = vec2f(innerR * ecs.x - outerR, innerR * ecs.y);
-  let edgeDir = normalize(innerDir);
-  let proj = dot(q, edgeDir);
-  let clamped = clamp(proj, 0.0, length(innerDir));
-  let closest = edgeDir * clamped;
-  let d = length(q - closest);
-  let side = sign(q.x * edgeDir.y - q.y * edgeDir.x);
-  return d * side;
+  let vOut = vec2f(R, 0.0);                 // outer tip
+  let vIn = vec2f(ri * cos(an), ri * sin(an)); // adjacent inner vertex (on the sector boundary)
+  let e = vIn - vOut;
+  let w = q - vOut;
+  let t = clamp(dot(w, e) / dot(e, e), 0.0, 1.0);
+  let d = length(w - e * t);
+  // Interior lies to the left of the tip→inner edge; make it negative.
+  let cr = e.x * w.y - e.y * w.x;
+  return select(d, -d, cr > 0.0);
 }
 
 ${MASK_WGSL}
