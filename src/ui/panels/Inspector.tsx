@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useInspectorStore, type InspectorTab } from '../../store/inspector';
 import { DEFAULT_SHADOW, DEFAULT_GLOW, DEFAULT_BLUR } from '../../core/effectDefaults';
-import { TEXT_ANIMATOR_PRESETS } from '../../core/textAnimatorPresets';
+import { TextAnimatorsSection } from './TextAnimatorEditor';
 import { useEditorStore } from '../../store/editor';
 import { useTimelineStore } from '../../store/timeline';
 import { useMotionPathStore } from '../../store/motionPath';
@@ -547,7 +547,7 @@ function InspectorTabContent({ tab, layer }: { tab: InspectorTab; layer: Layer }
             addKeyframe={addKeyframe}
             hasKeyframeAt={hasKeyframeAt}
           />
-          <TextAnimators layer={layer as TextLayer} updateLayerProperty={updateLayerProperty} />
+          <TextAnimatorsSection layer={layer as TextLayer} updateLayerProperty={updateLayerProperty} />
         </>
       )}
 
@@ -1660,47 +1660,6 @@ function TextMotionControlSection({ layer }: { layer: TextLayer }) {
         </button>
       </div>
     </Section>
-  );
-}
-
-// Minimal per-character animator controls: add a preset, toggle/remove animators. The full editor
-// (selector + delta controls) is a later pass; presets keyframe the reveal so it plays on scrub.
-function TextAnimators({ layer, updateLayerProperty }: { layer: TextLayer; updateLayerProperty: (layerId: string, path: string, value: unknown) => void }) {
-  const animators = layer.animators ?? [];
-  const set = (next: unknown) => updateLayerProperty(layer.id, 'animators', next);
-  return (
-    <div className="border-t border-hairline px-3 py-2.5">
-      <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">Animators</div>
-      {animators.length === 0 && (
-        <p className="mb-2 text-[10.5px] leading-snug text-slate-600">Per-character animation (single-line text).</p>
-      )}
-      <div className="space-y-1">
-        {animators.map((a, i) => (
-          <div key={i} className="flex items-center gap-2 rounded border border-hairline bg-surface-1 px-2 py-1">
-            <button
-              type="button"
-              title="Enable / disable"
-              onClick={() => set(animators.map((x, j) => (j === i ? { ...x, enabled: !x.enabled } : x)))}
-              className={`h-3 w-3 flex-shrink-0 rounded-sm border ${a.enabled ? 'border-accent bg-accent' : 'border-hairline'}`}
-            />
-            <span className="flex-1 truncate text-[11px] text-slate-300">Animator {i + 1} · {a.splitMode}</span>
-            <button type="button" title="Remove" onClick={() => set(animators.filter((_, j) => j !== i))} className="text-[12px] leading-none text-slate-500 hover:text-danger">✕</button>
-          </div>
-        ))}
-      </div>
-      <div className="mt-2 flex flex-wrap gap-1.5">
-        {TEXT_ANIMATOR_PRESETS.map((p) => (
-          <button
-            key={p.id}
-            type="button"
-            onClick={() => set([...animators, p.build(0, 30)])}
-            className="rounded-md border border-hairline bg-surface-1 px-2 py-1 text-[10.5px] text-slate-300 transition-colors hover:bg-white/5 hover:text-slate-100"
-          >
-            + {p.label}
-          </button>
-        ))}
-      </div>
-    </div>
   );
 }
 
