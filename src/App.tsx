@@ -8,7 +8,7 @@ import { useTimelineStore } from './store/timeline';
 import { usePanelStore } from './store/panels';
 import { ProjectApp, useProjectStore } from './project-system';
 import { useAnimationBuilderStore } from './animation-builder';
-import { ArrowLeft, LayoutGrid, Settings2, GraduationCap, Sparkles, Download, ListChecks } from 'lucide-react';
+import { ArrowLeft, LayoutGrid, Settings2, GraduationCap, Sparkles, Download, ListChecks, Maximize2 } from 'lucide-react';
 import { ExportModal } from './ui/panels/ExportModal';
 import { AiChatPanel } from './ui/panels/AiChatPanel';
 import { TasksPanel } from './ui/panels/TasksPanel';
@@ -71,6 +71,7 @@ function Editor() {
   const toggleAiChat = usePanelStore((s) => s.toggleAiChat);
   const tasksOpen = usePanelStore((s) => s.tasksOpen);
   const toggleTasks = usePanelStore((s) => s.toggleTasks);
+  const uiMode = usePanelStore((s) => s.uiMode);
   const [showExport, setShowExport] = useState(false);
   const aiEditorWorkspace = usePanelStore((s) => s.editorWorkspace);
   // AI chat works in every mode except preview/review (that mode is a full-screen player).
@@ -458,10 +459,14 @@ function Editor() {
           <ArrowLeft size={14} />
           <span className="text-[11px] font-medium">Projects</span>
         </button>
-        <div className="flex-1 min-w-0">
-          <Toolbar />
-        </div>
-        {workspace === 'editor' && <SceneSwitcher />}
+        {uiMode === 'pro' ? (
+          <div className="flex-1 min-w-0">
+            <Toolbar />
+          </div>
+        ) : (
+          <div className="flex-1 min-w-0" />
+        )}
+        {workspace === 'editor' && uiMode === 'pro' && <SceneSwitcher />}
         {/* Animation Builder mode toggle — HIDDEN from the public UI (the builder is not
             production-ready). The BuilderLayout + setWorkspace path is kept intact so it can be
             re-exposed by restoring this button. */}
@@ -477,18 +482,20 @@ function Editor() {
           <Sparkles size={13} />
           <span className="text-[11px] font-medium">AI</span>
         </button>
-        <button
-          onClick={toggleTasks}
-          className={`flex items-center gap-1.5 px-3 transition-colors border-l border-hairline ${
-            tasksOpen
-              ? 'bg-surface-4 text-primary border-b-2 border-b-accent'
-              : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.03]'
-          }`}
-          title="Toggle Tasks log"
-        >
-          <ListChecks size={13} />
-          <span className="text-[11px] font-medium">Tasks</span>
-        </button>
+        {uiMode === 'pro' && (
+          <button
+            onClick={toggleTasks}
+            className={`flex items-center gap-1.5 px-3 transition-colors border-l border-hairline ${
+              tasksOpen
+                ? 'bg-surface-4 text-primary border-b-2 border-b-accent'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.03]'
+            }`}
+            title="Toggle Tasks log"
+          >
+            <ListChecks size={13} />
+            <span className="text-[11px] font-medium">Tasks</span>
+          </button>
+        )}
         {/* Prominent single Export entry point (replaces the old Render + Export toolbar buttons). */}
         {workspace === 'editor' && (
           <button
@@ -535,6 +542,8 @@ function Editor() {
 function PanelsMenu() {
   const panels = usePanelStore((s) => s.panels);
   const toggleVisible = usePanelStore((s) => s.toggleVisible);
+  const uiMode = usePanelStore((s) => s.uiMode);
+  const toggleUiMode = usePanelStore((s) => s.toggleUiMode);
   const openSettings = useSettingsStore((s) => s.openSettings);
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -566,17 +575,43 @@ function PanelsMenu() {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-1 z-50 bg-surface-2 border border-hairline rounded-lg shadow-overlay py-1 min-w-[160px]">
-          {items.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => toggleVisible(item.id)}
-              className="w-full px-3 py-1.5 flex items-center justify-between text-[11px] text-slate-300 hover:bg-white/[0.04] transition-colors"
-            >
-              <span>{item.label}</span>
-              <span className={`w-2 h-2 rounded-full ${panels[item.id].visible ? 'bg-accent' : 'bg-slate-700'}`} />
-            </button>
-          ))}
+        <div className="absolute right-0 top-full mt-1 z-50 bg-surface-2 border border-hairline rounded-lg shadow-overlay py-1 min-w-[180px]">
+          {/* Starter ⇄ Pro mode — the primary control; panel toggles below only apply in Pro. */}
+          <button
+            onClick={() => { toggleUiMode(); setOpen(false); }}
+            className="w-full px-3 py-1.5 flex items-center gap-2 text-[11px] font-medium text-slate-100 hover:bg-white/[0.04] transition-colors"
+          >
+            <Maximize2 size={12} className="text-accent" />
+            <span>{uiMode === 'starter' ? 'Switch to Full Editor' : 'Switch to Starter Mode'}</span>
+          </button>
+
+          {uiMode === 'pro' && (
+            <>
+              <div className="border-t border-hairline my-1" />
+              {items.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => toggleVisible(item.id)}
+                  className="w-full px-3 py-1.5 flex items-center justify-between text-[11px] text-slate-300 hover:bg-white/[0.04] transition-colors"
+                >
+                  <span>{item.label}</span>
+                  <span className={`w-2 h-2 rounded-full ${panels[item.id].visible ? 'bg-accent' : 'bg-slate-700'}`} />
+                </button>
+              ))}
+              <button
+                onClick={() => {
+                  items.forEach((item) => {
+                    if (!panels[item.id].visible) toggleVisible(item.id);
+                  });
+                  setOpen(false);
+                }}
+                className="w-full px-3 py-1.5 text-[11px] text-accent hover:bg-white/[0.04] transition-colors text-left"
+              >
+                Show All Panels
+              </button>
+            </>
+          )}
+
           <div className="border-t border-hairline my-1" />
           <button
             onClick={() => { openSettings(); setOpen(false); }}
@@ -584,18 +619,6 @@ function PanelsMenu() {
           >
             <Settings2 size={12} />
             <span>Settings</span>
-          </button>
-          <div className="border-t border-hairline my-1" />
-          <button
-            onClick={() => {
-              items.forEach((item) => {
-                if (!panels[item.id].visible) toggleVisible(item.id);
-              });
-              setOpen(false);
-            }}
-            className="w-full px-3 py-1.5 text-[11px] text-accent hover:bg-white/[0.04] transition-colors text-left"
-          >
-            Show All Panels
           </button>
         </div>
       )}

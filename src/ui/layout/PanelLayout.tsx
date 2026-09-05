@@ -25,6 +25,34 @@ export function PanelLayout() {
   const panels = usePanelStore((s) => s.panels);
   const workspace = usePanelStore((s) => s.editorWorkspace);
   const videoFormat = usePanelStore((s) => s.videoFormat);
+  const uiMode = usePanelStore((s) => s.uiMode);
+
+  // Starter mode: a minimal canvas (≈3/4) + inspector (1/4), no media pool or timeline. This takes
+  // precedence over every workspace/format layout — the simple default for newcomers.
+  if (uiMode === 'starter') {
+    return (
+      <div className="flex-1 flex flex-row min-h-0 min-w-0 overflow-hidden bg-surface-sunken">
+        <div data-tutorial-id="canvas" className="flex-1 min-h-0 min-w-0 flex flex-col bg-[#050d18]">
+          <CanvasToolbar />
+          <PanelErrorBoundary name="Viewport">
+            <Viewport />
+          </PanelErrorBoundary>
+          <PreviewControls />
+        </div>
+        <div
+          data-tutorial-id="inspector"
+          className="flex-shrink-0 min-h-0 overflow-hidden border-l border-hairline"
+          style={{ width: '25%', minWidth: 240 }}
+        >
+          <PanelContainer id="properties" title="Properties">
+            <PanelErrorBoundary name="Inspector">
+              <Inspector />
+            </PanelErrorBoundary>
+          </PanelContainer>
+        </div>
+      </div>
+    );
+  }
 
   if (videoFormat === 'short') {
     if (workspace === 'review') return <ShortFormReviewLayout />;
