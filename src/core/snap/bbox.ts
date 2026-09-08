@@ -1,4 +1,4 @@
-import type { Layer, TextLayer, ShapeLayer, VideoLayer, ImageLayer, Vec2, AnimatableProperty } from '../types';
+import type { Layer, TextLayer, ShapeLayer, VideoLayer, ImageLayer, Vec2, AnimatableProperty, GenerativePatternLayer, FieldSampledLayer } from '../types';
 import { evaluateVec2, evaluateNumber } from '../interpolation';
 import { getDescendants } from '../sceneGraph';
 import { measureText } from '../../engine/textAtlas';
@@ -103,6 +103,19 @@ function getLayerSize(layer: Layer, layers: Layer[], frame: number): { w: number
       measuredWidth: 0, measuredHeight: 0,
     });
     return { w: measured.width * Math.abs(scale[0]), h: measured.height * Math.abs(scale[1]) };
+  }
+  if (layer.type === 'generativePattern') {
+    const gp = layer as GenerativePatternLayer;
+    return { w: evaluateNumber(gp.width, frame) * Math.abs(scale[0]), h: evaluateNumber(gp.height, frame) * Math.abs(scale[1]) };
+  }
+  if (layer.type === 'fieldSampled') {
+    let cw = 600, ch = 800;
+    try {
+      const cfg = JSON.parse((layer as FieldSampledLayer).fieldSampled.configJSON) as { canvasWidth?: number; canvasHeight?: number };
+      if (Number.isFinite(cfg?.canvasWidth) && (cfg.canvasWidth as number) > 0) cw = cfg.canvasWidth as number;
+      if (Number.isFinite(cfg?.canvasHeight) && (cfg.canvasHeight as number) > 0) ch = cfg.canvasHeight as number;
+    } catch { /* keep defaults */ }
+    return { w: cw * Math.abs(scale[0]), h: ch * Math.abs(scale[1]) };
   }
   return { w: 0, h: 0 };
 }

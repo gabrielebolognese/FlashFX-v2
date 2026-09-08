@@ -1327,6 +1327,14 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
         } catch { /* skip on parse error */ }
       } else if (layer.type === 'fieldSampled') {
         const localFrame = frame - layer.inPoint;
+        // The field's on-canvas size lives in the serialized config — parse it (with the factory
+        // default as fallback) so the renderer sizes the quad to the sample, not the whole comp.
+        let canvasWidth = 600, canvasHeight = 800;
+        try {
+          const cfg = JSON.parse(layer.fieldSampled.configJSON) as { canvasWidth?: number; canvasHeight?: number };
+          if (Number.isFinite(cfg?.canvasWidth) && (cfg.canvasWidth as number) > 0) canvasWidth = cfg.canvasWidth as number;
+          if (Number.isFinite(cfg?.canvasHeight) && (cfg.canvasHeight as number) > 0) canvasHeight = cfg.canvasHeight as number;
+        } catch { /* keep defaults */ }
         resolvedLayers.push({
           id: layer.id,
           visible: true,
@@ -1335,6 +1343,8 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
           fieldSampled: {
             configJSON: layer.fieldSampled.configJSON,
             localFrame,
+            canvasWidth,
+            canvasHeight,
           },
           layerType: 'fieldSampled',
         });

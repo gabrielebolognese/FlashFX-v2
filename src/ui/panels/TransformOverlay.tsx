@@ -6,7 +6,9 @@ import { useTimelineStore } from '../../store/timeline';
 import { useHistoryStore } from '../../store/history';
 import { useGridStore, generateGridLines } from '../../store/grid';
 import { useViewportNavStore } from '../../store/viewportNav';
-import type { ShapeLayer, TextLayer, GroupLayer, VideoLayer, ImageLayer, Layer, Vec2, ShapeGeometry, LayoutObjectLayer, LayoutContainerLayer } from '../../core/types';
+import type { ShapeLayer, TextLayer, GroupLayer, VideoLayer, ImageLayer, Layer, Vec2, ShapeGeometry, LayoutObjectLayer, LayoutContainerLayer, GenerativePatternLayer, FieldSampledLayer } from '../../core/types';
+import type { ClonerLayer, InstanceTransform } from '../../cloner/types';
+import { computeInstanceTransforms } from '../../cloner/distribution';
 import { evaluateProperty, evaluateNumber, evaluateVec2 } from '../../core/interpolation';
 import { measureText } from '../../engine/textAtlas';
 import { computeGroupBounds, getWorldPosition } from '../../core/sceneGraph';
@@ -104,6 +106,38 @@ function useElementSize(ref: React.RefObject<HTMLDivElement | null>) {
   return size;
 }
 
+// Field-sampled layers store their on-canvas size (the "sample" size) inside the serialized field
+// config, not as layer fields. Parse it defensively — a broken/legacy config falls back to the
+// factory default (600×800) so the gizmo box never collapses to zero.
+function fieldSampledSize(layer: FieldSampledLayer): { w: number; h: number } {
+  try {
+    const cfg = JSON.parse(layer.fieldSampled.configJSON) as { canvasWidth?: number; canvasHeight?: number };
+    const w = Number(cfg?.canvasWidth), h = Number(cfg?.canvasHeight);
+    return { w: Number.isFinite(w) && w > 0 ? w : 600, h: Number.isFinite(h) && h > 0 ? h : 800 };
+  } catch { return { w: 600, h: 800 }; }
+}
+
+// A cloner has no intrinsic size — its extent is emergent from the distribution. Compute the local
+// AABB of the actual instance positions so the selection box wraps the clones (and can be grabbed to
+// move/scale the whole set). Pure grid/radial resolve without a ctx; path/field distributions need
+// runtime context we don't have here and fall back to a nominal box. Padded so the box clears the
+// outermost instance centres (each clone has its own footprint the position-AABB doesn't include).
+function clonerLocalBounds(layer: ClonerLayer, frame: number): { w: number; h: number } {
+  let instances: InstanceTransform[] = [];
+  try { instances = computeInstanceTransforms(layer, frame); } catch { instances = []; }
+  if (!instances.length) return { w: 200, h: 200 };
+  // Symmetric extent around the cloner origin (transform.position): the box stays centred on the
+  // origin, so move/resize write transform.position/scale cleanly, while still covering the furthest
+  // instance even for an off-centre distribution.
+  let halfW = 0, halfH = 0;
+  for (const it of instances) {
+    if (Number.isFinite(it.position.x)) halfW = Math.max(halfW, Math.abs(it.position.x));
+    if (Number.isFinite(it.position.y)) halfH = Math.max(halfH, Math.abs(it.position.y));
+  }
+  const pad = 40;
+  return { w: Math.max(20, halfW * 2) + pad, h: Math.max(20, halfH * 2) + pad };
+}
+
 function getLayerWorldBounds(layer: Layer, layers: Layer[], currentFrame: number, compW?: number, compH?: number): { x: number; y: number; w: number; h: number } | null {
   if (layer.type === 'group' || layer.type === 'audio') return null;
   if (currentFrame < layer.inPoint || currentFrame >= layer.outPoint) return null;
@@ -160,7 +194,22 @@ function getLayerWorldBounds(layer: Layer, layers: Layer[], currentFrame: number
     });
     w = measured.width;
     h = measured.height;
-  } else if (layer.type === 'fieldSampled' || layer.type === 'particle' || layer.type === 'animationItem') {
+  } else if (layer.type === 'fieldSampled') {
+    const s = evaluateProperty(layer.transform.scale, currentFrame) as Vec2;
+    const sz = fieldSampledSize(layer as FieldSampledLayer);
+    w = sz.w * Math.abs(s[0]);
+    h = sz.h * Math.abs(s[1]);
+  } else if (layer.type === 'generativePattern') {
+    const s = evaluateProperty(layer.transform.scale, currentFrame) as Vec2;
+    const gp = layer as GenerativePatternLayer;
+    w = evaluateNumber(gp.width, currentFrame) * Math.abs(s[0]);
+    h = evaluateNumber(gp.height, currentFrame) * Math.abs(s[1]);
+  } else if (layer.type === 'cloner') {
+    const s = evaluateProperty(layer.transform.scale, currentFrame) as Vec2;
+    const cb = clonerLocalBounds(layer as ClonerLayer, currentFrame);
+    w = cb.w * Math.abs(s[0]);
+    h = cb.h * Math.abs(s[1]);
+  } else if (layer.type === 'particle' || layer.type === 'animationItem') {
     w = compW || 400;
     h = compH || 400;
   } else if (layer.type === 'hbox' || layer.type === 'vbox' || layer.type === 'grid') {
@@ -302,7 +351,25 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
       });
       w = measured.width;
       h = measured.height;
-    } else if (activeLayer.type === 'fieldSampled' || activeLayer.type === 'particle' || activeLayer.type === 'animationItem') {
+    } else if (activeLayer.type === 'fieldSampled') {
+      // Size to the field's own sample size (from its config) × transform.scale — NOT the whole comp.
+      const s = evaluateProperty(activeLayer.transform.scale, currentFrame) as Vec2;
+      const sz = fieldSampledSize(activeLayer as FieldSampledLayer);
+      w = sz.w * s[0];
+      h = sz.h * s[1];
+    } else if (activeLayer.type === 'generativePattern') {
+      // Pattern draws at width×height × transform.scale (see renderer); mirror that so the box tracks it.
+      const s = evaluateProperty(activeLayer.transform.scale, currentFrame) as Vec2;
+      const gp = activeLayer as GenerativePatternLayer;
+      w = evaluateNumber(gp.width, currentFrame) * s[0];
+      h = evaluateNumber(gp.height, currentFrame) * s[1];
+    } else if (activeLayer.type === 'cloner') {
+      // Wrap the clones: local instance extent × scale, box centred on transform.position.
+      const s = evaluateProperty(activeLayer.transform.scale, currentFrame) as Vec2;
+      const cb = clonerLocalBounds(activeLayer as ClonerLayer, currentFrame);
+      w = cb.w * s[0];
+      h = cb.h * s[1];
+    } else if (activeLayer.type === 'particle' || activeLayer.type === 'animationItem') {
       w = compW;
       h = compH;
     } else {

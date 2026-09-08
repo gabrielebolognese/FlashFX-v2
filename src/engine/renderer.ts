@@ -3873,22 +3873,27 @@ export class WebGPURenderer {
           sourceHeight = frame.height;
           textureKey = `__particle_${imgLayer.id}`;
         } else if (imgLayer.layerType === 'fieldSampled' && imgLayer.fieldSampled) {
+          const fs = imgLayer.fieldSampled;
+          // Render at the field's OWN sample size; the image quad then sizes to fw×fh × transform
+          // scale (same as generativePattern), instead of always filling the whole composition.
+          const fw = Math.max(2, Math.round(fs.canvasWidth || frame.width));
+          const fh = Math.max(2, Math.round(fs.canvasHeight || frame.height));
           const fsCanvas = fieldSampledRenderer.renderFieldLayer(
             imgLayer.id,
-            imgLayer.fieldSampled.configJSON,
-            imgLayer.fieldSampled.localFrame,
+            fs.configJSON,
+            fs.localFrame,
             frame.frameRate ?? 30,
-            frame.width,
-            frame.height,
+            fw,
+            fh,
           );
           if (!fsCanvas) {
             imageBindGroups.push(null);
             continue;
           }
           bitmap = fsCanvas;
-          sourceWidth = frame.width;
-          sourceHeight = frame.height;
-          textureKey = `__fieldSampled_${imgLayer.id}`;
+          sourceWidth = fw;
+          sourceHeight = fh;
+          textureKey = `__fieldSampled_${imgLayer.id}_${fw}x${fh}`;
         } else if (imgLayer.layerType === 'generativePattern' && imgLayer.generativePattern) {
           const gp = imgLayer.generativePattern;
           const pw = Math.max(2, Math.round(gp.width)), ph = Math.max(2, Math.round(gp.height));

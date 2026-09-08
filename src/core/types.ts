@@ -1521,6 +1521,10 @@ export interface ResolvedProceduralLoop {
 export interface ResolvedFieldSampled {
   configJSON: string;
   localFrame: number;
+  /** The field's own sample size (from its config) — the renderer sizes the quad to this ×
+   *  transform.scale, instead of always filling the whole composition. */
+  canvasWidth: number;
+  canvasHeight: number;
 }
 
 export interface ResolvedGenerativePattern {

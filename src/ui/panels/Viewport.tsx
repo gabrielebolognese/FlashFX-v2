@@ -29,7 +29,7 @@ import { useShapeToolStore, isShapeTool, isTextTool } from '../../store/shapeToo
 import { useTextEditStore } from '../../store/textEdit';
 import { useRecoveryStore } from '../../store/recovery';
 import { editorRecovery } from '../../engine/recovery';
-import { ZoomIn, ZoomOut, Maximize2, Video, VideoOff } from 'lucide-react';
+import { ZoomIn, ZoomOut, Maximize2, Video, VideoOff, Camera } from 'lucide-react';
 import { useContextMenu } from '../context-menu';
 import { buildCanvasMenu } from '../context-menu/menuDefinitions';
 
@@ -41,6 +41,8 @@ export function Viewport() {
 
   const composition = useEditorStore((s) => s.composition);
   const activeGroupId = useEditorStore((s) => s.activeGroupId);
+  const selectLayer = useEditorStore((s) => s.selectLayer);
+  const activeLayerId = useEditorStore((s) => s.selection.activeId);
   const addImageFromAsset = useEditorStore((s) => s.addImageFromAsset);
   const addVideoFromAsset = useEditorStore((s) => s.addVideoFromAsset);
   const addAudioFromAsset = useEditorStore((s) => s.addAudioFromAsset);
@@ -328,6 +330,9 @@ export function Viewport() {
   // Only surface the "disable camera" toggle when the comp actually has a camera — otherwise
   // the screen is already flat 2D and the control would be meaningless.
   const hasCamera = composition.layers.some((l) => l.type === 'camera');
+  // Cameras are point objects with no on-canvas box; give each a selection icon on the right border
+  // (outside the canvas), capped at 10 so a camera-heavy comp can't flood the strip.
+  const cameras = composition.layers.filter((l) => l.type === 'camera').slice(0, 10);
 
   return (
     <div
@@ -403,6 +408,28 @@ export function Viewport() {
           {cameraDisabled ? <VideoOff size={13} /> : <Video size={13} />}
           {cameraDisabled ? 'Camera Off' : 'Disable Camera'}
         </button>
+      )}
+      {/* Camera selection strip — right border, outside the canvas. One icon per camera (≤10). */}
+      {cameras.length > 0 && (
+        <div className="absolute top-1/2 right-1 -translate-y-1/2 z-20 flex flex-col gap-1 pointer-events-auto">
+          {cameras.map((cam, i) => {
+            const active = activeLayerId === cam.id;
+            return (
+              <button
+                key={cam.id}
+                onClick={() => selectLayer(cam.id, false, 'canvas')}
+                title={`Select ${cam.name || `Camera ${i + 1}`}`}
+                className={`w-6 h-6 flex items-center justify-center rounded-md border shadow-sm transition-colors ${
+                  active
+                    ? 'bg-accent border-accent text-[#1a1200]'
+                    : 'bg-[#0a1628]/85 hover:bg-surface-3 border-hairline text-slate-300 hover:text-slate-100'
+                }`}
+              >
+                <Camera size={13} />
+              </button>
+            );
+          })}
+        </div>
       )}
       {dragOver && (
         <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none bg-[#0a1628]/80 border-2 border-dashed border-accent rounded-lg m-2">
