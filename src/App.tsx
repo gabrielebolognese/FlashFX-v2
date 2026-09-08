@@ -511,7 +511,7 @@ function Editor() {
           <button
             onClick={() => setShowExport(true)}
             data-tutorial-id="export"
-            className="flex items-center gap-1.5 px-4 border-l border-hairline bg-accent hover:bg-accent-hover text-on-accent text-[11px] font-semibold transition-colors"
+            className="flex items-center gap-1.5 px-4 border-l border-hairline bg-red-600 hover:bg-red-500 text-white text-[11px] font-semibold transition-colors"
             title="Export video"
           >
             <Download size={13} strokeWidth={2.5} />
