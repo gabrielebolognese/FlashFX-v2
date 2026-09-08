@@ -8,7 +8,7 @@ import { useTimelineStore } from './store/timeline';
 import { usePanelStore } from './store/panels';
 import { ProjectApp, useProjectStore } from './project-system';
 import { useAnimationBuilderStore } from './animation-builder';
-import { ArrowLeft, LayoutGrid, Settings2, GraduationCap, Sparkles, Download, ListChecks, Maximize2 } from 'lucide-react';
+import { ArrowLeft, LayoutGrid, Settings2, GraduationCap, Sparkles, Download, ListChecks, Maximize2, Minimize2 } from 'lucide-react';
 import { ExportModal } from './ui/panels/ExportModal';
 import { AiChatPanel } from './ui/panels/AiChatPanel';
 import { TasksPanel } from './ui/panels/TasksPanel';
@@ -72,6 +72,7 @@ function Editor() {
   const tasksOpen = usePanelStore((s) => s.tasksOpen);
   const toggleTasks = usePanelStore((s) => s.toggleTasks);
   const uiMode = usePanelStore((s) => s.uiMode);
+  const toggleUiMode = usePanelStore((s) => s.toggleUiMode);
   const [showExport, setShowExport] = useState(false);
   const aiEditorWorkspace = usePanelStore((s) => s.editorWorkspace);
   // AI chat works in every mode except preview/review (that mode is a full-screen player).
@@ -467,6 +468,15 @@ function Editor() {
           <div className="flex-1 min-w-0" />
         )}
         {workspace === 'editor' && uiMode === 'pro' && <SceneSwitcher />}
+        {/* Starter ⇄ Full-editor toggle — the primary UI-density control, always visible. */}
+        <button
+          onClick={toggleUiMode}
+          className="flex items-center gap-1.5 px-3 transition-colors border-l border-hairline text-slate-400 hover:text-slate-200 hover:bg-white/[0.03]"
+          title={uiMode === 'starter' ? 'Switch to the full editor' : 'Switch to starter mode'}
+        >
+          {uiMode === 'starter' ? <Maximize2 size={13} /> : <Minimize2 size={13} />}
+          <span className="text-[11px] font-medium">{uiMode === 'starter' ? 'Full editor' : 'Starter'}</span>
+        </button>
         {/* Animation Builder mode toggle — HIDDEN from the public UI (the builder is not
             production-ready). The BuilderLayout + setWorkspace path is kept intact so it can be
             re-exposed by restoring this button. */}
