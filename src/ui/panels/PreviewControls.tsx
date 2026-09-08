@@ -24,6 +24,9 @@ import { usePanelStore, type EditorWorkspace } from '../../store/panels';
 import { useEditorStore } from '../../store/editor';
 
 export function PreviewControls() {
+  // Workspaces (Design/Edit/Animate/Review) only mean something in the full editor — the starter
+  // layout ignores editorWorkspace, so the switch would render live-but-inert there. Gate it.
+  const uiMode = usePanelStore((s) => s.uiMode);
   const quality = usePreviewStore((s) => s.quality);
   const setQuality = usePreviewStore((s) => s.setQuality);
   const transparencyGrid = usePreviewStore((s) => s.transparencyGrid);
@@ -156,7 +159,7 @@ export function PreviewControls() {
       />
 
       <div className="ml-auto flex items-center gap-2">
-        <WorkspaceSwitch />
+        {uiMode === 'pro' && <WorkspaceSwitch />}
         <span className="text-[10px] text-slate-500 font-mono">
           Preview {PREVIEW_QUALITY_LABELS[quality]}
         </span>

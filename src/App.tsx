@@ -471,8 +471,12 @@ function Editor() {
         {/* Starter ⇄ Full-editor toggle — the primary UI-density control, always visible. */}
         <button
           onClick={toggleUiMode}
-          className="flex items-center gap-1.5 px-3 transition-colors border-l border-hairline text-slate-400 hover:text-slate-200 hover:bg-white/[0.03]"
-          title={uiMode === 'starter' ? 'Switch to the full editor' : 'Switch to starter mode'}
+          className={`flex items-center gap-1.5 px-3 transition-colors border-l border-hairline ${
+            uiMode === 'starter'
+              ? 'text-accent hover:bg-accent-wash'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.03]'
+          }`}
+          title={uiMode === 'starter' ? 'You are in Starter mode — switch to the Full editor' : 'Switch back to Starter mode'}
         >
           {uiMode === 'starter' ? <Maximize2 size={13} /> : <Minimize2 size={13} />}
           <span className="text-[11px] font-medium">{uiMode === 'starter' ? 'Full editor' : 'Starter'}</span>
@@ -511,7 +515,7 @@ function Editor() {
           <button
             onClick={() => setShowExport(true)}
             data-tutorial-id="export"
-            className="flex items-center gap-1.5 px-4 border-l border-hairline bg-red-600 hover:bg-red-500 text-white text-[11px] font-semibold transition-colors"
+            className="flex items-center gap-1.5 px-4 border-l border-hairline bg-accent hover:bg-accent-hover text-on-accent text-[11px] font-semibold transition-colors"
             title="Export video"
           >
             <Download size={13} strokeWidth={2.5} />
