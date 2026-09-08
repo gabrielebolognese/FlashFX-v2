@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Plus, Trash2, ChevronDown, ChevronRight, ArrowUp, ArrowDown, X, Paintbrush, Grid3x3, Atom, Globe, Play, Eye, EyeOff, Lock, Unlock } from 'lucide-react';
 import { useEditorStore } from '../../store/editor';
+import { usePanelStore } from '../../store/panels';
 import { BrandColorPicker } from '../components/BrandColorPicker';
 import { useGridStore } from '../../store/grid';
 import { sampleBakedFrame } from '../../physics/bake';
@@ -51,34 +52,71 @@ export function BackgroundPanel() {
   ];
 
   return (
-    <div className="flex-1 flex flex-row overflow-hidden min-h-0">
-      <div className="flex-1 overflow-y-auto min-h-0">
-        {tab === 'background' && <BackgroundFillTab />}
-        {tab === 'grid' && <GridTab />}
-        {tab === 'physics' && <PhysicsWorldTab />}
-      </div>
-      <nav className="flex-shrink-0 w-[96px] flex flex-col py-1 border-l border-hairline bg-[#0b0e15] overflow-y-auto">
-        {tabs.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            aria-pressed={tab === t.id}
-            className={`relative flex items-center gap-2 px-3 py-2 text-[11px] font-medium text-left transition-colors ${
-              tab === t.id
-                ? 'text-accent bg-accent-wash'
-                : 'text-slate-500 hover:text-slate-300 hover:bg-white/[0.03]'
-            }`}
-          >
-            <span
-              className={`absolute left-0 top-0 bottom-0 w-[2px] transition-colors ${
-                tab === t.id ? 'bg-accent' : 'bg-transparent'
+    <div className="flex-1 flex flex-col overflow-hidden min-h-0">
+      <EditorModeSwitch />
+      <div className="flex-1 flex flex-row overflow-hidden min-h-0">
+        <div className="flex-1 overflow-y-auto min-h-0">
+          {tab === 'background' && <BackgroundFillTab />}
+          {tab === 'grid' && <GridTab />}
+          {tab === 'physics' && <PhysicsWorldTab />}
+        </div>
+        <nav className="flex-shrink-0 w-[96px] flex flex-col py-1 border-l border-hairline bg-[#0b0e15] overflow-y-auto">
+          {tabs.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              aria-pressed={tab === t.id}
+              className={`relative flex items-center gap-2 px-3 py-2 text-[11px] font-medium text-left transition-colors ${
+                tab === t.id
+                  ? 'text-accent bg-accent-wash'
+                  : 'text-slate-500 hover:text-slate-300 hover:bg-white/[0.03]'
               }`}
-            />
-            {t.icon}
-            {t.label}
-          </button>
-        ))}
-      </nav>
+            >
+              <span
+                className={`absolute left-0 top-0 bottom-0 w-[2px] transition-colors ${
+                  tab === t.id ? 'bg-accent' : 'bg-transparent'
+                }`}
+              />
+              {t.icon}
+              {t.label}
+            </button>
+          ))}
+        </nav>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Starter ⇄ Full editor mode switch — the canonical place to change UI density (the top-bar toggle
+ * was removed). Two buttons: the current mode reads "You're on … editor" in the gold accent; the
+ * other reads "Switch to … editor". Clicking the switch flips the mode, swapping highlight+labels.
+ */
+function EditorModeSwitch() {
+  const uiMode = usePanelStore((s) => s.uiMode);
+  const setUiMode = usePanelStore((s) => s.setUiMode);
+  const isStarter = uiMode === 'starter';
+
+  const currentCls = 'bg-accent text-on-accent cursor-default';
+  const otherCls = 'bg-surface-3 text-slate-300 border border-hairline hover:bg-surface-4 hover:text-slate-100';
+
+  return (
+    <div className="flex-shrink-0 px-3 py-2.5 border-b border-hairline">
+      <span className="text-[10px] uppercase tracking-wider text-slate-400 font-medium">Editor Mode</span>
+      <div className="mt-1.5 grid grid-cols-2 gap-1.5">
+        <button
+          onClick={() => setUiMode('starter')}
+          className={`px-2 py-1.5 rounded text-[10px] font-semibold text-center leading-tight transition-colors ${isStarter ? currentCls : otherCls}`}
+        >
+          {isStarter ? "You're on starter editor" : 'Switch to starter editor'}
+        </button>
+        <button
+          onClick={() => setUiMode('pro')}
+          className={`px-2 py-1.5 rounded text-[10px] font-semibold text-center leading-tight transition-colors ${isStarter ? otherCls : currentCls}`}
+        >
+          {isStarter ? 'Switch to full editor' : "You're on full editor"}
+        </button>
+      </div>
     </div>
   );
 }
