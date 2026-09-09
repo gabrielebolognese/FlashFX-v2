@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { MoreHorizontal, Pencil, Copy, Trash2, Monitor, Download, Film, Smartphone, Star, RotateCcw, FolderOpen } from 'lucide-react';
+import { MoreHorizontal, Pencil, Copy, Trash2, Monitor, Download, Film, Smartphone, Star, RotateCcw, FolderOpen, Check } from 'lucide-react';
 import type { ProjectCard } from '../types';
 import { trashDaysRemaining } from '../types';
 import { useProjectStore } from '../hooks/useProjectStore';
@@ -8,6 +8,12 @@ import { ConfirmDeleteModal } from './ConfirmDeleteModal';
 
 interface Props {
   card: ProjectCard;
+  /** Multi-select support (dashboard marquee/bulk delete). */
+  selected?: boolean;
+  /** True when any card is selected — a plain click then adjusts the selection instead of opening. */
+  selectionActive?: boolean;
+  /** Toggle this card's membership in the selection. `additive` = keep the rest (modifier-click). */
+  onSelectToggle?: (id: string, additive: boolean) => void;
 }
 
 interface MenuItem { icon: React.ReactNode; label: string; onClick: () => void; danger?: boolean; sep?: boolean }
@@ -67,7 +73,7 @@ function CardMenu({ x, y, items, onClose }: { x: number; y: number; items: MenuI
   );
 }
 
-export function ProjectCardComponent({ card }: Props) {
+export function ProjectCardComponent({ card, selected = false, selectionActive = false, onSelectToggle }: Props) {
   const { metadata, previewUrl } = card;
   const isTrashed = !!metadata.trashedAt;
   const starred = !!metadata.starred;
@@ -94,7 +100,13 @@ export function ProjectCardComponent({ card }: Props) {
     }
   }, [renaming]);
 
-  const handleOpen = () => { if (!isTrashed) openProject(metadata.id); };
+  // Click behaviour: modifier-click always toggles selection; once a selection is active a plain
+  // click adjusts it too; otherwise a plain click opens (trashed projects never open).
+  const handleCardClick = (e: React.MouseEvent) => {
+    if (e.metaKey || e.ctrlKey || e.shiftKey) { onSelectToggle?.(metadata.id, true); return; }
+    if (selectionActive) { onSelectToggle?.(metadata.id, false); return; }
+    if (!isTrashed) openProject(metadata.id);
+  };
 
   const handleRenameSubmit = () => {
     const trimmed = nameInput.trim();
@@ -149,13 +161,33 @@ export function ProjectCardComponent({ card }: Props) {
 
   return (
     <div
-      className="group relative flex flex-col rounded-lg overflow-hidden bg-[#111821] border border-[#1c2433] hover:border-[#2a3a50] transition-all duration-150 hover:shadow-[0_4px_24px_rgba(0,0,0,0.3)]"
+      data-project-id={metadata.id}
+      className={`group relative flex flex-col rounded-lg overflow-hidden bg-[#111821] border transition-all duration-150 hover:shadow-[0_4px_24px_rgba(0,0,0,0.3)] ${
+        selected
+          ? 'border-[#f7b500] ring-2 ring-[#f7b500]/70 ring-offset-1 ring-offset-[#0a0f16]'
+          : 'border-[#1c2433] hover:border-[#2a3a50]'
+      }`}
       onContextMenu={openMenuAtCursor}
     >
+      {/* Selection check — visible when selected or on hover once a selection is active. */}
+      {(selected || selectionActive) && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onSelectToggle?.(metadata.id, true); }}
+          title={selected ? 'Deselect' : 'Select'}
+          className={`absolute top-1.5 left-1.5 z-10 w-5 h-5 rounded flex items-center justify-center border transition-colors ${
+            selected
+              ? 'bg-[#f7b500] border-[#f7b500] text-[#0a0f16]'
+              : 'bg-black/60 border-white/30 text-transparent hover:text-white/60'
+          }`}
+        >
+          <Check size={12} strokeWidth={3} />
+        </button>
+      )}
+
       {/* Preview area */}
       <div
-        className={`aspect-[16/10] bg-[#0a0f16] relative overflow-hidden ${isTrashed ? '' : 'cursor-pointer'}`}
-        onClick={handleOpen}
+        className={`aspect-[16/10] bg-[#0a0f16] relative overflow-hidden ${isTrashed && !selectionActive ? '' : 'cursor-pointer'}`}
+        onClick={handleCardClick}
       >
         {previewUrl ? (
           <img src={previewUrl} alt={metadata.name} className={`w-full h-full object-cover ${isTrashed ? 'opacity-40 grayscale' : ''}`} />
@@ -169,8 +201,8 @@ export function ProjectCardComponent({ card }: Props) {
           <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-150 bg-gradient-to-t from-black/30 via-transparent to-transparent" />
         )}
 
-        {/* Format badge */}
-        <div className="absolute top-1.5 left-1.5 flex items-center gap-1 px-1.5 py-0.5 rounded bg-black/60 backdrop-blur-sm">
+        {/* Format badge — shifts right to clear the selection checkbox while selecting. */}
+        <div className={`absolute top-1.5 ${selected || selectionActive ? 'left-8' : 'left-1.5'} flex items-center gap-1 px-1.5 py-0.5 rounded bg-black/60 backdrop-blur-sm transition-all`}>
           {metadata.videoFormat === 'short' ? <Smartphone size={9} className="text-slate-300" /> : <Film size={9} className="text-slate-300" />}
           <span className="text-[8px] text-slate-300 font-medium uppercase tracking-wide">{metadata.videoFormat === 'short' ? 'Short' : 'Long'}</span>
         </div>

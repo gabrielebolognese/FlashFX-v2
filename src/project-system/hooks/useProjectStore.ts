@@ -49,6 +49,10 @@ interface ProjectState {
   restoreProject: (id: string) => Promise<void>;
   /** Permanent, irreversible erase (Trash → "Delete permanently"). */
   deletePermanently: (id: string) => Promise<void>;
+  /** Move many projects to Trash at once (dashboard marquee bulk delete). */
+  trashMany: (ids: string[]) => Promise<void>;
+  /** Permanently erase many projects at once (Trash-section bulk delete). */
+  deleteManyPermanently: (ids: string[]) => Promise<void>;
   /** Star / unstar (starred projects get a 30-day trash window vs 7). */
   toggleStar: (id: string) => Promise<void>;
   renameProject: (id: string, name: string) => Promise<void>;
@@ -159,6 +163,35 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     if (cloudAvailable()) {
       recordLocalDelete(id);
       pushTombstone(id).catch(() => {});
+    }
+  },
+
+  trashMany: async (ids) => {
+    if (ids.length === 0) return;
+    const idSet = new Set(ids);
+    await Promise.all(ids.map((id) => trashProjectService(id).catch(() => {})));
+    const now = Date.now();
+    set({
+      projects: get().projects.map((p) =>
+        idSet.has(p.metadata.id) ? { ...p, metadata: { ...p.metadata, trashedAt: now } } : p
+      ),
+    });
+  },
+
+  deleteManyPermanently: async (ids) => {
+    if (ids.length === 0) return;
+    const idSet = new Set(ids);
+    const { projects } = get();
+    for (const p of projects) {
+      if (idSet.has(p.metadata.id) && p.previewUrl) URL.revokeObjectURL(p.previewUrl);
+    }
+    await Promise.all(ids.map((id) => deleteProject(id).catch(() => {})));
+    set({ projects: get().projects.filter((p) => !idSet.has(p.metadata.id)) });
+    if (cloudAvailable()) {
+      for (const id of ids) {
+        recordLocalDelete(id);
+        pushTombstone(id).catch(() => {});
+      }
     }
   },
 
