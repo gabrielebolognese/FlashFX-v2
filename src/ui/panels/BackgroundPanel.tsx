@@ -87,15 +87,30 @@ export function BackgroundPanel() {
   );
 }
 
+type UiMode = 'starter' | 'pro';
+
+const MODE_INFO: Record<UiMode, { label: string; blurb: string }> = {
+  starter: {
+    label: 'Starter editor',
+    blurb: 'A minimal workspace — just the canvas and the inspector. No timeline, media pool, or toolbars. Best for quick edits and getting started.',
+  },
+  pro: {
+    label: 'Full editor',
+    blurb: 'The complete workspace — timeline, media pool, toolbars, scenes, and every panel. Full control for detailed motion-graphics work.',
+  },
+};
+
 /**
  * Starter ⇄ Full editor mode switch — the canonical place to change UI density (the top-bar toggle
  * was removed). Two buttons: the current mode reads "You're on … editor" in the gold accent; the
- * other reads "Switch to … editor". Clicking the switch flips the mode, swapping highlight+labels.
+ * other reads "Switch to … editor". Clicking the switch opens a confirmation that briefs the user on
+ * both modes before committing (the layout change is drastic, so it shouldn't happen by accident).
  */
 function EditorModeSwitch() {
-  const uiMode = usePanelStore((s) => s.uiMode);
+  const uiMode = usePanelStore((s) => s.uiMode) as UiMode;
   const setUiMode = usePanelStore((s) => s.setUiMode);
   const isStarter = uiMode === 'starter';
+  const [pending, setPending] = useState<UiMode | null>(null);
 
   const currentCls = 'bg-accent text-on-accent cursor-default';
   const otherCls = 'bg-surface-3 text-slate-300 border border-hairline hover:bg-surface-4 hover:text-slate-100';
@@ -105,17 +120,84 @@ function EditorModeSwitch() {
       <span className="text-[10px] uppercase tracking-wider text-slate-400 font-medium">Editor Mode</span>
       <div className="mt-1.5 grid grid-cols-2 gap-1.5">
         <button
-          onClick={() => setUiMode('starter')}
+          onClick={() => { if (!isStarter) setPending('starter'); }}
           className={`px-2 py-1.5 rounded text-[10px] font-semibold text-center leading-tight transition-colors ${isStarter ? currentCls : otherCls}`}
         >
           {isStarter ? "You're on starter editor" : 'Switch to starter editor'}
         </button>
         <button
-          onClick={() => setUiMode('pro')}
+          onClick={() => { if (isStarter) setPending('pro'); }}
           className={`px-2 py-1.5 rounded text-[10px] font-semibold text-center leading-tight transition-colors ${isStarter ? otherCls : currentCls}`}
         >
           {isStarter ? 'Switch to full editor' : "You're on full editor"}
         </button>
+      </div>
+
+      {pending && (
+        <ModeSwitchConfirm
+          current={uiMode}
+          target={pending}
+          onCancel={() => setPending(null)}
+          onConfirm={() => { setUiMode(pending); setPending(null); }}
+        />
+      )}
+    </div>
+  );
+}
+
+/** Confirmation modal for an editor-mode switch — briefs the user on what each mode is before the
+ *  (drastic) layout change, highlighting the mode they're about to switch to. */
+function ModeSwitchConfirm({ current, target, onCancel, onConfirm }: {
+  current: UiMode; target: UiMode; onCancel: () => void; onConfirm: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[10000] flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onCancel} />
+      <div className="relative bg-[#0e1c32] border border-[#1a2a42] rounded-xl shadow-2xl p-5 w-[380px] max-w-[90vw]">
+        <h3 className="text-[13px] font-semibold text-slate-100">Switch to the {MODE_INFO[target].label}?</h3>
+        <p className="text-[10px] text-slate-500 mt-1">Here's what changes — you can switch back any time from these settings.</p>
+
+        <div className="mt-3 space-y-2">
+          {(['starter', 'pro'] as UiMode[]).map((m) => {
+            const isTarget = m === target;
+            return (
+              <div
+                key={m}
+                className={`rounded-lg border px-3 py-2 ${
+                  isTarget ? 'border-accent bg-accent-wash' : 'border-hairline bg-[#06101a]/50'
+                }`}
+              >
+                <div className="flex items-center gap-1.5">
+                  <span className={`text-[11px] font-semibold ${isTarget ? 'text-accent-hover' : 'text-slate-300'}`}>
+                    {MODE_INFO[m].label}
+                  </span>
+                  {m === current && (
+                    <span className="text-[8px] uppercase tracking-wider text-slate-500 border border-hairline rounded px-1 py-px">Current</span>
+                  )}
+                  {isTarget && (
+                    <span className="text-[8px] uppercase tracking-wider text-on-accent bg-accent rounded px-1 py-px">Switching to</span>
+                  )}
+                </div>
+                <p className="text-[9px] text-slate-400 mt-1 leading-relaxed">{MODE_INFO[m].blurb}</p>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="flex items-center justify-end gap-2 mt-4">
+          <button
+            onClick={onCancel}
+            className="px-3 py-1.5 text-[10px] font-medium text-slate-300 bg-white/[0.04] hover:bg-white/[0.08] rounded transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            className="px-3 py-1.5 text-[10px] font-semibold text-on-accent bg-accent hover:bg-accent-hover rounded transition-colors"
+          >
+            Switch to {MODE_INFO[target].label}
+          </button>
+        </div>
       </div>
     </div>
   );
