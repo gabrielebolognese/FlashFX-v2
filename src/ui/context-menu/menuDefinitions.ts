@@ -1035,6 +1035,17 @@ export function buildKeyframeMenu(isSingle: boolean, ctx?: KeyframeMenuContext):
     },
     {
       type: 'group',
+      label: 'Overshoot & Bounce',
+      items: [
+        kf('ease-back-out', 'Back (overshoot)', () => ed.setKeyframeEasing(L, targets, 'backOut'), Sparkles),
+        kf('ease-back-io', 'Back In-Out', () => ed.setKeyframeEasing(L, targets, 'backInOut'), Sparkles),
+        kf('ease-elastic-out', 'Elastic', () => ed.setKeyframeEasing(L, targets, 'elasticOut'), Sparkles),
+        kf('ease-bounce-out', 'Bounce', () => ed.setKeyframeEasing(L, targets, 'bounceOut'), Sparkles),
+        kf('ease-clear', 'Remove Ease', () => ed.setKeyframeEasing(L, targets, null), MoveVertical),
+      ],
+    },
+    {
+      type: 'group',
       label: 'Utilities',
       items: [
         kf('kf-reverse', 'Reverse Keyframes', () => ed.reverseKeyframeValues(L, targets), Rewind),

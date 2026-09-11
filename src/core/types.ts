@@ -14,6 +14,9 @@ import type { ResolvedCamera } from './camera3d';
 // Per-character text animation reuses the pure range-selector primitive (type-only import; the
 // primitive imports nothing back, so there is no runtime cycle).
 import type { RangeSelectorConfig } from '../text/rangeSelector';
+// Named temporal eases (Penner / elastic / bounce / back) — type-only import; easings.ts imports
+// nothing back, so no runtime cycle.
+import type { EasingName } from './easings';
 
 export type Vec2 = [number, number];
 export type Vec4 = [number, number, number, number];
@@ -28,6 +31,13 @@ export interface Keyframe {
   handleOut: Vec2;
   /** Bezier tangent mode for the graph editor: 'continuous' keeps handles collinear, 'broken' independent. */
   tangentMode?: 'continuous' | 'broken';
+  /**
+   * Named ease governing this keyframe's OUTGOING segment (to the next keyframe). When set it wins
+   * over `handleIn/handleOut` — this is how the true overshoot/bounce/elastic curves that a single
+   * cubic-bezier can't express are applied. Absent = use `interpolation` + bezier handles. Optional
+   * so existing scenes and the default keyframe are unaffected.
+   */
+  easing?: EasingName;
 }
 
 export interface AnimatableProperty {

@@ -2,6 +2,8 @@ import { useCallback, useMemo, useRef, useState, useEffect } from 'react';
 import { useEditorStore } from '../../store/editor';
 import { useTimelineStore } from '../../store/timeline';
 import type { Layer, AnimatableProperty, ShapeLayer, TextLayer, Keyframe, Vec2 } from '../../core/types';
+import type { EasingName } from '../../core/easings';
+import { segmentProgress } from '../../core/keyframeEase';
 import {
   frameToPixel,
   pixelToFrame,
@@ -45,11 +47,15 @@ const PROPERTY_COLORS: Record<string, string> = {
 interface CurvePreset {
   id: string;
   name: string;
-  p1: Vec2;
-  p2: Vec2;
+  /** Bezier control points (for cubic-bezier presets). Omitted when `easing` is set. */
+  p1?: Vec2;
+  p2?: Vec2;
+  /** Named ease (true elastic/bounce/back — shapes a cubic-bezier can't represent). Wins over p1/p2. */
+  easing?: EasingName;
 }
 
 const PRESETS: CurvePreset[] = [
+  // Smooth bezier eases (cubic-bezier control points).
   { id: 'linear', name: 'Linear', p1: [0.25, 0.25], p2: [0.75, 0.75] },
   { id: 'ease-in', name: 'Ease In', p1: [0.42, 0], p2: [1, 1] },
   { id: 'ease-out', name: 'Ease Out', p1: [0, 0], p2: [0.58, 1] },
@@ -59,9 +65,16 @@ const PRESETS: CurvePreset[] = [
   { id: 'cubic-in-out', name: 'Cubic In-Out', p1: [0.645, 0.045], p2: [0.355, 1] },
   { id: 'expo-in', name: 'Expo In', p1: [0.95, 0.05], p2: [0.795, 0.035] },
   { id: 'expo-out', name: 'Expo Out', p1: [0.19, 1], p2: [0.22, 1] },
-  { id: 'back-in', name: 'Back In', p1: [0.6, -0.28], p2: [0.735, 0.045] },
-  { id: 'back-out', name: 'Back Out', p1: [0.175, 0.885], p2: [0.32, 1.275] },
-  { id: 'spring', name: 'Spring', p1: [0.2, 1.4], p2: [0.4, 1] },
+  // Overshoot / bounce / elastic — true named eases (impossible as a single cubic-bezier).
+  { id: 'back-in', name: 'Back In ⤺', easing: 'backIn' },
+  { id: 'back-out', name: 'Back Out ⤻', easing: 'backOut' },
+  { id: 'back-in-out', name: 'Back In-Out', easing: 'backInOut' },
+  { id: 'elastic-in', name: 'Elastic In', easing: 'elasticIn' },
+  { id: 'elastic-out', name: 'Elastic Out', easing: 'elasticOut' },
+  { id: 'elastic-in-out', name: 'Elastic In-Out', easing: 'elasticInOut' },
+  { id: 'bounce-in', name: 'Bounce In', easing: 'bounceIn' },
+  { id: 'bounce-out', name: 'Bounce Out', easing: 'bounceOut' },
+  { id: 'bounce-in-out', name: 'Bounce In-Out', easing: 'bounceInOut' },
 ];
 
 function extractProperties(layer: Layer): PropertyDef[] {
@@ -116,25 +129,6 @@ function getKeyframeValue(kf: Keyframe, component: 'x' | 'y' | 'single'): number
   return component === 'y' ? kf.value[1] : kf.value[0];
 }
 
-function cubicBezier(t: number, p1: Vec2, p2: Vec2): number {
-  const cx = 3 * p1[0];
-  const bx = 3 * (p2[0] - p1[0]) - cx;
-  const ax = 1 - cx - bx;
-  const cy = 3 * p1[1];
-  const by = 3 * (p2[1] - p1[1]) - cy;
-  const ay = 1 - cy - by;
-  let x = t;
-  for (let i = 0; i < 8; i++) {
-    const xEst = ((ax * x + bx) * x + cx) * x;
-    const diff = xEst - t;
-    if (Math.abs(diff) < 1e-6) break;
-    const dx = (3 * ax * x + 2 * bx) * x + cx;
-    if (Math.abs(dx) < 1e-6) break;
-    x -= diff / dx;
-  }
-  return ((ay * x + by) * x + cy) * x;
-}
-
 function interpolateAtFrame(keyframes: Keyframe[], frame: number, component: 'x' | 'y' | 'single'): number {
   if (keyframes.length === 0) return 0;
   if (keyframes.length === 1) return getKeyframeValue(keyframes[0], component);
@@ -150,12 +144,9 @@ function interpolateAtFrame(keyframes: Keyframe[], frame: number, component: 'x'
       const t = (frame - a.frame) / range;
       const valA = getKeyframeValue(a, component);
       const valB = getKeyframeValue(b, component);
-      if (a.interpolation === 'hold') return valA;
-      if (a.interpolation === 'bezier') {
-        const eased = cubicBezier(t, a.handleOut, b.handleIn);
-        return valA + (valB - valA) * eased;
-      }
-      return valA + (valB - valA) * t;
+      // Exact same easing the renderer uses (core/keyframeEase): bezier = a.handleOut + b.handleIn,
+      // named ease (elastic/bounce/back) overrides handles, plus hold/spring. Graph == render.
+      return valA + (valB - valA) * segmentProgress(t, a, b);
     }
   }
   return getKeyframeValue(keyframes[keyframes.length - 1], component);
@@ -342,9 +333,15 @@ export function InterpolationGraph() {
     const kfIndex = propDef.property.keyframes.findIndex((k) => k.frame === contextMenu.kfFrame);
     if (kfIndex >= 0) {
       const newKeyframes = [...propDef.property.keyframes];
-      newKeyframes[kfIndex] = { ...newKeyframes[kfIndex], handleOut: preset.p1, interpolation: 'bezier' };
-      if (kfIndex + 1 < newKeyframes.length) {
-        newKeyframes[kfIndex + 1] = { ...newKeyframes[kfIndex + 1], handleIn: preset.p2 };
+      if (preset.easing) {
+        // Named ease governs the outgoing segment; handles are ignored while it's set.
+        newKeyframes[kfIndex] = { ...newKeyframes[kfIndex], easing: preset.easing, interpolation: 'bezier' };
+      } else {
+        // Bezier preset: write control points and clear any named ease so it takes effect.
+        newKeyframes[kfIndex] = { ...newKeyframes[kfIndex], easing: undefined, handleOut: preset.p1 ?? [0.25, 0.1], interpolation: 'bezier' };
+        if (kfIndex + 1 < newKeyframes.length) {
+          newKeyframes[kfIndex + 1] = { ...newKeyframes[kfIndex + 1], handleIn: preset.p2 ?? [0.75, 0.9] };
+        }
       }
       updateLayerProperty(activeLayer.id, `${propDef.path}.keyframes`, newKeyframes);
     }

@@ -48,6 +48,7 @@ import { sampleBakedFrame } from '../physics/bake';
 import { computeLayout, computeGridLayout } from '../layout/engine';
 import type { ChildMeasurement } from '../layout/engine';
 import { computeContainerLayout } from '../layout/containerEngine';
+import { easeSegment } from './keyframeEase';
 import { expressionManager } from '../expressions/manager';
 import type { ExpressionContext, KeyframeData } from '../expressions/types';
 
@@ -188,74 +189,17 @@ function clamp(v: number, min: number, max: number): number {
   return v < min ? min : v > max ? max : v;
 }
 
-function cubicBezier(t: number, p1x: number, p1y: number, p2x: number, p2y: number): number {
-  const cx = 3 * p1x;
-  const bx = 3 * (p2x - p1x) - cx;
-  const ax = 1 - cx - bx;
-  const cy = 3 * p1y;
-  const by = 3 * (p2y - p1y) - cy;
-  const ay = 1 - cy - by;
-
-  function sampleX(tt: number): number {
-    return ((ax * tt + bx) * tt + cx) * tt;
-  }
-
-  function sampleY(tt: number): number {
-    return ((ay * tt + by) * tt + cy) * tt;
-  }
-
-  function solveCurveX(x: number): number {
-    let tt = x;
-    for (let i = 0; i < 8; i++) {
-      const currentX = sampleX(tt) - x;
-      if (Math.abs(currentX) < 1e-7) return tt;
-      const dx = (3 * ax * tt + 2 * bx) * tt + cx;
-      if (Math.abs(dx) < 1e-7) break;
-      tt -= currentX / dx;
-    }
-    return tt;
-  }
-
-  return sampleY(solveCurveX(t));
-}
-
-function springInterpolate(t: number): number {
-  const damping = 0.7;
-  const frequency = 4;
-  return 1 - Math.exp(-damping * t * 10) * Math.cos(frequency * t * Math.PI * 2);
-}
-
+// Per-segment temporal easing lives in ONE place (core/keyframeEase) so the renderer and the graph
+// editor can never disagree on a curve. A bezier segment reads prev.handleOut + next.handleIn (AE
+// convention); a named `easing` (elastic/bounce/back/…) overrides the handles.
 function interpolateValue(
   from: number,
   to: number,
   t: number,
-  kf: Keyframe
+  prevKf: Keyframe,
+  nextKf: Keyframe
 ): number {
-  let progress: number;
-
-  switch (kf.interpolation) {
-    case 'hold':
-      return from;
-    case 'linear':
-      progress = t;
-      break;
-    case 'bezier':
-      progress = cubicBezier(
-        t,
-        kf.handleOut[0] || 0.25,
-        kf.handleOut[1] || 0.1,
-        kf.handleIn[0] || 0.75,
-        kf.handleIn[1] || 0.9
-      );
-      break;
-    case 'spring':
-      progress = springInterpolate(t);
-      break;
-    default:
-      progress = t;
-  }
-
-  return from + (to - from) * progress;
+  return easeSegment(from, to, t, prevKf, nextKf);
 }
 
 export function evaluateProperty(prop: AnimatableProperty, frame: number): number | Vec2 {
@@ -291,11 +235,11 @@ export function evaluateProperty(prop: AnimatableProperty, frame: number): numbe
       const fromVec = prevKf.value as Vec2;
       const toVec = nextKf.value as Vec2;
       keyframedValue = [
-        interpolateValue(fromVec[0], toVec[0], t, prevKf),
-        interpolateValue(fromVec[1], toVec[1], t, prevKf),
+        interpolateValue(fromVec[0], toVec[0], t, prevKf, nextKf),
+        interpolateValue(fromVec[1], toVec[1], t, prevKf, nextKf),
       ];
     } else {
-      keyframedValue = interpolateValue(prevKf.value as number, nextKf.value as number, t, prevKf);
+      keyframedValue = interpolateValue(prevKf.value as number, nextKf.value as number, t, prevKf, nextKf);
     }
   }
 

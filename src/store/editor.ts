@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { Composition, SceneDocument, Layer, AnimatableProperty, Keyframe, Vec2, Vec4, InterpolationType, BackgroundLayer, Track, TrackType, VideoPlaybackMode, PathVertex, VertexType, Mask, MaskType, AnchorEdge, PhysicsBindingDef, PhysicsWorldDef, StaggerBindingDef, LayoutObjectLayer, LayoutContainerLayer, ContainerShapeType, Marker, ShapeLayer, PolygonShape, TextLayer } from '../core/types';
+import type { EasingName } from '../core/easings';
 import { createComposition, createRectangleLayer, createCircleLayer, createStarLayer, createPolygonLayer, createDefaultPolygonVertices, createTextLayer, createDefaultTextContent, createVideoLayer, createImageLayer, createAudioLayer, createGroupLayer, createKeyframe, createBackgroundLayer, createMask, createParticleLayer, createAnimationItemLayer, createFieldSampledLayer, createGenerativePatternLayer, createCameraLayer, createLottieIconLayer, createLayoutObjectLayer, createLayoutContainerLayer, createDefaultChildOverride, createProperty, uid } from '../core/factory';
 import { outlineText, canOutlineFont } from '../text/outlineText';
 import { computeBatchNames, type RenamePattern } from '../core/batchRename';
@@ -434,6 +435,8 @@ interface EditorState {
   deleteKeyframes: (layerId: string, targets: KeyframeTarget[]) => void;
   /** Set interpolation (and optional bezier handles) on the given keyframe targets (undoable, batched). */
   setKeyframeInterpolation: (layerId: string, targets: KeyframeTarget[], interpolation: InterpolationType, handleIn?: Vec2, handleOut?: Vec2) => void;
+  /** Apply a named ease (overshoot/bounce/elastic/Penner) to the outgoing segment of each target keyframe; `null` clears it. */
+  setKeyframeEasing: (layerId: string, targets: KeyframeTarget[], easing: EasingName | null) => void;
   // ── Keyframe transforms (Batch 3) — all undoable, batched, operate on the targets ──
   copyKeyframes: (layerId: string, targets: KeyframeTarget[]) => void;
   pasteKeyframes: (layerId: string, atFrame: number) => void;
@@ -3775,6 +3778,33 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const newComp = { ...composition, layers: newLayers };
     exec({
       label: 'Set Keyframe Interpolation',
+      execute: () => { set({ composition: newComp }); },
+      undo: () => { set({ composition: oldComp }); },
+    });
+  },
+
+  setKeyframeEasing: (layerId, targets, easing) => {
+    if (targets.length === 0) return;
+    const framesByPath = groupTargetFrames(targets);
+    const { composition } = get();
+    const oldComp = composition;
+    const newLayers = composition.layers.map((layer) => {
+      if (layer.id !== layerId) return layer;
+      let updated = layer;
+      for (const [path, frames] of framesByPath) {
+        const prop = deepGet(updated, path) as AnimatableProperty | undefined;
+        if (!prop || !prop.keyframes) continue;
+        const newKfs = prop.keyframes.map((k: Keyframe) => frames.has(k.frame)
+          // Named ease overrides handles; force 'bezier' so downstream "is-eased" checks hold. null clears.
+          ? { ...k, easing: easing ?? undefined, interpolation: easing ? ('bezier' as InterpolationType) : k.interpolation }
+          : k);
+        updated = deepSet(updated, `${path}.keyframes`, newKfs) as Layer;
+      }
+      return updated;
+    });
+    const newComp = { ...composition, layers: newLayers };
+    exec({
+      label: easing ? 'Set Keyframe Easing' : 'Clear Keyframe Easing',
       execute: () => { set({ composition: newComp }); },
       undo: () => { set({ composition: oldComp }); },
     });

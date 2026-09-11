@@ -14,6 +14,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.app.json",
     "test": "node scripts/test-all.mjs",
     "verify:cloner": "node scripts/verify-cloner.mjs",
+    "verify:easing": "node scripts/verify-easing.mjs",
     "verify:ai-client": "node scripts/verify-ai-client.mjs",
     "verify:cloud-sync": "node scripts/verify-cloudsync.mjs",
     "verify:plans": "node scripts/verify-plans.mjs",
