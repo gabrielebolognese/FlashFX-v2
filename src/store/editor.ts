@@ -3769,7 +3769,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         const prop = deepGet(updated, path) as AnimatableProperty | undefined;
         if (!prop || !prop.keyframes) continue;
         const newKfs = prop.keyframes.map((k: Keyframe) => frames.has(k.frame)
-          ? { ...k, interpolation, handleIn: handleIn ?? k.handleIn, handleOut: handleOut ?? k.handleOut }
+          // Clear any named ease — an explicit interpolation/handle choice (menu or F9) must override it.
+          ? { ...k, interpolation, easing: undefined, handleIn: handleIn ?? k.handleIn, handleOut: handleOut ?? k.handleOut }
           : k);
         updated = deepSet(updated, `${path}.keyframes`, newKfs) as Layer;
       }

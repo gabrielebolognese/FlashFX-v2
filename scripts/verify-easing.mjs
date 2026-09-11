@@ -28,7 +28,7 @@ try {
   const E = await bundle('src/core/easings.ts', 'easings.mjs');
   const K = await bundle('src/core/keyframeEase.ts', 'keyframeEase.mjs');
   const { EASINGS, applyEasing, cubicBezier, springProgress } = E;
-  const { segmentProgress } = K;
+  const { segmentProgress, outHandleToInfluence, influenceToOutHandle, inHandleToInfluence, influenceToInHandle } = K;
 
   const NAMES = Object.keys(EASINGS);
   const sample = (fn, n = 101) => Array.from({ length: n }, (_, i) => fn(i / (n - 1)));
@@ -143,6 +143,28 @@ try {
     const prev = kf({ interpolation: 'spring' });
     const next = kf({ frame: 10 });
     for (const t of [0.2, 0.5, 0.8]) assert.ok(near(segmentProgress(t, prev, next), springProgress(t)));
+  });
+
+  // --- influence ↔ handle conversion (AE Keyframe-Velocity model, used by the graph fields) ---
+  check('outHandleToInfluence / influenceToOutHandle round-trip', () => {
+    for (const h of [[0.42, 0.21], [0.5, 0], [1, 1], [0.1, 0.3], [0.75, -0.2]]) {
+      const inf = outHandleToInfluence(h);
+      const back = influenceToOutHandle(inf.influence, inf.speed);
+      assert.ok(near(back[0], h[0], 1e-9) && near(back[1], h[1], 1e-9), `out round-trip failed for ${h} → ${back}`);
+    }
+  });
+  check('inHandleToInfluence / influenceToInHandle round-trip', () => {
+    for (const h of [[0.58, 0.79], [0.5, 1], [0, 0], [0.9, 0.7], [0.25, 1.2]]) {
+      const inf = inHandleToInfluence(h);
+      const back = influenceToInHandle(inf.influence, inf.speed);
+      assert.ok(near(back[0], h[0], 1e-9) && near(back[1], h[1], 1e-9), `in round-trip failed for ${h} → ${back}`);
+    }
+  });
+  check('influence is a fraction in [0,1]; out = handleOut.x, in = 1 - handleIn.x', () => {
+    assert.ok(near(outHandleToInfluence([0.42, 0]).influence, 0.42));
+    assert.ok(near(inHandleToInfluence([0.58, 1]).influence, 0.42));
+    assert.ok(near(outHandleToInfluence([1.5, 0.5]).influence, 1)); // clamped
+    assert.ok(near(outHandleToInfluence([0.42, 0]).speed, 0)); // a flat ease-in start has zero speed
   });
 
   console.log(`\n✓ all ${passed} checks passed`);

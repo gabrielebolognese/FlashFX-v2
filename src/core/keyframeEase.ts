@@ -1,5 +1,38 @@
-import type { Keyframe } from './types';
+import type { Keyframe, Vec2 } from './types';
 import { applyEasing, cubicBezier, springProgress } from './easings';
+
+const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
+
+/**
+ * The After Effects "Keyframe Velocity" model, in normalized units. A bezier handle carries two
+ * independent feels: INFLUENCE — the temporal extent of the handle as a fraction of the segment
+ * (0..1); the "long handle = long creamy decel" dial — and SPEED — the value slope at the keyframe
+ * (value-fraction per time-fraction). The graph UI scales `speed` by Δvalue/Δtime to display it as
+ * real value/second. These four converters are exact inverses (round-trip safe) and are the single
+ * definition of how the influence/velocity numeric fields map onto the stored bezier handles.
+ */
+export interface HandleInfluence { influence: number; speed: number; }
+
+/** Outgoing handle = control point P1 near the segment START (stored as `Keyframe.handleOut`). */
+export function outHandleToInfluence(h: Vec2): HandleInfluence {
+  const influence = clamp01(h[0]);
+  return { influence, speed: influence > 1e-6 ? h[1] / influence : 0 };
+}
+export function influenceToOutHandle(influence: number, speed: number): Vec2 {
+  const x = clamp01(influence);
+  return [x, x * speed];
+}
+
+/** Incoming handle = control point P2 near the segment END (1,1) (stored as next `Keyframe.handleIn`);
+ *  influence is measured BACKWARD from the end, so it is `1 - x`. */
+export function inHandleToInfluence(h: Vec2): HandleInfluence {
+  const influence = clamp01(1 - h[0]);
+  return { influence, speed: influence > 1e-6 ? (1 - h[1]) / influence : 0 };
+}
+export function influenceToInHandle(influence: number, speed: number): Vec2 {
+  const x = clamp01(influence);
+  return [1 - x, 1 - x * speed];
+}
 
 // THE single source of truth for how a keyframe segment eases in time.
 //

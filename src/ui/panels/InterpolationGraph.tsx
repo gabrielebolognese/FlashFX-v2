@@ -3,7 +3,7 @@ import { useEditorStore } from '../../store/editor';
 import { useTimelineStore } from '../../store/timeline';
 import type { Layer, AnimatableProperty, ShapeLayer, TextLayer, Keyframe, Vec2 } from '../../core/types';
 import type { EasingName } from '../../core/easings';
-import { segmentProgress } from '../../core/keyframeEase';
+import { segmentProgress, outHandleToInfluence, influenceToOutHandle, inHandleToInfluence, influenceToInHandle } from '../../core/keyframeEase';
 import {
   frameToPixel,
   pixelToFrame,
@@ -230,6 +230,9 @@ export function InterpolationGraph() {
     : null;
 
   const [enabledProps, setEnabledProps] = useState<Set<string>>(new Set());
+  // Value graph = the property's value over time; Speed graph = its velocity over time (read-only —
+  // where you SEE momentum: peaks = fast, touching zero = a momentary stop).
+  const [graphMode, setGraphMode] = useState<'value' | 'speed'>('value');
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; trackId: string; kfFrame: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(500);
@@ -462,19 +465,14 @@ export function InterpolationGraph() {
     return { propDef, kfIndex, kf, hasNext, hasPrev, propId };
   }, [selectedCurvePoints, allProperties]);
 
-  const updateHandleValue = useCallback((type: 'in' | 'out', axis: 0 | 1, value: number) => {
+  // Write a whole handle vector at once (used by the influence/velocity fields, which set both axes).
+  const setHandleVec = useCallback((type: 'in' | 'out', vec: Vec2) => {
     if (!selectedKeyframeData || !activeLayer) return;
-    const { propDef, kfIndex, kf } = selectedKeyframeData;
+    const { propDef, kfIndex } = selectedKeyframeData;
     const newKeyframes = [...propDef.property.keyframes];
-    if (type === 'out') {
-      const newHandle: Vec2 = [...kf.handleOut];
-      newHandle[axis] = value;
-      newKeyframes[kfIndex] = { ...newKeyframes[kfIndex], handleOut: newHandle, interpolation: 'bezier' };
-    } else {
-      const newHandle: Vec2 = [...kf.handleIn];
-      newHandle[axis] = value;
-      newKeyframes[kfIndex] = { ...newKeyframes[kfIndex], handleIn: newHandle };
-    }
+    newKeyframes[kfIndex] = type === 'out'
+      ? { ...newKeyframes[kfIndex], handleOut: vec, interpolation: 'bezier', easing: undefined }
+      : { ...newKeyframes[kfIndex], handleIn: vec, interpolation: 'bezier', easing: undefined };
     updateLayerProperty(activeLayer.id, `${propDef.path}.keyframes`, newKeyframes);
   }, [selectedKeyframeData, activeLayer, updateLayerProperty]);
 
@@ -494,6 +492,28 @@ export function InterpolationGraph() {
     }
     updateLayerProperty(activeLayer.id, `${propDef.path}.keyframes`, newKeyframes);
   }, [selectedKeyframeData, activeLayer, updateLayerProperty]);
+
+  // The property component (X/Y/single) of the selected keyframe, and the Δvalue/Δtime of its OUT
+  // (this→next) and IN (prev→this) segments — the scale that turns normalized handle-speed into a
+  // real value/second reading for the velocity fields.
+  const selComponent: 'x' | 'y' | 'single' = selectedKeyframeData
+    ? (selectedKeyframeData.propId.endsWith('_y') || selectedKeyframeData.propId === 'scale_y' ? 'y'
+      : selectedKeyframeData.propId.endsWith('_x') || selectedKeyframeData.propId === 'pos_x' || selectedKeyframeData.propId === 'scale_x' ? 'x' : 'single')
+    : 'single';
+  const velScale = useMemo((): { out: number | null; in: number | null } => {
+    if (!selectedKeyframeData) return { out: null, in: null };
+    const { propDef, kfIndex, kf } = selectedKeyframeData;
+    const kfs = propDef.property.keyframes;
+    const cur = getKeyframeValue(kf, selComponent);
+    const fps = frameRate || 30;
+    let out: number | null = null;
+    let inScale: number | null = null;
+    const next = kfs[kfIndex + 1];
+    if (next) { const dt = (next.frame - kf.frame) / fps; if (dt > 1e-6) out = (getKeyframeValue(next, selComponent) - cur) / dt; }
+    const prev = kfs[kfIndex - 1];
+    if (prev) { const dt = (kf.frame - prev.frame) / fps; if (dt > 1e-6) inScale = (cur - getKeyframeValue(prev, selComponent)) / dt; }
+    return { out, in: inScale };
+  }, [selectedKeyframeData, selComponent, frameRate]);
 
   const visibleRange = getVisibleFrameRange(containerWidth, zoomLevel, scrollX);
   const ticks = getRulerTicks(visibleRange, zoomLevel, frameRate);
@@ -529,6 +549,21 @@ export function InterpolationGraph() {
             </button>
           );
         })}
+        {/* Value ⇄ Speed graph toggle */}
+        <div className="ml-auto flex items-center gap-0.5 flex-shrink-0 rounded bg-surface-3 p-0.5">
+          {(['value', 'speed'] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => setGraphMode(m)}
+              title={m === 'value' ? 'Value graph (value over time)' : 'Speed graph (velocity over time)'}
+              className={`px-1.5 py-0.5 rounded text-[9px] font-medium capitalize transition-colors ${
+                graphMode === m ? 'bg-accent text-on-accent' : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              {m}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Numeric handle editor (visible when a keyframe is selected) */}
@@ -545,20 +580,22 @@ export function InterpolationGraph() {
             <>
               <span className="text-[8px] text-slate-500 uppercase">Out</span>
               <HandleNumericField
-                label="X"
-                value={selectedKeyframeData.kf.handleOut[0]}
-                onChange={(v) => updateHandleValue('out', 0, v)}
-                precision={2}
+                label="Inf%"
+                value={outHandleToInfluence(selectedKeyframeData.kf.handleOut).influence * 100}
+                onChange={(v) => setHandleVec('out', influenceToOutHandle(v / 100, outHandleToInfluence(selectedKeyframeData.kf.handleOut).speed))}
+                precision={0}
                 min={0}
-                max={1}
+                max={100}
               />
               <HandleNumericField
-                label="Y"
-                value={selectedKeyframeData.kf.handleOut[1]}
-                onChange={(v) => updateHandleValue('out', 1, v)}
-                precision={2}
-                min={-2}
-                max={3}
+                label="Spd"
+                value={outHandleToInfluence(selectedKeyframeData.kf.handleOut).speed * (velScale.out ?? 0)}
+                onChange={(v) => {
+                  const inf = outHandleToInfluence(selectedKeyframeData.kf.handleOut).influence;
+                  const ns = velScale.out && Math.abs(velScale.out) > 1e-6 ? v / velScale.out : 0;
+                  setHandleVec('out', influenceToOutHandle(inf, ns));
+                }}
+                precision={1}
               />
             </>
           )}
@@ -566,20 +603,22 @@ export function InterpolationGraph() {
             <>
               <span className="text-[8px] text-slate-500 uppercase">In</span>
               <HandleNumericField
-                label="X"
-                value={selectedKeyframeData.kf.handleIn[0]}
-                onChange={(v) => updateHandleValue('in', 0, v)}
-                precision={2}
+                label="Inf%"
+                value={inHandleToInfluence(selectedKeyframeData.kf.handleIn).influence * 100}
+                onChange={(v) => setHandleVec('in', influenceToInHandle(v / 100, inHandleToInfluence(selectedKeyframeData.kf.handleIn).speed))}
+                precision={0}
                 min={0}
-                max={1}
+                max={100}
               />
               <HandleNumericField
-                label="Y"
-                value={selectedKeyframeData.kf.handleIn[1]}
-                onChange={(v) => updateHandleValue('in', 1, v)}
-                precision={2}
-                min={-2}
-                max={3}
+                label="Spd"
+                value={inHandleToInfluence(selectedKeyframeData.kf.handleIn).speed * (velScale.in ?? 0)}
+                onChange={(v) => {
+                  const inf = inHandleToInfluence(selectedKeyframeData.kf.handleIn).influence;
+                  const ns = velScale.in && Math.abs(velScale.in) > 1e-6 ? v / velScale.in : 0;
+                  setHandleVec('in', influenceToInHandle(inf, ns));
+                }}
+                precision={1}
               />
             </>
           )}
@@ -615,6 +654,8 @@ export function InterpolationGraph() {
               activeLayerId={activeLayer?.id ?? null}
               propertyPath={prop.path}
               updateLayerProperty={updateLayerProperty}
+              graphMode={graphMode}
+              frameRate={frameRate}
             />
           ))
         )}
@@ -674,9 +715,11 @@ interface PropertyTrackRowProps {
   activeLayerId: string | null;
   propertyPath: string;
   updateLayerProperty: (layerId: string, path: string, value: unknown) => void;
+  graphMode: 'value' | 'speed';
+  frameRate: number;
 }
 
-function PropertyTrackRow({ prop, containerWidth, zoomLevel, scrollX, ticks, playheadX, durationFrames, onScrub, onContextMenu, selectedCurvePoints, selectedKeyframes, onSelectPoint, activeLayerId, propertyPath, updateLayerProperty }: PropertyTrackRowProps) {
+function PropertyTrackRow({ prop, containerWidth, zoomLevel, scrollX, ticks, playheadX, durationFrames, onScrub, onContextMenu, selectedCurvePoints, selectedKeyframes, onSelectPoint, activeLayerId, propertyPath, updateLayerProperty, graphMode, frameRate }: PropertyTrackRowProps) {
   const keyframes = prop.property.keyframes;
   const component: 'x' | 'y' | 'single' = prop.id.endsWith('_y') || prop.id === 'scale_y' ? 'y'
     : prop.id.endsWith('_x') || prop.id === 'pos_x' || prop.id === 'scale_x' ? 'x' : 'single';
@@ -742,6 +785,36 @@ function PropertyTrackRow({ prop, containerWidth, zoomLevel, scrollX, ticks, pla
     }
     return points.join(' ');
   }, [keyframes, zoomLevel, scrollX, containerWidth, durationFrames, component, valueToY]);
+
+  // --- Speed graph: velocity (value/second) over time, sampled as the value curve's derivative.
+  // Read-only visualization — where you SEE momentum (peaks = fast, crossing zero = a stop/reversal).
+  const speedAt = useCallback((f: number) => {
+    const d = 0.5; // half-frame central difference
+    return ((interpolateAtFrame(keyframes, f + d, component) - interpolateAtFrame(keyframes, f - d, component)) / (2 * d)) * frameRate;
+  }, [keyframes, component, frameRate]);
+
+  const speedInfo = useMemo(() => {
+    if (graphMode !== 'speed' || keyframes.length < 2) return null;
+    const frameWidth = getFrameWidth(zoomLevel);
+    const startFrame = Math.max(0, Math.floor(scrollX / frameWidth) - 2);
+    const endFrame = Math.min(durationFrames, Math.ceil((scrollX + containerWidth) / frameWidth) + 2);
+    const step = Math.max(0.25, 3 / frameWidth);
+    const samples: { f: number; s: number }[] = [];
+    let lo = 0, hi = 0;
+    for (let f = startFrame; f <= endFrame; f += step) {
+      const s = speedAt(f);
+      samples.push({ f, s });
+      if (s < lo) lo = s;
+      if (s > hi) hi = s;
+    }
+    if (samples.length === 0) return null;
+    const mag = Math.max(Math.abs(lo), Math.abs(hi), 1) * 1.2; // range includes 0; guard the flat case
+    const speedToY = (s: number) => TRACK_HEIGHT - 20 - ((s + mag) / (2 * mag)) * (TRACK_HEIGHT - 40);
+    const path = samples
+      .map((p, i) => `${i === 0 ? 'M' : 'L'}${frameToPixel(p.f, zoomLevel, scrollX).toFixed(1)},${speedToY(p.s).toFixed(1)}`)
+      .join(' ');
+    return { path, mag, zeroY: speedToY(0) };
+  }, [graphMode, keyframes, scrollX, zoomLevel, containerWidth, durationFrames, speedAt]);
 
   const handleRulerDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -929,11 +1002,21 @@ function PropertyTrackRow({ prop, containerWidth, zoomLevel, scrollX, ticks, pla
         </div>
       </div>
 
-      {/* Value scale on left */}
-      <div className="absolute left-[50px] top-0 bottom-0 w-[30px] flex flex-col justify-between py-3 pointer-events-none z-10">
-        <span className="text-[7px] text-slate-600 font-mono">{Math.round(maxVal)}</span>
-        <span className="text-[7px] text-slate-600 font-mono">{Math.round((maxVal + minVal) / 2)}</span>
-        <span className="text-[7px] text-slate-600 font-mono">{Math.round(minVal)}</span>
+      {/* Value / speed scale on left */}
+      <div className="absolute left-[50px] top-0 bottom-0 w-[34px] flex flex-col justify-between py-3 pointer-events-none z-10">
+        {graphMode === 'speed' && speedInfo ? (
+          <>
+            <span className="text-[7px] text-cyan-600 font-mono">{Math.round(speedInfo.mag)}/s</span>
+            <span className="text-[7px] text-cyan-700 font-mono">0</span>
+            <span className="text-[7px] text-cyan-600 font-mono">{-Math.round(speedInfo.mag)}/s</span>
+          </>
+        ) : (
+          <>
+            <span className="text-[7px] text-slate-600 font-mono">{Math.round(maxVal)}</span>
+            <span className="text-[7px] text-slate-600 font-mono">{Math.round((maxVal + minVal) / 2)}</span>
+            <span className="text-[7px] text-slate-600 font-mono">{Math.round(minVal)}</span>
+          </>
+        )}
       </div>
 
       {/* Track area */}
@@ -962,6 +1045,23 @@ function PropertyTrackRow({ prop, containerWidth, zoomLevel, scrollX, ticks, pla
         {/* Horizontal center line */}
         <line x1={0} y1={TRACK_HEIGHT / 2} x2={containerWidth} y2={TRACK_HEIGHT / 2} stroke="#1a2a42" strokeWidth={0.5} />
 
+        {graphMode === 'speed' ? (
+          /* Speed graph — velocity curve + zero line + keyframe frame ticks (read-only). */
+          <>
+            {speedInfo && (
+              <>
+                <line x1={0} y1={speedInfo.zeroY} x2={containerWidth} y2={speedInfo.zeroY} stroke="#164e63" strokeWidth={0.8} strokeDasharray="3,3" />
+                <path d={speedInfo.path} fill="none" stroke="#38bdf8" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" opacity={0.9} />
+              </>
+            )}
+            {keyframes.map((kf) => {
+              const x = frameToPixel(kf.frame, zoomLevel, scrollX);
+              if (x < -10 || x > containerWidth + 10) return null;
+              return <line key={kf.frame} x1={x} y1={0} x2={x} y2={TRACK_HEIGHT} stroke="#38bdf8" strokeWidth={0.5} opacity={0.25} />;
+            })}
+          </>
+        ) : (
+        <>
         {/* Curve */}
         {curvePath && (
           <path d={curvePath} fill="none" stroke="#ffffff" strokeWidth={1.5} strokeLinecap="round" opacity={0.85} />
@@ -1044,6 +1144,8 @@ function PropertyTrackRow({ prop, containerWidth, zoomLevel, scrollX, ticks, pla
             </g>
           );
         })}
+        </>
+        )}
 
         {/* Playhead */}
         {playheadX >= 0 && playheadX <= containerWidth && (

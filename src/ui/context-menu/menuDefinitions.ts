@@ -61,9 +61,9 @@ export interface KeyframeMenuContext {
 
 // Bezier handles for the easing presets ([handleIn, handleOut]); mirrors
 // core/animationPresets.EASING so the menu produces the same curves as the graph.
-const EASE_IN: [Vec2, Vec2] = [[1, 1], [0.42, 0.001]];
-const EASE_OUT: [Vec2, Vec2] = [[0.58, 1], [0.001, 0.001]];
-const EASE_IO: [Vec2, Vec2] = [[0.58, 1], [0.42, 0.001]];
+export const EASE_IN: [Vec2, Vec2] = [[1, 1], [0.42, 0.001]];
+export const EASE_OUT: [Vec2, Vec2] = [[0.58, 1], [0.001, 0.001]];
+export const EASE_IO: [Vec2, Vec2] = [[0.58, 1], [0.42, 0.001]];
 
 // Relink/replace: pick a file and re-import it under the same asset id (layers that
 // reference the asset auto-repair, since they key off assetId).

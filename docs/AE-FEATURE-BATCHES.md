@@ -22,8 +22,8 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | Batch | Title | Status | Perf weight |
 |------|-------|--------|-------------|
 | B1 | Easing engine core (Penner/elastic/bounce + render↔graph fix) | ✅ | light |
-| B2 | Graph Editor Pro (speed graph, influence, hotkeys) | ▶ **next** | light |
-| B3 | Spatial position keyframes (motion-path bezier, dots, roving, separate dims) | ⬜ | light |
+| B2 | Graph Editor Pro (speed graph, influence, hotkeys) | ✅ | light |
+| B3 | Spatial position keyframes (motion-path bezier, dots, roving, separate dims) | ▶ **next** | light |
 | B4 | Motion-blur finishing (comp shutter angle/phase/samples) + Smoother/Wiggler | ⬜ | medium |
 | B5 | Time remapping & speed ramps + frame-mix + exponential scale | ⬜ | medium |
 | B6 | Optical-flow retiming & pixel motion blur | ⬜ | **heavy** |
@@ -59,10 +59,10 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 ## B1 — Easing engine core ✅ DONE
 **Delivers:** true Penner family + Back/Elastic/Bounce eases; `Keyframe.easing`; one canonical `segmentProgress` shared by renderer + graph editor; fixed the render-read-both-handles-off-start bug and the `handle||default` zero-clobber. **Categories:** 1. **Files:** `core/easings.ts`, `core/keyframeEase.ts`, `core/interpolation.ts`, `core/types.ts`, `InterpolationGraph.tsx`, `store/editor.ts` (`setKeyframeEasing`), `menuDefinitions.ts`. **Verify:** `verify:easing` (19 checks).
 
-## B2 — Graph Editor Pro ▶ NEXT
-**Delivers:** a **Speed Graph** view (velocity over time) alongside the existing Value Graph; **AE-style influence handles** (influence % + speed, the intuitive dial) layered over the raw bezier handles; numeric velocity/influence entry; **F9 / Shift+F9 / Ctrl+Shift+F9** easy-ease hotkeys wired to the current keyframe selection. **Categories:** 1. **Depends on:** B1. **Perf:** overlay/UI only; no render cost. **Likely files:** `InterpolationGraph.tsx`, `App.tsx` (keydown), `store/editor.ts` (an ease-selected-keyframes action + selection→targets mapping), maybe `core/keyframeEase.ts` (velocity readout helper). **Verify:** extend `verify:easing` (influence↔handle mapping, velocity computation) or a new `verify:graph-velocity`.
+## B2 — Graph Editor Pro ✅ DONE
+**Delivered:** **Speed Graph** toggle (read-only velocity-over-time curve — the derivative of the value curve, with its own value/s scale, a zero line, and keyframe ticks) beside the Value Graph; the numeric handle strip now shows the **AE Keyframe-Velocity model** — **Influence %** and **Speed (value/s)** for the In and Out sides (round-trip-safe converters in `core/keyframeEase.ts`); **F9 / Shift+F9 / Ctrl+Shift+F9** easy-ease hotkeys on the current keyframe selection; `setKeyframeInterpolation` now clears any named ease so Linear/Ease/F9 correctly override an elastic/bounce. **Files:** `core/keyframeEase.ts` (influence↔handle helpers), `InterpolationGraph.tsx`, `App.tsx` (F9), `store/editor.ts`, `menuDefinitions.ts` (exported ease constants), new `ui/panels/keyframeSelection.ts` (shared selection resolver). **Verify:** `verify:easing` (now 22 checks — incl. influence↔handle round-trip). **Deferred:** dragging on the Speed Graph itself (read-only for now).
 
-## B3 — Spatial position keyframes
+## B3 — Spatial position keyframes ▶ NEXT
 **Delivers:** spatial interpolation on ordinary position keyframes (Linear / Auto-Bezier / Continuous / Bezier) with **draggable spatial tangents** on the position path in the viewport; **per-frame motion-path spacing dots** (the velocity/arc X-ray); **roving keyframes** (constant spatial velocity across waypoints); **Separate Dimensions** (independent X/Y/Z curves). **Categories:** 1. **Depends on:** B1. **Perf:** viewport overlay + pure eval; keep the per-frame dot sampling capped. **Likely files:** `core/types.ts` (spatial tangents on Keyframe; a `dimensionsSeparated` flag), `core/interpolation.ts`, `AnimatedPathsOverlay.tsx` / a new editable position-path overlay, `store/editor.ts`. **Verify:** `verify:spatial-keyframes` (arc-length constant velocity for roving, spatial bezier sampling, separate-dims independence).
 
 ## B4 — Motion-blur finishing + keyframe assistants

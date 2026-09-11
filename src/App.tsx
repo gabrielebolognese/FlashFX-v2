@@ -24,6 +24,8 @@ import { RenameModal } from './ui/panels/RenameModal';
 import { useRenameModalStore } from './store/renameModal';
 import { ClipContextMenu } from './ui/panels/ClipContextMenu';
 import { ContextMenuProvider, ContextMenuRenderer } from './ui/context-menu';
+import { EASE_IN, EASE_OUT, EASE_IO } from './ui/context-menu/menuDefinitions';
+import { resolveKeyframeContext } from './ui/panels/keyframeSelection';
 import { SettingsPanel, SettingsCssInjector } from './settings';
 import { useSettingsStore, getSettingValue } from './settings/store';
 import { nudgeDelta } from './core/nudge';
@@ -103,6 +105,20 @@ function Editor() {
           saveCurrentProject()
             .then(() => useIslandStore.getState().toast('Saved', { tone: 'success', icon: 'check' }))
             .catch((err) => { console.error('Save failed:', err); useIslandStore.getState().error('Save failed'); });
+        }
+        return;
+      }
+
+      // Easy Ease on the selected keyframes — AE F9 (both), Shift+F9 (in), Ctrl/Cmd+Shift+F9 (out).
+      // Works from anywhere; a no-op when no keyframes are selected.
+      if (e.key === 'F9') {
+        e.preventDefault();
+        const ctx = resolveKeyframeContext();
+        if (ctx && ctx.targets.length > 0) {
+          const ed = useEditorStore.getState();
+          if ((e.ctrlKey || e.metaKey) && e.shiftKey) ed.setKeyframeInterpolation(ctx.layerId, ctx.targets, 'bezier', EASE_OUT[0], EASE_OUT[1]);
+          else if (e.shiftKey) ed.setKeyframeInterpolation(ctx.layerId, ctx.targets, 'bezier', EASE_IN[0], EASE_IN[1]);
+          else ed.setKeyframeInterpolation(ctx.layerId, ctx.targets, 'bezier', EASE_IO[0], EASE_IO[1]);
         }
         return;
       }
