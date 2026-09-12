@@ -8,7 +8,7 @@ import {
   FastForward, Rewind, Tag, Palette, Settings, Wand2, ScanLine, AudioLines,
   Waves, Activity, Gauge, Ungroup, Group, MousePointer, Columns3, Rows3,
   Zap, ArrowLeftToLine, ArrowRightToLine, Container, Download,
-  Combine, Diff, SquareStack, Blend, Captions,
+  Combine, Diff, SquareStack, Blend, Captions, Spline,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { MenuEntry } from './types';
@@ -1031,6 +1031,14 @@ export function buildKeyframeMenu(isSingle: boolean, ctx?: KeyframeMenuContext):
         kf('bez-auto', 'Auto Bezier', setInterp('bezier', EASE_IO[0], EASE_IO[1]), Activity),
         kf('bez-continuous', 'Continuous', () => ed.setKeyframeTangentMode(L, targets, 'continuous'), Activity),
         kf('bez-broken', 'Broken Tangents', () => ed.setKeyframeTangentMode(L, targets, 'broken'), Activity),
+      ],
+    },
+    {
+      type: 'group',
+      label: 'Motion Path (Spatial)',
+      items: [
+        kf('sp-smooth', 'Smooth Path (Auto Bezier)', () => ed.setKeyframeSpatialMode(L, targets, 'auto'), Spline),
+        kf('sp-linear', 'Linear Path', () => ed.setKeyframeSpatialMode(L, targets, 'linear'), MoveVertical),
       ],
     },
     {

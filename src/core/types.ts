@@ -38,6 +38,18 @@ export interface Keyframe {
    * so existing scenes and the default keyframe are unaffected.
    */
   easing?: EasingName;
+  /**
+   * SPATIAL tangents for a position keyframe — offsets (in the property's own units) from this
+   * keyframe's position value, defining the curve of the path THROUGH SPACE (separate from temporal
+   * easing). `spatialOut` shapes the outgoing segment, `spatialIn` the incoming one. Absent on both
+   * sides = a straight line between keyframes (the classic behaviour). Only position keyframes carry
+   * these; scalar/other vec2 properties never set them, so evaluation stays unchanged for them.
+   * `spatialMode` records intent for the editor ('linear' = no tangents, 'auto' = auto-smoothed,
+   * 'bezier' = manually shaped).
+   */
+  spatialIn?: Vec2;
+  spatialOut?: Vec2;
+  spatialMode?: 'linear' | 'auto' | 'bezier';
 }
 
 export interface AnimatableProperty {

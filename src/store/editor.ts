@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { Composition, SceneDocument, Layer, AnimatableProperty, Keyframe, Vec2, Vec4, InterpolationType, BackgroundLayer, Track, TrackType, VideoPlaybackMode, PathVertex, VertexType, Mask, MaskType, AnchorEdge, PhysicsBindingDef, PhysicsWorldDef, StaggerBindingDef, LayoutObjectLayer, LayoutContainerLayer, ContainerShapeType, Marker, ShapeLayer, PolygonShape, TextLayer } from '../core/types';
 import type { EasingName } from '../core/easings';
+import { autoSpatialTangents } from '../core/positionPath';
 import { createComposition, createRectangleLayer, createCircleLayer, createStarLayer, createPolygonLayer, createDefaultPolygonVertices, createTextLayer, createDefaultTextContent, createVideoLayer, createImageLayer, createAudioLayer, createGroupLayer, createKeyframe, createBackgroundLayer, createMask, createParticleLayer, createAnimationItemLayer, createFieldSampledLayer, createGenerativePatternLayer, createCameraLayer, createLottieIconLayer, createLayoutObjectLayer, createLayoutContainerLayer, createDefaultChildOverride, createProperty, uid } from '../core/factory';
 import { outlineText, canOutlineFont } from '../text/outlineText';
 import { computeBatchNames, type RenamePattern } from '../core/batchRename';
@@ -437,6 +438,8 @@ interface EditorState {
   setKeyframeInterpolation: (layerId: string, targets: KeyframeTarget[], interpolation: InterpolationType, handleIn?: Vec2, handleOut?: Vec2) => void;
   /** Apply a named ease (overshoot/bounce/elastic/Penner) to the outgoing segment of each target keyframe; `null` clears it. */
   setKeyframeEasing: (layerId: string, targets: KeyframeTarget[], easing: EasingName | null) => void;
+  /** Set the SPATIAL interpolation of position keyframes: 'linear' (straight path) or 'auto' (auto-smoothed bezier arc). No-op on non-vec2 properties. */
+  setKeyframeSpatialMode: (layerId: string, targets: KeyframeTarget[], mode: 'linear' | 'auto') => void;
   // ── Keyframe transforms (Batch 3) — all undoable, batched, operate on the targets ──
   copyKeyframes: (layerId: string, targets: KeyframeTarget[]) => void;
   pasteKeyframes: (layerId: string, atFrame: number) => void;
@@ -3806,6 +3809,40 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const newComp = { ...composition, layers: newLayers };
     exec({
       label: easing ? 'Set Keyframe Easing' : 'Clear Keyframe Easing',
+      execute: () => { set({ composition: newComp }); },
+      undo: () => { set({ composition: oldComp }); },
+    });
+  },
+
+  setKeyframeSpatialMode: (layerId, targets, mode) => {
+    if (targets.length === 0) return;
+    const framesByPath = groupTargetFrames(targets);
+    const { composition } = get();
+    const oldComp = composition;
+    const newLayers = composition.layers.map((layer) => {
+      if (layer.id !== layerId) return layer;
+      let updated = layer;
+      for (const [path, frames] of framesByPath) {
+        const prop = deepGet(updated, path) as AnimatableProperty | undefined;
+        if (!prop || !prop.keyframes || prop.valueType !== 'vec2') continue; // spatial paths are vec2 (position) only
+        const kfs = prop.keyframes;
+        const newKfs = kfs.map((k: Keyframe, i: number) => {
+          if (!frames.has(k.frame)) return k;
+          if (mode === 'linear') {
+            return { ...k, spatialIn: undefined, spatialOut: undefined, spatialMode: 'linear' as const };
+          }
+          const prev = i > 0 ? (kfs[i - 1].value as Vec2) : null;
+          const next = i < kfs.length - 1 ? (kfs[i + 1].value as Vec2) : null;
+          const tan = autoSpatialTangents(prev, k.value as Vec2, next);
+          return { ...k, spatialIn: tan.in, spatialOut: tan.out, spatialMode: 'auto' as const };
+        });
+        updated = deepSet(updated, `${path}.keyframes`, newKfs) as Layer;
+      }
+      return updated;
+    });
+    const newComp = { ...composition, layers: newLayers };
+    exec({
+      label: mode === 'auto' ? 'Smooth Motion Path' : 'Linear Motion Path',
       execute: () => { set({ composition: newComp }); },
       undo: () => { set({ composition: oldComp }); },
     });

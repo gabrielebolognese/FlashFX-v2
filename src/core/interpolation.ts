@@ -48,7 +48,8 @@ import { sampleBakedFrame } from '../physics/bake';
 import { computeLayout, computeGridLayout } from '../layout/engine';
 import type { ChildMeasurement } from '../layout/engine';
 import { computeContainerLayout } from '../layout/containerEngine';
-import { easeSegment } from './keyframeEase';
+import { easeSegment, segmentProgress } from './keyframeEase';
+import { positionOnSegment } from './positionPath';
 import { expressionManager } from '../expressions/manager';
 import type { ExpressionContext, KeyframeData } from '../expressions/types';
 
@@ -234,10 +235,17 @@ export function evaluateProperty(prop: AnimatableProperty, frame: number): numbe
     if (prop.valueType === 'vec2') {
       const fromVec = prevKf.value as Vec2;
       const toVec = nextKf.value as Vec2;
-      keyframedValue = [
-        interpolateValue(fromVec[0], toVec[0], t, prevKf, nextKf),
-        interpolateValue(fromVec[1], toVec[1], t, prevKf, nextKf),
-      ];
+      if (prevKf.spatialOut || nextKf.spatialIn) {
+        // Spatial motion path: the two components share one arc-length-parameterized bezier through
+        // space, driven by the segment's temporal progress. Only position keyframes carry spatial
+        // tangents, so every other vec2 property still takes the straight-line branch below.
+        keyframedValue = positionOnSegment(fromVec, toVec, prevKf.spatialOut, nextKf.spatialIn, segmentProgress(t, prevKf, nextKf));
+      } else {
+        keyframedValue = [
+          interpolateValue(fromVec[0], toVec[0], t, prevKf, nextKf),
+          interpolateValue(fromVec[1], toVec[1], t, prevKf, nextKf),
+        ];
+      }
     } else {
       keyframedValue = interpolateValue(prevKf.value as number, nextKf.value as number, t, prevKf, nextKf);
     }
