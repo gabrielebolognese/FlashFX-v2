@@ -50,6 +50,7 @@ import type { ChildMeasurement } from '../layout/engine';
 import { computeContainerLayout } from '../layout/containerEngine';
 import { easeSegment, segmentProgress } from './keyframeEase';
 import { positionOnSegment } from './positionPath';
+import { evalScalarKeyframes } from './separateDimensions';
 import { expressionManager } from '../expressions/manager';
 import type { ExpressionContext, KeyframeData } from '../expressions/types';
 
@@ -205,6 +206,13 @@ function interpolateValue(
 
 export function evaluateProperty(prop: AnimatableProperty, frame: number): number | Vec2 {
   if (!prop) return 0;
+  // Separate Dimensions: X and Y each evaluate from their own scalar keyframe list. Centralised here
+  // so every caller (inspector, overlays, snapping, renderer) gets the separated position for free.
+  if (prop.valueType === 'vec2' && prop.separated) {
+    const def = prop.defaultValue as Vec2;
+    const sep: Vec2 = [evalScalarKeyframes(prop.keyframesX, def[0], frame), evalScalarKeyframes(prop.keyframesY, def[1], frame)];
+    return tryExpression(prop, sep);
+  }
   const { keyframes, defaultValue } = prop;
 
   let keyframedValue: number | Vec2;

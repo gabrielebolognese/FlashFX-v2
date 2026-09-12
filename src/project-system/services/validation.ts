@@ -69,6 +69,10 @@ function ensureAnimatableProperty(val: unknown, name: string, valueType: 'number
       valueType,
       defaultValue: prop.defaultValue != null ? prop.defaultValue as number | [number, number] : defaultValue,
       keyframes: Array.isArray(prop.keyframes) ? prop.keyframes.filter(isValidKeyframe) : [],
+      // Preserve Separate Dimensions (position) so it round-trips through save/load.
+      ...(prop.separated === true ? { separated: true } : {}),
+      ...(Array.isArray(prop.keyframesX) ? { keyframesX: (prop.keyframesX as unknown[]).filter(isValidKeyframe) as AnimatableProperty['keyframes'] } : {}),
+      ...(Array.isArray(prop.keyframesY) ? { keyframesY: (prop.keyframesY as unknown[]).filter(isValidKeyframe) as AnimatableProperty['keyframes'] } : {}),
     };
   }
   if (typeof val === 'number') {

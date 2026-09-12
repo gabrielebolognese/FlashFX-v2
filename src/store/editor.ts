@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { Composition, SceneDocument, Layer, AnimatableProperty, Keyframe, Vec2, Vec4, InterpolationType, BackgroundLayer, Track, TrackType, VideoPlaybackMode, PathVertex, VertexType, Mask, MaskType, AnchorEdge, PhysicsBindingDef, PhysicsWorldDef, StaggerBindingDef, LayoutObjectLayer, LayoutContainerLayer, ContainerShapeType, Marker, ShapeLayer, PolygonShape, TextLayer } from '../core/types';
 import type { EasingName } from '../core/easings';
 import { autoSpatialTangents, segmentArcLength, framesFromCumLengths } from '../core/positionPath';
+import { splitDimensions, mergeDimensions } from '../core/separateDimensions';
 import { createComposition, createRectangleLayer, createCircleLayer, createStarLayer, createPolygonLayer, createDefaultPolygonVertices, createTextLayer, createDefaultTextContent, createVideoLayer, createImageLayer, createAudioLayer, createGroupLayer, createKeyframe, createBackgroundLayer, createMask, createParticleLayer, createAnimationItemLayer, createFieldSampledLayer, createGenerativePatternLayer, createCameraLayer, createLottieIconLayer, createLayoutObjectLayer, createLayoutContainerLayer, createDefaultChildOverride, createProperty, uid } from '../core/factory';
 import { outlineText, canOutlineFont } from '../text/outlineText';
 import { computeBatchNames, type RenamePattern } from '../core/batchRename';
@@ -442,6 +443,10 @@ interface EditorState {
   setKeyframeSpatialMode: (layerId: string, targets: KeyframeTarget[], mode: 'linear' | 'auto') => void;
   /** Rove the middle keyframes of a vec2 (position) property in time so speed is constant along the whole path. */
   roveKeyframesAcrossTime: (layerId: string, propertyPath: string) => void;
+  /** Split a layer's position into independent X/Y curves ('separate dimensions'), or re-couple them; motion-preserving. */
+  toggleSeparateDimensions: (layerId: string) => void;
+  /** Add or update a keyframe on one axis of a separated position property (axis 0 = X, 1 = Y). */
+  addSeparatedKeyframe: (layerId: string, axis: 0 | 1, frame: number, value: number) => void;
   // ── Keyframe transforms (Batch 3) — all undoable, batched, operate on the targets ──
   copyKeyframes: (layerId: string, targets: KeyframeTarget[]) => void;
   pasteKeyframes: (layerId: string, atFrame: number) => void;
@@ -3886,6 +3891,62 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const newComp = { ...composition, layers: newLayers };
     exec({
       label: 'Rove Across Time',
+      execute: () => { set({ composition: newComp }); },
+      undo: () => { set({ composition: oldComp }); },
+    });
+  },
+
+  toggleSeparateDimensions: (layerId) => {
+    const { composition } = get();
+    const oldComp = composition;
+    let did = false;
+    const newLayers = composition.layers.map((layer) => {
+      if (layer.id !== layerId || !('transform' in layer) || !layer.transform) return layer;
+      const pos = layer.transform.position;
+      if (!pos || pos.valueType !== 'vec2') return layer;
+      let newPos: AnimatableProperty;
+      if (!pos.separated) {
+        // Separate: bake each axis from the combined vec2 (same frames + easing) → byte-identical
+        // motion the instant it separates. The combined list is cleared (unused while separated).
+        const { x, y } = splitDimensions(pos.keyframes);
+        newPos = { ...pos, separated: true, keyframesX: x, keyframesY: y, keyframes: [] };
+      } else {
+        // Re-couple: merge the union of X/Y frames into vec2 keyframes (exact at those frames).
+        const dv = pos.defaultValue as Vec2;
+        newPos = { ...pos, separated: false, keyframes: mergeDimensions(pos.keyframesX, pos.keyframesY, dv[0], dv[1]), keyframesX: undefined, keyframesY: undefined };
+      }
+      did = true;
+      return { ...layer, transform: { ...layer.transform, position: newPos } } as Layer;
+    });
+    if (!did) return;
+    const newComp = { ...composition, layers: newLayers };
+    exec({
+      label: 'Separate Dimensions',
+      execute: () => { set({ composition: newComp }); },
+      undo: () => { set({ composition: oldComp }); },
+    });
+  },
+
+  addSeparatedKeyframe: (layerId, axis, frame, value) => {
+    const { composition } = get();
+    const oldComp = composition;
+    let did = false;
+    const newLayers = composition.layers.map((layer) => {
+      if (layer.id !== layerId || !('transform' in layer) || !layer.transform) return layer;
+      const pos = layer.transform.position;
+      if (!pos || !pos.separated) return layer;
+      const key = axis === 0 ? 'keyframesX' : 'keyframesY';
+      const list = [...((pos[key] as Keyframe[] | undefined) ?? [])];
+      const idx = list.findIndex((k) => k.frame === frame);
+      if (idx >= 0) list[idx] = { ...list[idx], value };
+      else { list.push(createKeyframe(frame, value)); list.sort((a, b) => a.frame - b.frame); }
+      did = true;
+      return { ...layer, transform: { ...layer.transform, position: { ...pos, [key]: list } } } as Layer;
+    });
+    if (!did) return;
+    const newComp = { ...composition, layers: newLayers };
+    exec({
+      label: 'Set Position Keyframe',
       execute: () => { set({ composition: newComp }); },
       undo: () => { set({ composition: oldComp }); },
     });

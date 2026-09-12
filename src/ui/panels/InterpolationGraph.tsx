@@ -80,7 +80,9 @@ const PRESETS: CurvePreset[] = [
 function extractProperties(layer: Layer): PropertyDef[] {
   const defs: PropertyDef[] = [];
 
-  if (layer.transform.position.valueType === 'vec2') {
+  // Separated position lives on per-axis sub-curves; hide the combined X/Y graph curves for now
+  // (per-axis graph editing is a follow-up — edit X/Y in the Inspector).
+  if (layer.transform.position.valueType === 'vec2' && !layer.transform.position.separated) {
     defs.push({ id: 'pos_x', name: 'X', path: 'transform.position', color: PROPERTY_COLORS['transform.position'], property: layer.transform.position });
     defs.push({ id: 'pos_y', name: 'Y', path: 'transform.position', color: '#ff8844', property: layer.transform.position });
   }

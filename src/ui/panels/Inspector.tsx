@@ -326,6 +326,8 @@ function InspectorTabContent({ tab, layer }: { tab: InspectorTab; layer: Layer }
   const updateLayerProperty = useEditorStore((s) => s.updateLayerProperty);
   const addKeyframe = useEditorStore((s) => s.addKeyframe);
   const toggleLayer3D = useEditorStore((s) => s.toggleLayer3D);
+  const toggleSeparateDimensions = useEditorStore((s) => s.toggleSeparateDimensions);
+  const addSeparatedKeyframe = useEditorStore((s) => s.addSeparatedKeyframe);
   const compW = useEditorStore((s) => s.composition.settings.width);
   const compH = useEditorStore((s) => s.composition.settings.height);
 
@@ -446,17 +448,54 @@ function InspectorTabContent({ tab, layer }: { tab: InspectorTab; layer: Layer }
             3D Layer{layer.is3D ? ' · on' : ''}
           </button>
         )}
-        <Vec2DragInput
-          label="Position"
-          prop={layer.transform.position}
-          frame={currentFrame}
-          onChangeValue={(v) => updateLayerProperty(layer.id, 'transform.position.defaultValue', v)}
-          onKeyframe={(v) => addKeyframe(layer.id, 'transform.position', currentFrame, v)}
-          hasKeyframe={hasKeyframeAt(layer.transform.position)}
-          labels={['X', 'Y']}
-          defaultValue={[compW / 2, compH / 2]}
-          propPath="transform.position"
-        />
+        {(() => {
+          const pos = layer.transform.position;
+          if (pos.separated) {
+            const dv = pos.defaultValue as Vec2;
+            const sepX: AnimatableProperty = { id: `${pos.id}:x`, name: 'X', valueType: 'number', defaultValue: dv[0], keyframes: pos.keyframesX ?? [] };
+            const sepY: AnimatableProperty = { id: `${pos.id}:y`, name: 'Y', valueType: 'number', defaultValue: dv[1], keyframes: pos.keyframesY ?? [] };
+            return (
+              <>
+                <NumberDragInput
+                  label="X Position" prop={sepX} frame={currentFrame}
+                  onChange={(v) => updateLayerProperty(layer.id, 'transform.position.defaultValue', [v, (layer.transform.position.defaultValue as Vec2)[1]])}
+                  onKeyframe={(v) => addSeparatedKeyframe(layer.id, 0, currentFrame, v)}
+                  hasKeyframe={(pos.keyframesX ?? []).some((k) => k.frame === currentFrame)}
+                  defaultValue={compW / 2}
+                  propPath="transform.position.x"
+                />
+                <NumberDragInput
+                  label="Y Position" prop={sepY} frame={currentFrame}
+                  onChange={(v) => updateLayerProperty(layer.id, 'transform.position.defaultValue', [(layer.transform.position.defaultValue as Vec2)[0], v])}
+                  onKeyframe={(v) => addSeparatedKeyframe(layer.id, 1, currentFrame, v)}
+                  hasKeyframe={(pos.keyframesY ?? []).some((k) => k.frame === currentFrame)}
+                  defaultValue={compH / 2}
+                  propPath="transform.position.y"
+                />
+              </>
+            );
+          }
+          return (
+            <Vec2DragInput
+              label="Position"
+              prop={pos}
+              frame={currentFrame}
+              onChangeValue={(v) => updateLayerProperty(layer.id, 'transform.position.defaultValue', v)}
+              onKeyframe={(v) => addKeyframe(layer.id, 'transform.position', currentFrame, v)}
+              hasKeyframe={hasKeyframeAt(pos)}
+              labels={['X', 'Y']}
+              defaultValue={[compW / 2, compH / 2]}
+              propPath="transform.position"
+            />
+          );
+        })()}
+        <button
+          onClick={() => toggleSeparateDimensions(layer.id)}
+          title={layer.transform.position.separated ? 'Re-couple X and Y into a single position curve' : 'Split position into independent X and Y curves (own timing/easing per axis)'}
+          className="flex items-center gap-1 mt-1 mb-0.5 px-1.5 py-0.5 rounded text-caption border border-hairline text-slate-400 hover:text-slate-200 hover:bg-white/5 transition-colors"
+        >
+          {layer.transform.position.separated ? 'Combine Dimensions' : 'Separate Dimensions'}
+        </button>
         {/* 2.5D depth: Z position (present once the layer is 3D). */}
         {layer.is3D && layer.transform.positionZ && (
           <NumberDragInput

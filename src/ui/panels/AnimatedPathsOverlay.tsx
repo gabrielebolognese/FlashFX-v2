@@ -11,8 +11,13 @@ const MAX_SPACING_DOTS = 240;
 function positionProp(layer: Layer) {
   if (!('transform' in layer) || !layer.transform) return null;
   const p = layer.transform.position;
-  if (!p || !Array.isArray(p.keyframes) || p.keyframes.length < 2) return null;
-  return p;
+  if (!p) return null;
+  if (p.separated) {
+    // Separated: the path is driven by the two axis curves; show it once either axis is animated.
+    const n = (p.keyframesX?.length ?? 0) + (p.keyframesY?.length ?? 0);
+    return n >= 2 ? p : null;
+  }
+  return Array.isArray(p.keyframes) && p.keyframes.length >= 2 ? p : null;
 }
 
 /**

@@ -58,6 +58,17 @@ export interface AnimatableProperty {
   valueType: 'number' | 'vec2';
   defaultValue: number | Vec2;
   keyframes: Keyframe[];
+  /**
+   * SEPARATE DIMENSIONS (position only). When true, the X and Y components animate on INDEPENDENT
+   * scalar keyframe lists (`keyframesX` / `keyframesY`) with their own timing and easing, instead of
+   * the shared vec2 `keyframes` — e.g. steady X + accelerating Y for a physical bounce. The combined
+   * `keyframes` list is unused while separated (re-coupling rebuilds it). `defaultValue` (a Vec2)
+   * still supplies each axis's base when its sub-curve is empty. Absent/false = classic combined
+   * behaviour, so every other property is unaffected. Mutually exclusive with spatial tangents.
+   */
+  separated?: boolean;
+  keyframesX?: Keyframe[];
+  keyframesY?: Keyframe[];
 }
 
 export type BlendMode =
