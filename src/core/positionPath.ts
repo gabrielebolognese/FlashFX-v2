@@ -67,6 +67,34 @@ export function positionOnSegment(
   return pointAtArcFraction(fromPos, p1, p2, toPos, progress);
 }
 
+/** Total arc length of one segment (straight line, or the spatial bezier when tangents are present). */
+export function segmentArcLength(from: Vec2, to: Vec2, spatialOut?: Vec2, spatialIn?: Vec2): number {
+  if (!spatialOut && !spatialIn) return Math.hypot(to[0] - from[0], to[1] - from[1]);
+  const p1: Vec2 = spatialOut ? [from[0] + spatialOut[0], from[1] + spatialOut[1]] : from;
+  const p2: Vec2 = spatialIn ? [to[0] + spatialIn[0], to[1] + spatialIn[1]] : to;
+  let prev = from;
+  let total = 0;
+  for (let i = 1; i <= ARC_SAMPLES; i++) {
+    const pt = cubicBezierVec2(from, p1, p2, to, i / ARC_SAMPLES);
+    total += Math.hypot(pt[0] - prev[0], pt[1] - prev[1]);
+    prev = pt;
+  }
+  return total;
+}
+
+/**
+ * Roving-across-time: given cumulative arc lengths at each keyframe (`cum[0]=0 … cum[last]=total`)
+ * and the anchor times, return the frame for each keyframe so that equal TIME = equal DISTANCE along
+ * the whole path (constant speed). Endpoints keep t0/t1; the middle keyframes are placed by their
+ * distance fraction. Degenerate (zero-length) paths fall back to even spacing.
+ */
+export function framesFromCumLengths(cum: number[], t0: number, t1: number): number[] {
+  const n = cum.length;
+  const total = cum[n - 1];
+  if (total < 1e-6) return cum.map((_, i) => t0 + ((t1 - t0) * i) / (n - 1));
+  return cum.map((c) => t0 + (t1 - t0) * (c / total));
+}
+
 /**
  * Auto (smooth / "Auto Bezier") spatial tangents for the middle keyframe of prev→cur→next, returned
  * as offsets from `cur`. The handle direction follows (next − prev) — a Catmull-Rom-style smooth —

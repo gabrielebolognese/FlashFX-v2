@@ -19,7 +19,7 @@ const distV = (a, b) => Math.hypot(b[0] - a[0], b[1] - a[1]);
 try {
   const outfile = join(tmp, 'positionPath.mjs');
   await build({ entryPoints: ['src/core/positionPath.ts'], bundle: true, format: 'esm', platform: 'node', outfile, logLevel: 'silent' });
-  const { cubicBezierVec2, pointAtArcFraction, positionOnSegment, autoSpatialTangents } = await import(pathToFileURL(outfile).href);
+  const { cubicBezierVec2, pointAtArcFraction, positionOnSegment, autoSpatialTangents, segmentArcLength, framesFromCumLengths } = await import(pathToFileURL(outfile).href);
 
   const P0 = [0, 0], P1 = [0, 100], P2 = [100, 100], P3 = [100, 0]; // an arch
 
@@ -77,6 +77,33 @@ try {
     assert.ok(distV(start.out, [0, 0]) > 1, 'first keyframe has an outgoing tangent');
     const endT = autoSpatialTangents([0, 0], [100, 0], null);
     assert.ok(nearV(endT.out, [0, 0]), 'last keyframe has no outgoing tangent');
+  });
+
+  check('segmentArcLength: straight = euclidean; curved > straight', () => {
+    assert.ok(near(segmentArcLength([0, 0], [100, 0]), 100, 1e-6));
+    assert.ok(segmentArcLength([0, 0], [100, 0], [0, 80], [0, 80]) > 100, 'a bowed segment is longer than the chord');
+  });
+
+  check('framesFromCumLengths: equal-length segments → equal frame spacing', () => {
+    const f = framesFromCumLengths([0, 25, 50, 75, 100], 0, 100);
+    assert.deepEqual(f.map((x) => Math.round(x)), [0, 25, 50, 75, 100]);
+  });
+
+  check('framesFromCumLengths: frames are proportional to distance (constant speed when roved)', () => {
+    const cum = [0, 10, 70, 90]; // uneven distances
+    const f = framesFromCumLengths(cum, 0, 90);
+    assert.deepEqual(f.map((x) => Math.round(x)), [0, 10, 70, 90]); // frame == distance here (total 90 over span 90)
+    // distance-per-frame is constant across every segment after roving
+    const speeds = [];
+    for (let i = 1; i < cum.length; i++) speeds.push((cum[i] - cum[i - 1]) / (f[i] - f[i - 1]));
+    for (let i = 1; i < speeds.length; i++) assert.ok(near(speeds[i], speeds[0], 1e-6), 'speed must be constant across segments');
+  });
+
+  check('framesFromCumLengths: endpoints anchored to t0/t1, degenerate path → even spacing', () => {
+    const f = framesFromCumLengths([0, 3, 9, 12], 10, 40);
+    assert.ok(near(f[0], 10) && near(f[f.length - 1], 40));
+    const flat = framesFromCumLengths([0, 0, 0, 0], 0, 30); // zero-length → even
+    assert.deepEqual(flat.map((x) => Math.round(x)), [0, 10, 20, 30]);
   });
 
   console.log(`\n✓ all ${passed} checks passed`);

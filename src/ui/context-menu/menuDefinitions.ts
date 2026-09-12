@@ -1039,6 +1039,7 @@ export function buildKeyframeMenu(isSingle: boolean, ctx?: KeyframeMenuContext):
       items: [
         kf('sp-smooth', 'Smooth Path (Auto Bezier)', () => ed.setKeyframeSpatialMode(L, targets, 'auto'), Spline),
         kf('sp-linear', 'Linear Path', () => ed.setKeyframeSpatialMode(L, targets, 'linear'), MoveVertical),
+        kf('sp-rove', 'Rove Across Time', () => ed.roveKeyframesAcrossTime(L, targets[0]?.propertyPath ?? 'transform.position'), Waves),
       ],
     },
     {

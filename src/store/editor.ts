@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { Composition, SceneDocument, Layer, AnimatableProperty, Keyframe, Vec2, Vec4, InterpolationType, BackgroundLayer, Track, TrackType, VideoPlaybackMode, PathVertex, VertexType, Mask, MaskType, AnchorEdge, PhysicsBindingDef, PhysicsWorldDef, StaggerBindingDef, LayoutObjectLayer, LayoutContainerLayer, ContainerShapeType, Marker, ShapeLayer, PolygonShape, TextLayer } from '../core/types';
 import type { EasingName } from '../core/easings';
-import { autoSpatialTangents } from '../core/positionPath';
+import { autoSpatialTangents, segmentArcLength, framesFromCumLengths } from '../core/positionPath';
 import { createComposition, createRectangleLayer, createCircleLayer, createStarLayer, createPolygonLayer, createDefaultPolygonVertices, createTextLayer, createDefaultTextContent, createVideoLayer, createImageLayer, createAudioLayer, createGroupLayer, createKeyframe, createBackgroundLayer, createMask, createParticleLayer, createAnimationItemLayer, createFieldSampledLayer, createGenerativePatternLayer, createCameraLayer, createLottieIconLayer, createLayoutObjectLayer, createLayoutContainerLayer, createDefaultChildOverride, createProperty, uid } from '../core/factory';
 import { outlineText, canOutlineFont } from '../text/outlineText';
 import { computeBatchNames, type RenamePattern } from '../core/batchRename';
@@ -440,6 +440,8 @@ interface EditorState {
   setKeyframeEasing: (layerId: string, targets: KeyframeTarget[], easing: EasingName | null) => void;
   /** Set the SPATIAL interpolation of position keyframes: 'linear' (straight path) or 'auto' (auto-smoothed bezier arc). No-op on non-vec2 properties. */
   setKeyframeSpatialMode: (layerId: string, targets: KeyframeTarget[], mode: 'linear' | 'auto') => void;
+  /** Rove the middle keyframes of a vec2 (position) property in time so speed is constant along the whole path. */
+  roveKeyframesAcrossTime: (layerId: string, propertyPath: string) => void;
   // ── Keyframe transforms (Batch 3) — all undoable, batched, operate on the targets ──
   copyKeyframes: (layerId: string, targets: KeyframeTarget[]) => void;
   pasteKeyframes: (layerId: string, atFrame: number) => void;
@@ -3843,6 +3845,47 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const newComp = { ...composition, layers: newLayers };
     exec({
       label: mode === 'auto' ? 'Smooth Motion Path' : 'Linear Motion Path',
+      execute: () => { set({ composition: newComp }); },
+      undo: () => { set({ composition: oldComp }); },
+    });
+  },
+
+  roveKeyframesAcrossTime: (layerId, propertyPath) => {
+    const { composition } = get();
+    const oldComp = composition;
+    let changed = false;
+    const newLayers = composition.layers.map((layer) => {
+      if (layer.id !== layerId) return layer;
+      const prop = deepGet(layer, propertyPath) as AnimatableProperty | undefined;
+      if (!prop || prop.valueType !== 'vec2' || prop.keyframes.length < 3) return layer;
+      const kfs = [...prop.keyframes].sort((a, b) => a.frame - b.frame);
+      // Cumulative arc length at each keyframe (0 at the first, total at the last).
+      const cum: number[] = [0];
+      let total = 0;
+      for (let i = 1; i < kfs.length; i++) {
+        total += segmentArcLength(kfs[i - 1].value as Vec2, kfs[i].value as Vec2, kfs[i - 1].spatialOut, kfs[i].spatialIn);
+        cum.push(total);
+      }
+      const t0 = kfs[0].frame;
+      const t1 = kfs[kfs.length - 1].frame;
+      if (t1 - t0 < kfs.length - 1) return layer; // not enough integer frames to rove into
+      const floats = framesFromCumLengths(cum, t0, t1);
+      const newKfs = kfs.map((k, i) => {
+        if (i === 0 || i === kfs.length - 1) return k;
+        // Round, then clamp so there's room for the keyframes on either side (order preserved below).
+        const f = Math.max(t0 + i, Math.min(t1 - (kfs.length - 1 - i), Math.round(floats[i])));
+        return { ...k, frame: f };
+      });
+      for (let i = 1; i < newKfs.length; i++) {
+        if (newKfs[i].frame <= newKfs[i - 1].frame) newKfs[i] = { ...newKfs[i], frame: newKfs[i - 1].frame + 1 };
+      }
+      changed = true;
+      return deepSet(layer, `${propertyPath}.keyframes`, newKfs) as Layer;
+    });
+    if (!changed) return;
+    const newComp = { ...composition, layers: newLayers };
+    exec({
+      label: 'Rove Across Time',
       execute: () => { set({ composition: newComp }); },
       undo: () => { set({ composition: oldComp }); },
     });

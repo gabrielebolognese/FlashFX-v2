@@ -23,6 +23,7 @@ import { PenToolOverlay } from './PenToolOverlay';
 import { BoundingBoxesOverlay } from './BoundingBoxesOverlay';
 import { SafeAreasOverlay } from './SafeAreasOverlay';
 import { AnimatedPathsOverlay } from './AnimatedPathsOverlay';
+import { PositionPathOverlay } from './PositionPathOverlay';
 import { MultiFieldWarning } from './MultiFieldWarning';
 import { ImageSizePrompt } from './ImageSizePrompt';
 import { useShapeToolStore, isShapeTool, isTextTool } from '../../store/shapeTool';
@@ -382,6 +383,7 @@ export function Viewport() {
       <PenToolOverlay compW={compW} compH={compH} style={overlayStyle} />
       <BoundingBoxesOverlay compW={compW} compH={compH} style={overlayStyle} />
       <AnimatedPathsOverlay compW={compW} compH={compH} style={overlayStyle} />
+      <PositionPathOverlay compW={compW} compH={compH} style={overlayStyle} />
       <SafeAreasOverlay style={overlayStyle} />
 
       {/* Field overlap warning */}
