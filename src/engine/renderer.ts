@@ -2229,7 +2229,7 @@ struct BlurU {
   omega: f32,          // angular velocity, radians / frame
   shutter: f32,        // shutter angle normalized to 0..1 (angle / 360)
   sampleCount: f32,
-  _pad: f32,
+  phase: f32,          // shutter-phase offset as a fraction of the streak (0 = centred)
 }
 
 @group(0) @binding(0) var<uniform> u: BlurU;
@@ -2273,7 +2273,7 @@ fn fs(in: VO) -> @location(0) vec4f {
   let n = max(i32(u.sampleCount), 2);
   var acc = vec4f(0.0);
   for (var k = 0; k < n; k = k + 1) {
-    let t = (f32(k) / f32(n - 1)) - 0.5;
+    let t = (f32(k) / f32(n - 1)) - 0.5 + u.phase;
     acc = acc + textureSampleLevel(tex, samp, texUV + duv * t, 0.0);
   }
   return acc / f32(n);
@@ -4283,7 +4283,7 @@ export class WebGPURenderer {
           f[8] = mb.omega;
           f[9] = mb.shutter / 360;
           f[10] = this.motionBlurSamples;
-          f[11] = 0;
+          f[11] = mb.phase;
         }
         device.queue.writeBuffer(gpu.blurUniformBuffer, 0, blurBufData, 0, UNIFORM_ALIGN * blurDraws.length);
       }

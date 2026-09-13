@@ -498,6 +498,10 @@ export function Toolbar() {
                 </div>
               </div>
               <SettingRow label="FPS" value={composition.settings.frameRate} onChange={(v) => setCompositionSetting('frameRate', v)} />
+              {/* Motion blur (Category 1 — B4a): global shutter angle/phase + full-quality samples. */}
+              <SettingRow label="Shutter °" value={composition.settings.shutterAngle ?? 180} onChange={(v) => setCompositionSetting('shutterAngle', Math.max(0, Math.min(360, v)))} suffix="deg" />
+              <SettingRow label="Sh. Phase" value={composition.settings.shutterPhase ?? 0} onChange={(v) => setCompositionSetting('shutterPhase', Math.max(-360, Math.min(360, v)))} suffix="deg" />
+              <SettingRow label="MB Samples" value={composition.settings.motionBlurSamples ?? 16} onChange={(v) => setCompositionSetting('motionBlurSamples', Math.max(2, Math.min(64, Math.round(v))))} />
               <SettingRow
                 label="Min Duration"
                 value={composition.settings.minimumDurationFrames ?? composition.settings.durationFrames}

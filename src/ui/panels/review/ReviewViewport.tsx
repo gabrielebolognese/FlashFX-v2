@@ -102,9 +102,9 @@ export function ReviewViewport() {
   useEffect(() => {
     const renderer = rendererRef.current;
     if (!renderer) return;
-    renderer.setMotionBlurSamples(globalMotionBlur ? getMotionBlurSamples(previewQuality) : 1);
+    renderer.setMotionBlurSamples(globalMotionBlur ? getMotionBlurSamples(previewQuality, composition.settings.motionBlurSamples ?? 16) : 1);
     playbackController.renderCurrentFrame();
-  }, [globalMotionBlur, previewQuality, rendererEpoch]);
+  }, [globalMotionBlur, previewQuality, rendererEpoch, composition.settings.motionBlurSamples]);
 
   const formatTimecode = (frame: number) => {
     const totalSec = frame / frameRate;

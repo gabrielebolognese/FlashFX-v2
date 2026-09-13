@@ -81,8 +81,12 @@ const MOTION_BLUR_SAMPLES: Record<PreviewQuality, number> = {
   quarter: 4,
 };
 
-export function getMotionBlurSamples(quality: PreviewQuality): number {
-  return MOTION_BLUR_SAMPLES[quality];
+// `base` is the composition's full-quality sample target (default 16). Lower quality tiers still
+// scale it down for preview performance, so the comp control never blows up the perf budget.
+export function getMotionBlurSamples(quality: PreviewQuality, base = 16): number {
+  const tier = MOTION_BLUR_SAMPLES[quality];
+  if (base === 16) return tier;
+  return Math.max(2, Math.round(tier * (base / 16)));
 }
 
 // Sample count used by the export renderer — always the high-quality path so

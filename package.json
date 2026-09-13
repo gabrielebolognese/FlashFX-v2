@@ -17,6 +17,7 @@
     "verify:easing": "node scripts/verify-easing.mjs",
     "verify:spatial-path": "node scripts/verify-spatial-path.mjs",
     "verify:separate-dims": "node scripts/verify-separate-dims.mjs",
+    "verify:shutter": "node scripts/verify-shutter.mjs",
     "verify:ai-client": "node scripts/verify-ai-client.mjs",
     "verify:cloud-sync": "node scripts/verify-cloudsync.mjs",
     "verify:plans": "node scripts/verify-plans.mjs",

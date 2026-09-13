@@ -196,11 +196,11 @@ export function Viewport() {
   useEffect(() => {
     const renderer = rendererRef.current;
     if (!renderer) return;
-    renderer.setMotionBlurSamples(globalMotionBlur ? getMotionBlurSamples(previewQuality) : 1);
+    renderer.setMotionBlurSamples(globalMotionBlur ? getMotionBlurSamples(previewQuality, composition.settings.motionBlurSamples ?? 16) : 1);
     renderer.setEffectsPreviewDisabled(disableEffects);
     renderer.setCameraDisabled(cameraDisabled);
     playbackController.renderCurrentFrame();
-  }, [globalMotionBlur, previewQuality, disableEffects, cameraDisabled, rendererEpoch]);
+  }, [globalMotionBlur, previewQuality, disableEffects, cameraDisabled, rendererEpoch, composition.settings.motionBlurSamples]);
 
   // Wheel zoom - cursor-centered (native listener for passive:false)
   useEffect(() => {

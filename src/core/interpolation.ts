@@ -51,6 +51,7 @@ import { computeContainerLayout } from '../layout/containerEngine';
 import { easeSegment, segmentProgress } from './keyframeEase';
 import { positionOnSegment } from './positionPath';
 import { evalScalarKeyframes } from './separateDimensions';
+import { effectiveShutterAngle, shutterPhaseFraction } from './shutter';
 import { expressionManager } from '../expressions/manager';
 import type { ExpressionContext, KeyframeData } from '../expressions/types';
 
@@ -185,7 +186,6 @@ function tryExpression(prop: AnimatableProperty, keyframedValue: number | Vec2):
   return result as number | Vec2;
 }
 
-const DEFAULT_SHUTTER_ANGLE = 180;
 
 function clamp(v: number, min: number, max: number): number {
   return v < min ? min : v > max ? max : v;
@@ -725,11 +725,15 @@ function computeMotionBlur(
   layers: Layer[],
   motionPaths: MotionPath[],
   frame: number,
+  compShutterAngle?: number,
+  compShutterPhase?: number,
 ): ResolvedMotionBlur | undefined {
   if (!getMotionBlur(layer)) return undefined;
 
-  const shutter = clamp(layer.motionBlurShutter ?? DEFAULT_SHUTTER_ANGLE, 0, 360);
+  // Composition shutter angle is the global streak length; the per-layer shutter is a relative factor.
+  const shutter = effectiveShutterAngle(compShutterAngle, layer.motionBlurShutter);
   if (shutter <= 0) return undefined;
+  const phase = shutterPhaseFraction(compShutterPhase, shutter);
 
   const prevFrame = Math.max(frame - 1, layer.inPoint);
   const prev = prevFrame === frame
@@ -750,7 +754,7 @@ function computeMotionBlur(
     Math.abs(scaleRateX) > 1e-5 || Math.abs(scaleRateY) > 1e-5;
   if (!moving) return undefined;
 
-  return { shutter, pivotX, pivotY, vx, vy, omega, scaleRateX, scaleRateY };
+  return { shutter, phase, pivotX, pivotY, vx, vy, omega, scaleRateX, scaleRateY };
 }
 
 // Derive the resolved shadow descriptor for a layer at the current frame. The
@@ -1114,7 +1118,7 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
 
     try {
       const worldTransform = worldTransformAt(layer, layers, motionPaths, frame);
-      const motionBlur = computeMotionBlur(layer, worldTransform, layers, motionPaths, frame);
+      const motionBlur = computeMotionBlur(layer, worldTransform, layers, motionPaths, frame, settings.shutterAngle, settings.shutterPhase);
       const shadow = computeShadow((layer as { shadow?: LayerShadow }).shadow, worldTransform);
       const glow = computeGlow((layer as { glow?: LayerGlow }).glow);
       const blur = computeBlur((layer as { blur?: LayerBlur }).blur);

@@ -1122,6 +1122,16 @@ export interface CompositionSettings {
    */
   minimumDurationFrames?: number;
   backgroundColor: Vec4;
+  /**
+   * Composition motion-blur "shutter". `shutterAngle` (deg, default 180) is the global streak length
+   * — the master smoothness knob scaling every motion-blurred layer; `shutterPhase` (deg, default 0)
+   * shifts the blur window (0 = centred on the frame, negative = trails, positive = leads);
+   * `motionBlurSamples` (default 16) is the full-quality sample target (still reduced by the preview
+   * quality tier). All optional so legacy compositions default to the classic centred 180° blur.
+   */
+  shutterAngle?: number;
+  shutterPhase?: number;
+  motionBlurSamples?: number;
 }
 
 export interface AnchorEdge {
@@ -1491,6 +1501,8 @@ export interface ResolvedImage {
 // vx/vy/omega are per-frame deltas, scaleRate is fractional per-frame.
 export interface ResolvedMotionBlur {
   shutter: number;
+  /** Shutter-phase as a fraction of the streak window (0 = centred, − trails, + leads). */
+  phase: number;
   pivotX: number;
   pivotY: number;
   vx: number;
