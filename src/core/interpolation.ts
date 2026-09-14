@@ -636,7 +636,7 @@ function resolveVideoLayer(layer: VideoLayer, frame: number, compositionFrameRat
     playbackRate: v.playbackRate,
     playbackMode: v.playbackMode,
     proxyScale: v.proxyScale,
-    ...(sourceFrameB != null ? { sourceFrameB, blendMix } : {}),
+    ...(sourceFrameB != null ? { sourceFrameB, blendMix, interp: v.retimeInterp ?? 'mix' } : {}),
   };
 }
 

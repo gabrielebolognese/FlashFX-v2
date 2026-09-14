@@ -17,6 +17,8 @@ import type { RangeSelectorConfig } from '../text/rangeSelector';
 // Named temporal eases (Penner / elastic / bounce / back) — type-only import; easings.ts imports
 // nothing back, so no runtime cycle.
 import type { EasingName } from './easings';
+// Retime interpolation mode ('mix' | 'flow') — type-only; opticalFlow.ts imports nothing back.
+import type { RetimeInterp } from './opticalFlow';
 
 export type Vec2 = [number, number];
 export type Vec4 = [number, number, number, number];
@@ -555,6 +557,12 @@ export interface VideoLayer {
      * single-frame (the classic behaviour). Optical-flow interpolation is a separate feature.
      */
     frameBlend?: boolean;
+    /**
+     * How a frame-blended clip fills between source frames: 'mix' = linear cross-dissolve (B5b,
+     * default); 'flow' = motion-estimated optical-flow warp (buttery slow-mo). The flow WARP is a
+     * WebGPU pass (B6b); until it's wired, 'flow' previews as 'mix'. Only meaningful when frameBlend.
+     */
+    retimeInterp?: RetimeInterp;
   };
   inPoint: number;
   outPoint: number;
@@ -1495,6 +1503,9 @@ export interface ResolvedVideo {
    *  second overlay video layer at `sourceFrameB` with opacity = `blendMix`. */
   sourceFrameB?: number;
   blendMix?: number;
+  /** Retime interpolation for the frame pair: 'mix' (cross-dissolve) or 'flow' (optical-flow warp,
+   *  B6b). Present only when frame-blending between two frames. */
+  interp?: RetimeInterp;
 }
 
 // A resolved image effect: the frozen numeric type + its static params, ready

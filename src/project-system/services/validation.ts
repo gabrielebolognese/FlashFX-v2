@@ -442,6 +442,7 @@ function validateLayer(raw: unknown): Layer | null {
           ...(typeof v.freezeSourceFrame === 'number' ? { freezeSourceFrame: v.freezeSourceFrame } : {}),
           ...(v.reversed === true ? { reversed: true } : {}),
           ...(v.frameBlend === true ? { frameBlend: true } : {}),
+          ...(v.retimeInterp === 'flow' || v.retimeInterp === 'mix' ? { retimeInterp: v.retimeInterp } : {}),
           // Animated Time Remap (an AnimatableProperty) — preserve on round-trip if it looks valid.
           ...(isObject(v.timeRemap) && Array.isArray((v.timeRemap as Record<string, unknown>).keyframes)
             ? { timeRemap: v.timeRemap as unknown as VideoLayer['video']['timeRemap'] } : {}),

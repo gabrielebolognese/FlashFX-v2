@@ -1362,6 +1362,26 @@ function VideoProperties({
             {video.frameBlend ? 'On' : 'Off'}
           </button>
         </div>
+        {video.frameBlend && (
+          <div className="flex items-center gap-1">
+            <label className="text-caption text-slate-500 w-14 flex-shrink-0">Interp</label>
+            <div className="flex flex-1 rounded overflow-hidden border border-[#23293a]">
+              {([['mix', 'Mix'], ['flow', 'Optical Flow']] as const).map(([val, name]) => {
+                const active = (video.retimeInterp ?? 'mix') === val;
+                return (
+                  <button
+                    key={val}
+                    onClick={() => updateLayerProperty(layer.id, 'video.retimeInterp', val)}
+                    title={val === 'flow' ? 'Motion-estimated slow-mo (GPU pass browser-verified; currently previews as Mix)' : 'Linear cross-dissolve between the two source frames'}
+                    className={`flex-1 text-[9px] py-1 transition-colors ${active ? 'bg-accent-wash text-accent-hover' : 'bg-surface-2 text-slate-400 hover:text-slate-200 hover:bg-surface-3'}`}
+                  >
+                    {name}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
         <div className="flex items-center gap-1">
           <label className="text-caption text-slate-500 w-14 flex-shrink-0">Muted</label>
           <button
