@@ -30,6 +30,7 @@ import {
   bakeSelected, setSelectedTangentMode, duplicateSelected, extractForClipboard, insertClipboard,
   type TangentMode,
 } from '../core/keyframeOps';
+import { smoothSelected, wiggleSelected } from '../core/keyframeAssistants';
 import { generatePresetKeyframes, getPresetById, type PresetContext } from '../core/animationPresets';
 import { getDescendants, getWorldPosition } from '../core/sceneGraph';
 import { buildPrecompose } from '../core/precompose';
@@ -457,6 +458,10 @@ interface EditorState {
   alignKeyframes: (layerId: string, targets: KeyframeTarget[], dir: 'prev' | 'next') => void;
   reverseKeyframeValues: (layerId: string, targets: KeyframeTarget[]) => void;
   mirrorKeyframeTime: (layerId: string, targets: KeyframeTarget[], pivotFrame?: number) => void;
+  /** The Smoother — round jittery selected keyframe values into a gentle curve (endpoints pinned). */
+  smoothKeyframes: (layerId: string, targets: KeyframeTarget[]) => void;
+  /** The Wiggler — add seeded organic tremble (±amplitude) to interior selected keyframe values. */
+  wiggleKeyframes: (layerId: string, targets: KeyframeTarget[], amplitude: number, seed: number) => void;
   bakeKeyframes: (layerId: string, targets: KeyframeTarget[]) => void;
   distributeKeyframes: (layerId: string, targets: KeyframeTarget[]) => void;
   setKeyframeTangentMode: (layerId: string, targets: KeyframeTarget[], mode: TangentMode) => void;
@@ -4026,6 +4031,22 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const oldComp = composition;
     const newComp = mapKeyframesByPath(composition, layerId, targets, (prop, sel) => alignSelected(prop.keyframes, sel, dir));
     exec({ label: 'Align Keyframes', execute: () => set({ composition: newComp }), undo: () => set({ composition: oldComp }) });
+  },
+
+  smoothKeyframes: (layerId, targets) => {
+    if (targets.length === 0) return;
+    const { composition } = get();
+    const oldComp = composition;
+    const newComp = mapKeyframesByPath(composition, layerId, targets, (prop, sel) => smoothSelected(prop.keyframes, sel));
+    exec({ label: 'Smooth Keyframes', execute: () => set({ composition: newComp }), undo: () => set({ composition: oldComp }) });
+  },
+
+  wiggleKeyframes: (layerId, targets, amplitude, seed) => {
+    if (targets.length === 0 || amplitude === 0) return;
+    const { composition } = get();
+    const oldComp = composition;
+    const newComp = mapKeyframesByPath(composition, layerId, targets, (prop, sel) => wiggleSelected(prop.keyframes, sel, amplitude, seed));
+    exec({ label: 'Wiggle Keyframes', execute: () => set({ composition: newComp }), undo: () => set({ composition: oldComp }) });
   },
 
   reverseKeyframeValues: (layerId, targets) => {

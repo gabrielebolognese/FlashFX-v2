@@ -27,8 +27,8 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | B3b | Motion-path tangent handles (drag) + roving | ✅ | light |
 | B3c | Separate dimensions (independent X/Y position curves) | ✅ | medium |
 | B4a | Composition motion-blur finishing (shutter angle / phase / samples) | ✅ | medium |
-| B4b | Keyframe assistants — The Smoother + The Wiggler | ▶ **next** | light |
-| B5 | Time remapping & speed ramps + frame-mix + exponential scale | ⬜ | medium |
+| B4b | Keyframe assistants — The Smoother + The Wiggler | ✅ | light |
+| B5 | Time remapping & speed ramps + frame-mix + exponential scale | ▶ **next** | medium |
 | B6 | Optical-flow retiming & pixel motion blur | ⬜ | **heavy** |
 | B7 | Procedural motion expressions (offset loop, inertial bounce, lag) | ⬜ | light |
 | B8 | Shape motion completion (trim/repeater/offset/wiggle/morph audit) | ⬜ | light |
@@ -77,10 +77,10 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 ## B4a — Composition motion-blur finishing ✅ DONE
 **Delivered:** composition-level **Shutter Angle** (global streak master; per-layer shutter is now a relative factor, so existing projects render identically — verified), **Shutter Phase** (0 centres / − trails / + leads, via a new `u.phase` sample offset in the blur shader), and **Samples** (full-quality target, still scaled down by preview quality) — all in Composition Settings. Pure maths in `core/shutter.ts`; `ResolvedMotionBlur.phase`; `computeMotionBlur` takes the comp shutter; renderer BlurU `_pad`→`phase`; `getMotionBlurSamples(quality, base)` threads comp samples in `Viewport` + `ReviewViewport`. **Verify:** `verify:shutter` (5 checks — non-breaking default, global scaling, clamp, phase sign; the WGSL blur is browser-verified). **Categories:** 1.
 
-## B4b — Keyframe assistants (Smoother + Wiggler) ▶ NEXT
-**Delivers:** **The Smoother** — rounds jittery/dense keyframe values into gentle curves (de-robotize tracked or hand-drawn motion), preserving endpoints; and **The Wiggler** — injects controlled, **seeded** organic tremble into a value/range (life without hand-keying), frame-pure via the house `mulberry32`. Both as keyframe-context-menu actions on the selected keyframes. **Categories:** 1 (*Organic keyframe assistants*). **Depends on:** none new. **Perf:** light — pure keyframe-array ops. **Likely files:** `core/keyframeOps.ts` (pure `smoothSelected` / `wiggleSelected`, number + vec2), `store/editor.ts` (two undoable actions), `menuDefinitions.ts` (context items). **Verify:** `verify:keyframe-assistants` — Smoother reduces value variance / 2nd-difference while keeping endpoints; Wiggler is seed-deterministic (same seed → identical, different → different) and stays within its amplitude bound.
+## B4b — Keyframe assistants (Smoother + Wiggler) ✅ DONE
+**Delivered:** **The Smoother** (`smoothKeyframes`) rounds jittery selected keyframe VALUES with a weighted moving average, pinning the endpoints; **The Wiggler** (`wiggleKeyframes`) adds seeded organic tremble (±amplitude) to the interior selected values — deterministic given (selection, amplitude, seed), the menu rolls a fresh seed each apply. Both handle number + vec2 (per component; X/Y wiggle independently). Pure ops in a new leaf module `core/keyframeAssistants.ts` (no `interpolation` import, so it's harnessable — house `mulberry32`); two undoable store actions via `mapKeyframesByPath`; exposed in the keyframe context menu's Multi-Keyframe group ("Smoother (round values)" / "Wiggler…"). Both need ≥3 selected keyframes (bake a held range first for a dense wiggle). **Verify:** `verify:keyframe-assistants` (9 checks — roughness reduction + endpoint pinning; seed-determinism, amplitude bound, per-component vec2). **Categories:** 1. **(B4 fully complete.)** Motion Sketch (live gesture capture) intentionally deferred — a distinct interaction feature, not a keyframe-array op.
 
-## B5 — Time remapping & speed ramps
+## B5 — Time remapping & speed ramps ▶ NEXT
 **Delivers:** a **time-remap** property for footage/precomp layers; **speed ramps** (eased time curves — fast↔slow↔fast); freeze-frame, reverse; **frame-mix frame blending**; the **Exponential Scale** assistant (perceptually-even zooms). **Categories:** 2 (+ Cat-1 tail). **Perf:** frame-mix is cheap; optical-flow slow-mo is split to B6. **Likely files:** `core/types.ts` (timeRemap), `core/interpolation.ts` / `engine/timeline.ts`, video decode scheduler, `store/editor.ts`. **Verify:** `verify:time-remap` (remap curve → source-frame mapping, exponential-scale monotonic zoom).
 
 ## B6 — Optical-flow retiming & pixel motion blur

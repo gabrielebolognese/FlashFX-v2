@@ -1081,6 +1081,13 @@ export function buildKeyframeMenu(isSingle: boolean, ctx?: KeyframeMenuContext):
         kf('kf-ease-all', 'Ease All', setInterp('bezier', EASE_IO[0], EASE_IO[1]), Sparkles),
         kf('kf-linearize', 'Linearize All', setInterp('linear'), MoveVertical),
         kf('kf-smooth', 'Smooth All', setInterp('bezier', EASE_IO[0], EASE_IO[1]), Waves),
+        // Organic assistants (Category 1 — B4b): The Smoother rounds values; The Wiggler adds tremble.
+        kf('kf-smoother', 'Smoother (round values)', () => ed.smoothKeyframes(L, targets), Waves),
+        kf('kf-wiggler', 'Wiggler…', () => {
+          const s = window.prompt('Wiggle amount (value units):', '20');
+          const amp = s ? parseFloat(s) : NaN;
+          if (Number.isFinite(amp) && amp > 0) ed.wiggleKeyframes(L, targets, amp, Math.floor(Math.random() * 1e9));
+        }, Zap),
         // Reverse-time mirrors about the PLAYHEAD (distinct from Mirror, which uses the span center).
         kf('kf-reverse-time', 'Reverse Timing', () => ed.mirrorKeyframeTime(L, targets, currentFrame), Rewind),
         kf('kf-scale-time', 'Scale Timing…', () => {
