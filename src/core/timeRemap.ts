@@ -30,6 +30,23 @@ export function sourceFrameFromSeconds(seconds: number, sourceFps: number, total
 }
 
 /**
+ * Frame-mix split: the two adjacent source frames straddling `seconds` and the cross-dissolve `mix`
+ * (0..1) between them. `mix` is 0 on an exact frame or when clamped at the last frame (no next frame
+ * to blend toward), so a blend never invents content past the source. Pure — the renderer expands a
+ * frame-blended clip into frameA (opaque) + frameB (opacity = mix) using this.
+ */
+export function frameBlendSplit(seconds: number, sourceFps: number, totalSourceFrames: number): { frameA: number; frameB: number; mix: number } {
+  const exact = seconds * sourceFps;
+  const last = Math.max(0, totalSourceFrames - 1);
+  if (!Number.isFinite(exact)) return { frameA: 0, frameB: 0, mix: 0 };
+  const clamped = exact < 0 ? 0 : exact > last ? last : exact;
+  const frameA = Math.floor(clamped);
+  const frameB = Math.min(frameA + 1, last);
+  const mix = frameB === frameA ? 0 : clamped - frameA;
+  return { frameA, frameB, mix };
+}
+
+/**
  * The two identity seed values (source seconds at the clip's in/out points) used when Time Remap is
  * first enabled — a straight line reproducing the current constant-rate playback, so enabling it
  * changes nothing until the user shapes the curve (speed ramp / freeze / reverse).

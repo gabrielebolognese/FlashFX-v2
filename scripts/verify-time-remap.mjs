@@ -26,7 +26,7 @@ const kf = (frame, value) => ({ frame, value, interpolation: 'linear', handleIn:
 try {
   const TR = await bundle('src/core/timeRemap.ts', 'timeRemap.mjs');
   const KA = await bundle('src/core/keyframeAssistants.ts', 'keyframeAssistants.mjs');
-  const { linearSourceSeconds, sourceFrameFromSeconds, identityRemapSeconds } = TR;
+  const { linearSourceSeconds, sourceFrameFromSeconds, identityRemapSeconds, frameBlendSplit } = TR;
   const { exponentialScaleSelected } = KA;
 
   check('sourceFrameFromSeconds: floors to a frame and clamps to [0, total-1]', () => {
@@ -60,6 +60,29 @@ try {
     // A 2-keyframe linear remap through (atIn,atOut) equals the linear path at the endpoints.
     assert.ok(near(atIn, linearSourceSeconds(10, 10, 70, 6, 30, 2, false)));
     assert.ok(near(atOut, linearSourceSeconds(70, 10, 70, 6, 30, 2, false)));
+  });
+
+  // --- Frame-mix split (B5b) ---
+  check('frameBlendSplit: between frames → the two straddling frames + fractional mix', () => {
+    const s = frameBlendSplit(2.25, 30, 300); // 2.25s * 30 = 67.5
+    assert.equal(s.frameA, 67);
+    assert.equal(s.frameB, 68);
+    assert.ok(near(s.mix, 0.5));
+  });
+  check('frameBlendSplit: exact frame → mix 0 (no blend)', () => {
+    const s = frameBlendSplit(2.0, 30, 300); // exactly frame 60
+    assert.equal(s.frameA, 60);
+    assert.equal(s.mix, 0);
+  });
+  check('frameBlendSplit: clamped at the last frame → frameB=frameA, mix 0 (never invents past the end)', () => {
+    const s = frameBlendSplit(100, 30, 300); // way past → last frame 299
+    assert.equal(s.frameA, 299);
+    assert.equal(s.frameB, 299);
+    assert.equal(s.mix, 0);
+  });
+  check('frameBlendSplit: before start / non-finite → frame 0, mix 0', () => {
+    assert.deepEqual(frameBlendSplit(-3, 30, 300), { frameA: 0, frameB: 1, mix: 0 });
+    assert.deepEqual(frameBlendSplit(NaN, 30, 300), { frameA: 0, frameB: 0, mix: 0 });
   });
 
   // --- Exponential Scale ---

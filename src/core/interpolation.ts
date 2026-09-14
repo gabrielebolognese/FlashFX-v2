@@ -52,7 +52,7 @@ import { easeSegment, segmentProgress } from './keyframeEase';
 import { positionOnSegment } from './positionPath';
 import { evalScalarKeyframes } from './separateDimensions';
 import { effectiveShutterAngle, shutterPhaseFraction } from './shutter';
-import { linearSourceSeconds, sourceFrameFromSeconds } from './timeRemap';
+import { linearSourceSeconds, sourceFrameFromSeconds, frameBlendSplit } from './timeRemap';
 import { expressionManager } from '../expressions/manager';
 import type { ExpressionContext, KeyframeData } from '../expressions/types';
 
@@ -608,17 +608,24 @@ function resolveVideoLayer(layer: VideoLayer, frame: number, compositionFrameRat
   const v = layer.video;
   const totalSourceFrames = Math.round(v.sourceDuration * v.sourceFrameRate);
   let clampedFrame: number;
-  if (v.timeRemap) {
-    // Animated Time Remap: the curve's value IS the source time (seconds); it encodes speed ramps,
-    // freezes and reverses, so it supersedes playbackRate/reversed/freezeSourceFrame.
-    const seconds = evaluateNumber(v.timeRemap, frame);
-    clampedFrame = sourceFrameFromSeconds(seconds, v.sourceFrameRate, totalSourceFrames);
-  } else if (v.freezeSourceFrame != null) {
-    // Freeze pins the whole clip to one source frame (captured at the playhead).
+  let sourceFrameB: number | undefined;
+  let blendMix: number | undefined;
+  if (v.freezeSourceFrame != null && !v.timeRemap) {
+    // Freeze pins the whole clip to one source frame (captured at the playhead). No blend.
     clampedFrame = Math.max(0, Math.min(Math.floor(v.freezeSourceFrame), Math.max(0, totalSourceFrames - 1)));
   } else {
-    const seconds = linearSourceSeconds(frame, layer.inPoint, layer.outPoint, v.startOffset, compositionFrameRate, v.playbackRate, !!v.reversed);
-    clampedFrame = sourceFrameFromSeconds(seconds, v.sourceFrameRate, totalSourceFrames);
+    // Animated Time Remap (curve value = source seconds) supersedes playbackRate/reversed/freeze;
+    // otherwise the classic constant-rate mapping.
+    const seconds = v.timeRemap
+      ? evaluateNumber(v.timeRemap, frame)
+      : linearSourceSeconds(frame, layer.inPoint, layer.outPoint, v.startOffset, compositionFrameRate, v.playbackRate, !!v.reversed);
+    if (v.frameBlend) {
+      const split = frameBlendSplit(seconds, v.sourceFrameRate, totalSourceFrames);
+      clampedFrame = split.frameA;
+      if (split.mix > 1e-4 && split.frameB !== split.frameA) { sourceFrameB = split.frameB; blendMix = split.mix; }
+    } else {
+      clampedFrame = sourceFrameFromSeconds(seconds, v.sourceFrameRate, totalSourceFrames);
+    }
   }
 
   return {
@@ -629,6 +636,7 @@ function resolveVideoLayer(layer: VideoLayer, frame: number, compositionFrameRat
     playbackRate: v.playbackRate,
     playbackMode: v.playbackMode,
     proxyScale: v.proxyScale,
+    ...(sourceFrameB != null ? { sourceFrameB, blendMix } : {}),
   };
 }
 
@@ -1162,6 +1170,21 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
             blur,
             layerType: 'video',
           });
+          // Frame-mix: expand into a second video layer at frameB, drawn on top at opacity = mix, so
+          // the two adjacent source frames cross-dissolve through the normal image pipeline (no shader
+          // change). Reuses the cloner-stamp pattern; a synthetic id keys its own decoded texture.
+          if (resolvedVideo.sourceFrameB != null && resolvedVideo.blendMix) {
+            resolvedLayers.push({
+              id: `${layer.id}:fb`,
+              visible: true,
+              blendMode: layer.blendMode,
+              transform: { ...worldTransform, opacity: worldTransform.opacity * resolvedVideo.blendMix },
+              video: { ...resolvedVideo, sourceFrame: resolvedVideo.sourceFrameB, sourceFrameB: undefined, blendMix: undefined },
+              mask: resolveMask(layer.masks, frame),
+              masks: resolveMasks(layer.masks, frame),
+              layerType: 'video',
+            });
+          }
         }
       } else if (layer.type === 'image') {
         const resolvedImage = resolveImageLayer(layer);

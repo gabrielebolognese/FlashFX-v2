@@ -1351,6 +1351,17 @@ function VideoProperties({
             precision={2}
           />
         )}
+        {/* Frame Mix — cross-dissolve adjacent source frames so retimed/slowed clips don't stutter. */}
+        <div className="flex items-center gap-1">
+          <label className="text-caption text-slate-500 w-14 flex-shrink-0">Frame Mix</label>
+          <button
+            onClick={() => updateLayerProperty(layer.id, 'video.frameBlend', !video.frameBlend)}
+            title="Blend the two adjacent source frames on slow-motion / retime (smoother, but decodes an extra frame)"
+            className={`px-1.5 py-0.5 text-[9px] rounded ${video.frameBlend ? 'bg-accent-wash text-accent' : 'bg-surface-3 text-slate-500 hover:text-slate-300'}`}
+          >
+            {video.frameBlend ? 'On' : 'Off'}
+          </button>
+        </div>
         <div className="flex items-center gap-1">
           <label className="text-caption text-slate-500 w-14 flex-shrink-0">Muted</label>
           <button

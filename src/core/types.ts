@@ -549,6 +549,12 @@ export interface VideoLayer {
      * Absent = the classic constant-rate path.
      */
     timeRemap?: AnimatableProperty;
+    /**
+     * Frame Mix (frame blending): when true, a retimed/slowed clip cross-dissolves the two adjacent
+     * source frames instead of hard-cutting to one, so slow motion doesn't stutter. Off = crisp
+     * single-frame (the classic behaviour). Optical-flow interpolation is a separate feature.
+     */
+    frameBlend?: boolean;
   };
   inPoint: number;
   outPoint: number;
@@ -1484,6 +1490,11 @@ export interface ResolvedVideo {
   playbackRate: number;
   playbackMode: VideoPlaybackMode;
   proxyScale: number;
+  /** Frame-mix: the second source frame to cross-dissolve toward and the mix (0..1). Present only
+   *  when frame blending is on and the frame is between two source frames — the resolver then emits a
+   *  second overlay video layer at `sourceFrameB` with opacity = `blendMix`. */
+  sourceFrameB?: number;
+  blendMix?: number;
 }
 
 // A resolved image effect: the frozen numeric type + its static params, ready
