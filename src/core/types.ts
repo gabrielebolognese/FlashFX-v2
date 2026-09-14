@@ -542,6 +542,13 @@ export interface VideoLayer {
     freezeSourceFrame?: number;
     /** When true, the clip plays its frames in reverse over its comp range. */
     reversed?: boolean;
+    /**
+     * Animated Time Remap: a keyframable curve mapping composition time → SOURCE time (in seconds).
+     * When present it supersedes `playbackRate` / `reversed` / `freezeSourceFrame` — ease its keyframes
+     * for speed ramps (fast↔slow↔fast), flatten a span to freeze, or descend to play backwards.
+     * Absent = the classic constant-rate path.
+     */
+    timeRemap?: AnimatableProperty;
   };
   inPoint: number;
   outPoint: number;

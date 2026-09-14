@@ -30,7 +30,8 @@ import {
   bakeSelected, setSelectedTangentMode, duplicateSelected, extractForClipboard, insertClipboard,
   type TangentMode,
 } from '../core/keyframeOps';
-import { smoothSelected, wiggleSelected } from '../core/keyframeAssistants';
+import { smoothSelected, wiggleSelected, exponentialScaleSelected } from '../core/keyframeAssistants';
+import { identityRemapSeconds } from '../core/timeRemap';
 import { generatePresetKeyframes, getPresetById, type PresetContext } from '../core/animationPresets';
 import { getDescendants, getWorldPosition } from '../core/sceneGraph';
 import { buildPrecompose } from '../core/precompose';
@@ -462,6 +463,10 @@ interface EditorState {
   smoothKeyframes: (layerId: string, targets: KeyframeTarget[]) => void;
   /** The Wiggler — add seeded organic tremble (±amplitude) to interior selected keyframe values. */
   wiggleKeyframes: (layerId: string, targets: KeyframeTarget[], amplitude: number, seed: number) => void;
+  /** Exponential Scale assistant — turn a linear ramp between the selected keyframes into a geometric (perceptually-even) one. */
+  exponentialScaleKeyframes: (layerId: string, targets: KeyframeTarget[]) => void;
+  /** Enable/disable animated Time Remap on a video layer (seeds an identity source-time curve; motion-preserving). */
+  setVideoTimeRemap: (layerId: string, enabled: boolean) => void;
   bakeKeyframes: (layerId: string, targets: KeyframeTarget[]) => void;
   distributeKeyframes: (layerId: string, targets: KeyframeTarget[]) => void;
   setKeyframeTangentMode: (layerId: string, targets: KeyframeTarget[], mode: TangentMode) => void;
@@ -4047,6 +4052,41 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const oldComp = composition;
     const newComp = mapKeyframesByPath(composition, layerId, targets, (prop, sel) => wiggleSelected(prop.keyframes, sel, amplitude, seed));
     exec({ label: 'Wiggle Keyframes', execute: () => set({ composition: newComp }), undo: () => set({ composition: oldComp }) });
+  },
+
+  exponentialScaleKeyframes: (layerId, targets) => {
+    if (targets.length === 0) return;
+    const { composition } = get();
+    const oldComp = composition;
+    const newComp = mapKeyframesByPath(composition, layerId, targets, (prop, sel) => exponentialScaleSelected(prop.keyframes, sel));
+    exec({ label: 'Exponential Scale', execute: () => set({ composition: newComp }), undo: () => set({ composition: oldComp }) });
+  },
+
+  setVideoTimeRemap: (layerId, enabled) => {
+    const { composition } = get();
+    const oldComp = composition;
+    const compFps = composition.settings.frameRate || 30;
+    let did = false;
+    const newLayers = composition.layers.map((layer) => {
+      if (layer.id !== layerId || layer.type !== 'video') return layer;
+      const v = layer.video;
+      if (enabled) {
+        if (v.timeRemap) return layer; // already on
+        const { atIn, atOut } = identityRemapSeconds(layer.inPoint, layer.outPoint, v.startOffset, compFps, v.playbackRate);
+        const prop = createProperty('Time Remap', 'number', atIn);
+        prop.keyframes = [createKeyframe(layer.inPoint, atIn), createKeyframe(layer.outPoint, atOut)];
+        did = true;
+        return { ...layer, video: { ...v, timeRemap: prop } };
+      }
+      if (!v.timeRemap) return layer;
+      const nv = { ...v };
+      delete nv.timeRemap;
+      did = true;
+      return { ...layer, video: nv };
+    });
+    if (!did) return;
+    const newComp = { ...composition, layers: newLayers };
+    exec({ label: enabled ? 'Enable Time Remap' : 'Disable Time Remap', execute: () => set({ composition: newComp }), undo: () => set({ composition: oldComp }) });
   },
 
   reverseKeyframeValues: (layerId, targets) => {

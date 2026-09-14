@@ -1279,6 +1279,9 @@ function VideoProperties({
   updateLayerProperty: (id: string, path: string, value: unknown) => void;
 }) {
   const { video } = layer;
+  const currentFrame = useTimelineStore((s) => s.currentFrame);
+  const addKeyframe = useEditorStore((s) => s.addKeyframe);
+  const setVideoTimeRemap = useEditorStore((s) => s.setVideoTimeRemap);
   const formatDuration = (seconds: number) => {
     const m = Math.floor(seconds / 60);
     const s = Math.floor(seconds % 60);
@@ -1323,6 +1326,31 @@ function VideoProperties({
             className="flex-1"
           />
         </div>
+        {/* Time Remap — animate source time: ease the curve for speed ramps, flatten to freeze,
+            descend to reverse. Supersedes Speed/Freeze/Reverse while on. */}
+        <div className="flex items-center gap-1">
+          <label className="text-caption text-slate-500 w-14 flex-shrink-0">Remap</label>
+          <button
+            onClick={() => setVideoTimeRemap(layer.id, !video.timeRemap)}
+            title="Animate source time — ease for speed ramps, flatten to freeze, descend to reverse"
+            className={`px-1.5 py-0.5 text-[9px] rounded ${video.timeRemap ? 'bg-accent-wash text-accent' : 'bg-surface-3 text-slate-500 hover:text-slate-300'}`}
+          >
+            {video.timeRemap ? 'On' : 'Off'}
+          </button>
+        </div>
+        {video.timeRemap && (
+          <NumberDragInput
+            label="Src s"
+            prop={video.timeRemap}
+            frame={currentFrame}
+            onChange={(v) => updateLayerProperty(layer.id, 'video.timeRemap.defaultValue', Math.max(0, v))}
+            onKeyframe={(v) => addKeyframe(layer.id, 'video.timeRemap', currentFrame, Math.max(0, v))}
+            hasKeyframe={video.timeRemap.keyframes.some((k) => k.frame === currentFrame)}
+            min={0}
+            step={0.05}
+            precision={2}
+          />
+        )}
         <div className="flex items-center gap-1">
           <label className="text-caption text-slate-500 w-14 flex-shrink-0">Muted</label>
           <button

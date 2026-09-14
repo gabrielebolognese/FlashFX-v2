@@ -48,6 +48,33 @@ export function smoothSelected(kfs: Keyframe[], selected: Set<number>): Keyframe
 }
 
 /**
+ * Exponential Scale — convert a LINEAR ramp between the first and last selected keyframes into a
+ * GEOMETRIC one, so a big scale/zoom reads as a constant-rate move instead of lurching (a real zoom
+ * must grow by an accelerating amount to look steady). Bakes one keyframe per frame across the span
+ * with `v0·(v1/v0)^t`; endpoints are preserved. Number and vec2 (per component). Falls back to linear
+ * on any non-positive component (a geometric ramp is undefined through/!=0). Pure, no evaluation.
+ */
+export function exponentialScaleSelected(kfs: Keyframe[], selected: Set<number>): Keyframe[] {
+  const sel = kfs.filter((k) => selected.has(k.frame)).sort((a, b) => a.frame - b.frame);
+  if (sel.length < 2) return kfs;
+  const f0 = sel[0].frame, f1 = sel[sel.length - 1].frame;
+  if (f1 <= f0) return kfs;
+  const startV = sel[0].value, endV = sel[sel.length - 1].value;
+  const geo = (a: number, b: number, t: number) => (a > 0 && b > 0 ? a * Math.pow(b / a, t) : a + (b - a) * t);
+  const outside = kfs.filter((k) => k.frame < f0 || k.frame > f1);
+  const baked: Keyframe[] = [];
+  for (let f = f0; f <= f1; f++) {
+    const t = (f - f0) / (f1 - f0);
+    let value: number | Vec2;
+    if (isVec(startV) && isVec(endV)) value = [geo(startV[0], endV[0], t), geo(startV[1], endV[1], t)];
+    else value = geo(startV as number, endV as number, t);
+    baked.push({ frame: f, value, interpolation: 'linear', handleIn: [0, 0], handleOut: [0, 0] });
+  }
+  const bakedFrames = new Set(baked.map((k) => k.frame));
+  return [...outside.filter((k) => !bakedFrames.has(k.frame)), ...baked].sort((a, b) => a.frame - b.frame);
+}
+
+/**
  * The Wiggler — inject controlled organic tremble into the interior SELECTED keyframe values: each is
  * offset by seeded noise in [-amplitude, +amplitude]. Endpoints are pinned so the move still arrives
  * and departs cleanly. Needs ≥3 selected keyframes (bake a held range first for a dense wiggle).

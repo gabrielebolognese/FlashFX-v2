@@ -52,6 +52,7 @@ import { easeSegment, segmentProgress } from './keyframeEase';
 import { positionOnSegment } from './positionPath';
 import { evalScalarKeyframes } from './separateDimensions';
 import { effectiveShutterAngle, shutterPhaseFraction } from './shutter';
+import { linearSourceSeconds, sourceFrameFromSeconds } from './timeRemap';
 import { expressionManager } from '../expressions/manager';
 import type { ExpressionContext, KeyframeData } from '../expressions/types';
 
@@ -606,15 +607,19 @@ function resolveTextLayer(layer: TextLayer, frame: number, getStyle?: StyleLooku
 function resolveVideoLayer(layer: VideoLayer, frame: number, compositionFrameRate: number): ResolvedVideo | null {
   const v = layer.video;
   const totalSourceFrames = Math.round(v.sourceDuration * v.sourceFrameRate);
-  // Reverse plays the clip's comp range back-to-front by reflecting the query
-  // frame within [inPoint, outPoint] before the normal source-frame mapping.
-  const effFrame = v.reversed ? layer.inPoint + layer.outPoint - frame : frame;
-  const localFrame = effFrame - layer.inPoint + v.startOffset;
-  const timeInSeconds = localFrame / compositionFrameRate;
-  const sourceFrame = Math.floor(timeInSeconds * v.sourceFrameRate * v.playbackRate);
-  // Freeze pins the whole clip to one source frame (captured at the playhead).
-  const chosen = v.freezeSourceFrame != null ? Math.floor(v.freezeSourceFrame) : sourceFrame;
-  const clampedFrame = Math.max(0, Math.min(chosen, totalSourceFrames - 1));
+  let clampedFrame: number;
+  if (v.timeRemap) {
+    // Animated Time Remap: the curve's value IS the source time (seconds); it encodes speed ramps,
+    // freezes and reverses, so it supersedes playbackRate/reversed/freezeSourceFrame.
+    const seconds = evaluateNumber(v.timeRemap, frame);
+    clampedFrame = sourceFrameFromSeconds(seconds, v.sourceFrameRate, totalSourceFrames);
+  } else if (v.freezeSourceFrame != null) {
+    // Freeze pins the whole clip to one source frame (captured at the playhead).
+    clampedFrame = Math.max(0, Math.min(Math.floor(v.freezeSourceFrame), Math.max(0, totalSourceFrames - 1)));
+  } else {
+    const seconds = linearSourceSeconds(frame, layer.inPoint, layer.outPoint, v.startOffset, compositionFrameRate, v.playbackRate, !!v.reversed);
+    clampedFrame = sourceFrameFromSeconds(seconds, v.sourceFrameRate, totalSourceFrames);
+  }
 
   return {
     assetId: v.assetId,

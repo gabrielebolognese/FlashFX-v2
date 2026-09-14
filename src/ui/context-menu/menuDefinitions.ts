@@ -1083,6 +1083,7 @@ export function buildKeyframeMenu(isSingle: boolean, ctx?: KeyframeMenuContext):
         kf('kf-smooth', 'Smooth All', setInterp('bezier', EASE_IO[0], EASE_IO[1]), Waves),
         // Organic assistants (Category 1 — B4b): The Smoother rounds values; The Wiggler adds tremble.
         kf('kf-smoother', 'Smoother (round values)', () => ed.smoothKeyframes(L, targets), Waves),
+        kf('kf-expo-scale', 'Exponential Scale', () => ed.exponentialScaleKeyframes(L, targets), Maximize2),
         kf('kf-wiggler', 'Wiggler…', () => {
           const s = window.prompt('Wiggle amount (value units):', '20');
           const amp = s ? parseFloat(s) : NaN;
