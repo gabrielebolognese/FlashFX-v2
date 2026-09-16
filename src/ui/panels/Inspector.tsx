@@ -888,6 +888,13 @@ function ShapeProperties({
 
       {shape.type === 'polygon' && (
         <>
+          <StrokeDash
+            layer={layer}
+            currentFrame={currentFrame}
+            updateLayerProperty={updateLayerProperty}
+            addKeyframe={addKeyframe}
+            hasKeyframeAt={hasKeyframeAt}
+          />
           <PathAnimation layer={layer} />
           <PathModifiers
             layer={layer}
@@ -1015,6 +1022,58 @@ function PathModifiers({
           )}
         </div>
       ))}
+    </div>
+  );
+}
+
+// Dashed stroke (B8c). Presets set the polygon's dash pattern; the Dash Offset drag keyframes for
+// marching-ants animation. Fill is untouched — dashing only affects the stroke.
+const DASH_PRESETS: [string, number[]][] = [
+  ['Solid', []],
+  ['Dashed', [12, 8]],
+  ['Dotted', [2, 6]],
+  ['Dash-dot', [12, 6, 2, 6]],
+];
+
+function StrokeDash({
+  layer, currentFrame, updateLayerProperty, addKeyframe, hasKeyframeAt,
+}: {
+  layer: ShapeLayer;
+  currentFrame: number;
+  updateLayerProperty: (id: string, path: string, value: unknown) => void;
+  addKeyframe: (id: string, path: string, frame: number, value: number | [number, number]) => void;
+  hasKeyframeAt: (prop: AnimatableProperty) => boolean;
+}) {
+  const setShapeDash = useEditorStore((s) => s.setShapeDash);
+  const shape = layer.shape;
+  const dash = shape.type === 'polygon' ? shape.strokeDash ?? [] : [];
+  const dashOffset = shape.type === 'polygon' ? shape.dashOffset : undefined;
+  const active = (preset: number[]) => preset.length === dash.length && preset.every((v, i) => v === dash[i]);
+
+  return (
+    <div className="mt-2 pt-2 border-t border-hairline">
+      <div className="flex items-center gap-1 mb-1">
+        <span className="text-caption text-slate-500 w-14 flex-shrink-0">Dashes</span>
+        <div className="flex flex-1 rounded overflow-hidden border border-[#23293a]">
+          {DASH_PRESETS.map(([name, pattern]) => (
+            <button
+              key={name}
+              onClick={() => setShapeDash(layer.id, pattern)}
+              className={`flex-1 px-1 py-0.5 text-caption transition-colors ${active(pattern) ? 'bg-accent/20 text-accent' : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'}`}
+            >
+              {name}
+            </button>
+          ))}
+        </div>
+      </div>
+      {dash.length > 0 && dashOffset && (
+        <NumberDragInput
+          label="Dash Off" prop={dashOffset} frame={currentFrame}
+          onChange={(v) => updateLayerProperty(layer.id, 'shape.dashOffset.defaultValue', v)}
+          onKeyframe={(v) => addKeyframe(layer.id, 'shape.dashOffset', currentFrame, v)}
+          hasKeyframe={hasKeyframeAt(dashOffset)} step={0.5}
+        />
+      )}
     </div>
   );
 }

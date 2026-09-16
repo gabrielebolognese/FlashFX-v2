@@ -397,6 +397,11 @@ function resolveShapeLayer(layer: ShapeLayer, frame: number, getStyle?: StyleLoo
       base.lineCap = shape.lineCap ?? 'butt';
       base.lineJoin = shape.lineJoin ?? 'miter';
       if (shape.holes && shape.holes.length > 0) base.holes = shape.holes; // M17 glyph counters
+      // Dashed stroke (B8c): carry the pattern + the (animatable) offset for this frame.
+      if (shape.strokeDash && shape.strokeDash.length > 0) {
+        base.dashArray = shape.strokeDash;
+        base.dashOffset = shape.dashOffset ? evaluateNumber(shape.dashOffset, frame) : 0;
+      }
       // Compute bounding box for width/height
       if (verts.length > 0) {
         let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;

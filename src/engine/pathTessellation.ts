@@ -1,5 +1,6 @@
 import earcut from 'earcut';
 import type { PathVertex, Vec2, Vec4, LineCap, LineJoin } from '../core/types';
+import { dashPath } from '../core/shapeModifiers';
 import { LruCache } from './cache/lruCache';
 
 // Tessellated geometry is stored as interleaved [x, y, r, g, b, a] floats, ready
@@ -23,6 +24,10 @@ export interface TessellateOptions {
   lineJoin: LineJoin;
   /** Inner sub-contours (glyph counters) — filled as holes (even-odd) and stroked. */
   holes?: PathVertex[][];
+  /** Dash pattern [on, off, …] in px (B8c). When present, the STROKE is split into these dashes
+   *  (fill is untouched); `dashOffset` shifts the pattern along the path (animate it for marching ants). */
+  dashArray?: number[];
+  dashOffset?: number;
 }
 
 const BEZIER_STEPS = 18;
@@ -352,10 +357,26 @@ export function tessellatePath(opts: TessellateOptions): TessellatedPath {
     }
   }
 
-  // Stroke the outer contour and every hole contour.
-  buildStroke(pts, opts.closed, opts.strokeWidth, opts.strokeColor, opts.lineCap, opts.lineJoin, out);
-  for (const h of holePolys) {
-    buildStroke(h, true, opts.strokeWidth, opts.strokeColor, opts.lineCap, opts.lineJoin, out);
+  // Stroke the outer contour and every hole contour. With a dash pattern, the stroke is split into
+  // the pattern's "on" runs (each an open sub-path, so caps apply) via the pure dashPath; the fill
+  // above is unaffected. Without dashes, stroke the whole contour as before.
+  const dashed = opts.dashArray != null && opts.dashArray.some((d) => d > 0);
+  if (dashed) {
+    const dashArray = opts.dashArray as number[];
+    const dashOffset = opts.dashOffset ?? 0;
+    for (const contour of dashPath(opts.vertices, opts.closed, dashArray, dashOffset)) {
+      buildStroke(contour.map((v) => v.position), false, opts.strokeWidth, opts.strokeColor, opts.lineCap, opts.lineJoin, out);
+    }
+    for (const h of opts.holes ?? []) {
+      for (const contour of dashPath(h, true, dashArray, dashOffset)) {
+        buildStroke(contour.map((v) => v.position), false, opts.strokeWidth, opts.strokeColor, opts.lineCap, opts.lineJoin, out);
+      }
+    }
+  } else {
+    buildStroke(pts, opts.closed, opts.strokeWidth, opts.strokeColor, opts.lineCap, opts.lineJoin, out);
+    for (const h of holePolys) {
+      buildStroke(h, true, opts.strokeWidth, opts.strokeColor, opts.lineCap, opts.lineJoin, out);
+    }
   }
 
   const data = new Float32Array(out);
@@ -376,6 +397,7 @@ const cache = new LruCache<CacheEntry>({ maxBytes: 24 * 1024 * 1024, maxEntries:
 function signature(opts: TessellateOptions): string {
   let s = `${opts.closed ? 1 : 0}|${opts.strokeWidth}|${opts.lineCap}|${opts.lineJoin}`;
   s += `|f${opts.fillColor.join(',')}|k${opts.strokeColor.join(',')}|`;
+  if (opts.dashArray && opts.dashArray.length > 0) s += `d${opts.dashArray.join(',')}@${opts.dashOffset ?? 0}|`;
   for (const v of opts.vertices) {
     s += `${v.position[0]},${v.position[1]},${v.handleIn[0]},${v.handleIn[1]},${v.handleOut[0]},${v.handleOut[1]};`;
   }

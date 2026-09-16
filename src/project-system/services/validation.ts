@@ -209,6 +209,10 @@ function ensureShapeGeometry(val: unknown): ShapeGeometry | null {
         strokeColor,
         strokeWidth,
         ...(pathKeyframes && pathKeyframes.length > 0 ? { pathKeyframes } : {}),
+        // B8c — preserve dashed stroke (pattern + animatable offset).
+        ...(Array.isArray(s.strokeDash) && s.strokeDash.some((d) => typeof d === 'number' && d > 0)
+          ? { strokeDash: (s.strokeDash as unknown[]).filter((d): d is number => typeof d === 'number' && d > 0), dashOffset: ensureAnimatableProperty(s.dashOffset, 'Dash Offset', 'number', 0) }
+          : {}),
         // M17 — preserve glyph counters + fill rule (else stripped on save/load).
         ...(Array.isArray(s.holes) ? { holes: s.holes as PathVertex[][] } : {}),
         ...(s.fillRule === 'evenodd' || s.fillRule === 'nonzero' ? { fillRule: s.fillRule } : {}),

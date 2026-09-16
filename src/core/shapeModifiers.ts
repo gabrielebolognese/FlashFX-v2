@@ -143,6 +143,42 @@ export function trimPath(
 }
 
 /**
+ * Dash a path (B8c) — split the outline into the "on" segments of a dash pattern, each returned as its
+ * own open polyline contour (so the renderer strokes each piece). `dashArray` is [on, off, on, off, …]
+ * lengths in px (an odd-length array is doubled, SVG-style); `dashOffset` shifts the pattern along the
+ * path (the pattern position at arc 0 is `dashOffset`). An empty/zero pattern returns the whole path as
+ * one contour (no dashing). Pure arc-length walk — mirrors trim; the fill is unaffected (stroke only).
+ */
+export function dashPath(vertices: PathVertex[], closed: boolean, dashArray: number[], dashOffset: number, perSeg = 24): PathVertex[][] {
+  if (vertices.length < 2) return [vertices.map(clonePathVertex)];
+  let pattern = dashArray.filter((d) => Number.isFinite(d) && d > 0);
+  if (pattern.length === 0) return [vertices.map(clonePathVertex)];
+  if (pattern.length % 2 === 1) pattern = pattern.concat(pattern); // SVG: odd arrays repeat
+  const P = pattern.reduce((a, b) => a + b, 0);
+  if (P <= 0) return [vertices.map(clonePathVertex)];
+
+  const { pts, cum, total } = flattenAll(vertices, closed, perSeg);
+  if (total <= 0) return [];
+
+  // Arc where pattern index 0 begins, in (−P, 0], so the walk covers all of [0, total].
+  let arc = -(((dashOffset % P) + P) % P);
+  let idx = 0;
+  const out: PathVertex[][] = [];
+  while (arc < total) {
+    const elemLen = pattern[idx % pattern.length];
+    const segEnd = arc + elemLen;
+    if (idx % 2 === 0) { // "on"
+      const a = Math.max(0, arc);
+      const b = Math.min(total, segEnd);
+      if (b > a + 1e-6) out.push(collectContiguous(pts, cum, a, b).map(cornerVertex));
+    }
+    arc = segEnd;
+    idx++;
+  }
+  return out;
+}
+
+/**
  * Offset Paths (inset/outset). Moves each vertex along its outward miter bisector by `amount`
  * (positive = outset/grow, negative = inset/shrink), giving a true parallel offset for straight
  * edges; the miter length is capped by `miterLimit` so sharp corners don't spike. Relative handles

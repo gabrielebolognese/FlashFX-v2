@@ -430,6 +430,10 @@ interface EditorState {
    *  (replacing any pose already at that frame). ≥2 poses animate the outline via arc-length morph. */
   addPathPose: (layerId: string) => void;
   removePathPose: (layerId: string, index: number) => void;
+  /** Dashed stroke (B8c): set the polygon's dash pattern ([] = solid). Ensures an animatable
+   *  dashOffset exists when enabling; the offset itself keyframes via updateLayerProperty/addKeyframe
+   *  on `shape.dashOffset`. */
+  setShapeDash: (layerId: string, dashArray: number[]) => void;
   toggleLayer3D: (layerId: string) => void;
   /** Enable 3D on every selected layer that supports it (skips camera/group/audio and already-3D
    *  layers), as ONE undo step — so a whole scene can be prepped for a camera in a single click. */
@@ -3253,6 +3257,25 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     );
     const comp: Composition = { ...composition, layers: newLayers };
     exec({ label: 'Remove Path Pose', execute: () => set({ composition: comp }), undo: () => set({ composition: oldComp }) });
+  },
+
+  setShapeDash: (layerId, dashArray) => {
+    const { composition } = get();
+    const layer = composition.layers.find((l) => l.id === layerId);
+    if (!layer || layer.type !== 'shape' || layer.shape.type !== 'polygon') return;
+    const oldComp = composition;
+    const clean = dashArray.filter((d) => Number.isFinite(d) && d > 0);
+    const newLayers = composition.layers.map((l) => {
+      if (l.id !== layerId || l.type !== 'shape' || l.shape.type !== 'polygon') return l;
+      if (clean.length === 0) {
+        return { ...l, shape: { ...l.shape, strokeDash: undefined } };
+      }
+      // Keep the existing (possibly keyframed) offset; create one only when first enabling.
+      const dashOffset = l.shape.dashOffset ?? createProperty('Dash Offset', 'number', 0);
+      return { ...l, shape: { ...l.shape, strokeDash: clean, dashOffset } };
+    });
+    const comp: Composition = { ...composition, layers: newLayers };
+    exec({ label: 'Set Dash Pattern', execute: () => set({ composition: comp }), undo: () => set({ composition: oldComp }) });
   },
 
   flattenSelectedShapes: () => {

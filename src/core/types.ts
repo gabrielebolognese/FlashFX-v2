@@ -264,6 +264,10 @@ export interface PolygonShape {
   fillColor: Vec4;
   strokeColor: Vec4;
   strokeWidth: AnimatableProperty;
+  /** Dash pattern [on, off, …] in px (B8c). Empty/absent → solid stroke. */
+  strokeDash?: number[];
+  /** Animatable shift of the dash pattern along the path (marching ants). Only used with strokeDash. */
+  dashOffset?: AnimatableProperty;
   lineCap?: LineCap;
   lineJoin?: LineJoin;
   /**
@@ -1522,6 +1526,9 @@ export interface ResolvedShape {
   lineJoin: LineJoin;
   /** Glyph counters / inner contours (M17 outlined text) — filled as holes. */
   holes?: PathVertex[][];
+  /** Dash pattern [on, off, …] in px + resolved offset (B8c). Absent → solid stroke. */
+  dashArray?: number[];
+  dashOffset?: number;
 }
 
 export interface ResolvedText {

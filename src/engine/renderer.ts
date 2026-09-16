@@ -4129,6 +4129,8 @@ export class WebGPURenderer {
           lineCap: s.lineCap,
           lineJoin: s.lineJoin,
           holes: s.holes, // M17 glyph counters
+          dashArray: s.dashArray, // B8c dashed stroke
+          dashOffset: s.dashOffset,
         });
 
         pathRanges.push({ first: vertexOffset, count: tess.vertexCount });

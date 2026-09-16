@@ -34,7 +34,7 @@ const bbox = (vs) => {
 
 try {
   const S = await bundle('src/core/shapeModifiers.ts', 'shapeModifiers.mjs');
-  const { trimPath, offsetPath, roughenPath, applyResolvedModifiers, puckerBloat, morphPaths, evalPathKeyframes } = S;
+  const { trimPath, offsetPath, roughenPath, applyResolvedModifiers, puckerBloat, morphPaths, evalPathKeyframes, dashPath } = S;
 
   // ── Trim ──
   check('trim: full window (0→1) returns the ORIGINAL vertices (byte-identical, keeps beziers)', () => {
@@ -237,6 +237,41 @@ try {
     const r = applyResolvedModifiers(square(), true, [{ type: 'puckerBloat', amount: 3 }]);
     assert.ok(r.vertices.length > 4);
     assert.ok(r.vertices.some((v) => nearV(v.position, [0, 0], 1e-6)), 'anchor kept');
+  });
+
+  // ── Dashed strokes (B8c) ──
+  check('dashPath: [10,10] on a 100-long line yields 5 dashes at 0,20,40,60,80', () => {
+    const d = dashPath(line(), false, [10, 10], 0);
+    assert.equal(d.length, 5);
+    assert.ok(nearV(d[0][0].position, [0, 0]));
+    assert.ok(nearV(d[0][d[0].length - 1].position, [10, 0]));
+    assert.ok(nearV(d[1][0].position, [20, 0]));
+  });
+  check('dashPath: dashOffset shifts the pattern along the path', () => {
+    const d = dashPath(line(), false, [10, 10], 10); // starts in the "off" gap → first dash at 10
+    assert.ok(nearV(d[0][0].position, [10, 0]), `first dash start ${d[0][0].position}`);
+    assert.ok(nearV(d[0][d[0].length - 1].position, [20, 0]));
+  });
+  check('dashPath: empty / zero pattern returns the whole path as one contour', () => {
+    assert.equal(dashPath(line(), false, [], 0).length, 1);
+    assert.equal(dashPath(line(), false, [0, 0], 0).length, 1);
+  });
+  check('dashPath: odd-length array is doubled (SVG rule) — [5] behaves like [5,5]', () => {
+    const a = dashPath(line(), false, [5], 0);
+    const b = dashPath(line(), false, [5, 5], 0);
+    assert.equal(a.length, b.length);
+    assert.ok(nearV(a[1][0].position, b[1][0].position));
+  });
+  check('dashPath: on-dash lengths match the pattern (each ~10 long)', () => {
+    const d = dashPath(line(), false, [10, 10], 0);
+    for (const dash of d) {
+      const p0 = dash[0].position, p1 = dash[dash.length - 1].position;
+      assert.ok(near(Math.hypot(p1[0] - p0[0], p1[1] - p0[1]), 10, 1e-3));
+    }
+  });
+  check('dashPath: closed square with [20,20] dashes the perimeter (2 on-segments of len 20)', () => {
+    const d = dashPath(square(), true, [20, 20], 0); // perimeter 80 → on at [0,20],[40,60]
+    assert.equal(d.length, 2);
   });
 
   console.log(`\n✓ all ${passed} checks passed`);
