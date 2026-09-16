@@ -4131,6 +4131,7 @@ export class WebGPURenderer {
           holes: s.holes, // M17 glyph counters
           dashArray: s.dashArray, // B8c dashed stroke
           dashOffset: s.dashOffset,
+          strokeFill: s.stroke, // B8e gradient stroke (baked per-vertex when it's a gradient)
         });
 
         pathRanges.push({ first: vertexOffset, count: tess.vertexCount });

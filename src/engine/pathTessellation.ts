@@ -1,7 +1,11 @@
 import earcut from 'earcut';
-import type { PathVertex, Vec2, Vec4, LineCap, LineJoin } from '../core/types';
+import type { PathVertex, Vec2, Vec4, LineCap, LineJoin, ResolvedFill } from '../core/types';
 import { dashPath } from '../core/shapeModifiers';
+import { sampleResolvedFill } from '../core/fillSampler';
 import { LruCache } from './cache/lruCache';
+
+/** Per-vertex color function for stroke geometry — flat (constant) or a baked gradient (B8e). */
+type ColorAt = (p: Vec2) => Vec4;
 
 // Tessellated geometry is stored as interleaved [x, y, r, g, b, a] floats, ready
 // to upload to a GPU vertex buffer. Positions are in layer-local space (the same
@@ -28,6 +32,9 @@ export interface TessellateOptions {
    *  (fill is untouched); `dashOffset` shifts the pattern along the path (animate it for marching ants). */
   dashArray?: number[];
   dashOffset?: number;
+  /** Resolved stroke fill (B8e). When it's a gradient (kind 1), the stroke color is baked per-vertex
+   *  from the shape's bounding box (matching SDF shapes); otherwise the flat `strokeColor` is used. */
+  strokeFill?: ResolvedFill;
 }
 
 const BEZIER_STEPS = 18;
@@ -182,6 +189,14 @@ function pushTri(out: number[], a: Vec2, b: Vec2, c: Vec2, color: Vec4): void {
   pushVertex(out, c, color);
 }
 
+// Stroke triangle whose vertices are colored per-position (flat colorAt → identical to pushTri; a
+// gradient colorAt → a baked-gradient stroke, B8e).
+function pushTriAt(out: number[], a: Vec2, b: Vec2, c: Vec2, colorAt: ColorAt): void {
+  pushVertex(out, a, colorAt(a));
+  pushVertex(out, b, colorAt(b));
+  pushVertex(out, c, colorAt(c));
+}
+
 function normal(dir: Vec2): Vec2 {
   return [-dir[1], dir[0]];
 }
@@ -198,12 +213,14 @@ function buildStroke(
   pts: Vec2[],
   closed: boolean,
   width: number,
-  color: Vec4,
+  colorAt: ColorAt,
   cap: LineCap,
   join: LineJoin,
   out: number[],
 ): void {
-  if (pts.length < 2 || width <= 0 || color[3] <= 0) return;
+  // Visibility (width>0, non-transparent) is decided by the caller so a gradient stroke that is only
+  // partly transparent still draws. Here we just need geometry.
+  if (pts.length < 2 || width <= 0) return;
   const hw = width / 2;
 
   // De-duplicate consecutive identical points.
@@ -235,8 +252,8 @@ function buildStroke(
     const b1: Vec2 = [b[0] + ox, b[1] + oy];
     const b2: Vec2 = [b[0] - ox, b[1] - oy];
 
-    pushTri(out, a1, a2, b1, color);
-    pushTri(out, a2, b2, b1, color);
+    pushTriAt(out, a1, a2, b1, colorAt);
+    pushTriAt(out, a2, b2, b1, colorAt);
   }
 
   // Joins between consecutive segments.
@@ -246,17 +263,17 @@ function buildStroke(
     const prev = path[(i - 1 + path.length) % path.length];
     const cur = path[i];
     const next = path[(i + 1) % path.length];
-    addJoin(prev, cur, next, hw, color, join, out);
+    addJoin(prev, cur, next, hw, colorAt, join, out);
   }
 
   // Caps for open paths.
   if (!closed) {
-    addCap(path[1], path[0], hw, color, cap, out);
-    addCap(path[path.length - 2], path[path.length - 1], hw, color, cap, out);
+    addCap(path[1], path[0], hw, colorAt, cap, out);
+    addCap(path[path.length - 2], path[path.length - 1], hw, colorAt, cap, out);
   }
 }
 
-function addJoin(prev: Vec2, cur: Vec2, next: Vec2, hw: number, color: Vec4, join: LineJoin, out: number[]): void {
+function addJoin(prev: Vec2, cur: Vec2, next: Vec2, hw: number, colorAt: ColorAt, join: LineJoin, out: number[]): void {
   const d0 = norm([cur[0] - prev[0], cur[1] - prev[1]]);
   const d1 = norm([next[0] - cur[0], next[1] - cur[1]]);
   if ((d0[0] === 0 && d0[1] === 0) || (d1[0] === 0 && d1[1] === 0)) return;
@@ -281,20 +298,20 @@ function addJoin(prev: Vec2, cur: Vec2, next: Vec2, hw: number, color: Vec4, joi
     for (let s = 1; s <= steps; s++) {
       const ang = a0 + (delta * s) / steps;
       const cp: Vec2 = [cur[0] + Math.cos(ang) * hw, cur[1] + Math.sin(ang) * hw];
-      pushTri(out, cur, prevP, cp, color);
+      pushTriAt(out, cur, prevP, cp, colorAt);
       prevP = cp;
     }
     a1 = a1; // noop, keeps lint quiet
   } else if (join === 'bevel') {
-    pushTri(out, cur, p0, p1, color);
+    pushTriAt(out, cur, p0, p1, colorAt);
   } else {
     // miter: intersect the two outer offset lines
     const miter = miterPoint(cur, p0, d0, p1, d1, side, hw);
     if (miter) {
-      pushTri(out, cur, p0, miter, color);
-      pushTri(out, cur, miter, p1, color);
+      pushTriAt(out, cur, p0, miter, colorAt);
+      pushTriAt(out, cur, miter, p1, colorAt);
     } else {
-      pushTri(out, cur, p0, p1, color);
+      pushTriAt(out, cur, p0, p1, colorAt);
     }
   }
 }
@@ -314,7 +331,7 @@ function miterPoint(cur: Vec2, p0: Vec2, d0: Vec2, p1: Vec2, d1: Vec2, side: num
   return mp;
 }
 
-function addCap(inner: Vec2, end: Vec2, hw: number, color: Vec4, cap: LineCap, out: number[]): void {
+function addCap(inner: Vec2, end: Vec2, hw: number, colorAt: ColorAt, cap: LineCap, out: number[]): void {
   if (cap === 'butt') return;
   const dir = norm([end[0] - inner[0], end[1] - inner[1]]);
   if (dir[0] === 0 && dir[1] === 0) return;
@@ -327,8 +344,8 @@ function addCap(inner: Vec2, end: Vec2, hw: number, color: Vec4, cap: LineCap, o
     const ey = dir[1] * hw;
     const s1: Vec2 = [e1[0] + ex, e1[1] + ey];
     const s2: Vec2 = [e2[0] + ex, e2[1] + ey];
-    pushTri(out, e1, e2, s1, color);
-    pushTri(out, e2, s2, s1, color);
+    pushTriAt(out, e1, e2, s1, colorAt);
+    pushTriAt(out, e2, s2, s1, colorAt);
   } else {
     // round
     const baseAng = Math.atan2(nrm[1], nrm[0]);
@@ -337,7 +354,7 @@ function addCap(inner: Vec2, end: Vec2, hw: number, color: Vec4, cap: LineCap, o
     for (let s = 1; s <= steps; s++) {
       const ang = baseAng - (Math.PI * s) / steps;
       const cp: Vec2 = [end[0] + Math.cos(ang) * hw, end[1] + Math.sin(ang) * hw];
-      pushTri(out, end, prevP, cp, color);
+      pushTriAt(out, end, prevP, cp, colorAt);
       prevP = cp;
     }
   }
@@ -357,25 +374,48 @@ export function tessellatePath(opts: TessellateOptions): TessellatedPath {
     }
   }
 
+  // Stroke color: flat by default, or a per-vertex gradient baked from the shape's bounding box
+  // (B8e) when strokeFill is a gradient (matches how the SDF pipeline maps a gradient). Visible only
+  // when width>0 and either a gradient is present or the flat stroke alpha is > 0.
+  const gradientStroke = opts.strokeFill != null && opts.strokeFill.kind === 1 && opts.strokeFill.layers.length > 0;
+  const strokeVisible = opts.strokeWidth > 0 && (gradientStroke || opts.strokeColor[3] > 0);
+  let colorAt: ColorAt = () => opts.strokeColor;
+  if (gradientStroke) {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const p of pts) {
+      if (p[0] < minX) minX = p[0];
+      if (p[0] > maxX) maxX = p[0];
+      if (p[1] < minY) minY = p[1];
+      if (p[1] > maxY) maxY = p[1];
+    }
+    const w = Math.max(maxX - minX, 1e-4);
+    const h = Math.max(maxY - minY, 1e-4);
+    const fill = opts.strokeFill as ResolvedFill;
+    const boxSize: Vec2 = [w, h];
+    colorAt = (p: Vec2) => sampleResolvedFill(fill, [(p[0] - minX) / w, (p[1] - minY) / h], boxSize);
+  }
+
   // Stroke the outer contour and every hole contour. With a dash pattern, the stroke is split into
   // the pattern's "on" runs (each an open sub-path, so caps apply) via the pure dashPath; the fill
   // above is unaffected. Without dashes, stroke the whole contour as before.
-  const dashed = opts.dashArray != null && opts.dashArray.some((d) => d > 0);
-  if (dashed) {
-    const dashArray = opts.dashArray as number[];
-    const dashOffset = opts.dashOffset ?? 0;
-    for (const contour of dashPath(opts.vertices, opts.closed, dashArray, dashOffset)) {
-      buildStroke(contour.map((v) => v.position), false, opts.strokeWidth, opts.strokeColor, opts.lineCap, opts.lineJoin, out);
-    }
-    for (const h of opts.holes ?? []) {
-      for (const contour of dashPath(h, true, dashArray, dashOffset)) {
-        buildStroke(contour.map((v) => v.position), false, opts.strokeWidth, opts.strokeColor, opts.lineCap, opts.lineJoin, out);
+  if (strokeVisible) {
+    const dashed = opts.dashArray != null && opts.dashArray.some((d) => d > 0);
+    if (dashed) {
+      const dashArray = opts.dashArray as number[];
+      const dashOffset = opts.dashOffset ?? 0;
+      for (const contour of dashPath(opts.vertices, opts.closed, dashArray, dashOffset)) {
+        buildStroke(contour.map((v) => v.position), false, opts.strokeWidth, colorAt, opts.lineCap, opts.lineJoin, out);
       }
-    }
-  } else {
-    buildStroke(pts, opts.closed, opts.strokeWidth, opts.strokeColor, opts.lineCap, opts.lineJoin, out);
-    for (const h of holePolys) {
-      buildStroke(h, true, opts.strokeWidth, opts.strokeColor, opts.lineCap, opts.lineJoin, out);
+      for (const h of opts.holes ?? []) {
+        for (const contour of dashPath(h, true, dashArray, dashOffset)) {
+          buildStroke(contour.map((v) => v.position), false, opts.strokeWidth, colorAt, opts.lineCap, opts.lineJoin, out);
+        }
+      }
+    } else {
+      buildStroke(pts, opts.closed, opts.strokeWidth, colorAt, opts.lineCap, opts.lineJoin, out);
+      for (const h of holePolys) {
+        buildStroke(h, true, opts.strokeWidth, colorAt, opts.lineCap, opts.lineJoin, out);
+      }
     }
   }
 
@@ -398,6 +438,16 @@ function signature(opts: TessellateOptions): string {
   let s = `${opts.closed ? 1 : 0}|${opts.strokeWidth}|${opts.lineCap}|${opts.lineJoin}`;
   s += `|f${opts.fillColor.join(',')}|k${opts.strokeColor.join(',')}|`;
   if (opts.dashArray && opts.dashArray.length > 0) s += `d${opts.dashArray.join(',')}@${opts.dashOffset ?? 0}|`;
+  // B8e — a gradient stroke bakes color per-vertex, so its descriptor must key the geometry.
+  if (opts.strokeFill && opts.strokeFill.kind === 1) {
+    s += 'sg';
+    for (const ly of opts.strokeFill.layers) {
+      s += `${ly.gradientType},${ly.angle.toFixed(4)},${ly.centerX.toFixed(3)},${ly.centerY.toFixed(3)},${ly.blendMode}[`;
+      for (const st of ly.stops) s += `${st.position.toFixed(3)}:${st.color.join(',')};`;
+      s += ']';
+    }
+    s += '|';
+  }
   for (const v of opts.vertices) {
     s += `${v.position[0]},${v.position[1]},${v.handleIn[0]},${v.handleIn[1]},${v.handleOut[0]},${v.handleOut[1]};`;
   }
