@@ -76,6 +76,8 @@ export function createShapeModifier(type: ShapeModifierType): ShapeModifier {
       return { type: 'offset', enabled: true, amount: createProperty('Offset', 'number', 0) };
     case 'roughen':
       return { type: 'roughen', enabled: true, amount: createProperty('Roughen', 'number', 0), seed: (idCounter * 2654435761) >>> 0 };
+    case 'puckerBloat':
+      return { type: 'puckerBloat', enabled: true, amount: createProperty('Pucker/Bloat', 'number', 0) };
   }
 }
 

@@ -9,7 +9,7 @@
 // tessellator flattens beziers anyway, so the rendered result matches a curve-preserving trim while
 // keeping the maths robust and testable. Offset preserves vertex count and relative handles.
 
-import type { Vec2, PathVertex } from './types';
+import type { Vec2, PathVertex, PathKeyframe } from './types';
 import { evalCubic } from './bend';
 
 // ── small vec helpers (all return fresh arrays) ──
@@ -22,6 +22,22 @@ function perp(a: Vec2): Vec2 { return [a[1], -a[0]]; } // rotate −90°; outwar
 
 function cornerVertex(p: Vec2): PathVertex {
   return { position: [p[0], p[1]], handleIn: [0, 0], handleOut: [0, 0], vertexType: 'corner' };
+}
+
+function clonePathVertex(v: PathVertex): PathVertex {
+  return {
+    position: [v.position[0], v.position[1]],
+    handleIn: [v.handleIn[0], v.handleIn[1]],
+    handleOut: [v.handleOut[0], v.handleOut[1]],
+    vertexType: v.vertexType,
+    ...(v.handleMode ? { handleMode: v.handleMode } : {}),
+  };
+}
+
+function centroidOf(vertices: PathVertex[]): Vec2 {
+  let cx = 0, cy = 0;
+  for (const v of vertices) { cx += v.position[0]; cy += v.position[1]; }
+  return [cx / vertices.length, cy / vertices.length];
 }
 
 /** Deterministic PRNG (house mulberry32) — Roughen must be frame-pure, so no Math.random/Date. */
@@ -193,13 +209,112 @@ export function roughenPath(
   return { vertices: out, closed };
 }
 
+/**
+ * Pucker & Bloat. Bows each edge outward (bloat, amount > 0) or inward (pucker, amount < 0) while the
+ * original ANCHORS stay put — the distinguishing look vs. a plain scale (flowers / spikes). Implemented
+ * by subdividing each segment and pushing every sample along its outward normal by
+ * `amount · sin(π·tLocal)`, which is 0 at the anchors and peaks at the edge midpoints. Emits a
+ * flattened polyline. `amount = 0` is a no-op.
+ */
+export function puckerBloat(vertices: PathVertex[], closed: boolean, amount: number, perSeg = 12): { vertices: PathVertex[]; closed: boolean } {
+  const n = vertices.length;
+  if (amount === 0 || n < 2) return { vertices: vertices.map(clonePathVertex), closed };
+  const centroid = centroidOf(vertices);
+  const segCount = closed ? n : n - 1;
+
+  // Subdivide, tracking each sample's within-segment parameter (0 at anchors).
+  const pts: Vec2[] = [[vertices[0].position[0], vertices[0].position[1]]];
+  const tLoc: number[] = [0];
+  for (let s = 0; s < segCount; s++) {
+    const a = vertices[s];
+    const b = vertices[(s + 1) % n];
+    for (let k = 1; k <= perSeg; k++) {
+      pts.push(evalCubic(a, b, k / perSeg));
+      tLoc.push(k / perSeg); // k === perSeg → 1 → an anchor → sin(π)=0
+    }
+  }
+  // For a closed ring the final sample duplicates the first anchor — drop it (closed re-closes).
+  const usePts = closed ? pts.slice(0, -1) : pts;
+  const useT = closed ? tLoc.slice(0, -1) : tLoc;
+  const m = usePts.length;
+
+  const out: PathVertex[] = [];
+  for (let i = 0; i < m; i++) {
+    const prevP = usePts[closed ? (i - 1 + m) % m : Math.max(0, i - 1)];
+    const nextP = usePts[closed ? (i + 1) % m : Math.min(m - 1, i + 1)];
+    let nrm = perp(norm(sub(nextP, prevP)));
+    const away = sub(usePts[i], centroid);
+    if (nrm[0] * away[0] + nrm[1] * away[1] < 0) nrm = [-nrm[0], -nrm[1]]; // outward
+    const disp = amount * Math.sin(Math.PI * useT[i]);
+    out.push(cornerVertex(add(usePts[i], scale(nrm, disp))));
+  }
+  return { vertices: out, closed };
+}
+
+// ── Shape morph / keyframable path (B8b) ──
+
+/** Resample a path to exactly N points spaced evenly by arc length (implicit index correspondence). */
+function resampleToN(vertices: PathVertex[], closed: boolean, N: number): Vec2[] {
+  if (vertices.length === 1 || N < 2) {
+    const p = vertices[0]?.position ?? [0, 0];
+    return Array.from({ length: Math.max(1, N) }, () => [p[0], p[1]] as Vec2);
+  }
+  const { pts, cum, total } = flattenAll(vertices, closed, 24);
+  const out: Vec2[] = [];
+  for (let i = 0; i < N; i++) {
+    const frac = closed ? i / N : i / (N - 1);
+    out.push(pointAtLen(pts, cum, frac * total));
+  }
+  return out;
+}
+
+/**
+ * Morph between two path poses at t∈[0,1]. Both poses are arc-length-resampled to a common point count
+ * (so different vertex counts morph) and interpolated index-for-index. Emits a flattened polyline.
+ */
+export function morphPaths(vA: PathVertex[], cA: boolean, vB: PathVertex[], cB: boolean, t: number): { vertices: PathVertex[]; closed: boolean } {
+  const N = Math.max(8, Math.min(256, Math.max(vA.length, vB.length) * 8));
+  const A = resampleToN(vA, cA, N);
+  const B = resampleToN(vB, cB, N);
+  const out: PathVertex[] = [];
+  for (let i = 0; i < N; i++) {
+    out.push(cornerVertex([A[i][0] + (B[i][0] - A[i][0]) * t, A[i][1] + (B[i][1] - A[i][1]) * t]));
+  }
+  return { vertices: out, closed: t < 0.5 ? cA : cB };
+}
+
+/**
+ * Evaluate an animated outline at `frame`. At or beyond a pose (and outside the range) returns that
+ * pose's ORIGINAL vertices — beziers intact, byte-identical to the authored shape. Strictly BETWEEN
+ * two poses returns a morphed polyline. `hold` interpolation on a pose freezes it until the next.
+ */
+export function evalPathKeyframes(kfs: PathKeyframe[], frame: number): { vertices: PathVertex[]; closed: boolean } {
+  const clone = (k: PathKeyframe) => ({ vertices: k.vertices.map(clonePathVertex), closed: k.closed });
+  if (kfs.length === 0) return { vertices: [], closed: false };
+  if (kfs.length === 1 || frame <= kfs[0].frame) return clone(kfs[0]);
+  if (frame >= kfs[kfs.length - 1].frame) return clone(kfs[kfs.length - 1]);
+
+  let i = 0;
+  for (let j = 0; j < kfs.length - 1; j++) {
+    if (frame >= kfs[j].frame && frame <= kfs[j + 1].frame) { i = j; break; }
+  }
+  const k0 = kfs[i];
+  const k1 = kfs[i + 1];
+  if (frame === k0.frame || k0.interpolation === 'hold') return clone(k0);
+  if (frame === k1.frame) return clone(k1);
+  const span = k1.frame - k0.frame;
+  const t = span <= 0 ? 0 : (frame - k0.frame) / span;
+  return morphPaths(k0.vertices, k0.closed, k1.vertices, k1.closed, t);
+}
+
 // ── Resolved (numeric) modifier stack — the AnimatableProperty params are evaluated to numbers by
 //    the caller (resolveShapeLayer), keeping this module free of the interpolation engine. ──
 
 export type ResolvedShapeModifier =
   | { type: 'trim'; start: number; end: number; offset: number }
   | { type: 'offset'; amount: number }
-  | { type: 'roughen'; amount: number; seed: number };
+  | { type: 'roughen'; amount: number; seed: number }
+  | { type: 'puckerBloat'; amount: number };
 
 export function applyResolvedModifiers(
   vertices: PathVertex[],
@@ -217,6 +332,9 @@ export function applyResolvedModifiers(
       vs = offsetPath(vs, cl, m.amount);
     } else if (m.type === 'roughen') {
       const r = roughenPath(vs, cl, m.amount, m.seed);
+      vs = r.vertices; cl = r.closed;
+    } else if (m.type === 'puckerBloat') {
+      const r = puckerBloat(vs, cl, m.amount);
       vs = r.vertices; cl = r.closed;
     }
   }

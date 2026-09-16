@@ -887,20 +887,23 @@ function ShapeProperties({
       )}
 
       {shape.type === 'polygon' && (
-        <PathModifiers
-          layer={layer}
-          currentFrame={currentFrame}
-          updateLayerProperty={updateLayerProperty}
-          addKeyframe={addKeyframe}
-          hasKeyframeAt={hasKeyframeAt}
-        />
+        <>
+          <PathAnimation layer={layer} />
+          <PathModifiers
+            layer={layer}
+            currentFrame={currentFrame}
+            updateLayerProperty={updateLayerProperty}
+            addKeyframe={addKeyframe}
+            hasKeyframeAt={hasKeyframeAt}
+          />
+        </>
       )}
     </Section>
   );
 }
 
-const MODIFIER_LABELS: Record<ShapeModifierType, string> = { trim: 'Trim Paths', offset: 'Offset Paths', roughen: 'Roughen' };
-const MODIFIER_ADD: Record<ShapeModifierType, string> = { trim: 'Trim', offset: 'Offset', roughen: 'Roughen' };
+const MODIFIER_LABELS: Record<ShapeModifierType, string> = { trim: 'Trim Paths', offset: 'Offset Paths', roughen: 'Roughen', puckerBloat: 'Pucker & Bloat' };
+const MODIFIER_ADD: Record<ShapeModifierType, string> = { trim: 'Trim', offset: 'Offset', roughen: 'Roughen', puckerBloat: 'Pucker' };
 
 // Path Modifier stack (B8a) — trim (draw-on), offset (inset/outset), roughen (jagged edge). Params
 // are AnimatableProperty and edit through the generic updateLayerProperty/addKeyframe on
@@ -924,7 +927,7 @@ function PathModifiers({
       <div className="flex items-center justify-between mb-1">
         <span className="text-caption text-slate-500 uppercase tracking-wider">Path Modifiers</span>
         <div className="flex gap-1">
-          {(['trim', 'offset', 'roughen'] as ShapeModifierType[]).map((t) => (
+          {(['trim', 'offset', 'roughen', 'puckerBloat'] as ShapeModifierType[]).map((t) => (
             <button
               key={t}
               onClick={() => addShapeModifier(layer.id, t)}
@@ -1002,8 +1005,55 @@ function PathModifiers({
               </button>
             </>
           )}
+          {mod.type === 'puckerBloat' && (
+            <NumberDragInput
+              label="Amount" prop={mod.amount} frame={currentFrame}
+              onChange={(v) => updateLayerProperty(layer.id, `modifiers.${i}.amount.defaultValue`, v)}
+              onKeyframe={(v) => addKeyframe(layer.id, `modifiers.${i}.amount`, currentFrame, v)}
+              hasKeyframe={hasKeyframeAt(mod.amount)} step={0.5}
+            />
+          )}
         </div>
       ))}
+    </div>
+  );
+}
+
+// Shape morph / keyframable outline (B8b). Snapshots the polygon's current vertices as a pose at the
+// playhead; ≥2 poses animate the path (arc-length morph between them). Editing the path edits the base
+// vertices — re-Add at a pose's frame to update it.
+function PathAnimation({ layer }: { layer: ShapeLayer }) {
+  const addPathPose = useEditorStore((s) => s.addPathPose);
+  const removePathPose = useEditorStore((s) => s.removePathPose);
+  const poses = layer.shape.type === 'polygon' ? layer.shape.pathKeyframes ?? [] : [];
+
+  return (
+    <div className="mt-2 pt-2 border-t border-hairline">
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-caption text-slate-500 uppercase tracking-wider">Path Animation</span>
+        <button
+          onClick={() => addPathPose(layer.id)}
+          title="Snapshot the current path as a pose at the playhead"
+          className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-caption border border-hairline text-slate-400 hover:text-slate-200 hover:bg-white/5 transition-colors"
+        >
+          <Plus size={9} />Add Pose
+        </button>
+      </div>
+      {poses.length === 0 && (
+        <div className="text-caption text-slate-600">Snapshot poses at different frames to morph the outline.</div>
+      )}
+      {poses.map((p, i) => (
+        <div key={i} className="flex items-center gap-1 mb-0.5">
+          <Diamond size={9} className="text-accent flex-shrink-0" />
+          <span className="text-caption text-slate-400 flex-1">Pose @ frame {p.frame} · {p.vertices.length} pts</span>
+          <button onClick={() => removePathPose(layer.id, i)} title="Remove pose" className="text-slate-500 hover:text-red-400">
+            <Trash2 size={11} />
+          </button>
+        </div>
+      ))}
+      {poses.length === 1 && (
+        <div className="text-caption text-slate-600 mt-0.5">Add a second pose at another frame to morph.</div>
+      )}
     </div>
   );
 }

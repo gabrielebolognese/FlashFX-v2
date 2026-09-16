@@ -34,7 +34,7 @@ const bbox = (vs) => {
 
 try {
   const S = await bundle('src/core/shapeModifiers.ts', 'shapeModifiers.mjs');
-  const { trimPath, offsetPath, roughenPath, applyResolvedModifiers } = S;
+  const { trimPath, offsetPath, roughenPath, applyResolvedModifiers, puckerBloat, morphPaths, evalPathKeyframes } = S;
 
   // ── Trim ──
   check('trim: full window (0→1) returns the ORIGINAL vertices (byte-identical, keeps beziers)', () => {
@@ -152,6 +152,91 @@ try {
       { type: 'offset', amount: 2 },
     ]);
     assert.equal(r.vertices.length, 0);
+  });
+
+  // ── Pucker & Bloat (B8b) ──
+  check('puckerBloat: amount 0 is identity (original vertices)', () => {
+    const sq = square();
+    const r = puckerBloat(sq, true, 0);
+    assert.equal(r.vertices.length, 4);
+    for (let i = 0; i < 4; i++) assert.ok(nearV(r.vertices[i].position, sq[i].position));
+  });
+  check('puckerBloat: bloat (+) bows every edge OUTWARD, anchors stay put', () => {
+    const r = puckerBloat(square(), true, 4);
+    const b = bbox(r.vertices);
+    // bottom edge midpoint pushed to y ≈ -4, top edge to y ≈ 24; corners unchanged so 0 and 20 remain
+    assert.ok(near(b.min[1], -4, 0.05), `min y ${b.min[1]}`);
+    assert.ok(near(b.max[1], 24, 0.05), `max y ${b.max[1]}`);
+    // an original anchor (0,0) is still present (zero displacement there)
+    assert.ok(r.vertices.some((v) => nearV(v.position, [0, 0], 1e-6)), 'anchor preserved');
+  });
+  check('puckerBloat: pucker (−) bows edges INWARD (mirror sign of bloat)', () => {
+    const b = bbox(puckerBloat(square(), true, -4).vertices);
+    // edges cave in: bottom midpoint to +4, top to 16 — bbox still bounded by the fixed corners [0,20]
+    assert.ok(b.min[1] >= -1e-6 && b.max[1] <= 20 + 1e-6);
+  });
+
+  // ── Morph / keyframable path (B8b) ──
+  const bigSquare = () => [cv(-10, -10), cv(30, -10), cv(30, 30), cv(-10, 30)]; // same center (10,10), 2× size
+  check('morphPaths: t=0 ≈ resampled A, t=1 ≈ resampled B (endpoints)', () => {
+    const a0 = morphPaths(square(), true, bigSquare(), true, 0);
+    const a1 = morphPaths(square(), true, bigSquare(), true, 1);
+    // A starts at (0,0); B starts at (-10,-10)
+    assert.ok(nearV(a0.vertices[0].position, [0, 0]));
+    assert.ok(nearV(a1.vertices[0].position, [-10, -10]));
+  });
+  check('morphPaths: identical poses morph to themselves at any t', () => {
+    const r = morphPaths(square(), true, square(), true, 0.5);
+    // corner (0,0) resampled is still present at t=0.5 (both poses identical)
+    assert.ok(r.vertices.some((v) => nearV(v.position, [0, 0], 1e-6)));
+  });
+  check('morphPaths: midpoint of two concentric squares is the halfway square', () => {
+    const r = morphPaths(square(), true, bigSquare(), true, 0.5);
+    // (0,0) [A] ↔ (-10,-10) [B] → midpoint (-5,-5); the first resampled point sits there
+    assert.ok(nearV(r.vertices[0].position, [-5, -5]), `got ${r.vertices[0].position}`);
+    // centered on the shared centroid (10,10) either way
+    const b = bbox(r.vertices);
+    assert.ok(near((b.min[0] + b.max[0]) / 2, 10, 0.5));
+  });
+
+  const kf = (frame, verts, closed = true, interpolation) => ({ frame, vertices: verts, closed, ...(interpolation ? { interpolation } : {}) });
+  check('evalPathKeyframes: AT a pose returns its ORIGINAL vertices (beziers intact)', () => {
+    const kfs = [kf(0, square()), kf(10, bigSquare())];
+    const at0 = evalPathKeyframes(kfs, 0);
+    assert.equal(at0.vertices.length, 4); // original 4-vertex square, NOT resampled
+    assert.ok(nearV(at0.vertices[0].position, [0, 0]));
+    const at10 = evalPathKeyframes(kfs, 10);
+    assert.equal(at10.vertices.length, 4);
+  });
+  check('evalPathKeyframes: BETWEEN poses returns a morphed polyline', () => {
+    const kfs = [kf(0, square()), kf(10, bigSquare())];
+    const mid = evalPathKeyframes(kfs, 5);
+    assert.ok(mid.vertices.length > 4, 'morph is a denser polyline');
+    assert.ok(nearV(mid.vertices[0].position, [-5, -5]), `t=0.5 start ${mid.vertices[0].position}`);
+  });
+  check('evalPathKeyframes: clamps outside the range to the nearest pose', () => {
+    const kfs = [kf(0, square()), kf(10, bigSquare())];
+    assert.ok(nearV(evalPathKeyframes(kfs, -5).vertices[0].position, [0, 0]));
+    assert.ok(nearV(evalPathKeyframes(kfs, 99).vertices[0].position, [-10, -10]));
+  });
+  check('evalPathKeyframes: hold interpolation freezes a pose until the next', () => {
+    const kfs = [kf(0, square(), true, 'hold'), kf(10, bigSquare())];
+    const mid = evalPathKeyframes(kfs, 5);
+    assert.equal(mid.vertices.length, 4); // held → original square, no morph
+    assert.ok(nearV(mid.vertices[0].position, [0, 0]));
+  });
+  check('evalPathKeyframes: different vertex counts morph (square → triangle)', () => {
+    const tri = [cv(10, -10), cv(30, 30), cv(-10, 30)];
+    const kfs = [kf(0, square()), kf(10, tri)];
+    const mid = evalPathKeyframes(kfs, 5);
+    for (const v of mid.vertices) assert.ok(Number.isFinite(v.position[0]) && Number.isFinite(v.position[1]));
+    assert.ok(mid.vertices.length >= 8);
+  });
+
+  check('applyResolvedModifiers: puckerBloat composes in the stack', () => {
+    const r = applyResolvedModifiers(square(), true, [{ type: 'puckerBloat', amount: 3 }]);
+    assert.ok(r.vertices.length > 4);
+    assert.ok(r.vertices.some((v) => nearV(v.position, [0, 0], 1e-6)), 'anchor kept');
   });
 
   console.log(`\n✓ all ${passed} checks passed`);

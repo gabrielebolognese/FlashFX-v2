@@ -426,6 +426,10 @@ interface EditorState {
   addShapeModifier: (layerId: string, type: ShapeModifierType) => void;
   removeShapeModifier: (layerId: string, index: number) => void;
   toggleShapeModifier: (layerId: string, index: number) => void;
+  /** Shape morph (B8b): snapshot the polygon's current vertices as a path pose at the playhead
+   *  (replacing any pose already at that frame). ≥2 poses animate the outline via arc-length morph. */
+  addPathPose: (layerId: string) => void;
+  removePathPose: (layerId: string, index: number) => void;
   toggleLayer3D: (layerId: string) => void;
   /** Enable 3D on every selected layer that supports it (skips camera/group/audio and already-3D
    *  layers), as ONE undo step — so a whole scene can be prepped for a camera in a single click. */
@@ -3202,6 +3206,53 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     });
     const comp: Composition = { ...composition, layers: newLayers };
     exec({ label: 'Toggle Path Modifier', execute: () => set({ composition: comp }), undo: () => set({ composition: oldComp }) });
+  },
+
+  addPathPose: (layerId) => {
+    const { composition } = get();
+    const layer = composition.layers.find((l) => l.id === layerId);
+    if (!layer || layer.type !== 'shape' || layer.shape.type !== 'polygon') return;
+    const oldComp = composition;
+    const frame = useTimelineStore.getState().currentFrame;
+    const shape = layer.shape;
+    const pose = {
+      frame,
+      vertices: shape.vertices.map((v) => ({
+        position: [v.position[0], v.position[1]] as Vec2,
+        handleIn: [v.handleIn[0], v.handleIn[1]] as Vec2,
+        handleOut: [v.handleOut[0], v.handleOut[1]] as Vec2,
+        vertexType: v.vertexType,
+        ...(v.handleMode ? { handleMode: v.handleMode } : {}),
+      })),
+      closed: shape.closed,
+    };
+    const existing = shape.pathKeyframes ?? [];
+    const kept = existing.filter((k) => k.frame !== frame);
+    const pathKeyframes = [...kept, pose].sort((a, b) => a.frame - b.frame);
+    const newLayers = composition.layers.map((l) =>
+      l.id === layerId && l.type === 'shape' && l.shape.type === 'polygon'
+        ? { ...l, shape: { ...l.shape, pathKeyframes } }
+        : l,
+    );
+    const comp: Composition = { ...composition, layers: newLayers };
+    exec({ label: 'Add Path Pose', execute: () => set({ composition: comp }), undo: () => set({ composition: oldComp }) });
+  },
+
+  removePathPose: (layerId, index) => {
+    const { composition } = get();
+    const layer = composition.layers.find((l) => l.id === layerId);
+    if (!layer || layer.type !== 'shape' || layer.shape.type !== 'polygon' || !layer.shape.pathKeyframes) return;
+    const kfs = layer.shape.pathKeyframes;
+    if (index < 0 || index >= kfs.length) return;
+    const oldComp = composition;
+    const pathKeyframes = kfs.filter((_, i) => i !== index);
+    const newLayers = composition.layers.map((l) =>
+      l.id === layerId && l.type === 'shape' && l.shape.type === 'polygon'
+        ? { ...l, shape: { ...l.shape, pathKeyframes: pathKeyframes.length > 0 ? pathKeyframes : undefined } }
+        : l,
+    );
+    const comp: Composition = { ...composition, layers: newLayers };
+    exec({ label: 'Remove Path Pose', execute: () => set({ composition: comp }), undo: () => set({ composition: oldComp }) });
   },
 
   flattenSelectedShapes: () => {

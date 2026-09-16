@@ -242,9 +242,24 @@ export interface PathVertex {
   handleMode?: 'mirrored' | 'angle' | 'independent';
 }
 
+/**
+ * A path pose at a frame (B8b) — shape morph / keyframable outline. When a polygon carries ≥2 of
+ * these, the resolver animates the outline between poses (arc-length resample + index correspondence,
+ * so poses with DIFFERENT vertex counts morph). At/beyond a pose the resolver returns that pose's
+ * ORIGINAL vertices (beziers intact); only between poses is a flattened morph emitted.
+ */
+export interface PathKeyframe {
+  frame: number;
+  vertices: PathVertex[];
+  closed: boolean;
+  interpolation?: 'linear' | 'hold';
+}
+
 export interface PolygonShape {
   type: 'polygon';
   vertices: PathVertex[];
+  /** Optional animated outline (shape morph). Absent → the static `vertices` are used (unchanged). */
+  pathKeyframes?: PathKeyframe[];
   closed: boolean;
   fillColor: Vec4;
   strokeColor: Vec4;
@@ -431,7 +446,15 @@ export interface RoughenModifier {
   seed: number;
 }
 
-export type ShapeModifier = TrimPathsModifier | OffsetPathsModifier | RoughenModifier;
+/** Pucker & Bloat — bow each edge outward (bloat, +) or inward (pucker, −) while anchors stay put.
+ *  `amount` is the peak edge displacement in px. */
+export interface PuckerBloatModifier {
+  type: 'puckerBloat';
+  enabled: boolean;
+  amount: AnimatableProperty;
+}
+
+export type ShapeModifier = TrimPathsModifier | OffsetPathsModifier | RoughenModifier | PuckerBloatModifier;
 export type ShapeModifierType = ShapeModifier['type'];
 
 export interface ShapeLayer {

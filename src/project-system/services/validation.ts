@@ -111,6 +111,8 @@ function ensureShapeModifiers(val: unknown): ShapeModifier[] | undefined {
         amount: ensureAnimatableProperty(raw.amount, 'Roughen', 'number', 0),
         seed: typeof raw.seed === 'number' ? raw.seed : 1,
       });
+    } else if (raw.type === 'puckerBloat') {
+      out.push({ type: 'puckerBloat', enabled, amount: ensureAnimatableProperty(raw.amount, 'Pucker/Bloat', 'number', 0) });
     }
   }
   return out.length > 0 ? out : undefined;
@@ -184,7 +186,21 @@ function ensureShapeGeometry(val: unknown): ShapeGeometry | null {
         strokeColor,
         strokeWidth,
       };
-    case 'polygon':
+    case 'polygon': {
+      // B8b — preserve animated outline (path poses); else stripped on save/load.
+      const pathKeyframes = Array.isArray(s.pathKeyframes)
+        ? (s.pathKeyframes as unknown[])
+            .filter((k): k is Record<string, unknown> => isObject(k) && typeof k.frame === 'number' && Array.isArray(k.vertices))
+            .map((k) => {
+              const interp: 'hold' | 'linear' | undefined = k.interpolation === 'hold' ? 'hold' : k.interpolation === 'linear' ? 'linear' : undefined;
+              return {
+                frame: k.frame as number,
+                vertices: k.vertices as PathVertex[],
+                closed: typeof k.closed === 'boolean' ? k.closed : true,
+                ...(interp ? { interpolation: interp } : {}),
+              };
+            })
+        : undefined;
       return {
         type: 'polygon',
         vertices: Array.isArray(s.vertices) ? s.vertices : [],
@@ -192,10 +208,12 @@ function ensureShapeGeometry(val: unknown): ShapeGeometry | null {
         fillColor,
         strokeColor,
         strokeWidth,
+        ...(pathKeyframes && pathKeyframes.length > 0 ? { pathKeyframes } : {}),
         // M17 — preserve glyph counters + fill rule (else stripped on save/load).
         ...(Array.isArray(s.holes) ? { holes: s.holes as PathVertex[][] } : {}),
         ...(s.fillRule === 'evenodd' || s.fillRule === 'nonzero' ? { fillRule: s.fillRule } : {}),
       };
+    }
     default:
       return null;
   }

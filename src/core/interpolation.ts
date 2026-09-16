@@ -53,7 +53,7 @@ import { positionOnSegment } from './positionPath';
 import { evalScalarKeyframes } from './separateDimensions';
 import { effectiveShutterAngle, shutterPhaseFraction } from './shutter';
 import { linearSourceSeconds, sourceFrameFromSeconds, frameBlendSplit } from './timeRemap';
-import { applyResolvedModifiers, type ResolvedShapeModifier } from './shapeModifiers';
+import { applyResolvedModifiers, evalPathKeyframes, type ResolvedShapeModifier } from './shapeModifiers';
 import { expressionManager } from '../expressions/manager';
 import type { ExpressionContext, KeyframeData } from '../expressions/types';
 
@@ -307,6 +307,8 @@ function resolveShapeModifiers(modifiers: ShapeLayer['modifiers'], frame: number
       out.push({ type: 'offset', amount: evaluateNumber(m.amount, frame) });
     } else if (m.type === 'roughen') {
       out.push({ type: 'roughen', amount: evaluateNumber(m.amount, frame), seed: m.seed });
+    } else if (m.type === 'puckerBloat') {
+      out.push({ type: 'puckerBloat', amount: evaluateNumber(m.amount, frame) });
     }
   }
   return out;
@@ -375,8 +377,15 @@ function resolveShapeLayer(layer: ShapeLayer, frame: number, getStyle?: StyleLoo
     case 'polygon': {
       let verts = shape.vertices;
       let closedFlag = shape.closed;
-      // Path modifier stack (B8a): trim / offset / roughen, applied in order at resolve time. Absent
-      // → original vertices untouched (byte-identical). Holes pass through unmodified in v1.
+      // Shape morph (B8b): if the outline is animated, evaluate the pose at this frame FIRST — at/beyond
+      // a pose this returns the original bezier vertices (byte-identical); between poses, a morph.
+      if (shape.pathKeyframes && shape.pathKeyframes.length > 0) {
+        const p = evalPathKeyframes(shape.pathKeyframes, frame);
+        verts = p.vertices;
+        closedFlag = p.closed;
+      }
+      // Path modifier stack (B8a/B8b): trim / offset / roughen / puckerBloat, in order, at resolve
+      // time. Absent → vertices untouched (byte-identical). Holes pass through unmodified in v1.
       const mods = resolveShapeModifiers(layer.modifiers, frame);
       if (mods.length > 0 && verts.length >= 2) {
         const r = applyResolvedModifiers(verts, closedFlag, mods);
