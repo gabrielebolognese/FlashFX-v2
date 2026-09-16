@@ -40,6 +40,7 @@ import type {
   ContainerShapeType,
   ShapeModifier,
   ShapeModifierType,
+  ShapeRepeater,
 } from './types';
 
 let idCounter = 0;
@@ -79,6 +80,20 @@ export function createShapeModifier(type: ShapeModifierType): ShapeModifier {
     case 'puckerBloat':
       return { type: 'puckerBloat', enabled: true, amount: createProperty('Pucker/Bloat', 'number', 0) };
   }
+}
+
+/** Default in-shape Repeater (B8d): 3 copies marching 40px right, full opacity. */
+export function createShapeRepeater(): ShapeRepeater {
+  return {
+    enabled: true,
+    copies: createProperty('Copies', 'number', 3),
+    offsetX: createProperty('Offset X', 'number', 40),
+    offsetY: createProperty('Offset Y', 'number', 0),
+    rotation: createProperty('Rotation', 'number', 0),
+    scale: createProperty('Scale', 'number', 1),
+    startOpacity: createProperty('Start Opacity', 'number', 1),
+    endOpacity: createProperty('End Opacity', 'number', 1),
+  };
 }
 
 export function createKeyframe(

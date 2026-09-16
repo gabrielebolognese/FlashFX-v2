@@ -343,6 +343,47 @@ export function evalPathKeyframes(kfs: PathKeyframe[], frame: number): { vertice
   return morphPaths(k0.vertices, k0.closed, k1.vertices, k1.closed, t);
 }
 
+// ── In-shape Repeater (B8d) ──
+
+export interface RepeaterCopy {
+  dx: number;       // accumulated position offset from the base (comp space)
+  dy: number;
+  rotation: number; // added rotation in degrees
+  scale: number;    // multiplicative scale factor
+  opacity: number;  // multiplicative opacity (start→end ramp across copies)
+}
+
+/**
+ * Per-copy transforms for a shape Repeater (AE Repeater / MoGraph clone-in-place). Copy 0 is the
+ * original (no offset). Each subsequent copy accumulates the per-copy delta UNDER the growing
+ * rotation+scale — i.e. copy i's offset is Σ_{k<i} scale^k · R(k·rot) · (offsetX, offsetY) — so a
+ * rotation makes copies fan into a radial array and a scale makes a spiral, exactly like AE. Opacity
+ * ramps linearly from `startOpacity` (copy 0) to `endOpacity` (last copy). Pure & deterministic.
+ */
+export function repeaterTransforms(
+  count: number,
+  offsetX: number,
+  offsetY: number,
+  rotationDeg: number,
+  scaleFactor: number,
+  startOpacity: number,
+  endOpacity: number,
+): RepeaterCopy[] {
+  const n = Math.max(0, Math.floor(count));
+  const out: RepeaterCopy[] = [];
+  let px = 0, py = 0, curRot = 0, curScale = 1;
+  const rotStep = (rotationDeg * Math.PI) / 180;
+  for (let i = 0; i < n; i++) {
+    const opacity = n > 1 ? startOpacity + (endOpacity - startOpacity) * (i / (n - 1)) : startOpacity;
+    out.push({ dx: px, dy: py, rotation: rotationDeg * i, scale: curScale, opacity });
+    px += curScale * (Math.cos(curRot) * offsetX - Math.sin(curRot) * offsetY);
+    py += curScale * (Math.sin(curRot) * offsetX + Math.cos(curRot) * offsetY);
+    curRot += rotStep;
+    curScale *= scaleFactor;
+  }
+  return out;
+}
+
 // ── Resolved (numeric) modifier stack — the AnimatableProperty params are evaluated to numbers by
 //    the caller (resolveShapeLayer), keeping this module free of the interpolation engine. ──
 

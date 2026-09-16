@@ -53,7 +53,7 @@ import { positionOnSegment } from './positionPath';
 import { evalScalarKeyframes } from './separateDimensions';
 import { effectiveShutterAngle, shutterPhaseFraction } from './shutter';
 import { linearSourceSeconds, sourceFrameFromSeconds, frameBlendSplit } from './timeRemap';
-import { applyResolvedModifiers, evalPathKeyframes, type ResolvedShapeModifier } from './shapeModifiers';
+import { applyResolvedModifiers, evalPathKeyframes, repeaterTransforms, type ResolvedShapeModifier, type RepeaterCopy } from './shapeModifiers';
 import { expressionManager } from '../expressions/manager';
 import type { ExpressionContext, KeyframeData } from '../expressions/types';
 
@@ -926,6 +926,11 @@ function resolveClonerField(fieldRef: string, layers: Layer[]): FieldGrid | unde
 
 const EMPTY_VISITED: ReadonlySet<string> = new Set();
 
+// In-shape Repeater (B8d): hard cap on expanded copies (perf/runaway guard) + the reused
+// single-copy sentinel for shapes without a repeater (identity — keeps them byte-identical).
+const MAX_REPEATER_COPIES = 300;
+const SINGLE_COPY: readonly RepeaterCopy[] = [{ dx: 0, dy: 0, rotation: 0, scale: 1, opacity: 1 }];
+
 // 2.5D (M1) — resolve the frame's active camera. AE model: the active camera is the topmost
 // enabled camera layer active at this frame; with none, a default camera frames the comp 1:1.
 // `sortedLayers` is in render order (topmost drawn last), so the last matching camera wins.
@@ -1250,20 +1255,52 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
       } else if (layer.type === 'shape') {
         const shapeLayer = layer as ShapeLayer;
         if (!shapeLayer.shape) continue;
-        resolvedLayers.push({
-          id: layer.id,
-          visible: true,
-          blendMode: layer.blendMode,
-          transform: worldTransform,
-          shape: resolveShapeLayer(shapeLayer, frame, getStyle),
-          mask: resolveMask(layer.masks, frame),
-          masks: resolveMasks(layer.masks, frame),
-          motionBlur,
-          shadow,
-          glow,
-          blur,
-          layerType: 'shape',
-        });
+        const resolvedShape = resolveShapeLayer(shapeLayer, frame, getStyle);
+        const rMask = resolveMask(layer.masks, frame);
+        const rMasks = resolveMasks(layer.masks, frame);
+        // In-shape Repeater (B8d): expand into N copies at accumulated transforms (cloner-stamp
+        // pattern — each copy is a resolved shape layer reusing the SAME geometry). Absent/disabled →
+        // a single copy with the world transform untouched (byte-identical).
+        const rep = shapeLayer.repeater;
+        const copies = rep && rep.enabled
+          ? repeaterTransforms(
+              Math.min(MAX_REPEATER_COPIES, evaluateNumber(rep.copies, frame)),
+              evaluateNumber(rep.offsetX, frame),
+              evaluateNumber(rep.offsetY, frame),
+              evaluateNumber(rep.rotation, frame),
+              evaluateNumber(rep.scale, frame),
+              evaluateNumber(rep.startOpacity, frame),
+              evaluateNumber(rep.endOpacity, frame),
+            )
+          : SINGLE_COPY;
+        for (let ci = 0; ci < copies.length; ci++) {
+          const c = copies[ci];
+          const t = ci === 0 && copies === SINGLE_COPY
+            ? worldTransform
+            : {
+                ...worldTransform,
+                positionX: worldTransform.positionX + c.dx,
+                positionY: worldTransform.positionY + c.dy,
+                rotation: worldTransform.rotation + c.rotation,
+                scaleX: worldTransform.scaleX * c.scale,
+                scaleY: worldTransform.scaleY * c.scale,
+                opacity: worldTransform.opacity * c.opacity,
+              };
+          resolvedLayers.push({
+            id: ci === 0 ? layer.id : `${layer.id}:rep${ci}`,
+            visible: true,
+            blendMode: layer.blendMode,
+            transform: t,
+            shape: resolvedShape,
+            mask: rMask,
+            masks: rMasks,
+            motionBlur,
+            shadow,
+            glow,
+            blur,
+            layerType: 'shape',
+          });
+        }
       } else if (layer.type === 'particle') {
         const localFrame = frame - layer.inPoint;
         resolvedLayers.push({

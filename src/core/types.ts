@@ -461,6 +461,22 @@ export interface PuckerBloatModifier {
 export type ShapeModifier = TrimPathsModifier | OffsetPathsModifier | RoughenModifier | PuckerBloatModifier;
 export type ShapeModifierType = ShapeModifier['type'];
 
+/**
+ * In-shape Repeater (B8d) — AE Repeater / clone-in-place. Draws `copies` transformed copies of the
+ * shape, each accumulating the per-copy offset/rotation/scale (radial arrays, spirals) with an opacity
+ * ramp. Expanded at resolve time into N copies (the cloner-stamp pattern); absent → a single shape.
+ */
+export interface ShapeRepeater {
+  enabled: boolean;
+  copies: AnimatableProperty;       // number of copies (rounded, capped)
+  offsetX: AnimatableProperty;      // per-copy position delta X (px)
+  offsetY: AnimatableProperty;      // per-copy position delta Y (px)
+  rotation: AnimatableProperty;     // per-copy rotation delta (deg)
+  scale: AnimatableProperty;        // per-copy scale multiplier (1 = none)
+  startOpacity: AnimatableProperty; // opacity of the first copy (0..1)
+  endOpacity: AnimatableProperty;   // opacity of the last copy (0..1)
+}
+
 export interface ShapeLayer {
   id: string;
   type: 'shape';
@@ -482,6 +498,8 @@ export interface ShapeLayer {
   shape: ShapeGeometry;
   /** Ordered non-destructive path operators (trim / offset / roughen). See ShapeModifier. */
   modifiers?: ShapeModifier[];
+  /** In-shape Repeater — draws N accumulated copies of the shape (B8d). Absent → one shape. */
+  repeater?: ShapeRepeater;
   materialConfig?: ShapeMaterialConfig;
   strokeMaterialConfig?: ShapeMaterialConfig;
   patternFill?: ShapePatternConfig;

@@ -34,7 +34,7 @@ const bbox = (vs) => {
 
 try {
   const S = await bundle('src/core/shapeModifiers.ts', 'shapeModifiers.mjs');
-  const { trimPath, offsetPath, roughenPath, applyResolvedModifiers, puckerBloat, morphPaths, evalPathKeyframes, dashPath } = S;
+  const { trimPath, offsetPath, roughenPath, applyResolvedModifiers, puckerBloat, morphPaths, evalPathKeyframes, dashPath, repeaterTransforms } = S;
 
   // ── Trim ──
   check('trim: full window (0→1) returns the ORIGINAL vertices (byte-identical, keeps beziers)', () => {
@@ -272,6 +272,38 @@ try {
   check('dashPath: closed square with [20,20] dashes the perimeter (2 on-segments of len 20)', () => {
     const d = dashPath(square(), true, [20, 20], 0); // perimeter 80 → on at [0,20],[40,60]
     assert.equal(d.length, 2);
+  });
+
+  // ── In-shape Repeater (B8d) ──
+  check('repeaterTransforms: count 0 → none; count 1 → a single identity copy', () => {
+    assert.equal(repeaterTransforms(0, 10, 0, 0, 1, 1, 1).length, 0);
+    const one = repeaterTransforms(1, 10, 5, 30, 2, 1, 0.5);
+    assert.equal(one.length, 1);
+    assert.deepEqual(one[0], { dx: 0, dy: 0, rotation: 0, scale: 1, opacity: 1 });
+  });
+  check('repeaterTransforms: linear array marches by the offset each copy', () => {
+    const r = repeaterTransforms(3, 10, 0, 0, 1, 1, 1);
+    assert.ok(nearV([r[0].dx, r[0].dy], [0, 0]));
+    assert.ok(nearV([r[1].dx, r[1].dy], [10, 0]));
+    assert.ok(nearV([r[2].dx, r[2].dy], [20, 0]));
+  });
+  check('repeaterTransforms: rotation fans copies into a radial array (10 offset, 90°/copy → unit square)', () => {
+    const r = repeaterTransforms(4, 10, 0, 90, 1, 1, 1);
+    assert.ok(nearV([r[0].dx, r[0].dy], [0, 0]));
+    assert.ok(nearV([r[1].dx, r[1].dy], [10, 0]));
+    assert.ok(nearV([r[2].dx, r[2].dy], [10, 10]));
+    assert.ok(nearV([r[3].dx, r[3].dy], [0, 10]));
+    assert.deepEqual(r.map((c) => c.rotation), [0, 90, 180, 270]);
+  });
+  check('repeaterTransforms: scale accumulates multiplicatively (spiral growth)', () => {
+    const r = repeaterTransforms(3, 10, 0, 0, 2, 1, 1);
+    assert.deepEqual(r.map((c) => c.scale), [1, 2, 4]);
+    assert.ok(nearV([r[1].dx, r[1].dy], [10, 0])); // step 0 contributes scale 1 * 10
+    assert.ok(nearV([r[2].dx, r[2].dy], [30, 0])); // + step 1 contributes scale 2 * 10
+  });
+  check('repeaterTransforms: opacity ramps start→end across copies', () => {
+    const r = repeaterTransforms(3, 0, 0, 0, 1, 1, 0);
+    assert.ok(near(r[0].opacity, 1) && near(r[1].opacity, 0.5) && near(r[2].opacity, 0));
   });
 
   console.log(`\n✓ all ${passed} checks passed`);

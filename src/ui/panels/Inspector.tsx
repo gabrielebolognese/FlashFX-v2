@@ -905,6 +905,14 @@ function ShapeProperties({
           />
         </>
       )}
+
+      <ShapeRepeaterControls
+        layer={layer}
+        currentFrame={currentFrame}
+        updateLayerProperty={updateLayerProperty}
+        addKeyframe={addKeyframe}
+        hasKeyframeAt={hasKeyframeAt}
+      />
     </Section>
   );
 }
@@ -1022,6 +1030,57 @@ function PathModifiers({
           )}
         </div>
       ))}
+    </div>
+  );
+}
+
+// In-shape Repeater (B8d) — N accumulated copies of the shape (radial arrays, spirals, ladders).
+// Works for every shape type; each param keyframes via the generic `repeater.<param>` dot-paths.
+function ShapeRepeaterControls({
+  layer, currentFrame, updateLayerProperty, addKeyframe, hasKeyframeAt,
+}: {
+  layer: ShapeLayer;
+  currentFrame: number;
+  updateLayerProperty: (id: string, path: string, value: unknown) => void;
+  addKeyframe: (id: string, path: string, frame: number, value: number | [number, number]) => void;
+  hasKeyframeAt: (prop: AnimatableProperty) => boolean;
+}) {
+  const toggleShapeRepeater = useEditorStore((s) => s.toggleShapeRepeater);
+  const rep = layer.repeater;
+  const on = !!rep?.enabled;
+  const num = (label: string, key: keyof NonNullable<ShapeLayer['repeater']>, step: number, extra?: { min?: number; max?: number }) => {
+    if (!rep) return null;
+    const prop = rep[key] as AnimatableProperty;
+    return (
+      <NumberDragInput
+        label={label} prop={prop} frame={currentFrame}
+        onChange={(v) => updateLayerProperty(layer.id, `repeater.${key}.defaultValue`, v)}
+        onKeyframe={(v) => addKeyframe(layer.id, `repeater.${key}`, currentFrame, v)}
+        hasKeyframe={hasKeyframeAt(prop)} step={step} {...extra}
+      />
+    );
+  };
+
+  return (
+    <div className="mt-2 pt-2 border-t border-hairline">
+      <button
+        onClick={() => toggleShapeRepeater(layer.id)}
+        className="flex items-center gap-1.5 mb-1 text-caption uppercase tracking-wider text-slate-500 hover:text-slate-300 transition-colors"
+      >
+        <Repeat size={11} className={on ? 'text-accent' : ''} />
+        <span className={on ? 'text-accent' : ''}>Repeater{on ? '' : ' (off)'}</span>
+      </button>
+      {on && rep && (
+        <>
+          {num('Copies', 'copies', 1, { min: 1, max: 300 })}
+          {num('Offset X', 'offsetX', 1)}
+          {num('Offset Y', 'offsetY', 1)}
+          {num('Rotation', 'rotation', 1)}
+          {num('Scale', 'scale', 0.01)}
+          {num('Start Op', 'startOpacity', 0.01, { min: 0, max: 1 })}
+          {num('End Op', 'endOpacity', 0.01, { min: 0, max: 1 })}
+        </>
+      )}
     </div>
   );
 }

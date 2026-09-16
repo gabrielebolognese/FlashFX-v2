@@ -34,6 +34,7 @@ import type {
   ShapeMaterialConfig,
   ShapePatternConfig,
   ShapeModifier,
+  ShapeRepeater,
   PathVertex,
 } from '../../core/types';
 import type { LayerConstraints } from '../../core/reframe';
@@ -116,6 +117,21 @@ function ensureShapeModifiers(val: unknown): ShapeModifier[] | undefined {
     }
   }
   return out.length > 0 ? out : undefined;
+}
+
+// Reconstruct the in-shape Repeater (B8d) with valid AnimatableProperty params.
+function ensureShapeRepeater(val: unknown): ShapeRepeater | undefined {
+  if (!isObject(val)) return undefined;
+  return {
+    enabled: val.enabled !== false,
+    copies: ensureAnimatableProperty(val.copies, 'Copies', 'number', 3),
+    offsetX: ensureAnimatableProperty(val.offsetX, 'Offset X', 'number', 40),
+    offsetY: ensureAnimatableProperty(val.offsetY, 'Offset Y', 'number', 0),
+    rotation: ensureAnimatableProperty(val.rotation, 'Rotation', 'number', 0),
+    scale: ensureAnimatableProperty(val.scale, 'Scale', 'number', 1),
+    startOpacity: ensureAnimatableProperty(val.startOpacity, 'Start Opacity', 'number', 1),
+    endOpacity: ensureAnimatableProperty(val.endOpacity, 'End Opacity', 'number', 1),
+  };
 }
 
 function ensureTransform(val: unknown): Transform {
@@ -408,6 +424,8 @@ function validateLayer(raw: unknown): Layer | null {
         shape,
         // Preserve the path-modifier stack (B8a) — else stripped on save/load.
         ...((): { modifiers?: ShapeModifier[] } => { const m = ensureShapeModifiers(r.modifiers); return m ? { modifiers: m } : {}; })(),
+        // Preserve the in-shape Repeater (B8d).
+        ...((): { repeater?: ShapeRepeater } => { const rp = ensureShapeRepeater(r.repeater); return rp ? { repeater: rp } : {}; })(),
         // Preserve shape material / pattern fill (were dropped on load).
         ...(isObject(r.materialConfig) ? { materialConfig: r.materialConfig as unknown as ShapeMaterialConfig } : {}),
         ...(isObject(r.strokeMaterialConfig) ? { strokeMaterialConfig: r.strokeMaterialConfig as unknown as ShapeMaterialConfig } : {}),

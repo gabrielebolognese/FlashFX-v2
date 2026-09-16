@@ -3,7 +3,7 @@ import type { Composition, SceneDocument, Layer, AnimatableProperty, Keyframe, V
 import type { EasingName } from '../core/easings';
 import { autoSpatialTangents, segmentArcLength, framesFromCumLengths } from '../core/positionPath';
 import { splitDimensions, mergeDimensions } from '../core/separateDimensions';
-import { createComposition, createRectangleLayer, createCircleLayer, createStarLayer, createPolygonLayer, createDefaultPolygonVertices, createTextLayer, createDefaultTextContent, createVideoLayer, createImageLayer, createAudioLayer, createGroupLayer, createKeyframe, createBackgroundLayer, createMask, createParticleLayer, createAnimationItemLayer, createFieldSampledLayer, createGenerativePatternLayer, createCameraLayer, createLottieIconLayer, createLayoutObjectLayer, createLayoutContainerLayer, createDefaultChildOverride, createProperty, createShapeModifier, uid } from '../core/factory';
+import { createComposition, createRectangleLayer, createCircleLayer, createStarLayer, createPolygonLayer, createDefaultPolygonVertices, createTextLayer, createDefaultTextContent, createVideoLayer, createImageLayer, createAudioLayer, createGroupLayer, createKeyframe, createBackgroundLayer, createMask, createParticleLayer, createAnimationItemLayer, createFieldSampledLayer, createGenerativePatternLayer, createCameraLayer, createLottieIconLayer, createLayoutObjectLayer, createLayoutContainerLayer, createDefaultChildOverride, createProperty, createShapeModifier, createShapeRepeater, uid } from '../core/factory';
 import { outlineText, canOutlineFont } from '../text/outlineText';
 import { computeBatchNames, type RenamePattern } from '../core/batchRename';
 import { detachStyleValue, type SharedStyle } from '../core/styles';
@@ -434,6 +434,9 @@ interface EditorState {
    *  dashOffset exists when enabling; the offset itself keyframes via updateLayerProperty/addKeyframe
    *  on `shape.dashOffset`. */
   setShapeDash: (layerId: string, dashArray: number[]) => void;
+  /** In-shape Repeater (B8d): create+enable one if absent, else flip its enabled flag. Params keyframe
+   *  via updateLayerProperty/addKeyframe on `repeater.<param>` dot-paths. */
+  toggleShapeRepeater: (layerId: string) => void;
   toggleLayer3D: (layerId: string) => void;
   /** Enable 3D on every selected layer that supports it (skips camera/group/audio and already-3D
    *  layers), as ONE undo step — so a whole scene can be prepped for a camera in a single click. */
@@ -3276,6 +3279,20 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     });
     const comp: Composition = { ...composition, layers: newLayers };
     exec({ label: 'Set Dash Pattern', execute: () => set({ composition: comp }), undo: () => set({ composition: oldComp }) });
+  },
+
+  toggleShapeRepeater: (layerId) => {
+    const { composition } = get();
+    const layer = composition.layers.find((l) => l.id === layerId);
+    if (!layer || layer.type !== 'shape') return;
+    const oldComp = composition;
+    const newLayers = composition.layers.map((l) => {
+      if (l.id !== layerId || l.type !== 'shape') return l;
+      const repeater = l.repeater ? { ...l.repeater, enabled: !l.repeater.enabled } : createShapeRepeater();
+      return { ...l, repeater };
+    });
+    const comp: Composition = { ...composition, layers: newLayers };
+    exec({ label: 'Toggle Repeater', execute: () => set({ composition: comp }), undo: () => set({ composition: oldComp }) });
   },
 
   flattenSelectedShapes: () => {
