@@ -1173,7 +1173,9 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
           // Frame-mix: expand into a second video layer at frameB, drawn on top at opacity = mix, so
           // the two adjacent source frames cross-dissolve through the normal image pipeline (no shader
           // change). Reuses the cloner-stamp pattern; a synthetic id keys its own decoded texture.
-          if (resolvedVideo.sourceFrameB != null && resolvedVideo.blendMix) {
+          // Skipped for interp:'flow' — there the renderer's optical-flow warp pre-pass already blends
+          // both source frames into the single base texture, so a second overlay would double-composite.
+          if (resolvedVideo.sourceFrameB != null && resolvedVideo.blendMix && resolvedVideo.interp !== 'flow') {
             resolvedLayers.push({
               id: `${layer.id}:fb`,
               visible: true,

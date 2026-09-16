@@ -1,4 +1,4 @@
-import type { RenderFrame, ResolvedLayer, ResolvedMask, ResolvedFill, ResolvedPattern, ResolvedEffect, Background } from '../core/types';
+import type { RenderFrame, ResolvedLayer, ResolvedMask, ResolvedFill, ResolvedPattern, ResolvedEffect, ResolvedVideo, Background } from '../core/types';
 import { MAX_PRECOMP_DEPTH } from '../core/precomp';
 // 2.5D (M2): per-3D-layer MVP + painter's depth sort. cardMVP/cameraSpaceDepth are pure and
 // harness-verified (verify:camera3d); the renderer just packs the matrix + reorders draws.
@@ -26,6 +26,7 @@ import { PATTERN_TYPE } from '../patterns/types';
 import { lottieRendererEngine } from './lottieRenderer';
 import { videoTextureCache } from './video/videoTextureCache';
 import { frameScheduler } from './video/frameScheduler';
+import { FLOW_WARP_SHADER, FLOW_UNIFORM_SIZE } from './video/opticalFlow';
 
 const BG_MAX_LAYERS = 10;
 const BG_MAX_STOPS = 4;
@@ -3364,6 +3365,99 @@ export class WebGPURenderer {
   // precomp layer id and reused across frames; reallocated on a size change.
   private precompTexPool = new Map<string, { tex: GPUTexture; view: GPUTextureView; w: number; h: number }>();
 
+  // --- Optical-flow retiming (B6b) — OPT-IN (video.retimeInterp==='flow'), OFF by default. Every GPU
+  // call is guarded; on ANY failure the pipeline is disabled and the layer falls back to the crisp
+  // source frame, so a bad/invalid shader can never break the renderer or existing (mix/off) video. ---
+  private flowWarp: { pipeline: GPURenderPipeline; layout: GPUBindGroupLayout; sampler: GPUSampler } | null | undefined = undefined;
+  private flowUniformBuf: GPUBuffer | null = null;
+  private flowTexPool = new Map<string, { tex: GPUTexture; view: GPUTextureView; w: number; h: number }>();
+
+  private ensureFlowWarp(device: GPUDevice, format: GPUTextureFormat): { pipeline: GPURenderPipeline; layout: GPUBindGroupLayout; sampler: GPUSampler } | null {
+    if (this.flowWarp !== undefined) return this.flowWarp; // already built (bundle) or already failed (null)
+    try {
+      device.pushErrorScope('validation');
+      const module = device.createShaderModule({ code: FLOW_WARP_SHADER });
+      const layout = device.createBindGroupLayout({
+        entries: [
+          { binding: 0, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'filtering' } },
+          { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
+          { binding: 2, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
+          { binding: 3, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform', minBindingSize: FLOW_UNIFORM_SIZE } },
+        ],
+      });
+      const pipeline = device.createRenderPipeline({
+        layout: device.createPipelineLayout({ bindGroupLayouts: [layout] }),
+        vertex: { module, entryPoint: 'vs' },
+        fragment: { module, entryPoint: 'fs', targets: [{ format }] },
+        primitive: { topology: 'triangle-list' },
+      });
+      const sampler = device.createSampler({ magFilter: 'linear', minFilter: 'linear', addressModeU: 'clamp-to-edge', addressModeV: 'clamp-to-edge' });
+      this.flowUniformBuf = device.createBuffer({ size: FLOW_UNIFORM_SIZE, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+      this.flowWarp = { pipeline, layout, sampler };
+      // A WGSL compile/validation error surfaces asynchronously — disable flow on the next frame if so.
+      device.popErrorScope().then((err) => { if (err) { console.warn('[flow] shader invalid — disabling optical-flow warp:', err.message); this.flowWarp = null; } }).catch(() => {});
+    } catch (e) {
+      console.warn('[flow] optical-flow warp unavailable — falling back to crisp frames:', e);
+      this.flowWarp = null;
+    }
+    return this.flowWarp;
+  }
+
+  private ensureFlowTexture(gpu: GPUState, id: string, w: number, h: number): GPUTextureView {
+    const width = Math.max(1, Math.round(w));
+    const height = Math.max(1, Math.round(h));
+    const existing = this.flowTexPool.get(id);
+    if (existing && existing.w === width && existing.h === height) return existing.view;
+    existing?.tex.destroy();
+    const tex = gpu.device.createTexture({ size: { width, height }, format: gpu.format, usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING });
+    const view = tex.createView();
+    this.flowTexPool.set(id, { tex, view, w: width, h: height });
+    return view;
+  }
+
+  // Produce a motion-warped texture for a frame-blended 'flow' video layer, or null to fall back to
+  // the crisp frameA. Decodes/uploads frameB into its own cache slot, runs the warp pre-pass in an
+  // OWN encoder+submit (so it can't alias the scene pass), and returns the warped view. Fully guarded.
+  private tryFlowWarp(device: GPUDevice, gpu: GPUState, format: GPUTextureFormat, layerId: string, video: ResolvedVideo): GPUTextureView | null {
+    if (video.sourceFrameB == null || !video.blendMix) return null;
+    try {
+      const bId = `${layerId}:fbw`;
+      frameScheduler.reportVideoRequirement(bId, video.assetId, video.sourceFrameB, video.playbackRate);
+      if (videoTextureCache.getCurrentFrameIndex(bId) !== video.sourceFrameB) {
+        const bFrame = frameScheduler.getFrame(video.assetId, video.sourceFrameB);
+        if (bFrame) videoTextureCache.uploadFrame(bId, video.sourceFrameB, bFrame);
+      }
+      const texA = videoTextureCache.getTexture(layerId);
+      const texB = videoTextureCache.getTexture(bId);
+      const fw = this.ensureFlowWarp(device, format);
+      if (!texA || !texB || !fw || !this.flowUniformBuf) return null;
+      // Size the warp target to texA's ACTUAL pixel dims — the shader maps uv = pos.xy / dims(texA),
+      // so the render-target size must equal the sampled texture size for the identity mapping to hold.
+      const warpView = this.ensureFlowTexture(gpu, `${layerId}:warp`, texA.width, texA.height);
+      const uni = new Float32Array([video.blendMix, 16, 0, 0]); // t, strength (max flow in texels)
+      device.queue.writeBuffer(this.flowUniformBuf, 0, uni);
+      const bg = device.createBindGroup({
+        layout: fw.layout,
+        entries: [
+          { binding: 0, resource: fw.sampler },
+          { binding: 1, resource: texA.createView() },
+          { binding: 2, resource: texB.createView() },
+          { binding: 3, resource: { buffer: this.flowUniformBuf } },
+        ],
+      });
+      const enc = device.createCommandEncoder();
+      const pass = enc.beginRenderPass({ colorAttachments: [{ view: warpView, loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 0 } }] });
+      pass.setPipeline(fw.pipeline);
+      pass.setBindGroup(0, bg);
+      pass.draw(3);
+      pass.end();
+      device.queue.submit([enc.finish()]);
+      return warpView;
+    } catch {
+      return null;
+    }
+  }
+
   private ensurePrecompTexture(gpu: GPUState, id: string, w: number, h: number): GPUTextureView {
     const width = Math.max(1, Math.round(w));
     const height = Math.max(1, Math.round(h));
@@ -3822,12 +3916,21 @@ export class WebGPURenderer {
         this.writeMaskUniforms(data, 15, 28, vidLayer.masks);
         writeCard3D(data, IMAGE_MVP_FLAG, IMAGE_MVP_BASE, vidLayer, frame.camera);
 
+        // Optical-flow retiming (B6b, opt-in): when this layer is frame-blending with interp:'flow',
+        // try to build a motion-compensated warp texture for the frame pair. Any failure (or the shader
+        // being invalid in this browser) returns null → we fall back to the crisp source frame.
+        let vidTexView = gpuTexture.createView();
+        if (video.interp === 'flow' && video.sourceFrameB != null && video.blendMix) {
+          const warped = this.tryFlowWarp(device, gpu, gpu.format, vidLayer.id, video);
+          if (warped) vidTexView = warped;
+        }
+
         const vbg = device.createBindGroup({
           layout: imageBindGroupLayout,
           entries: [
             { binding: 0, resource: { buffer: imageUniformBuffer, size: IMAGE_UNIFORM_SIZE } },
             { binding: 1, resource: textSampler },
-            { binding: 2, resource: gpuTexture.createView() },
+            { binding: 2, resource: vidTexView },
           ],
         });
         videoBindGroups.push(vbg);
