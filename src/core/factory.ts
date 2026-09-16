@@ -38,6 +38,8 @@ import type {
   Mask,
   MaskType,
   ContainerShapeType,
+  ShapeModifier,
+  ShapeModifierType,
 } from './types';
 
 let idCounter = 0;
@@ -57,6 +59,24 @@ export function createProperty(
     defaultValue,
     keyframes: [],
   };
+}
+
+/** Build a default path modifier (B8a). Trim reveals the full path (0→1); offset/roughen start at 0. */
+export function createShapeModifier(type: ShapeModifierType): ShapeModifier {
+  switch (type) {
+    case 'trim':
+      return {
+        type: 'trim',
+        enabled: true,
+        start: createProperty('Trim Start', 'number', 0),
+        end: createProperty('Trim End', 'number', 1),
+        offset: createProperty('Trim Offset', 'number', 0),
+      };
+    case 'offset':
+      return { type: 'offset', enabled: true, amount: createProperty('Offset', 'number', 0) };
+    case 'roughen':
+      return { type: 'roughen', enabled: true, amount: createProperty('Roughen', 'number', 0), seed: (idCounter * 2654435761) >>> 0 };
+  }
 }
 
 export function createKeyframe(

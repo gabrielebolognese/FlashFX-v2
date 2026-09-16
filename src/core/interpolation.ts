@@ -53,6 +53,7 @@ import { positionOnSegment } from './positionPath';
 import { evalScalarKeyframes } from './separateDimensions';
 import { effectiveShutterAngle, shutterPhaseFraction } from './shutter';
 import { linearSourceSeconds, sourceFrameFromSeconds, frameBlendSplit } from './timeRemap';
+import { applyResolvedModifiers, type ResolvedShapeModifier } from './shapeModifiers';
 import { expressionManager } from '../expressions/manager';
 import type { ExpressionContext, KeyframeData } from '../expressions/types';
 
@@ -293,6 +294,24 @@ function resolveTransform(transform: Transform, frame: number): ResolvedTransfor
   };
 }
 
+// Evaluate a shape layer's path-modifier stack (B8a) to plain numbers for the current frame,
+// dropping disabled modifiers. The pure geometry then runs in core/shapeModifiers.ts.
+function resolveShapeModifiers(modifiers: ShapeLayer['modifiers'], frame: number): ResolvedShapeModifier[] {
+  if (!modifiers || modifiers.length === 0) return [];
+  const out: ResolvedShapeModifier[] = [];
+  for (const m of modifiers) {
+    if (!m.enabled) continue;
+    if (m.type === 'trim') {
+      out.push({ type: 'trim', start: evaluateNumber(m.start, frame), end: evaluateNumber(m.end, frame), offset: evaluateNumber(m.offset, frame) });
+    } else if (m.type === 'offset') {
+      out.push({ type: 'offset', amount: evaluateNumber(m.amount, frame) });
+    } else if (m.type === 'roughen') {
+      out.push({ type: 'roughen', amount: evaluateNumber(m.amount, frame), seed: m.seed });
+    }
+  }
+  return out;
+}
+
 function resolveShapeLayer(layer: ShapeLayer, frame: number, getStyle?: StyleLookup): ResolvedShape {
   const shape = layer.shape;
   const defaultColor: Vec4 = [0.5, 0.5, 0.5, 1];
@@ -354,15 +373,25 @@ function resolveShapeLayer(layer: ShapeLayer, frame: number, getStyle?: StyleLoo
       break;
     }
     case 'polygon': {
-      base.vertices = shape.vertices;
-      base.closed = shape.closed;
+      let verts = shape.vertices;
+      let closedFlag = shape.closed;
+      // Path modifier stack (B8a): trim / offset / roughen, applied in order at resolve time. Absent
+      // → original vertices untouched (byte-identical). Holes pass through unmodified in v1.
+      const mods = resolveShapeModifiers(layer.modifiers, frame);
+      if (mods.length > 0 && verts.length >= 2) {
+        const r = applyResolvedModifiers(verts, closedFlag, mods);
+        verts = r.vertices;
+        closedFlag = r.closed;
+      }
+      base.vertices = verts;
+      base.closed = closedFlag;
       base.lineCap = shape.lineCap ?? 'butt';
       base.lineJoin = shape.lineJoin ?? 'miter';
       if (shape.holes && shape.holes.length > 0) base.holes = shape.holes; // M17 glyph counters
       // Compute bounding box for width/height
-      if (shape.vertices.length > 0) {
+      if (verts.length > 0) {
         let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-        for (const v of shape.vertices) {
+        for (const v of verts) {
           if (v.position[0] < minX) minX = v.position[0];
           if (v.position[0] > maxX) maxX = v.position[0];
           if (v.position[1] < minY) minY = v.position[1];

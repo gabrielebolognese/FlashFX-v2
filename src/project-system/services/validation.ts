@@ -33,6 +33,7 @@ import type {
   LayerEffect,
   ShapeMaterialConfig,
   ShapePatternConfig,
+  ShapeModifier,
   PathVertex,
 } from '../../core/types';
 import type { LayerConstraints } from '../../core/reframe';
@@ -85,6 +86,34 @@ function isValidKeyframe(k: unknown): boolean {
   if (!isObject(k)) return false;
   const kf = k as Record<string, unknown>;
   return typeof kf.frame === 'number' && kf.value != null;
+}
+
+// Reconstruct the shape path-modifier stack (B8a) with guaranteed-valid AnimatableProperty params so
+// a corrupt/partial saved modifier can never crash resolve. Unknown modifier types are dropped.
+function ensureShapeModifiers(val: unknown): ShapeModifier[] | undefined {
+  if (!Array.isArray(val)) return undefined;
+  const out: ShapeModifier[] = [];
+  for (const raw of val) {
+    if (!isObject(raw)) continue;
+    const enabled = raw.enabled !== false;
+    if (raw.type === 'trim') {
+      out.push({
+        type: 'trim', enabled,
+        start: ensureAnimatableProperty(raw.start, 'Trim Start', 'number', 0),
+        end: ensureAnimatableProperty(raw.end, 'Trim End', 'number', 1),
+        offset: ensureAnimatableProperty(raw.offset, 'Trim Offset', 'number', 0),
+      });
+    } else if (raw.type === 'offset') {
+      out.push({ type: 'offset', enabled, amount: ensureAnimatableProperty(raw.amount, 'Offset', 'number', 0) });
+    } else if (raw.type === 'roughen') {
+      out.push({
+        type: 'roughen', enabled,
+        amount: ensureAnimatableProperty(raw.amount, 'Roughen', 'number', 0),
+        seed: typeof raw.seed === 'number' ? raw.seed : 1,
+      });
+    }
+  }
+  return out.length > 0 ? out : undefined;
 }
 
 function ensureTransform(val: unknown): Transform {
@@ -355,6 +384,8 @@ function validateLayer(raw: unknown): Layer | null {
         ...baseFields,
         type: 'shape',
         shape,
+        // Preserve the path-modifier stack (B8a) — else stripped on save/load.
+        ...((): { modifiers?: ShapeModifier[] } => { const m = ensureShapeModifiers(r.modifiers); return m ? { modifiers: m } : {}; })(),
         // Preserve shape material / pattern fill (were dropped on load).
         ...(isObject(r.materialConfig) ? { materialConfig: r.materialConfig as unknown as ShapeMaterialConfig } : {}),
         ...(isObject(r.strokeMaterialConfig) ? { strokeMaterialConfig: r.strokeMaterialConfig as unknown as ShapeMaterialConfig } : {}),

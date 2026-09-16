@@ -8,7 +8,7 @@ import { useMotionPathStore } from '../../store/motionPath';
 import { useMaskStore } from '../../store/mask';
 import { usePathEditStore } from '../../store/pathEdit';
 import { BrandColorPicker } from '../components/BrandColorPicker';
-import type { ShapeLayer, TextLayer, VideoLayer, ImageLayer, AudioLayer, ParticleLayer, GenerativePatternLayer, CameraLayer, AnimationItemLayer, LottieIconLayer, AnimatableProperty, Vec2, Vec4, RectangleShape, CircleShape, StarShape, PolygonShape, MotionPathAnchor, MotionPathLoop, Mask, MaskType, Layer, LayerShadow, LayerGlow, LayerBlur, BlurType, GlowMode, LayoutObjectLayer, LayoutContainerLayer, TextSpanStyle, TextLayoutConfig, TextGradientFill } from '../../core/types';
+import type { ShapeLayer, TextLayer, VideoLayer, ImageLayer, AudioLayer, ParticleLayer, GenerativePatternLayer, CameraLayer, AnimationItemLayer, LottieIconLayer, AnimatableProperty, Vec2, Vec4, RectangleShape, CircleShape, StarShape, PolygonShape, MotionPathAnchor, MotionPathLoop, Mask, MaskType, Layer, LayerShadow, LayerGlow, LayerBlur, BlurType, GlowMode, LayoutObjectLayer, LayoutContainerLayer, TextSpanStyle, TextLayoutConfig, TextGradientFill, ShapeModifierType } from '../../core/types';
 
 // Safe fallbacks so the Text inspector renders even for a text layer with missing/empty content or
 // layoutConfig (defensive — factory layers set these, but selection must never crash).
@@ -885,7 +885,126 @@ function ShapeProperties({
           })()}
         </>
       )}
+
+      {shape.type === 'polygon' && (
+        <PathModifiers
+          layer={layer}
+          currentFrame={currentFrame}
+          updateLayerProperty={updateLayerProperty}
+          addKeyframe={addKeyframe}
+          hasKeyframeAt={hasKeyframeAt}
+        />
+      )}
     </Section>
+  );
+}
+
+const MODIFIER_LABELS: Record<ShapeModifierType, string> = { trim: 'Trim Paths', offset: 'Offset Paths', roughen: 'Roughen' };
+const MODIFIER_ADD: Record<ShapeModifierType, string> = { trim: 'Trim', offset: 'Offset', roughen: 'Roughen' };
+
+// Path Modifier stack (B8a) — trim (draw-on), offset (inset/outset), roughen (jagged edge). Params
+// are AnimatableProperty and edit through the generic updateLayerProperty/addKeyframe on
+// `modifiers.<i>.<param>` dot-paths, so they keyframe like any other property.
+function PathModifiers({
+  layer, currentFrame, updateLayerProperty, addKeyframe, hasKeyframeAt,
+}: {
+  layer: ShapeLayer;
+  currentFrame: number;
+  updateLayerProperty: (id: string, path: string, value: unknown) => void;
+  addKeyframe: (id: string, path: string, frame: number, value: number | [number, number]) => void;
+  hasKeyframeAt: (prop: AnimatableProperty) => boolean;
+}) {
+  const addShapeModifier = useEditorStore((s) => s.addShapeModifier);
+  const removeShapeModifier = useEditorStore((s) => s.removeShapeModifier);
+  const toggleShapeModifier = useEditorStore((s) => s.toggleShapeModifier);
+  const modifiers = layer.modifiers ?? [];
+
+  return (
+    <div className="mt-2 pt-2 border-t border-hairline">
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-caption text-slate-500 uppercase tracking-wider">Path Modifiers</span>
+        <div className="flex gap-1">
+          {(['trim', 'offset', 'roughen'] as ShapeModifierType[]).map((t) => (
+            <button
+              key={t}
+              onClick={() => addShapeModifier(layer.id, t)}
+              title={`Add ${MODIFIER_LABELS[t]}`}
+              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-caption border border-hairline text-slate-400 hover:text-slate-200 hover:bg-white/5 transition-colors"
+            >
+              <Plus size={9} />{MODIFIER_ADD[t]}
+            </button>
+          ))}
+        </div>
+      </div>
+      {modifiers.length === 0 && (
+        <div className="text-caption text-slate-600">Trim (draw-on), offset (inset/outset) or roughen the outline.</div>
+      )}
+      {modifiers.map((mod, i) => (
+        <div key={i} className="mb-1.5 p-1.5 rounded bg-white/[0.02] border border-hairline">
+          <div className="flex items-center gap-1 mb-1">
+            <button
+              onClick={() => toggleShapeModifier(layer.id, i)}
+              title={mod.enabled ? 'Disable' : 'Enable'}
+              className="text-slate-400 hover:text-slate-200"
+            >
+              {mod.enabled ? <Eye size={12} /> : <EyeOff size={12} />}
+            </button>
+            <span className={`text-caption flex-1 ${mod.enabled ? 'text-slate-300' : 'text-slate-600 line-through'}`}>
+              {MODIFIER_LABELS[mod.type]}
+            </span>
+            <button onClick={() => removeShapeModifier(layer.id, i)} title="Remove" className="text-slate-500 hover:text-red-400">
+              <Trash2 size={12} />
+            </button>
+          </div>
+          {mod.type === 'trim' && (
+            <>
+              <NumberDragInput
+                label="Start" prop={mod.start} frame={currentFrame}
+                onChange={(v) => updateLayerProperty(layer.id, `modifiers.${i}.start.defaultValue`, v)}
+                onKeyframe={(v) => addKeyframe(layer.id, `modifiers.${i}.start`, currentFrame, v)}
+                hasKeyframe={hasKeyframeAt(mod.start)} min={0} max={1} step={0.01}
+              />
+              <NumberDragInput
+                label="End" prop={mod.end} frame={currentFrame}
+                onChange={(v) => updateLayerProperty(layer.id, `modifiers.${i}.end.defaultValue`, v)}
+                onKeyframe={(v) => addKeyframe(layer.id, `modifiers.${i}.end`, currentFrame, v)}
+                hasKeyframe={hasKeyframeAt(mod.end)} min={0} max={1} step={0.01}
+              />
+              <NumberDragInput
+                label="Offset" prop={mod.offset} frame={currentFrame}
+                onChange={(v) => updateLayerProperty(layer.id, `modifiers.${i}.offset.defaultValue`, v)}
+                onKeyframe={(v) => addKeyframe(layer.id, `modifiers.${i}.offset`, currentFrame, v)}
+                hasKeyframe={hasKeyframeAt(mod.offset)} min={-1} max={1} step={0.01}
+              />
+            </>
+          )}
+          {mod.type === 'offset' && (
+            <NumberDragInput
+              label="Amount" prop={mod.amount} frame={currentFrame}
+              onChange={(v) => updateLayerProperty(layer.id, `modifiers.${i}.amount.defaultValue`, v)}
+              onKeyframe={(v) => addKeyframe(layer.id, `modifiers.${i}.amount`, currentFrame, v)}
+              hasKeyframe={hasKeyframeAt(mod.amount)} step={0.5}
+            />
+          )}
+          {mod.type === 'roughen' && (
+            <>
+              <NumberDragInput
+                label="Amount" prop={mod.amount} frame={currentFrame}
+                onChange={(v) => updateLayerProperty(layer.id, `modifiers.${i}.amount.defaultValue`, v)}
+                onKeyframe={(v) => addKeyframe(layer.id, `modifiers.${i}.amount`, currentFrame, v)}
+                hasKeyframe={hasKeyframeAt(mod.amount)} min={0} step={0.5}
+              />
+              <button
+                onClick={() => updateLayerProperty(layer.id, `modifiers.${i}.seed`, (mod.seed * 1664525 + 1013904223) >>> 0)}
+                className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-caption border border-hairline text-slate-400 hover:text-slate-200 hover:bg-white/5 transition-colors"
+              >
+                <RotateCcw size={10} /> Reseed
+              </button>
+            </>
+          )}
+        </div>
+      ))}
+    </div>
   );
 }
 

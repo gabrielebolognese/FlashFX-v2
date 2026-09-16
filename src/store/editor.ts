@@ -1,9 +1,9 @@
 import { create } from 'zustand';
-import type { Composition, SceneDocument, Layer, AnimatableProperty, Keyframe, Vec2, Vec4, InterpolationType, BackgroundLayer, Track, TrackType, VideoPlaybackMode, PathVertex, VertexType, Mask, MaskType, AnchorEdge, PhysicsBindingDef, PhysicsWorldDef, StaggerBindingDef, LayoutObjectLayer, LayoutContainerLayer, ContainerShapeType, Marker, ShapeLayer, PolygonShape, TextLayer } from '../core/types';
+import type { Composition, SceneDocument, Layer, AnimatableProperty, Keyframe, Vec2, Vec4, InterpolationType, BackgroundLayer, Track, TrackType, VideoPlaybackMode, PathVertex, VertexType, Mask, MaskType, AnchorEdge, PhysicsBindingDef, PhysicsWorldDef, StaggerBindingDef, LayoutObjectLayer, LayoutContainerLayer, ContainerShapeType, Marker, ShapeLayer, PolygonShape, TextLayer, ShapeModifierType } from '../core/types';
 import type { EasingName } from '../core/easings';
 import { autoSpatialTangents, segmentArcLength, framesFromCumLengths } from '../core/positionPath';
 import { splitDimensions, mergeDimensions } from '../core/separateDimensions';
-import { createComposition, createRectangleLayer, createCircleLayer, createStarLayer, createPolygonLayer, createDefaultPolygonVertices, createTextLayer, createDefaultTextContent, createVideoLayer, createImageLayer, createAudioLayer, createGroupLayer, createKeyframe, createBackgroundLayer, createMask, createParticleLayer, createAnimationItemLayer, createFieldSampledLayer, createGenerativePatternLayer, createCameraLayer, createLottieIconLayer, createLayoutObjectLayer, createLayoutContainerLayer, createDefaultChildOverride, createProperty, uid } from '../core/factory';
+import { createComposition, createRectangleLayer, createCircleLayer, createStarLayer, createPolygonLayer, createDefaultPolygonVertices, createTextLayer, createDefaultTextContent, createVideoLayer, createImageLayer, createAudioLayer, createGroupLayer, createKeyframe, createBackgroundLayer, createMask, createParticleLayer, createAnimationItemLayer, createFieldSampledLayer, createGenerativePatternLayer, createCameraLayer, createLottieIconLayer, createLayoutObjectLayer, createLayoutContainerLayer, createDefaultChildOverride, createProperty, createShapeModifier, uid } from '../core/factory';
 import { outlineText, canOutlineFont } from '../text/outlineText';
 import { computeBatchNames, type RenamePattern } from '../core/batchRename';
 import { detachStyleValue, type SharedStyle } from '../core/styles';
@@ -421,6 +421,11 @@ interface EditorState {
   removeLayer: (id: string) => void;
   removeLayers: (ids: string[]) => void;
   updateLayerProperty: (layerId: string, path: string, value: unknown) => void;
+  /** Path modifier stack (B8a) — trim/offset/roughen on a shape layer's outline. Params are edited
+   *  through the generic updateLayerProperty/addKeyframe on `modifiers.<i>.<param>` dot-paths. */
+  addShapeModifier: (layerId: string, type: ShapeModifierType) => void;
+  removeShapeModifier: (layerId: string, index: number) => void;
+  toggleShapeModifier: (layerId: string, index: number) => void;
   toggleLayer3D: (layerId: string) => void;
   /** Enable 3D on every selected layer that supports it (skips camera/group/audio and already-3D
    *  layers), as ONE undo step — so a whole scene can be prepped for a camera in a single click. */
@@ -3156,6 +3161,47 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     comp = settleComposition(comp);
     const newSel: SelectionState = sel(newLayers.map((l) => l.id), newLayers[0].id);
     exec({ label: labels[op], execute: () => set({ composition: comp, selection: newSel }), undo: () => set({ composition: oldComp, selection: oldSel }) });
+  },
+
+  addShapeModifier: (layerId, type) => {
+    const { composition } = get();
+    const layer = composition.layers.find((l) => l.id === layerId);
+    if (!layer || layer.type !== 'shape') return;
+    const oldComp = composition;
+    const mod = createShapeModifier(type);
+    const newLayers = composition.layers.map((l) =>
+      l.id === layerId && l.type === 'shape' ? { ...l, modifiers: [...(l.modifiers ?? []), mod] } : l,
+    );
+    const comp: Composition = { ...composition, layers: newLayers };
+    exec({ label: 'Add Path Modifier', execute: () => set({ composition: comp }), undo: () => set({ composition: oldComp }) });
+  },
+
+  removeShapeModifier: (layerId, index) => {
+    const { composition } = get();
+    const layer = composition.layers.find((l) => l.id === layerId);
+    if (!layer || layer.type !== 'shape' || !layer.modifiers || index < 0 || index >= layer.modifiers.length) return;
+    const oldComp = composition;
+    const newLayers = composition.layers.map((l) => {
+      if (l.id !== layerId || l.type !== 'shape' || !l.modifiers) return l;
+      const modifiers = l.modifiers.filter((_, i) => i !== index);
+      return { ...l, modifiers: modifiers.length > 0 ? modifiers : undefined };
+    });
+    const comp: Composition = { ...composition, layers: newLayers };
+    exec({ label: 'Remove Path Modifier', execute: () => set({ composition: comp }), undo: () => set({ composition: oldComp }) });
+  },
+
+  toggleShapeModifier: (layerId, index) => {
+    const { composition } = get();
+    const layer = composition.layers.find((l) => l.id === layerId);
+    if (!layer || layer.type !== 'shape' || !layer.modifiers || index < 0 || index >= layer.modifiers.length) return;
+    const oldComp = composition;
+    const newLayers = composition.layers.map((l) => {
+      if (l.id !== layerId || l.type !== 'shape' || !l.modifiers) return l;
+      const modifiers = l.modifiers.map((m, i) => (i === index ? { ...m, enabled: !m.enabled } : m));
+      return { ...l, modifiers };
+    });
+    const comp: Composition = { ...composition, layers: newLayers };
+    exec({ label: 'Toggle Path Modifier', execute: () => set({ composition: comp }), undo: () => set({ composition: oldComp }) });
   },
 
   flattenSelectedShapes: () => {

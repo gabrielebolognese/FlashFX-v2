@@ -402,6 +402,38 @@ export interface LayerBlur {
   variant?: string;
 }
 
+// ─── Path modifier stack (B8a) ───
+// Non-destructive operators applied to a shape's path at RESOLVE time, in order. Only meaningful on
+// `polygon` (pen-path) shapes for now; the pure maths lives in `core/shapeModifiers.ts`. With no
+// modifiers present the resolver returns the original vertices untouched (byte-identical).
+
+/** Trim Paths — reveal only a sub-length of the outline (draw-on). All fractions 0..1. */
+export interface TrimPathsModifier {
+  type: 'trim';
+  enabled: boolean;
+  start: AnimatableProperty;  // fraction of total length where the visible span begins
+  end: AnimatableProperty;    // fraction where it ends
+  offset: AnimatableProperty; // shifts the span along the path (wraps on closed paths)
+}
+
+/** Offset Paths — parallel inset/outset of the outline. `amount` in px (+ outset / − inset). */
+export interface OffsetPathsModifier {
+  type: 'offset';
+  enabled: boolean;
+  amount: AnimatableProperty;
+}
+
+/** Roughen — seeded per-point displacement along the normal for a jagged edge. `amount` in px. */
+export interface RoughenModifier {
+  type: 'roughen';
+  enabled: boolean;
+  amount: AnimatableProperty;
+  seed: number;
+}
+
+export type ShapeModifier = TrimPathsModifier | OffsetPathsModifier | RoughenModifier;
+export type ShapeModifierType = ShapeModifier['type'];
+
 export interface ShapeLayer {
   id: string;
   type: 'shape';
@@ -421,6 +453,8 @@ export interface ShapeLayer {
   transform: Transform;
   masks?: Mask[];
   shape: ShapeGeometry;
+  /** Ordered non-destructive path operators (trim / offset / roughen). See ShapeModifier. */
+  modifiers?: ShapeModifier[];
   materialConfig?: ShapeMaterialConfig;
   strokeMaterialConfig?: ShapeMaterialConfig;
   patternFill?: ShapePatternConfig;

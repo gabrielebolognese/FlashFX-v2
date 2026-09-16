@@ -32,8 +32,11 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | B5b | Frame-mix frame blending (two-frame cross-dissolve via resolve-time expansion) | ✅ | medium |
 | B6a | Optical-flow retiming foundation (pure + mode + UI; GPU pass deferred) | ✅ | medium |
 | B6b | Optical-flow GPU estimator + warp pre-pass (WebGPU, browser-gated) | ✅ | **heavy** |
-| B7 | Procedural motion expressions (offset loop, inertial bounce, lag) | ▶ **next** | light |
-| B8 | Shape motion completion (trim/repeater/offset/wiggle/morph audit) | ⬜ | light |
+| B7 | Procedural motion expressions (offset loop, inertial bounce, lag) | ✅ | light |
+| B8a | Path modifier operators — trim / offset / roughen (pure, resolve-time) | ✅ | light |
+| B8b | Shape morph + pucker/bloat + keyframable path (resample/correspondence/interp) | ▶ **next** | medium |
+| B8c | Dashed strokes + gradient strokes on pen paths (render, browser-gated) | ⬜ | medium |
+| B8d | In-shape Repeater operator (per-copy transform accumulation) | ⬜ | medium |
 | B9 | Kinetic typography completion (type-on, cascades, decode, path text) | ⬜ | light |
 | B10 | Masks / track mattes / roto completion | ⬜ | medium |
 | B11 | ★ Effect-stack framework + adjustment layers + blend-mode audit | ⬜ | medium (foundation) |
@@ -100,8 +103,20 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 ## B7 — Procedural motion expressions
 **Delivers:** complete the expression motion vocabulary — `loopOut/loopIn('offset')`, an **inertial bounce / spring** expression (auto overshoot-and-settle on any keyframes), `posterizeTime`, `valueAtTime`-based **lag/delay/follow** (secondary motion). **Categories:** 6, 1. **Depends on:** B1. **Perf:** worker-evaluated already; pure. **Likely files:** `expressions/worker.ts`, `expressions/types.ts`. **Verify:** `verify:expressions-motion` (offset loop continuity, bounce decay, lag offset).
 
-## B8 — Shape motion completion
-**Delivers:** audit + fill the shape-layer motion set — trim paths (draw-on), repeater (animated radial/grid arrays), offset paths, wiggle transform/paths, dashed & animated strokes, gradient strokes, merge/boolean, pucker & bloat, shape **morph**. **Categories:** 4. **Perf:** SDF/vector — reuse existing shape renderer. **Verify:** `verify:shape-motion` for any new pure geometry ops.
+## B8 — Shape motion completion (SPLIT — audit found a foundational gap)
+Audit (subagent) verdict: shape **paths are not keyframable** and there is **no per-frame path modifier stack**, so the whole set can't land in one prompt. Also already-built (don't rebuild): **merge/boolean** (`core/pathOps.ts`, destructive + compound, wired), **repeater** (the `src/cloner/` system already does layer-level radial/grid arrays of a shape — an *in-shape* Repeater operator is the only gap), and **gradient stroke** on SDF shapes (only the pen-path tessellation path lacks it). Split:
+
+### B8a — Path modifier operators ✅ DONE
+**Delivered:** a non-destructive **path modifier stack** on shape layers, applied at RESOLVE time so the existing polygon tessellator draws the result with **zero renderer change**. Pure ops in `core/shapeModifiers.ts` (leaf; imports only `core/bend`'s `evalCubic`): **Trim Paths** (draw-on — arc-length window with start/end/offset, wraps across the seam on closed paths, full window returns the original vertices byte-identical), **Offset Paths** (parallel inset/outset via outward miter bisector, miter-limit capped, winding-agnostic via centroid orientation), **Roughen** (subdivide + seeded per-normal displacement, frame-pure via house mulberry32). `ShapeModifier` union + `ShapeLayer.modifiers?` in types; `createShapeModifier` factory; `resolveShapeLayer` evaluates the stack (`resolveShapeModifiers` → `applyResolvedModifiers`) — **absent modifiers = byte-identical** (opt-in). Store: `addShapeModifier`/`removeShapeModifier`/`toggleShapeModifier` (undoable); params are AnimatableProperty edited through the generic `updateLayerProperty`/`addKeyframe` on `modifiers.<i>.<param>` dot-paths (so they **keyframe like any property** — animated draw-on/offset/roughen for free). Inspector "Path Modifiers" section (add Trim/Offset/Roughen, per-modifier eye-toggle + delete + param drags + Roughen reseed), shown on polygon shapes. Persistence via `ensureShapeModifiers` in validation.ts (structurally sanitized). **Scope:** polygon (pen-path) shapes only — SDF rect/circle/star modifier support needs a shapeToPathVertices conversion + render-path switch (a browser-verifiable follow-up). **Verify:** `verify:shape-motion` (17 checks: trim boundary/seam-wrap/empty/full, offset exact ±per-side + miter cap + identity, roughen determinism/bound/closed, stack compose + short-circuit). 64 harnesses total. tsc 0, lint 125, build ok.
+
+### B8b — Shape morph + pucker/bloat + keyframable path ▶ NEXT
+**Delivers:** make the pen-path `vertices` **keyframable** (a path-vertex interpolator: resample to equal count + vertex correspondence), **shape morph** between different point counts, and **pucker/bloat** done properly (handle-bulge, not just a radial scale). **Reuse:** `core/strokeFit.ts` (Schneider fit/resample), `core/pathOps.ts` `shapeToPathVertices`. **Perf:** pure geometry; medium. **Verify:** extend `verify:shape-motion`.
+
+### B8c — Dashed strokes + gradient strokes on pen paths (render, browser-gated)
+**Delivers:** `strokeDash`/`dashOffset` (+ trim-driven animated strokes) and gradient stroke on the `polygon` tessellation path (SDF shapes already have it). **Perf:** shader/tessellation work — browser-verified.
+
+### B8d — In-shape Repeater operator
+**Delivers:** AE's per-shape **Repeater** (Copies/Offset/composite Transform accumulation) as a modifier, likely reusing `cloner/distribution.ts` + `instanceMatrix.ts` maths rather than duplicating. **Perf:** medium.
 
 ## B9 — Kinetic typography completion
 **Delivers:** type-on/typewriter, per-character/word/line **staggered cascades**, blur-in / fade-up, decode/shuffle, **text on a path**, 3D per-character rotation — built on the existing range-selector + text-animator system. **Categories:** 3. **Perf:** Canvas-2D text atlas exists; reuse. **Verify:** extend `verify:textanimator` / `verify:rangeselector`.
