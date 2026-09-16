@@ -21,6 +21,7 @@
     "verify:keyframe-assistants": "node scripts/verify-keyframe-assistants.mjs",
     "verify:time-remap": "node scripts/verify-time-remap.mjs",
     "verify:optical-flow": "node scripts/verify-optical-flow.mjs",
+    "verify:expressions-motion": "node scripts/verify-expressions-motion.mjs",
     "verify:ai-client": "node scripts/verify-ai-client.mjs",
     "verify:cloud-sync": "node scripts/verify-cloudsync.mjs",
     "verify:plans": "node scripts/verify-plans.mjs",

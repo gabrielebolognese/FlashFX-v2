@@ -1,6 +1,7 @@
 /// <reference lib="webworker" />
 
-import type { WorkerInbound, WorkerOutbound, ExpressionContext, KeyframeData } from './types';
+import type { WorkerInbound, WorkerOutbound, ExpressionContext } from './types';
+import { interpolateKeyframesAt, loopOffset, inertialBounce, posterizeTimeSeconds } from './motion';
 
 const ctx = self as unknown as DedicatedWorkerGlobalScope;
 
@@ -66,43 +67,6 @@ function _wiggleImpl(time: number, frequency: number, amplitude: number, seed: n
   return result;
 }
 
-// Keyframe interpolation helper for loopIn/loopOut
-function _interpolateKeyframes(keyframes: KeyframeData[], frame: number): number | number[] {
-  if (keyframes.length === 0) return 0;
-  if (keyframes.length === 1) {
-    const v = keyframes[0].value;
-    return typeof v === 'number' ? v : [...v];
-  }
-
-  if (frame <= keyframes[0].frame) {
-    const v = keyframes[0].value;
-    return typeof v === 'number' ? v : [...v];
-  }
-  if (frame >= keyframes[keyframes.length - 1].frame) {
-    const v = keyframes[keyframes.length - 1].value;
-    return typeof v === 'number' ? v : [...v];
-  }
-
-  let idx = 0;
-  for (let i = 0; i < keyframes.length - 1; i++) {
-    if (frame >= keyframes[i].frame && frame <= keyframes[i + 1].frame) {
-      idx = i;
-      break;
-    }
-  }
-
-  const kf0 = keyframes[idx];
-  const kf1 = keyframes[idx + 1];
-  const t = (frame - kf0.frame) / (kf1.frame - kf0.frame);
-
-  if (typeof kf0.value === 'number' && typeof kf1.value === 'number') {
-    return _lerp(kf0.value, kf1.value, t);
-  }
-  const v0 = typeof kf0.value === 'number' ? [kf0.value, kf0.value] : kf0.value;
-  const v1 = typeof kf1.value === 'number' ? [kf1.value, kf1.value] : kf1.value;
-  return [_lerp(v0[0], v1[0], t), _lerp(v0[1], v1[1], t)];
-}
-
 // Build the expression builtins for a specific evaluation context
 function buildScope(context: ExpressionContext) {
   const { frame, fps, time, value, index, duration, width, height, keyframes, propertyPath } = context;
@@ -129,6 +93,9 @@ function buildScope(context: ExpressionContext) {
 
     const elapsed = frame - lastFrame;
 
+    // offset: accumulate the segment's total delta each cycle (continuous, motion keeps advancing)
+    if (type === 'offset') return loopOffset(keyframes, frame);
+
     if (type === 'pingpong') {
       const cycles = elapsed / rangeFrames;
       const isReverse = Math.floor(cycles) % 2 === 1;
@@ -136,7 +103,7 @@ function buildScope(context: ExpressionContext) {
       const mappedFrame = isReverse
         ? lastFrame - frac * rangeFrames
         : firstKf.frame + frac * rangeFrames;
-      return _interpolateKeyframes(keyframes, mappedFrame);
+      return interpolateKeyframesAt(keyframes, mappedFrame);
     }
 
     if (type === 'continue') {
@@ -158,7 +125,7 @@ function buildScope(context: ExpressionContext) {
     // cycle (default)
     const frac = (elapsed % rangeFrames) / rangeFrames;
     const mappedFrame = firstKf.frame + frac * rangeFrames;
-    return _interpolateKeyframes(keyframes, mappedFrame);
+    return interpolateKeyframesAt(keyframes, mappedFrame);
   }
 
   function loopIn(type: string = 'cycle'): number | number[] {
@@ -177,6 +144,9 @@ function buildScope(context: ExpressionContext) {
 
     const elapsed = firstFrame - frame;
 
+    // offset: continuous backward accumulation (mirror of loopOut offset — same periodic extension)
+    if (type === 'offset') return loopOffset(keyframes, frame);
+
     if (type === 'pingpong') {
       const cycles = elapsed / rangeFrames;
       const isReverse = Math.floor(cycles) % 2 === 1;
@@ -184,7 +154,7 @@ function buildScope(context: ExpressionContext) {
       const mappedFrame = isReverse
         ? firstFrame + frac * rangeFrames
         : lastKf.frame - frac * rangeFrames;
-      return _interpolateKeyframes(keyframes, mappedFrame);
+      return interpolateKeyframesAt(keyframes, mappedFrame);
     }
 
     if (type === 'continue') {
@@ -206,7 +176,7 @@ function buildScope(context: ExpressionContext) {
     // cycle (default)
     const frac = (elapsed % rangeFrames) / rangeFrames;
     const mappedFrame = lastKf.frame - frac * rangeFrames;
-    return _interpolateKeyframes(keyframes, mappedFrame);
+    return interpolateKeyframesAt(keyframes, mappedFrame);
   }
 
   function linear(t: number, a: number, b: number, c?: number, d?: number): number {
@@ -284,6 +254,33 @@ function buildScope(context: ExpressionContext) {
     return outLow + t * (outHigh - outLow);
   }
 
+  // --- Time-sampling family (B7): read THIS property's own keyframes at any time. ---
+  // Foundation for lag/delay/follow (secondary motion), stepped/posterized motion, and echoes.
+  function valueAtFrame(f: number): number | number[] {
+    if (keyframes.length === 0) return typeof value === 'number' ? value : [...value];
+    return interpolateKeyframesAt(keyframes, f);
+  }
+
+  function valueAtTime(t: number): number | number[] {
+    return valueAtFrame(t * fps);
+  }
+
+  // Lag/delay/follow: the property's own value `sec` seconds ago (drives secondary motion when this
+  // expression is on a CHILD property/layer reading a parent's animation copied in as keyframes).
+  function delay(sec: number): number | number[] {
+    return valueAtTime(time - sec);
+  }
+
+  // Snap time to a coarser rate for stepped motion; feed to valueAtTime, e.g. valueAtTime(posterizeTime(12)).
+  function posterizeTime(rate: number): number {
+    return posterizeTimeSeconds(time, rate);
+  }
+
+  // Inertial bounce / spring overshoot after the last keyframe (auto follow-through on any keyframes).
+  function bounce(freq: number = 2, decay: number = 4, amp: number = 0.1): number | number[] {
+    return inertialBounce(keyframes, frame, value, fps, freq, decay, amp);
+  }
+
   return {
     // Context variables (read-only from user perspective)
     time,
@@ -306,6 +303,13 @@ function buildScope(context: ExpressionContext) {
     clamp,
     random,
     noise,
+
+    // Procedural motion (B7): time-sampling + secondary motion + spring
+    valueAtFrame,
+    valueAtTime,
+    delay,
+    posterizeTime,
+    bounce,
 
     // Utility functions
     degToRad,
