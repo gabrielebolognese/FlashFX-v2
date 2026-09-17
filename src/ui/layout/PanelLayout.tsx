@@ -8,6 +8,7 @@ import { PreviewControls } from '../panels/PreviewControls';
 import { CanvasToolbar } from '../panels/CanvasToolbar';
 import { Inspector } from '../panels/Inspector';
 import { TimelinePanel } from '../panels/TimelinePanel';
+import { MiniTimeline } from '../panels/MiniTimeline';
 import { AnimationPanel } from '../panels/AnimationPanel';
 import { MediaPool } from '../panels/MediaPool';
 import { PanelErrorBoundary } from '../components/PanelErrorBoundary';
@@ -41,14 +42,23 @@ export function PanelLayout() {
         </div>
         <div
           data-tutorial-id="inspector"
-          className="flex-shrink-0 min-h-0 overflow-hidden border-l border-hairline"
+          className="flex-shrink-0 min-h-0 overflow-hidden border-l border-hairline flex flex-col"
           style={{ width: '25%', minWidth: 240 }}
         >
-          <PanelContainer id="properties" title="Properties">
-            <PanelErrorBoundary name="Inspector">
-              <Inspector />
+          {/* Inspector takes ~3/4; a compact scrubbable timeline fills the bottom ~1/4 so Starter
+              users can roll back after playback starts. */}
+          <div className="flex-[3] min-h-0 overflow-hidden">
+            <PanelContainer id="properties" title="Properties">
+              <PanelErrorBoundary name="Inspector">
+                <Inspector />
+              </PanelErrorBoundary>
+            </PanelContainer>
+          </div>
+          <div className="flex-[1] min-h-0 overflow-hidden">
+            <PanelErrorBoundary name="MiniTimeline">
+              <MiniTimeline />
             </PanelErrorBoundary>
-          </PanelContainer>
+          </div>
         </div>
       </div>
     );
