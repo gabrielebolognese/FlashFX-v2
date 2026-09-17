@@ -3,6 +3,8 @@ import type { Composition, SceneDocument, Layer, AnimatableProperty, Keyframe, V
 import type { EasingName } from '../core/easings';
 import { buildMaskReveal, type MaskRevealKind } from '../core/maskReveal';
 import type { TrackMatteMode } from '../core/trackMatte';
+import type { LayerEffect } from '../core/types';
+import { cloneEffectStack } from '../core/effects/effectStack';
 import { autoSpatialTangents, segmentArcLength, framesFromCumLengths } from '../core/positionPath';
 import { splitDimensions, mergeDimensions } from '../core/separateDimensions';
 import { createComposition, createRectangleLayer, createCircleLayer, createStarLayer, createPolygonLayer, createDefaultPolygonVertices, createTextLayer, createDefaultTextContent, createVideoLayer, createImageLayer, createAudioLayer, createGroupLayer, createKeyframe, createBackgroundLayer, createMask, createParticleLayer, createAnimationItemLayer, createFieldSampledLayer, createGenerativePatternLayer, createCameraLayer, createLottieIconLayer, createLayoutObjectLayer, createLayoutContainerLayer, createDefaultChildOverride, createProperty, createShapeModifier, createShapeRepeater, uid } from '../core/factory';
@@ -453,6 +455,8 @@ interface EditorState {
   // Manage Effects: reorder (stack render order) and enable/disable one effect.
   reorderLayerEffect: (layerId: string, type: number, direction: 'up' | 'down') => void;
   toggleLayerEffect: (layerId: string, type: number) => void;
+  /** Replace a layer's whole effect stack (B11a — used to apply a saved effect preset). Undoable. */
+  setLayerEffects: (layerId: string, effects: LayerEffect[]) => void;
   setLayerParent: (childId: string, parentId: string | null) => void;
   addKeyframe: (layerId: string, propertyPath: string, frame: number, value: number | [number, number]) => void;
   /** Delete the keyframes at the given (propertyPath, frame) targets (undoable, batched). */
@@ -3820,6 +3824,23 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     };
     exec({
       label: 'Toggle Effect',
+      execute: () => { set({ composition: newComp }); },
+      undo: () => { set({ composition: oldComp }); },
+    });
+  },
+
+  setLayerEffects: (layerId, effects) => {
+    const { composition } = get();
+    const layer = composition.layers.find((l) => l.id === layerId);
+    if (!layer || layer.type !== 'image') return;
+    const oldComp = composition;
+    const cloned = cloneEffectStack(effects);
+    const newComp = {
+      ...composition,
+      layers: composition.layers.map((l) => (l.id === layerId && l.type === 'image' ? { ...l, effects: cloned } : l)),
+    };
+    exec({
+      label: 'Apply Effect Preset',
       execute: () => { set({ composition: newComp }); },
       undo: () => { set({ composition: oldComp }); },
     });

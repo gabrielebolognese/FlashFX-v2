@@ -45,9 +45,11 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | B10a | Mask reveal wipes (iris + directional, pure - existing mask render) | ✅ | light |
 | B10b | Track mattes - model + pure resolver pairing + UI + persist (composite pass browser-gated) | ✅ | medium |
 | B10c | Freeform mask paths + per-vertex feather - model + pure resolver (coverage shader browser-gated) | ✅ | medium |
-| B10d | Track-matte composite pass + freeform mask coverage shader (the browser-gated GPU) | ▶ **next** | **heavy** |
+| B10d | Track-matte composite pass + freeform mask coverage shader (the browser-gated GPU) | ⬜ (browser) | **heavy** |
 | B10e | Basic roto / refine-edge (keying/edge pass) | ⬜ | **heavy** |
-| B11 | ★ Effect-stack framework + adjustment layers + blend-mode audit | ⬜ | medium (foundation) |
+| B11a | Effect presets (save/apply stack) + effectsEnabled master-switch fix (pure) | ✅ | light |
+| B11b | Adjustment layers (pure coverage resolver + GPU apply-below composite, browser-gated) | ▶ **next** | medium |
+| B11c | Content-layer blend modes + cross-class effect reorder (renderer, browser-gated) | ⬜ | medium |
 | B12 | Glow & light finishing (bloom, deep-glow, light wrap, glints) | ⬜ | medium |
 | B13 | Stylise & cinematic finish (chromatic ab., lens distort, grain, halftone) | ⬜ | medium |
 | B14 | Glitch & datamosh (RGB split, pixel-sort, VHS, block glitch) | ⬜ | medium |
@@ -166,8 +168,17 @@ Audit: FlashFX masks are **analytic/parametric SDF primitives** (rectangle/ellip
 ### B10e - Basic roto / refine-edge
 **Delivers:** a simple rotoscope / edge-refine cut-out. **Largest scope, browser-gated** - a pixel-classification/keying pass or the B10c freeform-path work. A minimal "refine = feather + choke over the existing mask alpha" could reuse the C2 `matteExpansion`/`featherAlpha` effects. Deferred.
 
-## B11 - ★ Effect-stack framework + adjustment layers + blend-mode audit
-**Delivers:** a reusable **ordered per-layer effect pipeline** (stack any effects, each tweakable, saveable as a preset), **adjustment layers** (apply effects to everything beneath), and a full **blend-mode** audit/completion. THE foundation for B12–B17. **Categories:** 20 (+14). **Perf:** one shared render-to-texture / ping-pong buffer pool so stacked effects compose in a single managed pipeline - no per-effect ad-hoc passes; frame-cached. **Likely files:** `core/types.ts` (effect stack), `engine/renderer.ts` (post pipeline), inspector effects UI, `store/editor.ts`. **Verify:** `verify:effect-stack` (order, enable/disable, adjustment-layer scoping - pure config resolution).
+## B11 - ★ Effect-stack framework + adjustment layers + blend-mode audit (SPLIT)
+Audit: the per-layer effect stack **already exists** (ordered `LayerEffect[]` on IMAGE layers, per-effect enable + params + reorder, ~150-effect registry, add/remove/toggle/reorder store actions + a "Manage Effects" UI). Real gaps: no effect-PRESET system; the per-layer `effectsEnabled` master switch was a **no-op** (never consumed in resolve); **adjustment layers** are entirely missing; and content-layer **BlendMode is unwired** (only `normal` renders; multiply/screen/overlay/add are stored + shown but no-op). Split by pure vs GPU.
+
+### B11a - Effect presets + effectsEnabled fix ✅ DONE
+**Delivered:** (1) an **effect-preset system** - save the current effect stack as a named, app-global preset (localStorage, reusable across projects) and apply/delete it. Pure `core/effects/effectStack.ts` (`resolveEffectStack` = ordered, master-switch + per-effect-enable aware; `cloneEffectStack`; `sanitizeEffectStack` for untrusted presets), `store/effectPresets.ts` (persisted), editor `setLayerEffects` (undoable), and an "Effect Presets" bar in the Effects panel. (2) **Bug fix:** `resolveImageLayer` now honors the layer `effectsEnabled` master switch via `resolveEffectStack` (previously ignored - the switch did nothing). Renders through the existing effect pipeline (no GPU change). **Verify:** new `verify:effects` (8 checks: order, per-effect + master-switch disable, param copy-independence, deep clone, sanitize/clamp). tsc 0, lint 125, build ok, **70 harnesses**. Fully node-verifiable.
+
+### B11b - Adjustment layers ▶ NEXT
+**Delivers:** a layer whose effect stack applies to everything beneath it. **PURE:** a new Adjustment layer type + a coverage resolver (which layers a given adjustment covers, in render order) - harnessable. **Browser-gated:** the composite - render the layers-below into an offscreen texture, run the adjustment's effect stack (the existing IMAGE_SHADER path) over it, composite back (renderer.ts ~4200-4325). **Perf:** medium.
+
+### B11c - Content-layer blend modes + cross-class effect reorder
+**Delivers:** wire `BlendMode` (multiply/screen/overlay/add, and completion toward the 12 W3C modes) for real content layers (image/video/text/shape) - currently unwired, only `normal` draws. Plus true arbitrary effect reorder (today the shader runs a fixed warp then spatial then color order, so cross-class reordering is visually ignored). **Both are renderer/WGSL work (browser-gated):** per-blend content pipeline variants (like the pattern pipelines) or an in-shader scene composite; and a multi-pass rework of IMAGE_SHADER. **Perf:** medium.
 
 ## B12 - Glow & light finishing
 **Delivers:** cinematic **bloom / deep-glow**, glow modes (inner/outer/bloom), **light wrap**, star glints, light streaks. **Categories:** 10, 14. **Depends on:** B11 (composes in the stack; reuses one blur pyramid). **Perf:** medium - shared downsample pyramid. **Verify:** browser-gated GPU; pure param resolution harnessed.

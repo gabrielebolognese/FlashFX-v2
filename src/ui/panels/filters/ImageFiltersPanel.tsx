@@ -1,8 +1,9 @@
 import { useState, useCallback } from 'react';
-import { ChevronRight, Search, RotateCcw, Upload, ChevronUp, ChevronDown, X, Eye, EyeOff, Layers, Lock } from 'lucide-react';
+import { ChevronRight, Search, RotateCcw, Upload, ChevronUp, ChevronDown, X, Eye, EyeOff, Layers, Lock, Bookmark } from 'lucide-react';
 import { FILTER_CATEGORIES, type FilterDef, type FilterCategory } from './filterDefinitions';
 import type { ImageLayer } from '../../../core/types';
 import { useEditorStore } from '../../../store/editor';
+import { useEffectPresetStore } from '../../../store/effectPresets';
 import { getEffectDef, getEffectDefByType, isLegacyFilter } from '../../../core/effects/effectRegistry';
 import { isWireFilter, buildWire, readWireValue } from '../../../core/effects/wireEffects';
 
@@ -154,6 +155,7 @@ export function ImageFiltersPanel({ layer }: { layer: ImageLayer }) {
           onToggle={toggleLayerEffect}
           onRemove={removeLayerEffect}
         />
+        <EffectPresetBar layer={layer} />
         {filteredCategories.map((category) => (
           <FilterCategoryAccordion
             key={category.id}
@@ -245,6 +247,49 @@ function AppliedEffects({
           );
         })}
       </div>
+    </div>
+  );
+}
+
+// Effect presets (B11a): save the current effect stack as a named, reusable preset and apply/delete
+// saved ones. Presets are app-global (localStorage) so they carry across projects.
+function EffectPresetBar({ layer }: { layer: ImageLayer }) {
+  const presets = useEffectPresetStore((s) => s.presets);
+  const savePreset = useEffectPresetStore((s) => s.savePreset);
+  const deletePreset = useEffectPresetStore((s) => s.deletePreset);
+  const setLayerEffects = useEditorStore((s) => s.setLayerEffects);
+  const effects = layer.effects ?? [];
+
+  return (
+    <div className="mb-2 mx-1 rounded-md border border-hairline bg-[#0a1524] px-2.5 py-1.5">
+      <div className="flex items-center gap-1.5 mb-1">
+        <Bookmark size={11} className="text-accent" />
+        <span className="text-[10px] font-semibold text-slate-300 uppercase tracking-wider flex-1">Effect Presets</span>
+        <button
+          onClick={() => { const n = window.prompt('Preset name', 'My effect stack'); if (n) savePreset(n, effects); }}
+          disabled={effects.length === 0}
+          className="text-[9px] px-1.5 py-0.5 rounded border border-hairline text-slate-400 hover:text-accent hover:border-accent/40 disabled:opacity-30 disabled:cursor-default"
+          title={effects.length ? 'Save the current effect stack as a preset' : 'Add effects first'}
+        >
+          Save current
+        </button>
+      </div>
+      {presets.length === 0 ? (
+        <p className="text-[9px] text-slate-600">Save an effect stack to reuse it on any image layer.</p>
+      ) : (
+        <div className="flex flex-wrap gap-1">
+          {presets.map((p) => (
+            <span key={p.id} className="inline-flex items-center gap-1 rounded border border-hairline bg-surface-1 pl-1.5 pr-1 py-0.5 text-[9px] text-slate-300">
+              <button onClick={() => setLayerEffects(layer.id, p.effects)} title={`Apply "${p.name}" (${p.effects.length} effects)`} className="hover:text-accent">
+                {p.name}
+              </button>
+              <button onClick={() => deletePreset(p.id)} title="Delete preset" className="text-slate-600 hover:text-red-400">
+                <X size={9} />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

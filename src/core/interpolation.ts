@@ -33,6 +33,7 @@ import { decodeCharAt } from './textDecode';
 import { totalPathLength, pointAndAngleAt, glyphPathFraction, type TextPathNode } from './textPath';
 import { pairTrackMattes, type TrackMatteMode } from './trackMatte';
 import { resolveMaskVertices, resolveMaskFeathers } from './maskPath';
+import { resolveEffectStack } from './effects/effectStack';
 import { evaluateMotionPathAtFrame } from './motionPath';
 import { computeInstanceTransforms, selectClonerRenderPath, buildDataBoundSources } from '../cloner';
 import type { ClonerLayer } from '../cloner/types';
@@ -721,12 +722,9 @@ function resolveVideoLayer(layer: VideoLayer, frame: number, compositionFrameRat
 }
 
 function resolveImageLayer(layer: ImageLayer): ResolvedImage {
-  // Effects are static scalars for now (params copied through). When they become
-  // animatable, evaluate each param here via evaluateNumber(prop, frame) - the
-  // renderer and shader stay unchanged.
-  const effects = (layer.effects ?? [])
-    .filter((e) => e.enabled !== false)
-    .map((e) => ({ type: e.type, params: e.params }));
+  // Effects are static scalars for now (params copied through). Ordered stack, honoring the
+  // per-effect enable AND the layer master switch (B11a — effectsEnabled was previously a no-op).
+  const effects = resolveEffectStack(layer.effects, layer.effectsEnabled !== false);
   return {
     assetId: layer.image.assetId,
     sourceWidth: layer.image.sourceWidth,
