@@ -10,6 +10,7 @@ import { usePathEditStore } from '../../store/pathEdit';
 import { BrandColorPicker } from '../components/BrandColorPicker';
 import { PanelTutorialButton } from '../tutorials/PanelTutorialButton';
 import { tutorialForSectionTitle } from '../tutorials/registry';
+import { MASK_REVEAL_KINDS, type MaskRevealKind } from '../../core/maskReveal';
 import type { ShapeLayer, TextLayer, VideoLayer, ImageLayer, AudioLayer, ParticleLayer, GenerativePatternLayer, CameraLayer, AnimationItemLayer, LottieIconLayer, AnimatableProperty, Vec2, Vec4, RectangleShape, CircleShape, StarShape, PolygonShape, MotionPathAnchor, MotionPathLoop, Mask, MaskType, Layer, LayerShadow, LayerGlow, LayerBlur, BlurType, GlowMode, LayoutObjectLayer, LayoutContainerLayer, TextSpanStyle, TextLayoutConfig, TextGradientFill, ShapeModifierType } from '../../core/types';
 
 // Safe fallbacks so the Text inspector renders even for a text layer with missing/empty content or
@@ -2724,6 +2725,7 @@ function MaskSection({ layerId, currentFrame }: { layerId: string; currentFrame:
   const addMaskKeyframe = useEditorStore((s) => s.addMaskKeyframe);
   const duplicateMask = useEditorStore((s) => s.duplicateMask);
   const reorderMask = useEditorStore((s) => s.reorderMask);
+  const applyMaskReveal = useEditorStore((s) => s.applyMaskReveal);
   const selectedMaskId = useMaskStore((s) => s.selectedMaskId);
   const setSelectedMaskId = useMaskStore((s) => s.setSelectedMaskId);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
@@ -2952,6 +2954,24 @@ function MaskSection({ layerId, currentFrame }: { layerId: string; currentFrame:
               >
                 {mask.inverted ? 'Inverted' : 'Normal'}
               </button>
+            </div>
+
+            {/* Reveal wipe (B10a): keyframe the mask to iris/wipe the content on over ~1s from the
+                playhead, using the mask's current size as the fully-revealed state. */}
+            <div className="flex items-center gap-1">
+              <label className="text-caption text-slate-500 w-14 flex-shrink-0">Reveal</label>
+              <select
+                value=""
+                onChange={(e) => {
+                  const kind = e.target.value as MaskRevealKind;
+                  if (kind) applyMaskReveal(layerId, mask.id, kind, currentFrame, 30);
+                  e.currentTarget.value = '';
+                }}
+                className="flex-1 rounded border border-hairline bg-[#0e1726] px-1.5 py-0.5 text-caption text-slate-200 focus:border-accent focus:outline-none"
+              >
+                <option value="">Add reveal…</option>
+                {MASK_REVEAL_KINDS.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
+              </select>
             </div>
           </div>
         )}

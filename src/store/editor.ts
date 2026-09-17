@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { Composition, SceneDocument, Layer, AnimatableProperty, Keyframe, Vec2, Vec4, InterpolationType, BackgroundLayer, Track, TrackType, VideoPlaybackMode, PathVertex, VertexType, Mask, MaskType, AnchorEdge, PhysicsBindingDef, PhysicsWorldDef, StaggerBindingDef, LayoutObjectLayer, LayoutContainerLayer, ContainerShapeType, Marker, ShapeLayer, PolygonShape, TextLayer, ShapeModifierType } from '../core/types';
 import type { EasingName } from '../core/easings';
+import { buildMaskReveal, type MaskRevealKind } from '../core/maskReveal';
 import { autoSpatialTangents, segmentArcLength, framesFromCumLengths } from '../core/positionPath';
 import { splitDimensions, mergeDimensions } from '../core/separateDimensions';
 import { createComposition, createRectangleLayer, createCircleLayer, createStarLayer, createPolygonLayer, createDefaultPolygonVertices, createTextLayer, createDefaultTextContent, createVideoLayer, createImageLayer, createAudioLayer, createGroupLayer, createKeyframe, createBackgroundLayer, createMask, createParticleLayer, createAnimationItemLayer, createFieldSampledLayer, createGenerativePatternLayer, createCameraLayer, createLottieIconLayer, createLayoutObjectLayer, createLayoutContainerLayer, createDefaultChildOverride, createProperty, createShapeModifier, createShapeRepeater, uid } from '../core/factory';
@@ -577,6 +578,9 @@ interface EditorState {
   addMaskKeyframe: (layerId: string, maskId: string, propertyPath: string, frame: number, value: number | [number, number]) => void;
   duplicateMask: (layerId: string, maskId: string) => void;
   reorderMask: (layerId: string, maskId: string, direction: 'up' | 'down') => void;
+  /** Mask reveal wipe (B10a): keyframe the mask's position+size to iris/wipe the content on over
+   *  [startFrame, startFrame+durationFrames], using its current center/size as the revealed state. */
+  applyMaskReveal: (layerId: string, maskId: string, kind: MaskRevealKind, startFrame: number, durationFrames: number) => void;
 
   // Background actions (undoable)
   addBackgroundLayer: () => void;
@@ -6013,6 +6017,29 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       execute: () => { set({ composition: newComp }); },
       undo: () => { set({ composition: oldComp }); },
     });
+  },
+
+  applyMaskReveal: (layerId, maskId, kind, startFrame, durationFrames) => {
+    const { composition } = get();
+    const layer = composition.layers.find((l) => l.id === layerId);
+    if (!layer || !('masks' in layer) || !Array.isArray(layer.masks)) return;
+    const mask = layer.masks.find((m) => m.id === maskId);
+    if (!mask) return;
+    const center = mask.position.defaultValue as Vec2;
+    const size = mask.size.defaultValue as Vec2;
+    const keys = buildMaskReveal(kind, center, size, startFrame, durationFrames);
+    const posKf = keys.position.map((k) => createKeyframe(k.frame, k.value, 'linear'));
+    const sizeKf = keys.size.map((k) => createKeyframe(k.frame, k.value, 'linear'));
+    const oldComp = composition;
+    const newLayers = composition.layers.map((l) => {
+      if (l.id !== layerId || !('masks' in l) || !Array.isArray(l.masks)) return l;
+      const masks = l.masks.map((m) => (m.id === maskId
+        ? { ...m, position: { ...m.position, keyframes: posKf }, size: { ...m.size, keyframes: sizeKf }, inverted: false }
+        : m));
+      return { ...l, masks } as Layer;
+    });
+    const comp: Composition = { ...composition, layers: newLayers };
+    exec({ label: 'Mask Reveal', execute: () => set({ composition: comp }), undo: () => set({ composition: oldComp }) });
   },
 
   duplicateMask: (layerId, maskId) => {
