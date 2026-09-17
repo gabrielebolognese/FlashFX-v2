@@ -1,5 +1,5 @@
 // The deterministic compiler: Director output + panel fragments → committed-ready Composition.
-// ZERO model calls, zero tokens. Node-safe (NO store/React import here — the browser-only commit
+// ZERO model calls, zero tokens. Node-safe (NO store/React import here - the browser-only commit
 // helper lives in ./commit and is imported separately by the dev hook).
 
 import { makeSchemas, TIER_CAPS, validateDirectorPlan, type DirectorOutput, type CoderFragment, type AiMeta, type DirectorCanvas } from '../schema';
@@ -21,11 +21,11 @@ export interface CompileOptions {
 export interface CompileResult extends AssembleResult {
   plan: PlanResult;
   /** The regeneration inputs, also attached to `document.aiMeta` at runtime (persistence of that
-   *  field on the core document needs the validation-whitelist wiring — a later step). */
+   *  field on the core document needs the validation-whitelist wiring - a later step). */
   aiMeta: AiMeta;
 }
 
-// A tiny, dependency-free deterministic digest (djb2) — NO Date/Math.random (reproducibility).
+// A tiny, dependency-free deterministic digest (djb2) - NO Date/Math.random (reproducibility).
 function digest(input: unknown): string {
   const s = JSON.stringify(input);
   let h = 5381;
@@ -36,7 +36,7 @@ function digest(input: unknown): string {
 /**
  * Compile a Director output + its per-panel fragments into a Composition + report. Structural
  * validation (Zod) runs here; SEMANTIC validation and auto-fix are the next session. Never throws on
- * assembly problems — the report carries them. Parse failures ARE surfaced as errors in the report.
+ * assembly problems - the report carries them. Parse failures ARE surfaced as errors in the report.
  */
 export function compile(directorRaw: unknown, fragmentsRaw: unknown[], opts: CompileOptions): CompileResult {
   const caps = TIER_CAPS[opts.tier ?? 'pro'];
@@ -62,7 +62,7 @@ export function compile(directorRaw: unknown, fragmentsRaw: unknown[], opts: Com
   });
 
   // Semantic validation of the plan (beat alignment, contiguity, sum-to-duration, element ownership,
-  // and — given a canvas — format-mirror). These are the cross-panel rules Zod cannot express.
+  // and - given a canvas - format-mirror). These are the cross-panel rules Zod cannot express.
   for (const s of validateDirectorPlan(director, { canvas: opts.canvas })) {
     result.report.issues.unshift({ severity: s.severity, code: s.code, message: s.message, panelId: s.panelId, layerId: s.elementId });
   }
@@ -71,7 +71,7 @@ export function compile(directorRaw: unknown, fragmentsRaw: unknown[], opts: Com
   result.report.ok = !result.report.issues.some((i) => i.severity === 'error');
 
   // The regeneration inputs the edit-path needs. Attached to the document at runtime too (its
-  // persistence on the core document type is deferred — see CompileResult.aiMeta).
+  // persistence on the core document type is deferred - see CompileResult.aiMeta).
   const aiMeta: AiMeta = {
     brief: director.brief, styleContract: director.styleContract, panelPlan: director.panelPlan,
     seed: opts.seed, digest: digest({ director: directorRaw, fragments: fragmentsRaw }),

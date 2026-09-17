@@ -17,13 +17,13 @@ export function useAutoSave() {
     dirtyRef.current = true;
     // Debounced: persist the FULL document (all scenes/precomps, via getDocument)
     // to IndexedDB a couple seconds after the last edit. Previously this wrote a
-    // localStorage key that nothing ever read — a silent no-op that lost work.
+    // localStorage key that nothing ever read - a silent no-op that lost work.
     timerRef.current = setTimeout(() => {
       dirtyRef.current = false;
       useProjectStore.getState().saveCurrentProject().catch((err) => {
         captureError(err, { kind: 'autosave' });
         // A persistent save failure (storage full, private mode, disk full) means the user is
-        // silently losing work — surface it so they can export a backup.
+        // silently losing work - surface it so they can export a backup.
         useIslandStore.getState().error('Could not save your changes. Export your project to keep a backup.');
       });
     }, 2000);

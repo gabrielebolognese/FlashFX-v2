@@ -1,6 +1,6 @@
 // Pure waveform-peak reduction: turn a mono PCM channel into a fixed number of
 // [min, max] buckets for the timeline waveform. Kept dependency-free and testable
-// (scripts/verify-waveform) — the asset manager wraps it with the AudioBuffer
+// (scripts/verify-waveform) - the asset manager wraps it with the AudioBuffer
 // metadata.
 //
 // A naïve reduction visits EVERY sample (≈28.8M iterations for a 10-min clip),
@@ -10,7 +10,7 @@
 // for a small fraction of the work (~50× fewer reads on long clips).
 
 export interface WaveformPeaks {
-  /** Interleaved [min, max] per bucket — length = peakCount * 2. */
+  /** Interleaved [min, max] per bucket - length = peakCount * 2. */
   peaks: Float32Array;
   samplesPerPeak: number;
   peakCount: number;

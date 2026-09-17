@@ -6,7 +6,7 @@ import {
 // Fills the `{{...}}` markers in director.md from the schema enums + frozen DECODE_CAPS, so the
 // prompt can never restate (and thus drift from) a vocabulary that exists in code. Pure: the caller
 // supplies the raw template (loadPrompt.ts reads the file), so this module has no fs/DOM dependency
-// and is bundlable anywhere. The Director does NOT get the preset catalog — it names none of it.
+// and is bundlable anywhere. The Director does NOT get the preset catalog - it names none of it.
 //
 // Uses DECODE_CAPS (the FROZEN ceiling), not per-tier caps, so the rendered prompt is byte-identical
 // on every call and sits in the cached region.
@@ -14,8 +14,8 @@ import {
 const list = (arr: readonly string[]) => arr.map((x) => `\`${x}\``).join(', ');
 
 const MARKERS: Record<string, string> = {
-  PALETTE_ROLES: `**Palette roles** — bind 4–7 of: ${list(PALETTE_ROLES)}.`,
-  EASING_NAMES: `**Easings** — choose 4–6 of: ${list(EASING_NAMES)}.`,
+  PALETTE_ROLES: `**Palette roles** - bind 4–7 of: ${list(PALETTE_ROLES)}.`,
+  EASING_NAMES: `**Easings** - choose 4–6 of: ${list(EASING_NAMES)}.`,
   TONES: `**Tones**: ${list(TONES)}.`,
   OUTPUT_FORMATS: `**Formats** (mirror the canvas, never choose): ${list(OUTPUT_FORMATS)}.`,
   AI_LAYER_TYPES: `**Element kinds**: ${list(AI_LAYER_TYPES)}. (No \`camera\`/\`audio\`.)`,

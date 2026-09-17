@@ -105,7 +105,7 @@ export function ProjectGrid({ section, onCreateNew }: Props) {
   const onPointerDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return;
     const target = e.target as HTMLElement;
-    // A press on a card or any control handles itself (open / select / menu) — marquee starts only
+    // A press on a card or any control handles itself (open / select / menu) - marquee starts only
     // on empty grid space (the gaps and padding), exactly like the canvas background.
     if (target.closest('[data-project-id]') || target.closest('button')) return;
     dragRef.current = {
@@ -155,7 +155,7 @@ export function ProjectGrid({ section, onCreateNew }: Props) {
 
   if (inSection.length === 0) {
     if (section === 'trash') return <Empty icon={<Trash2 size={24} className="text-slate-600" />} title="Trash is empty" sub="Deleted projects appear here for 7 days (30 if starred), then erase for good." />;
-    if (section === 'starred') return <Empty icon={<Star size={24} className="text-slate-600" />} title="No starred projects" sub="Star a project to keep it handy — and give it a 30-day trash window." />;
+    if (section === 'starred') return <Empty icon={<Star size={24} className="text-slate-600" />} title="No starred projects" sub="Star a project to keep it handy - and give it a 30-day trash window." />;
     return (
       <div className="flex flex-col items-center justify-center h-[50vh] gap-4">
         <div className="w-14 h-14 rounded-xl bg-[#141c28] border border-[#1c2433] flex items-center justify-center">
@@ -183,7 +183,7 @@ export function ProjectGrid({ section, onCreateNew }: Props) {
 
   return (
     <>
-      {/* Selection action bar — appears once anything is selected. */}
+      {/* Selection action bar - appears once anything is selected. */}
       {selectedIds.size > 0 && (
         <div className="sticky top-0 z-20 mb-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-[#141c28] border border-[#2a3a50] shadow-[0_4px_16px_rgba(0,0,0,0.4)]">
           <CheckSquare size={13} className="text-[#f7b500]" />

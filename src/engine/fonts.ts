@@ -28,7 +28,7 @@ export interface FontManifestEntry {
 
 /** The bundled OFL faces (files confirmed present in public/fonts) plus common system fonts. */
 export const FONT_MANIFEST: FontManifestEntry[] = [
-  // Sans — workhorses
+  // Sans - workhorses
   { family: 'Inter', slug: 'inter', weights: [400, 700], category: 'Sans', trackingEm: 0 },
   { family: 'Roboto', slug: 'roboto', weights: [400, 700], category: 'Sans', trackingEm: 0 },
   { family: 'Open Sans', slug: 'open-sans', weights: [400, 700], category: 'Sans', trackingEm: 0 },
@@ -69,7 +69,7 @@ export function fontCategory(family: string): FontCategory {
   return BY_FAMILY.get(family)?.category ?? 'System';
 }
 
-/** Default letter-spacing (px) for a family at a given size — a small premium touch on family change. */
+/** Default letter-spacing (px) for a family at a given size - a small premium touch on family change. */
 export function defaultTrackingPx(family: string, fontSize: number): number {
   const em = BY_FAMILY.get(family)?.trackingEm ?? 0;
   return Math.round(em * fontSize * 100) / 100;
@@ -93,7 +93,7 @@ let loaded = false;
 const changeListeners = new Set<() => void>();
 
 /**
- * Fire whenever the available fonts change — bundled faces finished loading, or a custom font was
+ * Fire whenever the available fonts change - bundled faces finished loading, or a custom font was
  * imported/removed. Busts the text caches (via the epoch) and notifies subscribers so open frames
  * repaint. Both the bundled loader and the custom-font store call this.
  */
@@ -112,7 +112,7 @@ export function onFontsChanged(cb: () => void): () => void {
 
 /**
  * Register the bundled faces with the browser and bust the text caches once they resolve.
- * Idempotent — safe to call from multiple mount points; the work happens once.
+ * Idempotent - safe to call from multiple mount points; the work happens once.
  */
 export function loadBundledFonts(): Promise<void> {
   if (loadPromise) return loadPromise;
@@ -132,9 +132,9 @@ export function loadBundledFonts(): Promise<void> {
         const face = new FontFace(entry.family, `url(${url})`, { weight: String(weight), style: 'normal' });
         // Register immediately so measurement can find it once loaded.
         (document.fonts as FontFaceSet).add(face);
-        faces.push(face.load().catch(() => { /* missing/broken face — skip, don't fail the batch */ }));
+        faces.push(face.load().catch(() => { /* missing/broken face - skip, don't fail the batch */ }));
       } catch {
-        /* invalid descriptor — skip this face */
+        /* invalid descriptor - skip this face */
       }
     }
   }

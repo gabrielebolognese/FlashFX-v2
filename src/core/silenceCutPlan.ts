@@ -22,7 +22,7 @@ export interface SpeechSegment {
 export interface CutPlan {
   segments: SpeechSegment[];
   // Local-frame intervals (relative to the original clip inPoint) for the
-  // timeline overlay — what gets removed (silence) vs kept (speech).
+  // timeline overlay - what gets removed (silence) vs kept (speech).
   silenceLocal: { startFrame: number; endFrame: number }[];
   speechLocal: { startFrame: number; endFrame: number }[];
   removedFrames: number;

@@ -17,7 +17,7 @@ interface TrackRowProps {
 function clipColor(layer: Layer): string {
   if (layer.labelColor) return layer.labelColor;
   switch (layer.type) {
-    // Full-saturation role colours — matches TrackArea.getClipColor.
+    // Full-saturation role colours - matches TrackArea.getClipColor.
     case 'video': return '#22c55e';
     case 'text': return '#3b82f6';
     case 'image': return '#22c55e';
@@ -129,7 +129,7 @@ export function TrackRow({
               ? 'text-emerald-400 hover:text-emerald-300'
               : 'text-slate-600 hover:text-slate-400'
           }`}
-          title={compressed ? 'Compression on — clips packed gaplessly' : 'Compression off — free positioning'}
+          title={compressed ? 'Compression on - clips packed gaplessly' : 'Compression off - free positioning'}
         >
           <AlignHorizontalJustifyStart size={10} />
         </button>
@@ -206,7 +206,7 @@ export function GhostTrackRow({ label, height, shade }: GhostTrackRowProps) {
         <span className="text-[10px] font-mono font-medium text-slate-500 tracking-wide">{label}</span>
       </div>
 
-      {/* Switches — present but disabled */}
+      {/* Switches - present but disabled */}
       <div className="flex items-center gap-0.5 px-1.5 flex-shrink-0 border-r border-hairline">
         <span className="p-0.5 rounded text-slate-700 cursor-not-allowed" title="Track visible (n/a)">
           <Eye size={10} />

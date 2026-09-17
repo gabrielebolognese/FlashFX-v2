@@ -149,7 +149,7 @@ export function createPrecompLayer(
 }
 
 /** A 2.5D camera layer. Defaults to a two-node camera centered on the comp, `compH` in front
- *  of the z=0 plane, aimed at the comp center — i.e. it starts identical to the default camera
+ *  of the z=0 plane, aimed at the comp center - i.e. it starts identical to the default camera
  *  (framing the comp 1:1), so adding one changes nothing until it (or a 3D layer) moves. */
 export function createCameraLayer(
   name: string,

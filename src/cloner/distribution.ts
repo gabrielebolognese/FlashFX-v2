@@ -1,10 +1,10 @@
-// Cloner — pure distribution engine.
+// Cloner - pure distribution engine.
 //
 // `computeInstanceTransforms(cloner, frameNumber, ctx?)` turns a ClonerLayer into
 // an array of per-instance transforms. FRAME-PURITY IS NON-NEGOTIABLE: the result
-// is a pure function of (cloner params, index) — no accumulated state, no mutable
+// is a pure function of (cloner params, index) - no accumulated state, no mutable
 // caches, and NO Math.random(). The timeline scrubs non-sequentially and must get
-// byte-identical output every time. (frameNumber is accepted but unused here — the
+// byte-identical output every time. (frameNumber is accepted but unused here - the
 // grid/radial/path math is time-invariant; it starts mattering once stagger lands,
 // and is in the signature now so that addition is not a breaking change.)
 
@@ -47,9 +47,9 @@ function makeBase(index: number, x: number, y: number, z: number, rotZ: number):
 
 /**
  * Decompose a linear index into 3D grid coordinates, row-major with X fastest,
- * then Y, then Z. (No existing index-decomposition primitive to reuse — the
+ * then Y, then Z. (No existing index-decomposition primitive to reuse - the
  * stagger module's `gridSnake` is spatial row-detection from layer bounds, a
- * different problem — so this is the single canonical convention for cloners.)
+ * different problem - so this is the single canonical convention for cloners.)
  */
 export function decomposeGridIndex(
   i: number,
@@ -146,7 +146,7 @@ function pathInstances(
 /**
  * Field-driven distribution: evaluate the resolved field over a base grid, keep
  * candidates above `threshold`, capped at `maxCount` (distinct from renderCount).
- * Pure and frameNumber-independent — identical field + params → identical positions
+ * Pure and frameNumber-independent - identical field + params → identical positions
  * every time, any order. Reads a pre-resolved FieldGrid via ctx.getField (never async).
  */
 function fieldInstances(d: FieldDistribution, ctx?: ClonerResolveContext): InstanceTransform[] {

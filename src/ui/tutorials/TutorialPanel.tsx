@@ -6,7 +6,7 @@ import { getTutorial } from './registry';
 // a tutorial id, this renders a centered floating card laid out side-by-side: the big 16:9 video
 // placeholder fills the left 2/3 (the real clip drops in later), and the right 1/3 is a column with the
 // "what you can do" write-up on top and the Close / See-example buttons split in two along the bottom.
-// Non-modal: the dim backdrop only dims — the card floats above the editor and dismisses on backdrop
+// Non-modal: the dim backdrop only dims - the card floats above the editor and dismisses on backdrop
 // click.
 
 export function TutorialPanel() {
@@ -42,7 +42,7 @@ export function TutorialPanel() {
 
         {/* Body: video 2/3 on the left, list column 1/3 on the right */}
         <div className="flex min-h-0 flex-row">
-          {/* 16:9 video placeholder — left 2/3 */}
+          {/* 16:9 video placeholder - left 2/3 */}
           <div className="w-2/3 flex-shrink-0 bg-black">
             <div className="relative aspect-video w-full bg-gradient-to-br from-[#0b1320] to-[#131c2e]">
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">

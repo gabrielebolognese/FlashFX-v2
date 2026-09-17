@@ -2,8 +2,8 @@ import pc from 'polygon-clipping';
 import type { Ring, Polygon, MultiPolygon } from 'polygon-clipping';
 import type { Vec2, PathVertex, LineCap, LineJoin } from './types';
 
-// M22 — Outline stroke / stroke-to-path. Convert a center-line stroke into a filled, editable
-// outline PolygonShape (outer ring + a hole ring for closed paths) — the prerequisite for
+// M22 - Outline stroke / stroke-to-path. Convert a center-line stroke into a filled, editable
+// outline PolygonShape (outer ring + a hole ring for closed paths) - the prerequisite for
 // tapering, boolean-cutting, stroke-reveal, exact SVG. Built as a UNION OF QUADS (one quad per
 // flattened segment) plus round join/cap fillers, unioned with polygon-clipping so
 // self-intersections dissolve automatically and a closed stroke's inner boundary falls out as a

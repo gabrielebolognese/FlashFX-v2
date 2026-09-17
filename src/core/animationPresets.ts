@@ -4,7 +4,7 @@ import { createKeyframe } from './factory';
 // Animation presets are pure configuration. Applying one generates ordinary
 // keyframes that flow through the existing interpolation/playback system; there
 // is no preset runtime. Adding a new preset means adding an entry to
-// ANIMATION_PRESETS below — no engine, timeline, or interpolation changes.
+// ANIMATION_PRESETS below - no engine, timeline, or interpolation changes.
 
 export type EasingKey = 'linear' | 'easeIn' | 'easeOut' | 'easeInOut' | 'spring';
 

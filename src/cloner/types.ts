@@ -1,7 +1,7 @@
-// Cloner — data model (MoGraph / C4D Cloner / AE Repeater concept).
+// Cloner - data model (MoGraph / C4D Cloner / AE Repeater concept).
 //
 // A Cloner is ONE logical layer that expands into N rendered instances at render
-// time, as a pure function of (frame, index, params) — the same lazy-resolution
+// time, as a pure function of (frame, index, params) - the same lazy-resolution
 // discipline as a precomp, plus an index dimension. This module is the schema +
 // the pure distribution engine ONLY (prompt 1): no rendering, no effectors, no
 // stagger, and it is intentionally NOT yet part of the core `Layer` union (that
@@ -35,7 +35,7 @@ export interface RGB {
  * What a cloner repeats. Only `layer` is meaningful today; `composition` is
  * reserved for when precomps land (there is no multi-composition document yet),
  * kept in the union now so adding it later is additive, not a breaking change.
- * Flat reference (id only) — never inline the source content — so a cloner is
+ * Flat reference (id only) - never inline the source content - so a cloner is
  * cheap to re-point and the generation pipeline can patch it in isolation.
  */
 export type ClonerSourceRef =
@@ -59,7 +59,7 @@ export interface GridDistribution {
   origin: Vec3;
   /**
    * GEOMETRIC per-row offset in X (brick/half-drop layout): odd rows shift by
-   * this many units. This is a positional parameter — deliberately named
+   * this many units. This is a positional parameter - deliberately named
    * distinctly from the TIMING stagger (ClonerStagger) deferred to a later prompt.
    */
   rowOffset: number;
@@ -98,12 +98,12 @@ export interface PathDistribution {
 
 /**
  * Field-driven distribution (Prompt 4): place instances where a resolved raster
- * field exceeds `threshold` — e.g. "denser where the source image is brighter".
- * Samples a pre-resolved `FieldGrid` (via ctx.getField) — the pure engine NEVER
+ * field exceeds `threshold` - e.g. "denser where the source image is brighter".
+ * Samples a pre-resolved `FieldGrid` (via ctx.getField) - the pure engine NEVER
  * touches the async worker pipeline; the buffer is resolved once, upstream.
  * `maxCount` caps candidates generated FROM the field, BEFORE renderCount's
  * downstream truncation (the two caps are distinct on purpose). Positions are a
- * pure function of the field data + params — independent of frameNumber.
+ * pure function of the field data + params - independent of frameNumber.
  */
 export interface FieldDistribution {
   type: 'field';
@@ -144,7 +144,7 @@ interface EffectorCommon {
 }
 
 /**
- * Deterministic per-instance random offset/rotation/scale. `seed` is REQUIRED —
+ * Deterministic per-instance random offset/rotation/scale. `seed` is REQUIRED -
  * an effector without a fixed seed cannot be deterministic. Implementation MUST
  * hash (seed, index) with the house RNG; Math.random()/Date are banned (they would
  * make every scrub non-reproducible).
@@ -160,7 +160,7 @@ export interface RandomEffector extends EffectorCommon {
 
 /**
  * A spatial falloff scalar in [0,1] scaling a fixed delta. The `field` variant
- * (Prompt 4) samples a resolved FieldGrid instead of a closed-form distance — same
+ * (Prompt 4) samples a resolved FieldGrid instead of a closed-form distance - same
  * `strength(position) -> [0,1]` contract, resolved once & sampled purely.
  */
 export type FalloffShape =
@@ -197,7 +197,7 @@ export interface StepEffector extends EffectorCommon {
 /**
  * Output is a function of playhead TIME only (uniform across instances). Named
  * 'time' deliberately: an 'audio'-amplitude sibling is reserved for once the
- * audio-reactive system exists — the union stays open for it.
+ * audio-reactive system exists - the union stays open for it.
  */
 export interface TimeEffector extends EffectorCommon {
   type: 'time';
@@ -211,7 +211,7 @@ export interface TimeEffector extends EffectorCommon {
 }
 
 /**
- * Rotates each instance to face a target POINT (camera-facing is reserved — no
+ * Rotates each instance to face a target POINT (camera-facing is reserved - no
  * camera system to bind to yet). Distinct from radial's orientToCenter, which is
  * base distribution geometry; this points at an arbitrary target independently.
  */
@@ -228,7 +228,7 @@ export type ClonerEffector =
   | TargetEffector;
 
 /**
- * Reserved timing-stagger shape. This prompt parses it and IGNORES it — every
+ * Reserved timing-stagger shape. This prompt parses it and IGNORES it - every
  * instance is evaluated at the same frameNumber (no per-instance time offset yet).
  */
 export interface ClonerStagger {
@@ -237,10 +237,10 @@ export interface ClonerStagger {
 }
 
 /**
- * Data-bound source (Prompt 4 — the templating engine): instance `i` pulls
+ * Data-bound source (Prompt 4 - the templating engine): instance `i` pulls
  * `data[i % data.length]` into bound source properties, so instances can differ in
  * content (text/color/image) instead of rendering identically. `data.length` need
- * not equal instance count — the wraparound is intentional. Routes the cloner to
+ * not equal instance count - the wraparound is intentional. Routes the cloner to
  * the full per-instance render path.
  */
 export interface ClonerDataBinding {
@@ -281,8 +281,8 @@ export interface ClonerLayer {
   stagger: ClonerStagger;
   /**
    * Hard safety cap on produced instances, independent of what the distribution
-   * math would otherwise generate. Enforced (truncate, lowest index first) — not
-   * just documented — so a bad count cannot stall or crash a render.
+   * math would otherwise generate. Enforced (truncate, lowest index first) - not
+   * just documented - so a bad count cannot stall or crash a render.
    */
   renderCount: number;
   /** When present & non-empty, per-instance content binding (routes to full render). */
@@ -312,7 +312,7 @@ export interface SourceAnimatedTransform {
 
 /**
  * Resolution context so the pure engine can look up flat refs and delegate host
- * concerns without inlining them or reimplementing them. All optional & additive —
+ * concerns without inlining them or reimplementing them. All optional & additive -
  * passing only (cloner, frame) still works for a pure grid/radial with no stagger.
  */
 export interface ClonerResolveContext {
@@ -321,7 +321,7 @@ export interface ClonerResolveContext {
   /**
    * Resolve a field ref to an ALREADY-SAMPLED FieldGrid buffer (field distribution +
    * field falloff). The async worker/rasterization happens upstream (in resolveFrame,
-   * cached); the pure engine only reads this buffer — it never awaits anything.
+   * cached); the pure engine only reads this buffer - it never awaits anything.
    */
   getField?: (fieldRef: string) => FieldGrid | undefined;
   /** Frames-per-second, to convert stagger delaySeconds → frames. Default 30. */

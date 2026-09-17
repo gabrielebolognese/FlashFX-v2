@@ -31,7 +31,7 @@ export function elapsedCompSeconds(anchor: ClockAnchor, nowTime: number, params:
   return rawElapsed * params.rate;
 }
 
-/** Continuous composition-frame position (unbounded — caller applies looping). */
+/** Continuous composition-frame position (unbounded - caller applies looping). */
 export function frameFloat(anchor: ClockAnchor, nowTime: number, params: ClockParams, forPicture: boolean): number {
   return anchor.anchorFrame + elapsedCompSeconds(anchor, nowTime, params, forPicture) * params.fps;
 }
@@ -58,7 +58,7 @@ export function selectClockTime(ctxRunning: boolean, ctxTimeSec: number, wallTim
 /**
  * Guard against a non-monotonic clock read (some browsers coarsen/round
  * AudioContext.currentTime). Never let the returned time go backwards vs the last
- * observed value — returns max(now, last). Callers keep `last` across ticks.
+ * observed value - returns max(now, last). Callers keep `last` across ticks.
  */
 export function monotonic(nowTime: number, lastTime: number): number {
   return nowTime > lastTime ? nowTime : lastTime;

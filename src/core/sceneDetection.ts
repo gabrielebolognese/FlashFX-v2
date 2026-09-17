@@ -3,7 +3,7 @@
 // A hard cut between shots shows up as a large jump in the frame's color
 // distribution. We summarize each sampled frame as a small concatenated RGB
 // histogram and flag a cut wherever consecutive histograms differ by more than a
-// threshold (total-variation distance). No ML, no FFT — deterministic and
+// threshold (total-variation distance). No ML, no FFT - deterministic and
 // dependency-free so it's provable by scripts/verify-scenes. The browser side
 // (engine/video/sceneDetect.ts) decodes frames and feeds pixels in here.
 
@@ -38,7 +38,7 @@ export function histogramDistance(a: Float32Array, b: Float32Array): number {
 
 /**
  * Indices (into the histogram list) where the distance from the previous frame
- * meets/exceeds `threshold` — i.e. the sampled frames that begin a new shot.
+ * meets/exceeds `threshold` - i.e. the sampled frames that begin a new shot.
  */
 export function detectCutIndices(histograms: Float32Array[], threshold = 0.4): number[] {
   const cuts: number[] = [];

@@ -1,6 +1,6 @@
 import type { Vec2, PathVertex } from './types';
 
-// M17 — Text → vector paths. Pure geometry: convert a font glyph's outline commands (from
+// M17 - Text → vector paths. Pure geometry: convert a font glyph's outline commands (from
 // opentype.js getPath/getPaths, already scaled + positioned in layer pixels, y-down) into
 // closed cubic-bezier contours (PathVertex[][]) for a PolygonShape. Fonts express curves as
 // QUADRATIC (one off-curve control); PathVertex handles are CUBIC, so quads are degree-elevated
@@ -73,7 +73,7 @@ export function commandsToContours(commands: OutlineCommand[]): PathVertex[][] {
   return contours;
 }
 
-/** Axis-aligned bounding box of all contour anchor points (handles ignored — glyph metrics
+/** Axis-aligned bounding box of all contour anchor points (handles ignored - glyph metrics
  *  are anchor-driven and this only needs to be stable, not tight). */
 export function contoursBBox(contours: PathVertex[][]): { minX: number; minY: number; maxX: number; maxY: number } {
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;

@@ -1,6 +1,6 @@
 import type { Keyframe, Vec2 } from './types';
 
-// The Smoother and The Wiggler — organic keyframe assistants (Category 1). Both are PURE array
+// The Smoother and The Wiggler - organic keyframe assistants (Category 1). Both are PURE array
 // transforms over a property's keyframes + the set of SELECTED frames, returning a new list; the
 // store wraps them in one undoable command. Kept in their own leaf module (no interpolation import)
 // so they stay bundleable in a harness. The Wiggler is seeded (house mulberry32) → the OUTPUT is
@@ -27,7 +27,7 @@ function hash2(a: number, b: number): number {
 }
 
 /**
- * The Smoother — round jittery keyframe VALUES into a gentle curve with a weighted moving average
+ * The Smoother - round jittery keyframe VALUES into a gentle curve with a weighted moving average
  * (¼ prev + ½ self + ¼ next). The first and last SELECTED keyframes are pinned so the animation's
  * endpoints don't drift. Needs ≥3 selected keyframes (two endpoints + something between). Number and
  * vec2 (per component). Frames are untouched.
@@ -48,7 +48,7 @@ export function smoothSelected(kfs: Keyframe[], selected: Set<number>): Keyframe
 }
 
 /**
- * Exponential Scale — convert a LINEAR ramp between the first and last selected keyframes into a
+ * Exponential Scale - convert a LINEAR ramp between the first and last selected keyframes into a
  * GEOMETRIC one, so a big scale/zoom reads as a constant-rate move instead of lurching (a real zoom
  * must grow by an accelerating amount to look steady). Bakes one keyframe per frame across the span
  * with `v0·(v1/v0)^t`; endpoints are preserved. Number and vec2 (per component). Falls back to linear
@@ -75,7 +75,7 @@ export function exponentialScaleSelected(kfs: Keyframe[], selected: Set<number>)
 }
 
 /**
- * The Wiggler — inject controlled organic tremble into the interior SELECTED keyframe values: each is
+ * The Wiggler - inject controlled organic tremble into the interior SELECTED keyframe values: each is
  * offset by seeded noise in [-amplitude, +amplitude]. Endpoints are pinned so the move still arrives
  * and departs cleanly. Needs ≥3 selected keyframes (bake a held range first for a dense wiggle).
  * Deterministic: identical (selection, amplitude, seed) → identical output. Number and vec2 (each

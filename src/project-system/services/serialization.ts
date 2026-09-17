@@ -58,7 +58,7 @@ export function deserializeDocument(data: string): SceneDocument {
   return { version: SCENE_DOCUMENT_VERSION, rootCompositionId, scenes, compositions, styles: validateStyles(raw?.styles), ...(aiMeta ? { aiMeta } : {}) };
 }
 
-// M21 — preserve the shared-style registry through the round-trip (else it vanishes on load).
+// M21 - preserve the shared-style registry through the round-trip (else it vanishes on load).
 function validateStyles(raw: unknown): SceneDocument['styles'] {
   if (!raw || typeof raw !== 'object') return {};
   const out: NonNullable<SceneDocument['styles']> = {};

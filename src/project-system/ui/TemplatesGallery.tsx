@@ -58,7 +58,7 @@ export function TemplatesGallery() {
   return (
     <div className="pt-5 space-y-7">
       <p className="text-[11px] text-slate-500 -mb-2">
-        Pick a starting point — we'll create a new project from it and open the editor.
+        Pick a starting point - we'll create a new project from it and open the editor.
       </p>
       {cats.map((cat) => (
         <section key={cat}>
@@ -81,7 +81,7 @@ function TemplateCard({ tpl, busy, disabled, onStart }: { tpl: AnimationTemplate
   const seconds = Math.round(tpl.durationFrames / tpl.authorFps);
   return (
     <div className="group relative flex flex-col rounded-lg overflow-hidden bg-[#111821] border border-[#1c2433] hover:border-[#2a3a50] transition-all duration-150 hover:shadow-[0_4px_24px_rgba(0,0,0,0.3)]">
-      {/* Preview (click to start) — deterministic gradient with the template name. */}
+      {/* Preview (click to start) - deterministic gradient with the template name. */}
       <button
         onClick={onStart}
         disabled={disabled}

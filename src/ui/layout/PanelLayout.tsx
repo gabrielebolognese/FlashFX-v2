@@ -28,7 +28,7 @@ export function PanelLayout() {
   const uiMode = usePanelStore((s) => s.uiMode);
 
   // Starter mode: a minimal canvas (≈3/4) + inspector (1/4), no media pool or timeline. This takes
-  // precedence over every workspace/format layout — the simple default for newcomers.
+  // precedence over every workspace/format layout - the simple default for newcomers.
   if (uiMode === 'starter') {
     return (
       <div className="flex-1 flex flex-row min-h-0 min-w-0 overflow-hidden bg-surface-sunken">

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { RenamePattern } from '../core/batchRename';
 
-// M19 — Batch-rename modal state (mirrors the silenceStripper/captions modal pattern). Holds the
+// M19 - Batch-rename modal state (mirrors the silenceStripper/captions modal pattern). Holds the
 // draft pattern; the selection is read live from the editor store at commit time.
 
 interface RenameModalState {

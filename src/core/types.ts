@@ -1,25 +1,25 @@
 // The cloner is a first-class layer; its data-model types live in the feature
-// module (src/cloner) and are imported type-only here (erased at runtime — no
+// module (src/cloner) and are imported type-only here (erased at runtime - no
 // runtime dependency of core on the feature module).
 import type { ClonerLayer, InstanceTransform } from '../cloner/types';
-import type { SharedStyle } from './styles'; // M21 — type-only (erased; no runtime cycle)
+import type { SharedStyle } from './styles'; // M21 - type-only (erased; no runtime cycle)
 import type { ClonerRenderPath } from '../cloner/renderPath';
-// M14 reframe constraints — type-only (erased at runtime; reframe.ts imports only `type Vec2`
+// M14 reframe constraints - type-only (erased at runtime; reframe.ts imports only `type Vec2`
 // back from here, so this cross-reference has no runtime cycle).
 import type { LayerConstraints } from './reframe';
-// 2.5D — type-only (erased at runtime). camera3d imports ResolvedTransform back from here; a
+// 2.5D - type-only (erased at runtime). camera3d imports ResolvedTransform back from here; a
 // type-only cycle has no runtime dependency.
 import type { Mat4 } from './mat4';
 import type { ResolvedCamera } from './camera3d';
 // Per-character text animation reuses the pure range-selector primitive (type-only import; the
 // primitive imports nothing back, so there is no runtime cycle).
 import type { RangeSelectorConfig } from '../text/rangeSelector';
-// Named temporal eases (Penner / elastic / bounce / back) — type-only import; easings.ts imports
+// Named temporal eases (Penner / elastic / bounce / back) - type-only import; easings.ts imports
 // nothing back, so no runtime cycle.
 import type { EasingName } from './easings';
-// Retime interpolation mode ('mix' | 'flow') — type-only; opticalFlow.ts imports nothing back.
+// Retime interpolation mode ('mix' | 'flow') - type-only; opticalFlow.ts imports nothing back.
 import type { RetimeInterp } from './opticalFlow';
-// Track-matte mode (B10b) — type-only; trackMatte.ts imports nothing back.
+// Track-matte mode (B10b) - type-only; trackMatte.ts imports nothing back.
 import type { TrackMatteMode } from './trackMatte';
 
 export type Vec2 = [number, number];
@@ -37,13 +37,13 @@ export interface Keyframe {
   tangentMode?: 'continuous' | 'broken';
   /**
    * Named ease governing this keyframe's OUTGOING segment (to the next keyframe). When set it wins
-   * over `handleIn/handleOut` — this is how the true overshoot/bounce/elastic curves that a single
+   * over `handleIn/handleOut` - this is how the true overshoot/bounce/elastic curves that a single
    * cubic-bezier can't express are applied. Absent = use `interpolation` + bezier handles. Optional
    * so existing scenes and the default keyframe are unaffected.
    */
   easing?: EasingName;
   /**
-   * SPATIAL tangents for a position keyframe — offsets (in the property's own units) from this
+   * SPATIAL tangents for a position keyframe - offsets (in the property's own units) from this
    * keyframe's position value, defining the curve of the path THROUGH SPACE (separate from temporal
    * easing). `spatialOut` shapes the outgoing segment, `spatialIn` the incoming one. Absent on both
    * sides = a straight line between keyframes (the classic behaviour). Only position keyframes carry
@@ -65,7 +65,7 @@ export interface AnimatableProperty {
   /**
    * SEPARATE DIMENSIONS (position only). When true, the X and Y components animate on INDEPENDENT
    * scalar keyframe lists (`keyframesX` / `keyframesY`) with their own timing and easing, instead of
-   * the shared vec2 `keyframes` — e.g. steady X + accelerating Y for a physical bounce. The combined
+   * the shared vec2 `keyframes` - e.g. steady X + accelerating Y for a physical bounce. The combined
    * `keyframes` list is unused while separated (re-coupling rebuilds it). `defaultValue` (a Vec2)
    * still supplies each axis's base when its sub-curve is empty. Absent/false = classic combined
    * behaviour, so every other property is unaffected. Mutually exclusive with spatial tangents.
@@ -245,7 +245,7 @@ export interface PathVertex {
 }
 
 /**
- * A path pose at a frame (B8b) — shape morph / keyframable outline. When a polygon carries ≥2 of
+ * A path pose at a frame (B8b) - shape morph / keyframable outline. When a polygon carries ≥2 of
  * these, the resolver animates the outline between poses (arc-length resample + index correspondence,
  * so poses with DIFFERENT vertex counts morph). At/beyond a pose the resolver returns that pose's
  * ORIGINAL vertices (beziers intact); only between poses is a flattened morph emitted.
@@ -366,7 +366,7 @@ export interface Mask {
   // ── Freeform path mask (B10c, foundation) ── Optional bezier outline + optional per-vertex feather.
   // When present the mask is a freeform path (animated via `pathKeyframes`, reusing B8b's morph). The
   // resolver evaluates these into ResolvedMask; the freeform coverage SHADER is the remaining browser
-  // step, so nothing authors these yet — existing parametric masks are unaffected.
+  // step, so nothing authors these yet - existing parametric masks are unaffected.
   vertices?: PathVertex[];
   pathKeyframes?: PathKeyframe[];
   feathers?: number[]; // per-vertex feather in px; absent → the single `feather` applies uniformly
@@ -439,7 +439,7 @@ export interface LayerBlur {
 // `polygon` (pen-path) shapes for now; the pure maths lives in `core/shapeModifiers.ts`. With no
 // modifiers present the resolver returns the original vertices untouched (byte-identical).
 
-/** Trim Paths — reveal only a sub-length of the outline (draw-on). All fractions 0..1. */
+/** Trim Paths - reveal only a sub-length of the outline (draw-on). All fractions 0..1. */
 export interface TrimPathsModifier {
   type: 'trim';
   enabled: boolean;
@@ -448,14 +448,14 @@ export interface TrimPathsModifier {
   offset: AnimatableProperty; // shifts the span along the path (wraps on closed paths)
 }
 
-/** Offset Paths — parallel inset/outset of the outline. `amount` in px (+ outset / − inset). */
+/** Offset Paths - parallel inset/outset of the outline. `amount` in px (+ outset / − inset). */
 export interface OffsetPathsModifier {
   type: 'offset';
   enabled: boolean;
   amount: AnimatableProperty;
 }
 
-/** Roughen — seeded per-point displacement along the normal for a jagged edge. `amount` in px. */
+/** Roughen - seeded per-point displacement along the normal for a jagged edge. `amount` in px. */
 export interface RoughenModifier {
   type: 'roughen';
   enabled: boolean;
@@ -463,7 +463,7 @@ export interface RoughenModifier {
   seed: number;
 }
 
-/** Pucker & Bloat — bow each edge outward (bloat, +) or inward (pucker, −) while anchors stay put.
+/** Pucker & Bloat - bow each edge outward (bloat, +) or inward (pucker, −) while anchors stay put.
  *  `amount` is the peak edge displacement in px. */
 export interface PuckerBloatModifier {
   type: 'puckerBloat';
@@ -475,7 +475,7 @@ export type ShapeModifier = TrimPathsModifier | OffsetPathsModifier | RoughenMod
 export type ShapeModifierType = ShapeModifier['type'];
 
 /**
- * In-shape Repeater (B8d) — AE Repeater / clone-in-place. Draws `copies` transformed copies of the
+ * In-shape Repeater (B8d) - AE Repeater / clone-in-place. Draws `copies` transformed copies of the
  * shape, each accumulating the per-copy offset/rotation/scale (radial arrays, spirals) with an opacity
  * ramp. Expanded at resolve time into N copies (the cloner-stamp pattern); absent → a single shape.
  */
@@ -513,12 +513,12 @@ export interface ShapeLayer {
   shape: ShapeGeometry;
   /** Ordered non-destructive path operators (trim / offset / roughen). See ShapeModifier. */
   modifiers?: ShapeModifier[];
-  /** In-shape Repeater — draws N accumulated copies of the shape (B8d). Absent → one shape. */
+  /** In-shape Repeater - draws N accumulated copies of the shape (B8d). Absent → one shape. */
   repeater?: ShapeRepeater;
   materialConfig?: ShapeMaterialConfig;
   strokeMaterialConfig?: ShapeMaterialConfig;
   patternFill?: ShapePatternConfig;
-  /** M21 — linked color styles for fill/stroke (resolve reads through the style). */
+  /** M21 - linked color styles for fill/stroke (resolve reads through the style). */
   fillStyleId?: string;
   strokeStyleId?: string;
   inPoint: number;
@@ -540,14 +540,14 @@ export interface TextAnimatorDelta {
   /** Per-character 3D out-of-plane rotation in degrees at full weight (B9c). Needs a 3D text layer. */
   rotationX?: number;
   rotationY?: number;
-  /** Per-character gaussian blur radius in px at full weight (B9d) — e.g. blur-in reveals. */
+  /** Per-character gaussian blur radius in px at full weight (B9d) - e.g. blur-in reveals. */
   blur?: number;
 }
 
 /**
  * A text animator: a range selector (reused from src/text/rangeSelector) over a split unit
  * (character/word/line) plus the property deltas it drives. Keyframe `offset` for a time-based
- * reveal — when present it overrides selector.offset per frame. Multiple animators stack
+ * reveal - when present it overrides selector.offset per frame. Multiple animators stack
  * (positions/rotations add; scale/opacity multiply).
  */
 export interface TextAnimator {
@@ -560,7 +560,7 @@ export interface TextAnimator {
 }
 
 /**
- * Text Decode / scramble (B9) — unrevealed glyphs flicker through random characters and lock to the
+ * Text Decode / scramble (B9) - unrevealed glyphs flicker through random characters and lock to the
  * real letter as `progress` (0..1, keyframe it) sweeps left→right. Frame-deterministic (seeded). See
  * core/textDecode.ts. Applied at resolve time via the existing per-glyph stamp path (no render change).
  */
@@ -610,7 +610,7 @@ export interface TextLayer {
   /** Text on a path (B9b): flow glyphs along a referenced MotionPath (interpreted in layer space).
    *  Absent/disabled → normal linear layout. */
   textPath?: TextPathBinding;
-  /** M21 — linked color styles for text fill/stroke. */
+  /** M21 - linked color styles for text fill/stroke. */
   fillStyleId?: string;
   strokeStyleId?: string;
   inPoint: number;
@@ -675,7 +675,7 @@ export interface VideoLayer {
     reversed?: boolean;
     /**
      * Animated Time Remap: a keyframable curve mapping composition time → SOURCE time (in seconds).
-     * When present it supersedes `playbackRate` / `reversed` / `freezeSourceFrame` — ease its keyframes
+     * When present it supersedes `playbackRate` / `reversed` / `freezeSourceFrame` - ease its keyframes
      * for speed ramps (fast↔slow↔fast), flatten a span to freeze, or descend to play backwards.
      * Absent = the classic constant-rate path.
      */
@@ -905,7 +905,7 @@ export interface GenerativePatternLayer {
   masks?: Mask[];
   /** Track matte (B10b): this layer is matted by the layer directly above (its alpha/luma). */
   trackMatte?: TrackMatteMode;
-  // Keyframeable pattern knobs — override the static config values when animated (frequency, rotation,
+  // Keyframeable pattern knobs - override the static config values when animated (frequency, rotation,
   // domain-warp, contrast). Seeded from the config; the render reads these, not the config copies.
   patternAnim: {
     scale: AnimatableProperty;
@@ -1102,7 +1102,7 @@ export interface PrecompTimeRemap {
  * A precomposition layer: references another Composition by id and renders it (a
  * nested RenderFrame, resolved recursively at a time-remapped local frame) as a
  * single layer in this composition. Mirrors the common Layer fields (there is no
- * shared BaseLayer interface in this codebase — each variant spells them out).
+ * shared BaseLayer interface in this codebase - each variant spells them out).
  */
 // --- 2.5D Camera (M1) ---
 // One-node = free camera aimed by its own orientation (transform rotationX/Y/Z); two-node =
@@ -1118,19 +1118,19 @@ export interface CameraSettings {
   // Two-node aim target in composition space (x,y from `pointOfInterest`, z from `…Z`).
   pointOfInterest: AnimatableProperty; // vec2
   pointOfInterestZ: AnimatableProperty; // number
-  // Lens: AE-style zoom in pixels — the SOLE render-affecting lens field (frame-pure).
+  // Lens: AE-style zoom in pixels - the SOLE render-affecting lens field (frame-pure).
   // Focal Length / Angle of View / F-Stop are DERIVED from (zoom, filmSize, comp size) in the
   // dialog + camera3d converters; storing them too would desync under keyframing. See camera3d.ts.
   zoom: AnimatableProperty; // number
   // Static lens paperwork (AE "Camera Settings"): affect only the derived-field DISPLAY, never
-  // the render. Optional for back-compat — resolve/validation default them (36 / horizontal / …).
+  // the render. Optional for back-compat - resolve/validation default them (36 / horizontal / …).
   filmSize?: number; // mm, default 36
   measureFilmSize?: FilmSizeAxis; // which comp dimension the film size maps to; default horizontal
   units?: CameraUnits; // display-only re-expression; default pixels
   // Depth of field.
   dofEnabled: boolean;
   focusDistance: AnimatableProperty; // number, px
-  // When true, Focus Distance tracks Zoom (AE "Lock to Zoom") — resolved live, ignoring the
+  // When true, Focus Distance tracks Zoom (AE "Lock to Zoom") - resolved live, ignoring the
   // stored focusDistance. Default true. Undefined ⇒ off (safe for legacy cameras).
   lockToZoom?: boolean;
   aperture: AnimatableProperty; // number, px (F-Stop = zoom / aperture)
@@ -1163,7 +1163,7 @@ export interface CameraLayer {
   is3D?: boolean; // always true for a camera; kept for union-access parity
   effectsEnabled?: boolean;
   // Common effect fields so Layer-union member accesses type-check (a camera never draws, so
-  // these are inert — it's skipped before the draw/effect path in resolveFrame).
+  // these are inert - it's skipped before the draw/effect path in resolveFrame).
   motionBlur?: boolean;
   motionBlurShutter?: number;
   shadow?: LayerShadow;
@@ -1210,7 +1210,7 @@ export interface PrecompLayer {
 export interface LayerDecorations {
   /** Optional timeline label tint (hex). Overrides the type color on clips. */
   labelColor?: string;
-  /** M14 — per-layer reframe pin/scale constraints (top-level layers only). */
+  /** M14 - per-layer reframe pin/scale constraints (top-level layers only). */
   constraints?: LayerConstraints;
 }
 
@@ -1284,7 +1284,7 @@ export interface CompositionSettings {
   backgroundColor: Vec4;
   /**
    * Composition motion-blur "shutter". `shutterAngle` (deg, default 180) is the global streak length
-   * — the master smoothness knob scaling every motion-blurred layer; `shutterPhase` (deg, default 0)
+   * - the master smoothness knob scaling every motion-blurred layer; `shutterPhase` (deg, default 0)
    * shifts the blur window (0 = centred on the frame, negative = trails, positive = leads);
    * `motionBlurSamples` (default 16) is the full-quality sample target (still reduced by the preview
    * quality tier). All optional so legacy compositions default to the classic centred 180° blur.
@@ -1388,11 +1388,11 @@ export interface SceneDocument {
    *  legacy documents (migrated to `[rootCompositionId]` on load). */
   scenes?: string[];
   compositions: Record<string, Composition>;
-  /** M21 — document-level shared/linked style definitions (id → style), shared across comps. */
+  /** M21 - document-level shared/linked style definitions (id → style), shared across comps. */
   styles?: Record<string, SharedStyle>;
   /** AI-generation metadata (style contract, panel plan, seed, digest) persisted so the edit path's
    *  required inputs travel with the file. Opaque to the core/renderer; typed by @/schema (AiMeta).
-   *  Not needed for rendering — preserved through save/load only. */
+   *  Not needed for rendering - preserved through save/load only. */
   aiMeta?: Record<string, unknown>;
 }
 
@@ -1602,7 +1602,7 @@ export interface ResolvedShape {
   closed: boolean;
   lineCap: LineCap;
   lineJoin: LineJoin;
-  /** Glyph counters / inner contours (M17 outlined text) — filled as holes. */
+  /** Glyph counters / inner contours (M17 outlined text) - filled as holes. */
   holes?: PathVertex[][];
   /** Dash pattern [on, off, …] in px + resolved offset (B8c). Absent → solid stroke. */
   dashArray?: number[];
@@ -1641,7 +1641,7 @@ export interface ResolvedVideo {
   playbackMode: VideoPlaybackMode;
   proxyScale: number;
   /** Frame-mix: the second source frame to cross-dissolve toward and the mix (0..1). Present only
-   *  when frame blending is on and the frame is between two source frames — the resolver then emits a
+   *  when frame blending is on and the frame is between two source frames - the resolver then emits a
    *  second overlay video layer at `sourceFrameB` with opacity = `blendMix`. */
   sourceFrameB?: number;
   blendMix?: number;
@@ -1737,7 +1737,7 @@ export interface ResolvedProceduralLoop {
 export interface ResolvedFieldSampled {
   configJSON: string;
   localFrame: number;
-  /** The field's own sample size (from its config) — the renderer sizes the quad to this ×
+  /** The field's own sample size (from its config) - the renderer sizes the quad to this ×
    *  transform.scale, instead of always filling the whole composition. */
   canvasWidth: number;
   canvasHeight: number;
@@ -1806,7 +1806,7 @@ export interface ResolvedLayer {
   // 2.5D (M1): world model matrix for 3D layers (`is3D`), for the M2 MVP path. Absent on 2D
   // layers, which keep the cheap affine transform above.
   worldMatrix?: Mat4;
-  // 2.5D (M2): true when the source layer's 3D switch is on — the renderer projects it through
+  // 2.5D (M2): true when the source layer's 3D switch is on - the renderer projects it through
   // the frame camera (MVP) and depth-sorts it. Absent/false → the untouched 2D path.
   is3D?: boolean;
   // Track matte (B10b): this layer is matted by `matte.sourceId` (its alpha/luma). Set at resolve
@@ -1821,7 +1821,7 @@ export interface ResolvedLayer {
 export interface RenderFrame {
   frameNumber: number;
   totalFrames: number;
-  /** Composition frame rate — used by time-based CPU renderers (e.g. field sampling). */
+  /** Composition frame rate - used by time-based CPU renderers (e.g. field sampling). */
   frameRate?: number;
   width: number;
   height: number;
@@ -1839,7 +1839,7 @@ export interface RenderFrame {
  * into its own RenderFrame (at the time-remapped local frame), for the renderer to
  * render offscreen and composite under the precomp layer's transform/opacity/blend.
  * `renderFrame` is null when the reference is missing or a cycle/depth-cap was hit
- * (renders nothing — safe). width/height are the sub-composition's resolution.
+ * (renders nothing - safe). width/height are the sub-composition's resolution.
  */
 export interface ResolvedPrecomp {
   compositionId: string;

@@ -36,7 +36,7 @@ function getWorker(): Worker {
   return worker;
 }
 
-// Drop the worker so a fresh one spawns next time — releases model memory after
+// Drop the worker so a fresh one spawns next time - releases model memory after
 // a fatal error or cancellation.
 export function disposeUpscaleWorker(): void {
   if (worker) {

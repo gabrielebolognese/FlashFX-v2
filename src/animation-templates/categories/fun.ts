@@ -28,7 +28,7 @@ function buildPen(ctx: { center: Vec2 }): Layer[] {
 
   // Pen: an angled body with a nib at its tip that tracks the current writing point.
   const ROT = -32;
-  const OFF: Vec2 = [39.7, 63.6]; // R(ROT)·[0,75] — offsets the body so the nib lands on the line
+  const OFF: Vec2 = [39.7, 63.6]; // R(ROT)·[0,75] - offsets the body so the nib lands on the line
   const body = box([0, 0], 18, 150, PEN);
   body.transform.rotation.defaultValue = ROT;
   const keys: { f: number; v: Vec2; ease?: typeof LINEAR }[] = [];

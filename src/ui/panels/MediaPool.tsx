@@ -45,7 +45,7 @@ function getAcceptString(category: AssetCategory): string {
 }
 
 // The Library tab browses a shared Google Drive stock-asset folder via the drive-assets edge
-// function, which needs a Google service account. Hidden until a new account is connected — flip
+// function, which needs a Google service account. Hidden until a new account is connected - flip
 // LIBRARY_ENABLED to true to restore it; all the code (src/library/, driveService, the edge
 // function) is left intact.
 const LIBRARY_ENABLED = false;
@@ -62,7 +62,7 @@ const TABS: { id: PoolTab; label: string; icon: React.ReactNode; disabled?: bool
 ];
 
 export function MediaPool() {
-  // Kept only for the Icons tab (clicking an icon rasterizes it and adds it to the canvas — a single,
+  // Kept only for the Icons tab (clicking an icon rasterizes it and adds it to the canvas - a single,
   // intentional placement). Footage import goes through importFilesToPool (pool only, no placement).
   const addImage = useEditorStore((s) => s.addImage);
   const activeProjectId = useProjectStore((s) => s.activeProjectId);

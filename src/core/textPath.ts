@@ -1,5 +1,5 @@
 // Text-on-a-path placement (B9b). Pure, self-contained cubic-bezier sampler with TRUE arc-length
-// reparameterization — so glyphs are evenly spaced along the path (a straight 2-node path does not
+// reparameterization - so glyphs are evenly spaced along the path (a straight 2-node path does not
 // bunch them, unlike the parameter-space sampler in motionPath.ts). No import of the interpolation
 // engine (motionPath.ts pulls in the worker-spawning expression manager via evaluateNumber), so this
 // bundles in a node harness (`verify:text-kinetic`). Nodes are in the text layer's LOCAL space; the

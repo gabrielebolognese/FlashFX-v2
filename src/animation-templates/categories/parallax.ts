@@ -4,7 +4,7 @@ import { createCameraLayer, createProperty } from '../../core/factory';
 import { group, card, dot, label, assemble, setKeys, fadeIn, popIn, floatLoop, EASE_IO } from '../kit';
 
 // A 2.5D showcase: shape/text CARDS placed at different depths (world Z) with a real Camera that
-// TRUCKS across and PUSHES in while aiming at a fixed focal plane — so the near cards sweep across
+// TRUCKS across and PUSHES in while aiming at a fixed focal plane - so the near cards sweep across
 // the frame far faster than the distant ones (parallax). This is the camera used meaningfully:
 // nothing but the camera's own move creates the motion between the layers.
 
@@ -34,13 +34,13 @@ function buildParallax(ctx: BuildCtx): Layer[] {
   const panel = depth(card([0, 0], W * 0.92, H * 0.72, 30, PANEL), 1150);
   fadeIn(panel, 0, 22);
 
-  // Title + subtitle sit on the focal plane (z=0) — the camera pivots around them.
+  // Title + subtitle sit on the focal plane (z=0) - the camera pivots around them.
   const title = depth(label('2.5D CAMERA', [0, -24], { size: 122, weight: 800, color: WHITE }), 0);
   const sub = depth(label('parallax in real space', [0, 92], { size: 40, weight: 500, color: AMBER }), 0);
   popIn(title, 8);
   fadeIn(sub, 26, 16);
 
-  // Accents at staggered depths — some behind the title, some in FRONT of it (negative Z, nearest
+  // Accents at staggered depths - some behind the title, some in FRONT of it (negative Z, nearest
   // the lens) so they streak across the frame as the camera moves.
   const accents: ShapeLayer[] = [
     depth(card([-440, -200], 190, 120, 16, BLUE), 340),
@@ -74,7 +74,7 @@ function buildParallax(ctx: BuildCtx): Layer[] {
 
   // Everything (incl. the camera) parents to the group so the template stays one unit. The
   // resolve reads the camera's LOCAL transform (it isn't parent-composed), so its comp-space
-  // keyframes above are used as-is — parenting is inert for the camera, just tidy.
+  // keyframes above are used as-is - parenting is inert for the camera, just tidy.
   return assemble(g, [panel, title, sub, ...accents, cam], DUR);
 }
 
@@ -82,7 +82,7 @@ export const parallaxDepth: AnimationTemplate = {
   id: 'parallax',
   name: '2.5D Camera Parallax',
   category: 'showcase',
-  description: 'Cards at different depths with a camera that trucks across and pushes in — real parallax.',
+  description: 'Cards at different depths with a camera that trucks across and pushes in - real parallax.',
   tags: ['3d', '2.5d', 'camera', 'parallax', 'depth', 'title', 'showcase'],
   durationFrames: DUR,
   authorFps: 30,

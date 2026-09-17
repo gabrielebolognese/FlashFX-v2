@@ -1,4 +1,4 @@
-// Renders red measurement "dimension lines" with px label pills — shared by the
+// Renders red measurement "dimension lines" with px label pills - shared by the
 // Alt-hover distance measure and the equal-gap distribution snapping. World-space
 // segment coords in; scaled to screen by (scaleX, scaleY). Figma-red #F24822,
 // white label text, small end caps for the engineering-dimension look.

@@ -12,7 +12,7 @@ export const tutorial: TutorialDef = {
     'You can build separate material stacks for the Fill and the Stroke of a shape.',
     'You can add up to 8 material layers per stack, each a linear or radial gradient.',
     'You can pick a linear direction (top→bottom, diagonals, etc.) or a radial position (center, corners).',
-    'You can blend each layer with 12 modes — Normal, Multiply, Screen, Overlay, and more.',
+    'You can blend each layer with 12 modes - Normal, Multiply, Screen, Overlay, and more.',
     'You can set per-layer opacity and reorder layers up or down to change how they composite.',
     'You can edit each gradient with up to 10 color stops, adjusting color, position, and alpha per stop.',
     'You can hit Match to copy the fill material straight onto the stroke.',

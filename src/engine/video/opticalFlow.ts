@@ -4,7 +4,7 @@
 // and frameB backward along (1−t)·flow and cross-fades by t. Identity at t=0 (all A) / t=1 (all B).
 //
 // This is a BASIC single-level estimate: great for small motion (typical slow-mo), and it degrades to
-// a plain cross-dissolve for large motion (the flow is clamped) — no ghosting-free guarantee for big
+// a plain cross-dissolve for large motion (the flow is clamped) - no ghosting-free guarantee for big
 // displacements (a pyramidal/iterative solver is a future upgrade). WebGPU only; the renderer builds
 // the pipeline behind a guard and falls back to the crisp frame on any failure. Kept as a plain string
 // module (no GPU calls) so it type-checks in CI; the shader itself is browser-verified.

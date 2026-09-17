@@ -3,7 +3,7 @@ import type { PathVertex, Vec2 } from '../core/types';
 import { commandsToContours, recenterContours, type OutlineCommand } from '../core/textOutline';
 import { bundledFontUrl } from '../engine/fonts';
 
-// M17 — Text → vector paths (impure, main-thread: needs fetch + font parsing). Loads a bundled
+// M17 - Text → vector paths (impure, main-thread: needs fetch + font parsing). Loads a bundled
 // OFL font (public/fonts, parsed by opentype.js), lays the text out with real advances/kerning,
 // and hands each glyph's outline commands to the PURE core (commandsToContours) for the
 // quad→cubic conversion. Bundled woff families only; anything else returns null so the caller
@@ -34,7 +34,7 @@ function loadFont(fontFamily: string, fontWeight: number): Promise<opentype.Font
 export interface OutlinedGlyph {
   /** The glyph's centre in group-local space (the child polygon's position under the group). */
   center: Vec2;
-  /** Closed cubic contours relative to `center` — [outer, ...counters]. */
+  /** Closed cubic contours relative to `center` - [outer, ...counters]. */
   contours: PathVertex[][];
 }
 

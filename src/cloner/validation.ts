@@ -1,15 +1,15 @@
-// Cloner — reference / cycle validation.
+// Cloner - reference / cycle validation.
 //
 // Structurally the same problem as precomp cycle detection, adapted to what this
 // codebase actually has. A cloner adds an edge: cloner → whatever its `sourceRef`
 // points at. A cycle forms if following those edges (through layers that are
-// themselves cloners) returns to the start — e.g. A sources B, B sources A, which
+// themselves cloners) returns to the start - e.g. A sources B, B sources A, which
 // would expand infinitely.
 //
 // EXTENSION POINT (precomps): when a multi-composition document + precomp layers
 // land, `sourceRef.type === 'composition'` becomes a real edge (cloner's owning
 // composition → referenced composition), and precomp nesting adds a second edge
-// source. Both must be walked in this SAME DFS — a cycle that alternates precomp
+// source. Both must be walked in this SAME DFS - a cycle that alternates precomp
 // nesting and cloner sourceRef is just as invalid. `ClonerGraphContext` is shaped
 // so those edges slot in without restructuring the walk.
 
@@ -45,7 +45,7 @@ const BLACK = 2; // fully explored
 
 /**
  * Validate a set of cloner layers for reference cycles, self-references, and
- * dangling source refs. Pure — no mutation of inputs. Returns all issues found
+ * dangling source refs. Pure - no mutation of inputs. Returns all issues found
  * (empty array = valid).
  */
 export function validateClonerReferences(

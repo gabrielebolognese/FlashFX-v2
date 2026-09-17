@@ -1,6 +1,6 @@
 import type { LayerShadow, LayerGlow, LayerBlur } from './types';
 
-// Default parameters applied when a layer effect is first enabled — used by BOTH
+// Default parameters applied when a layer effect is first enabled - used by BOTH
 // the Inspector's Effects section and the top-bar Effects menu, so the two entry
 // points enable identical effects. Single source of truth.
 

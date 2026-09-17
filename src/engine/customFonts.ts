@@ -11,7 +11,7 @@ const DB_NAME = 'flashfx-fonts';
 const DB_VERSION = 1;
 const STORE = 'fonts';
 
-/** Max accepted font file size — a guard against accidental huge uploads (fonts are ≪ this). */
+/** Max accepted font file size - a guard against accidental huge uploads (fonts are ≪ this). */
 export const MAX_FONT_BYTES = 20 * 1024 * 1024;
 
 interface CustomFontRecord {
@@ -86,7 +86,7 @@ async function idbDelete(id: string): Promise<void> {
   });
 }
 
-/** Register a face with the browser under its family name (buffer source — the browser decodes
+/** Register a face with the browser under its family name (buffer source - the browser decodes
  *  ttf/otf/woff/woff2). Failures are swallowed so one bad font can't break the rest. */
 async function registerFace(family: string, data: ArrayBuffer): Promise<void> {
   if (typeof FontFace === 'undefined' || typeof document === 'undefined') return;
@@ -94,7 +94,7 @@ async function registerFace(family: string, data: ArrayBuffer): Promise<void> {
     const face = new FontFace(family, data);
     (document.fonts as FontFaceSet).add(face);
     await face.load();
-  } catch { /* unsupported/broken font — skip */ }
+  } catch { /* unsupported/broken font - skip */ }
 }
 
 /** Derive a display family name: prefer the font's own name table, fall back to the filename.
@@ -108,7 +108,7 @@ function deriveFamily(data: ArrayBuffer, fileName: string): string {
     const pick = (n?: Record<string, string>) => (n ? (n.en ?? Object.values(n)[0]) : undefined);
     const fam = pick(names.fontFamily) ?? pick(names.preferredFamily) ?? pick(names.fullName);
     if (fam && fam.trim()) return fam.trim();
-  } catch { /* not parseable (e.g. woff2) — use the filename */ }
+  } catch { /* not parseable (e.g. woff2) - use the filename */ }
   return stem || 'Custom Font';
 }
 
@@ -138,7 +138,7 @@ export const useCustomFontStore = create<CustomFontState>((set, get) => ({
     if (hydratePromise) return hydratePromise;
     hydratePromise = (async () => {
       let recs: CustomFontRecord[] = [];
-      try { recs = await idbGetAll(); } catch { /* storage unavailable — degrade to no custom fonts */ }
+      try { recs = await idbGetAll(); } catch { /* storage unavailable - degrade to no custom fonts */ }
       await Promise.allSettled(recs.map((r) => registerFace(r.family, r.data)));
       set({ fonts: recs.map((r) => ({ id: r.id, family: r.family, fileName: r.fileName })), hydrated: true });
       if (recs.length > 0) fireFontsChanged();

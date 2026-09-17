@@ -2,7 +2,7 @@
 //
 // Prompt 1 scope: schema + pure distribution engine + reference/cycle validation.
 // No rendering, no effectors, no stagger, no field/random distribution, and NOT
-// yet part of the core `Layer` union — those land in later prompts. Everything
+// yet part of the core `Layer` union - those land in later prompts. Everything
 // here is pure and deterministic (see scripts/verify-cloner.mjs for the harness).
 
 export * from './types';

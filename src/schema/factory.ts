@@ -38,7 +38,7 @@ export type Schemas = ReturnType<typeof makeSchemas>;
  *  share these types (the shape is identical; only `.max()` bounds differ). */
 export const defaultSchemas = makeSchemas(DEFAULT_CAPS);
 
-// Derived TypeScript types — the codebase types against THESE, not hand-maintained interfaces.
+// Derived TypeScript types - the codebase types against THESE, not hand-maintained interfaces.
 export type AiLayer = z.infer<typeof defaultSchemas.aiLayer>;
 export type CoderFragment = z.infer<typeof defaultSchemas.coderFragment>;
 export type DirectorOutput = z.infer<typeof defaultSchemas.directorOutput>;

@@ -6,7 +6,7 @@ import { group, box, label, assemble, setKeys, SPRING, EASE_OUT, LINEAR } from '
 // vertical slot is rank(index, time), and when two bars cross, one rises a slot and the other drops,
 // settling with an overshoot instead of snapping. In AE this needs a script that BAKES keyframes (so
 // the data stops being editable). Here the rank/sort is computed per sampled frame in the builder and
-// baked too — visually identical, but note: this baked template is NOT the live/editable version.
+// baked too - visually identical, but note: this baked template is NOT the live/editable version.
 // The truly-live one needs the data-bound Cloner to render (not wired yet) or a dedicated data layer.
 //
 // Structure: one row-group per entity (owns the rank-driven Y, spring on crossings); a bar rect

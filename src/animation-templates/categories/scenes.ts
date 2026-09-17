@@ -2,7 +2,7 @@ import type { Layer, Vec2, Vec4 } from '../../core/types';
 import type { AnimationTemplate } from '../types';
 import { group, box, dot, assemble, ellipse, glow, floatLoop, swayLoop, spinLoop, twinkle, setKeys, EASE_OUT } from '../kit';
 
-// Looping illustrated scenes — decorative animated backdrops built from ordinary shape layers with
+// Looping illustrated scenes - decorative animated backdrops built from ordinary shape layers with
 // ambient loop keyframes (drift, sway, twinkle). Authored back-to-front (earlier child = further
 // back), group-local around (0,0); the comp is 1920×1080 so local x∈[-960,960], y∈[-540,540].
 

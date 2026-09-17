@@ -1,4 +1,4 @@
-// Pure column-major 4×4 matrix + vec3 math for the 2.5D system (M0). No dependencies, no side effects —
+// Pure column-major 4×4 matrix + vec3 math for the 2.5D system (M0). No dependencies, no side effects -
 // fully harness-testable. Convention: column-major (element [col*4 + row]); points are column vectors,
 // so v' = M · v and a composite is P · V · M (projection outermost). Right-handed; the renderer's y-down
 // handedness is reconciled at the projection/viewport step in M2, not here.

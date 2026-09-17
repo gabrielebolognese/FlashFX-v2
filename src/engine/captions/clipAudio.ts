@@ -1,7 +1,7 @@
 import { mediaAssetManager } from '../media/assetManager';
 import { WHISPER_SAMPLE_RATE } from './audioExtraction';
 
-// Extract just the PLAYED region of an audio (or video) clip as 16 kHz mono Float32 — Whisper's
+// Extract just the PLAYED region of an audio (or video) clip as 16 kHz mono Float32 - Whisper's
 // native input (no 16-bit PCM WAV step needed; a WAV would only be decoded back to this).
 //
 // Unlike extractAudioForCaptions (which decodes the whole source asset from t=0 and so misaligns

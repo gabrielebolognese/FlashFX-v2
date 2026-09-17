@@ -7,14 +7,14 @@ import type { Caps } from './caps';
 // PANELS are time ranges within ONE composition (not separate compositions). Layer membership lives
 // on the layer (`panelId`, written by assembly), so it cannot desync.
 //
-// UNIFIED BOUNDARY CONTRACTS: a boundary is a single present-list — the element ids on screen at the
+// UNIFIED BOUNDARY CONTRACTS: a boundary is a single present-list - the element ids on screen at the
 // panel's in-point / out-point. The Director plan and the compiled frame panel use the SAME shape
 // (`inboundPresent` / `outboundPresent`), so there are no two representations to invent defaults
 // between. Reconciliation (panel N.outbound == panel N+1.inbound) is checked in both the semantic
 // validator (on the ms plan) and assembly (on the frame plan).
 //
 // LINE DRAWN (structural vs semantic): within-object bounds live here (a panel's end > start). CROSS-
-// object invariants — panels contiguous & gapless, order unique, present-lists reconcile — are
+// object invariants - panels contiguous & gapless, order unique, present-lists reconcile - are
 // SEMANTIC (see src/schema/semantic.ts), not Zod.
 
 export const zTransition = z
@@ -27,7 +27,7 @@ export const zTransition = z
   })
   .describe('a panel-to-panel transition');
 
-/** Factory: a Panel (frames — document-facing). `start < end` is a within-object runtime guard. */
+/** Factory: a Panel (frames - document-facing). `start < end` is a within-object runtime guard. */
 export function makePanel(caps: Caps) {
   return z
     .strictObject({

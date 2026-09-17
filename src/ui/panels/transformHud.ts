@@ -1,6 +1,6 @@
 // Pure formatting + positioning for the live transform HUD (the little readout
 // that follows the cursor while you move / resize / rotate / round a shape).
-// Dependency-free + deterministic — proven by scripts/verify-transformhud.mjs.
+// Dependency-free + deterministic - proven by scripts/verify-transformhud.mjs.
 //
 // Conventions distilled from Figma / Sketch / Affinity / Canva research:
 //  - Resize and Rotate show ABSOLUTE values (resulting W×H, resulting angle).

@@ -1,4 +1,4 @@
-// Precompose — the pure "wrap selected layers into a new sub-composition" transform.
+// Precompose - the pure "wrap selected layers into a new sub-composition" transform.
 //
 // Modeled on the store's createGroup, but for precomposition: instead of a
 // transform-only container, it moves the selected layers (+ their descendants) into
@@ -29,7 +29,7 @@ function collectWithDescendants(rootIds: string[], layers: Layer[]): Set<string>
 }
 
 export interface PrecomposeResult {
-  /** The new sub-composition holding the moved layers (unsettled — the caller
+  /** The new sub-composition holding the moved layers (unsettled - the caller
    *  ensures tracks + settles it, to reuse the store's helpers). */
   subComposition: Composition;
   /** The precomp layer to insert into the parent. */

@@ -50,7 +50,7 @@ interface CurvePreset {
   /** Bezier control points (for cubic-bezier presets). Omitted when `easing` is set. */
   p1?: Vec2;
   p2?: Vec2;
-  /** Named ease (true elastic/bounce/back — shapes a cubic-bezier can't represent). Wins over p1/p2. */
+  /** Named ease (true elastic/bounce/back - shapes a cubic-bezier can't represent). Wins over p1/p2. */
   easing?: EasingName;
 }
 
@@ -65,7 +65,7 @@ const PRESETS: CurvePreset[] = [
   { id: 'cubic-in-out', name: 'Cubic In-Out', p1: [0.645, 0.045], p2: [0.355, 1] },
   { id: 'expo-in', name: 'Expo In', p1: [0.95, 0.05], p2: [0.795, 0.035] },
   { id: 'expo-out', name: 'Expo Out', p1: [0.19, 1], p2: [0.22, 1] },
-  // Overshoot / bounce / elastic — true named eases (impossible as a single cubic-bezier).
+  // Overshoot / bounce / elastic - true named eases (impossible as a single cubic-bezier).
   { id: 'back-in', name: 'Back In ⤺', easing: 'backIn' },
   { id: 'back-out', name: 'Back Out ⤻', easing: 'backOut' },
   { id: 'back-in-out', name: 'Back In-Out', easing: 'backInOut' },
@@ -81,7 +81,7 @@ function extractProperties(layer: Layer): PropertyDef[] {
   const defs: PropertyDef[] = [];
 
   // Separated position lives on per-axis sub-curves; hide the combined X/Y graph curves for now
-  // (per-axis graph editing is a follow-up — edit X/Y in the Inspector).
+  // (per-axis graph editing is a follow-up - edit X/Y in the Inspector).
   if (layer.transform.position.valueType === 'vec2' && !layer.transform.position.separated) {
     defs.push({ id: 'pos_x', name: 'X', path: 'transform.position', color: PROPERTY_COLORS['transform.position'], property: layer.transform.position });
     defs.push({ id: 'pos_y', name: 'Y', path: 'transform.position', color: '#ff8844', property: layer.transform.position });
@@ -232,7 +232,7 @@ export function InterpolationGraph() {
     : null;
 
   const [enabledProps, setEnabledProps] = useState<Set<string>>(new Set());
-  // Value graph = the property's value over time; Speed graph = its velocity over time (read-only —
+  // Value graph = the property's value over time; Speed graph = its velocity over time (read-only -
   // where you SEE momentum: peaks = fast, touching zero = a momentary stop).
   const [graphMode, setGraphMode] = useState<'value' | 'speed'>('value');
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; trackId: string; kfFrame: number } | null>(null);
@@ -496,7 +496,7 @@ export function InterpolationGraph() {
   }, [selectedKeyframeData, activeLayer, updateLayerProperty]);
 
   // The property component (X/Y/single) of the selected keyframe, and the Δvalue/Δtime of its OUT
-  // (this→next) and IN (prev→this) segments — the scale that turns normalized handle-speed into a
+  // (this→next) and IN (prev→this) segments - the scale that turns normalized handle-speed into a
   // real value/second reading for the velocity fields.
   const selComponent: 'x' | 'y' | 'single' = selectedKeyframeData
     ? (selectedKeyframeData.propId.endsWith('_y') || selectedKeyframeData.propId === 'scale_y' ? 'y'
@@ -789,7 +789,7 @@ function PropertyTrackRow({ prop, containerWidth, zoomLevel, scrollX, ticks, pla
   }, [keyframes, zoomLevel, scrollX, containerWidth, durationFrames, component, valueToY]);
 
   // --- Speed graph: velocity (value/second) over time, sampled as the value curve's derivative.
-  // Read-only visualization — where you SEE momentum (peaks = fast, crossing zero = a stop/reversal).
+  // Read-only visualization - where you SEE momentum (peaks = fast, crossing zero = a stop/reversal).
   const speedAt = useCallback((f: number) => {
     const d = 0.5; // half-frame central difference
     return ((interpolateAtFrame(keyframes, f + d, component) - interpolateAtFrame(keyframes, f - d, component)) / (2 * d)) * frameRate;
@@ -1048,7 +1048,7 @@ function PropertyTrackRow({ prop, containerWidth, zoomLevel, scrollX, ticks, pla
         <line x1={0} y1={TRACK_HEIGHT / 2} x2={containerWidth} y2={TRACK_HEIGHT / 2} stroke="#1a2a42" strokeWidth={0.5} />
 
         {graphMode === 'speed' ? (
-          /* Speed graph — velocity curve + zero line + keyframe frame ticks (read-only). */
+          /* Speed graph - velocity curve + zero line + keyframe frame ticks (read-only). */
           <>
             {speedInfo && (
               <>

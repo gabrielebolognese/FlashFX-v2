@@ -2,7 +2,7 @@
 // Director, expanding the plan into per-panel jobs, running the Coder on each, and assembling. This
 // is the single entry point the app, the node runner, and tests share. The network is entirely
 // behind `client` (the same Anthropic wire client both stages use), so this is deterministic given a
-// client and fully testable with a fake one — no key needed to prove the glue.
+// client and fully testable with a fake one - no key needed to prove the glue.
 
 import { TIER_CAPS } from '../schema';
 import { runDirector } from './director';
@@ -79,7 +79,7 @@ export async function generate(o: GenerateOpts): Promise<GenerateResult> {
     fps: o.fps, tier, seed: o.seed, canvas: { width: o.canvas.width, height: o.canvas.height },
   });
 
-  // 3) Coder per panel (sequential — a single client, one job in flight at a time).
+  // 3) Coder per panel (sequential - a single client, one job in flight at a time).
   for (const job of plan.jobs) await runPanel(job.panelId);
 
   // 4) Assemble; then auto-fix: re-run any panel whose layers/plan produced an error, feeding the
@@ -87,7 +87,7 @@ export async function generate(o: GenerateOpts): Promise<GenerateResult> {
   let result = doCompile();
   let repairs = 0;
   while (!result.report.ok && repairs < maxRepairs) {
-    // Attribute each error to a panel — directly (panelId) or via the offending layer's fragment.
+    // Attribute each error to a panel - directly (panelId) or via the offending layer's fragment.
     const panelOfLayer = new Map<string, string>();
     for (const [pid, frag] of fragmentByPanel) for (const l of frag.layers) panelOfLayer.set(l.id, pid);
 

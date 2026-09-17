@@ -5,8 +5,8 @@ const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
 
 /**
  * The After Effects "Keyframe Velocity" model, in normalized units. A bezier handle carries two
- * independent feels: INFLUENCE — the temporal extent of the handle as a fraction of the segment
- * (0..1); the "long handle = long creamy decel" dial — and SPEED — the value slope at the keyframe
+ * independent feels: INFLUENCE - the temporal extent of the handle as a fraction of the segment
+ * (0..1); the "long handle = long creamy decel" dial - and SPEED - the value slope at the keyframe
  * (value-fraction per time-fraction). The graph UI scales `speed` by Δvalue/Δtime to display it as
  * real value/second. These four converters are exact inverses (round-trip safe) and are the single
  * definition of how the influence/velocity numeric fields map onto the stored bezier handles.
@@ -37,7 +37,7 @@ export function influenceToInHandle(influence: number, speed: number): Vec2 {
 // THE single source of truth for how a keyframe segment eases in time.
 //
 // A segment runs from `prev` to `next`. Its shape is owned by the OUTGOING side of `prev` plus the
-// INCOMING side of `next` — exactly the After Effects convention (and what the graph editor draws):
+// INCOMING side of `next` - exactly the After Effects convention (and what the graph editor draws):
 //   • hold          → progress 0 for the whole segment (value stays on `prev` until `next`)
 //   • named easing   → prev.easing wins (true elastic / bounce / back / Penner curves)
 //   • bezier         → cubic-bezier(prev.handleOut, next.handleIn)   ← both control points, one from each end
@@ -52,7 +52,7 @@ export function segmentProgress(t: number, prev: Keyframe, next: Keyframe): numb
   if (prev.easing) return applyEasing(prev.easing, t);
   switch (prev.interpolation) {
     case 'bezier': {
-      // Honour authored handles exactly — INCLUDING legitimate zero components (an ease-in has
+      // Honour authored handles exactly - INCLUDING legitimate zero components (an ease-in has
       // handleOut.y = 0). Only when a handle is fully unset ([0,0], e.g. a keyframe flipped to
       // bezier without dragging) fall back to a gentle default so the curve isn't degenerate.
       const o = prev.handleOut;

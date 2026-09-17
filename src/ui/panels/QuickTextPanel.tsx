@@ -6,7 +6,7 @@ import { FONT_MANIFEST } from '../../engine/fonts';
 import { useCustomFontStore } from '../../engine/customFonts';
 
 // Fast-text panel: opened by Shift-placing with the text tool. A compact, non-modal popover to
-// write the text, pick a font, choose a quick entrance preset + granularity, and place it — all
+// write the text, pick a font, choose a quick entrance preset + granularity, and place it - all
 // wired to the existing preset / text-explode engine via placeQuickText.
 
 type Granularity = 'whole' | 'word' | 'character';

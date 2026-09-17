@@ -6,11 +6,11 @@
 export interface TutorialDef {
   /** Stable id (kebab-case), e.g. 'material'. Referenced by the panel's Tutorial button. */
   id: string;
-  /** Button label suffix — the button reads "Tutorial: How to use {label}". e.g. 'Materials'. */
+  /** Button label suffix - the button reads "Tutorial: How to use {label}". e.g. 'Materials'. */
   label: string;
   /** Heading shown at the top of the tutorial panel. e.g. 'Fill & Stroke Materials'. */
   title: string;
-  /** Caption under the (placeholder) video — the future clip's filename. e.g. 'materials.mp4'. */
+  /** Caption under the (placeholder) video - the future clip's filename. e.g. 'materials.mp4'. */
   videoCaption: string;
   /** One or two intro sentences describing what the panel is for. */
   intro: string;

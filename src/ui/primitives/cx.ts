@@ -1,4 +1,4 @@
-/** Tiny classNames joiner — no dependency, drops falsy parts. */
+/** Tiny classNames joiner - no dependency, drops falsy parts. */
 export type ClassValue = string | number | false | null | undefined;
 
 export function cx(...parts: ClassValue[]): string {

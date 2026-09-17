@@ -10,7 +10,7 @@ import { selectPresentFrame } from './framePresentation';
 // audio (a separate <video>) keeps playing. See MAX_OPEN_FRAMES_PER_ASSET.
 // INVARIANT: LOOKAHEAD_* MUST be < MAX_OPEN_FRAMES_PER_ASSET. If lookahead exceeds the open-frame
 // cap, prefetch decodes the leading-edge frames and enforceFrameCap immediately evicts them (farthest
-// -ahead first), so they're re-requested next tick with an index <= fedThrough — which forces the
+// -ahead first), so they're re-requested next tick with an index <= fedThrough - which forces the
 // worker onto the reseek+flush branch on EVERY frame, and that flush stalls to the 2s watchdog =
 // ~1 frame every 2-3s (the "video is unplayable" bug). Keep the whole window resident at once.
 const LOOKAHEAD_NORMAL = 6;
@@ -18,10 +18,10 @@ const LOOKAHEAD_FAST = 7;
 const MEMORY_BUDGET_BYTES = 512 * 1024 * 1024; // 512 MB
 // Hard cap on decoded frames held OPEN per asset, well under the hardware
 // decoder's output-frame pool. A transferred-but-un-closed VideoFrame still
-// occupies the decoder's pool slot, so this — not the byte budget — is what keeps
+// occupies the decoder's pool slot, so this - not the byte budget - is what keeps
 // the decoder emitting. Sized to hold the look-ahead window + a small trailing.
 // Kept LOW so that (scheduler-held + the worker's decoded cache) stays well under the browser's
-// ~16-frame output-pool ceiling — exceeding it stalls the decoder → flush watchdog → error cascade.
+// ~16-frame output-pool ceiling - exceeding it stalls the decoder → flush watchdog → error cascade.
 const MAX_OPEN_FRAMES_PER_ASSET = 8;
 // Fail loudly at module load if the invariant above is ever broken again.
 if (LOOKAHEAD_FAST >= MAX_OPEN_FRAMES_PER_ASSET || LOOKAHEAD_NORMAL >= MAX_OPEN_FRAMES_PER_ASSET) {
@@ -181,7 +181,7 @@ class FrameScheduler {
   /**
    * Audio-master presentation: pick the buffered frame to DISPLAY for a layer whose
    * exact target source frame is `target`. Returns the newest decoded frame ≤ target
-   * (within maxDistance), else holds `lastPresented` if still buffered, else null —
+   * (within maxDistance), else holds `lastPresented` if still buffered, else null -
    * the "show the latest decoded frame, drop the rest, never block" follower policy
    * (pure logic in framePresentation.ts, proven by verify:presentation). Used only on
    * the audio-master-clock path; the classic path still requests the exact frame.
@@ -226,7 +226,7 @@ class FrameScheduler {
     this.totalMemoryUsage += byteSize;
     // injectFrame's sole caller is the export loop, which is forward-linear and
     // never revisits earlier frames. Bound memory by evicting the oldest buffered
-    // frames (lowest index) when over budget — WITHOUT this, a long export retains
+    // frames (lowest index) when over budget - WITHOUT this, a long export retains
     // thousands of ~8MB frames (multi-GB) → decoder output-pool stall / tab OOM.
     if (this.totalMemoryUsage > MEMORY_BUDGET_BYTES) {
       this.evictOldestForExport(assetId, frameIndex);
@@ -405,7 +405,7 @@ class FrameScheduler {
    * Keep the OPEN (decoded, non-in-flight) frame count for one asset under
    * MAX_OPEN_FRAMES_PER_ASSET, closing evicted frames so the hardware decoder's
    * output pool is freed and it keeps emitting. This is the primary guard against
-   * the playback freeze — the byte budget alone let ~60 frames pile up open, far
+   * the playback freeze - the byte budget alone let ~60 frames pile up open, far
    * past the decoder's ~16-24 pool, stalling it permanently.
    */
   private enforceFrameCap(assetId: string): void {

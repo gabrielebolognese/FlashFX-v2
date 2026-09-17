@@ -8,7 +8,7 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 // After createAndOpenProject flips to the editor, ProjectApp's effect asynchronously loads the new
 // scene and replaces the editor store's composition. Seeding before that lands on the wrong doc and
-// gets overwritten — so wait until the composition reference actually changes (bounded, then apply
+// gets overwritten - so wait until the composition reference actually changes (bounded, then apply
 // anyway as a fallback).
 async function waitForSceneLoad(prevComposition: unknown): Promise<void> {
   for (let i = 0; i < 60; i++) {

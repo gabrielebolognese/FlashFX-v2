@@ -121,7 +121,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   closeProject: async () => {
     const { activeProjectId, projects } = get();
     if (activeProjectId) {
-      // Persist before leaving — New / Open / Close and the "Projects" back button
+      // Persist before leaving - New / Open / Close and the "Projects" back button
       // all funnel through here; without this they silently discarded unsaved work.
       try { await get().saveCurrentProject(); } catch (err) { console.error('Save on close failed:', err); }
       // Revoke any existing preview URL for this project
@@ -262,7 +262,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     if (!activeProjectId) return;
     // Persist the full multi-composition document (registry + root).
     await saveProjectScene(activeProjectId, useEditorStore.getState().getDocument());
-    // Best-effort cloud backup — never blocks or fails the local save.
+    // Best-effort cloud backup - never blocks or fails the local save.
     if (cloudAvailable()) {
       pushProject(activeProjectId)
         .then(() => useCloudSyncStore.getState().markSynced())

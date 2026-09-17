@@ -28,10 +28,10 @@ interface PreviewState {
   /** Skip layer effects (shadow/glow/blur) in the interactive preview only. */
   disableEffects: boolean;
   /** "Disable camera": render the screen flat 2D (ignore the active camera) so a 2.5D/3D
-   *  comp can be edited as if no camera existed. Preview-only — export keeps the camera. */
+   *  comp can be edited as if no camera existed. Preview-only - export keeps the camera. */
   cameraDisabled: boolean;
   /** Experimental: drive playback from the audio (Web Audio) master clock instead
-   *  of the wall clock — CapCut/Canva-style A/V sync. Off = the current wall-clock
+   *  of the wall clock - CapCut/Canva-style A/V sync. Off = the current wall-clock
    *  path (zero change). A runtime A/B flag while the rework is browser-verified. */
   audioMasterClock: boolean;
 
@@ -89,6 +89,6 @@ export function getMotionBlurSamples(quality: PreviewQuality, base = 16): number
   return Math.max(2, Math.round(tier * (base / 16)));
 }
 
-// Sample count used by the export renderer — always the high-quality path so
+// Sample count used by the export renderer - always the high-quality path so
 // that exported frames match the full-quality preview.
 export const EXPORT_MOTION_BLUR_SAMPLES = 16;

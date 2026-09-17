@@ -8,7 +8,7 @@ export type AudioTransform = (channels: Float32Array[], sampleRate: number) => F
 function bufferChannels(buffer: AudioBuffer): Float32Array[] {
   const chs: Float32Array[] = [];
   for (let c = 0; c < buffer.numberOfChannels; c++) {
-    // Copy — some transforms return the input unchanged and we must not alias the
+    // Copy - some transforms return the input unchanged and we must not alias the
     // live decoded buffer when re-encoding.
     chs.push(Float32Array.from(buffer.getChannelData(c)));
   }

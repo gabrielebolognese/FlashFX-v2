@@ -11,12 +11,12 @@ import type { Caps } from './caps';
 //
 // INVERSE-FOR-UNDO: ops are shaped so an inverse is COMPUTABLE at apply time by capturing prior
 // state (e.g. the inverse of `setProperty(id,path,new)` is `setProperty(id,path,old)`, where `old`
-// is read from the document before applying). The op does NOT carry its own inverse — that keeps the
+// is read from the document before applying). The op does NOT carry its own inverse - that keeps the
 // model's output minimal and avoids it inventing stale prior state. The applier snapshots the whole
 // document and pushes ONE undo command (see the write-path note below), so op-level inverses are a
 // convenience, not the primary undo mechanism.
 //
-// WRITE PATH (scoped to AI commits, per the correction): the whole patch applies as ONE command —
+// WRITE PATH (scoped to AI commits, per the correction): the whole patch applies as ONE command -
 // snapshot getDocument() → apply all ops → push a single {execute,undo} that swaps whole documents.
 // This is NOT a claim that the rest of the codebase funnels through one path; it is the shape the AI
 // commit uses. loadDocument currently CLEARS history, so the commit must use the snapshot-Command

@@ -6,7 +6,7 @@ interface TextureRecord {
 }
 
 // Hard cap on live video textures. Previously this Map was UNBOUNDED and only pruned when a layer was
-// explicitly deleted — so undo-of-add, project load, precompose, split etc. orphaned a full-res
+// explicitly deleted - so undo-of-add, project load, precompose, split etc. orphaned a full-res
 // texture (~8MB@1080p, ~33MB@4K) per layerId forever, growing VRAM until WebGPU lost the device and
 // took the whole canvas down. Insertion order is the LRU (touch = re-insert at the end); the oldest
 // (least-recently drawn) texture is evicted past the cap, so memory is bounded regardless of edits.
@@ -39,7 +39,7 @@ class VideoTextureCache {
   }
 
   /**
-   * Free textures for layers that are no longer present in the current resolved frame — the real fix
+   * Free textures for layers that are no longer present in the current resolved frame - the real fix
    * for the orphan-on-undo/load/precompose leak. The renderer passes the set of video layer ids it
    * actually drew this frame; everything else is destroyed immediately (not just eventually via LRU).
    */
@@ -89,7 +89,7 @@ class VideoTextureCache {
     this.enforceCap();
   }
 
-  // Cached fallback surface (see fallbackUpload) — reused across frames instead of allocating a fresh
+  // Cached fallback surface (see fallbackUpload) - reused across frames instead of allocating a fresh
   // OffscreenCanvas + ImageBitmap every upload once the direct path is known to be unavailable.
   private fbCanvas: OffscreenCanvas | null = null;
   private fbCtx: OffscreenCanvasRenderingContext2D | null = null;
@@ -97,7 +97,7 @@ class VideoTextureCache {
   private copyToTexture(texture: GPUTexture, source: VideoFrame | ImageBitmap, width: number, height: number): void {
     if (!this.device) return;
 
-    // Sticky: once the direct path has failed on this device, don't keep re-throwing every frame —
+    // Sticky: once the direct path has failed on this device, don't keep re-throwing every frame -
     // go straight to the fallback.
     if (this.usedDirectUpload === false) {
       this.fallbackUpload(texture, source, width, height);
@@ -128,7 +128,7 @@ class VideoTextureCache {
     if (!ctx) return;
 
     ctx.drawImage(source as any, 0, 0, width, height);
-    // Copy straight from the canvas — no per-frame transferToImageBitmap allocation.
+    // Copy straight from the canvas - no per-frame transferToImageBitmap allocation.
     this.device.queue.copyExternalImageToTexture(
       { source: this.fbCanvas },
       { texture },

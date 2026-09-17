@@ -26,7 +26,7 @@ export function BrandsTab() {
   const [uploading, setUploading] = useState(false);
   const [editingColorId, setEditingColorId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  // Object URLs we created from stored blobs — revoked on unmount / removal.
+  // Object URLs we created from stored blobs - revoked on unmount / removal.
   const urlsRef = useRef<Set<string>>(new Set());
 
   const makeUrl = useCallback((blob: Blob) => {
@@ -50,7 +50,7 @@ export function BrandsTab() {
           })),
         );
       } catch {
-        /* empty library on first run / IDB unavailable — fall through to empty state */
+        /* empty library on first run / IDB unavailable - fall through to empty state */
       } finally {
         if (!cancelled) setLoading(false);
       }

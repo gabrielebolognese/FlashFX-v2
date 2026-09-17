@@ -84,7 +84,7 @@ function getLayerSize(layer: Layer, layers: Layer[], frame: number): { w: number
   }
   if (layer.type === 'text') {
     const tl = layer as TextLayer;
-    // Guard every optional/possibly-missing text field — this runs on the canvas (bounding-box
+    // Guard every optional/possibly-missing text field - this runs on the canvas (bounding-box
     // overlay + snap during hover/drag), so an unguarded deref crashes the canvas on selection.
     const span = tl.content?.spans?.[0]?.style;
     const bb = tl.layoutConfig?.boundingBox ?? { type: 'auto' as const };

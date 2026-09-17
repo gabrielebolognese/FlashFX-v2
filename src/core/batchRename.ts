@@ -1,10 +1,10 @@
-// M19 — Batch rename. Pure name-generation for a multi-selection: a template of tokens plus an
+// M19 - Batch rename. Pure name-generation for a multi-selection: a template of tokens plus an
 // optional regex Match/Replace, applied to a doc-ordered layer list. Dependency-free +
 // deterministic (no Date/Math.random), proven by scripts/verify-batchrename.mjs.
 //
 // Order of operations (Figma parity): the regex find/replace runs FIRST on each layer's CURRENT
 // name → an intermediate name; THEN the template composes around it, where {name} expands to that
-// intermediate. So "strip a prefix then re-number" works. Invalid regex never throws — it sets
+// intermediate. So "strip a prefix then re-number" works. Invalid regex never throws - it sets
 // regexError and skips the regex pass (every layer still gets a valid templated name).
 //
 // Tokens:  {name}  current (regex-transformed) name
@@ -18,7 +18,7 @@ export interface RenamePattern {
   startNumber: number;
   descending?: boolean;
   find?: string;    // regex source (optional)
-  replace?: string; // JS replacement string ($1, $&) — default ''
+  replace?: string; // JS replacement string ($1, $&) - default ''
   flags?: string;   // regex flags, sanitized; 'g' is forced on
 }
 

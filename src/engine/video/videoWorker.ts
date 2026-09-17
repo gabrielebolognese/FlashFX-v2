@@ -163,8 +163,8 @@ class StreamingDemuxer {
 
           // Build the FULL random-access sample table from the parsed moov.
           // mp4box populates trak.samples (offset/size/cts/dts/duration/is_sync)
-          // from stco/stsc/stsz/stts/ctts/stss during moov parse — BEFORE onReady
-          // — so the complete index is available WITHOUT appending any mdat media
+          // from stco/stsc/stsz/stts/ctts/stss during moov parse - BEFORE onReady
+          // - so the complete index is available WITHOUT appending any mdat media
           // bytes. fetchSampleData() reads the actual bytes on demand via byte
           // ranges. (The old code collected samples via onSamples, which only
           // delivers samples whose media bytes were appended; with the head/tail
@@ -226,7 +226,7 @@ class StreamingDemuxer {
       // Feed only the bytes mp4box needs to parse the moov. appendBuffer returns
       // the next file offset it wants, which lets it seek past a leading mdat to
       // reach a trailing moov (and, for a faststart file, stop as soon as the
-      // front moov is parsed) — so we never load mdat into memory here.
+      // front moov is parsed) - so we never load mdat into memory here.
       void this.feedUntilReady(mp4file, byteSource, () => settled).then(
         () => { if (!settled) finish(new Error(`Failed to parse moov box for asset ${assetId}`)); },
         (err) => finish(err instanceof Error ? err : new Error(String(err))),
@@ -424,7 +424,7 @@ interface PendingDecode {
   resolve: (frame: VideoFrame) => void;
   reject: (err: Error) => void;
   cancelled: boolean;
-  /** True once resolved/rejected — guards double-settle and skips redundant passes. */
+  /** True once resolved/rejected - guards double-settle and skips redundant passes. */
   settled: boolean;
   /** True once this frame's chunk has been fed to the decoder (awaiting output). */
   fed: boolean;
@@ -462,7 +462,7 @@ class VideoDecoderController {
   // ── Decoded-frame LRU ──────────────────────────────────────────────────────
   // Frames decoded while reaching a target were previously closed and thrown away,
   // so a backward/random scrub reseeked to the keyframe and re-decoded the whole GOP
-  // per step (O(GOP²)). Cache them (keyed by EXACT frame.timestamp — the value the
+  // per step (O(GOP²)). Cache them (keyed by EXACT frame.timestamp - the value the
   // worker stamps on each chunk and WebCodecs preserves, so a stale/mismatched key
   // simply misses, never returns a wrong frame) so a hit resolves without decoding.
   // Bounded by BOTH a frame COUNT and a byte budget. The count cap is the important
@@ -472,7 +472,7 @@ class VideoDecoderController {
   private decodedCache = new Map<number, VideoFrame>();
   private decodedCacheBytes = 0;
   // Small: these open frames share the decoder's output pool with the main-thread
-  // frameScheduler buffer (now 8), so keep this well clear of the ~16 pool limit —
+  // frameScheduler buffer (now 8), so keep this well clear of the ~16 pool limit -
   // 8 + 4 = 12 leaves headroom; exceeding the pool stalls the decoder.
   private static readonly DECODED_CACHE_MAX_FRAMES = 4;
   private static readonly DECODED_CACHE_BYTES = 64 * 1024 * 1024;
@@ -526,7 +526,7 @@ class VideoDecoderController {
   }
 
   /**
-   * Store a decoded frame in the LRU (taking ownership — it will be closed on
+   * Store a decoded frame in the LRU (taking ownership - it will be closed on
    * eviction). Only ever given intermediates (no owner) or CLONES of delivered
    * frames, so this never closes a frame handed to a caller.
    */
@@ -554,7 +554,7 @@ class VideoDecoderController {
     }
   }
 
-  /** Close every cached frame — call on reset/error so decoded frames never leak. */
+  /** Close every cached frame - call on reset/error so decoded frames never leak. */
   private closeCache(): void {
     for (const f of this.decodedCache.values()) {
       try { f.close(); } catch { /* already closed */ }
@@ -564,7 +564,7 @@ class VideoDecoderController {
   }
 
   decodeFrame(frameIndex: number): Promise<VideoFrame> {
-    // Fast path: the target frame is still cached from a recent decode pass — clone
+    // Fast path: the target frame is still cached from a recent decode pass - clone
     // it out without touching the decoder. This is what collapses backward/random
     // scrub from O(GOP²) to a cache hit. Exact-timestamp key ⇒ any mismatch misses.
     const sample = this.demuxer.getSampleForFrame(this.assetId, frameIndex);
@@ -579,7 +579,7 @@ class VideoDecoderController {
           this.decodedCache.set(ts, cached);
           return Promise.resolve(clone);
         } catch {
-          // Clone failed (frame closed under us) — drop it and decode normally.
+          // Clone failed (frame closed under us) - drop it and decode normally.
           this.decodedCacheBytes -= this.frameBytes(cached);
           this.decodedCache.delete(ts);
           try { cached.close(); } catch { /* already closed */ }
@@ -612,7 +612,7 @@ class VideoDecoderController {
   /** Start the drain loop if it isn't already running. */
   private kick(): void {
     if (this.looping) return;
-    // A fresh feed is about to happen; cancel any pending idle-drain — the
+    // A fresh feed is about to happen; cancel any pending idle-drain - the
     // continuation feed will push the buffered tail out without a flush.
     if (this.drainTimer !== null) {
       clearTimeout(this.drainTimer);
@@ -706,7 +706,7 @@ class VideoDecoderController {
   /**
    * Feed the decoder up to (at least) `target`, extending forward to cover other
    * pending frames in the same run. Continues the open stream when the target is
-   * just ahead; otherwise reseeks to the target's keyframe. Never flushes here —
+   * just ahead; otherwise reseeks to the target's keyframe. Never flushes here -
    * frames emit via onFrame as the stream advances; runLoop() drains the tail.
    */
   private async feedTowards(target: PendingDecode): Promise<void> {
@@ -721,7 +721,7 @@ class VideoDecoderController {
 
     // Continue the open stream only when the target is forward AND reachable
     // without skipping its keyframe (same GOP or the immediately next one). A
-    // backward jump or a far-ahead seek restarts at the keyframe instead — which
+    // backward jump or a far-ahead seek restarts at the keyframe instead - which
     // is cheaper than replaying a long delta run and avoids decoding frames the
     // caller doesn't want.
     let feedStart: number;
@@ -798,7 +798,7 @@ class VideoDecoderController {
     try {
       // Watchdog: flush() resolves only once every output is emitted, which can
       // stall indefinitely if the hardware output pool is exhausted (downstream
-      // holding frames open). Bound it so the controller can never lock up — the
+      // holding frames open). Bound it so the controller can never lock up - the
       // 'dequeue' wait is bounded for the same reason.
       await Promise.race([
         decoder.flush(),
@@ -876,7 +876,7 @@ class VideoDecoderController {
       if (m.cancelled) this.settle(m, () => m.reject(new Error('Decode cancelled')));
     }
     if (owners.length === 0) {
-      // All matches were cancelled — no caller, but keep it cached for re-scrub.
+      // All matches were cancelled - no caller, but keep it cached for re-scrub.
       this.cacheFrame(frameTimestamp, frame);
       return;
     }
@@ -897,11 +897,11 @@ class VideoDecoderController {
     }
     // Keep an independent copy of the delivered frame so scrubbing back to it hits
     // the cache. The last owner got the original (to be transferred); this clones
-    // before that transfer (valid — see above).
+    // before that transfer (valid - see above).
     try {
       this.cacheFrame(frameTimestamp, frame.clone());
     } catch {
-      // clone failed — skip caching this one.
+      // clone failed - skip caching this one.
     }
   }
 

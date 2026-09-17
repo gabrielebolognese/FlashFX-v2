@@ -82,7 +82,7 @@ export function TextAnimatorsSection({ layer, updateLayerProperty }: {
   );
 }
 
-// Text on a path (B9b) — flow glyphs along a MotionPath (interpreted in the layer's local space).
+// Text on a path (B9b) - flow glyphs along a MotionPath (interpreted in the layer's local space).
 // Single-line text; exact placement is browser-eyeballed like all text stamps.
 function TextPathSection({ layer, updateLayerProperty }: {
   layer: TextLayer;
@@ -116,7 +116,7 @@ function TextPathSection({ layer, updateLayerProperty }: {
       {on && bind && (
         <div className="mt-1.5 space-y-0.5">
           {paths.length === 0 ? (
-            <p className="text-[9.5px] leading-snug text-slate-600">No motion paths yet — draw one with the motion-path tool, then pick it here.</p>
+            <p className="text-[9.5px] leading-snug text-slate-600">No motion paths yet - draw one with the motion-path tool, then pick it here.</p>
           ) : (
             <>
               <Field label="Path">
@@ -141,7 +141,7 @@ function TextPathSection({ layer, updateLayerProperty }: {
   );
 }
 
-// Text Decode / scramble (B9) — reveal timing keyframes `decode.progress` 0→1 (like the animator
+// Text Decode / scramble (B9) - reveal timing keyframes `decode.progress` 0→1 (like the animator
 // reveal), plus flicker speed + seed + scramble alphabet. Writes via the undoable updateLayerProperty.
 function DecodeSection({ layer, updateLayerProperty }: {
   layer: TextLayer;

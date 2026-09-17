@@ -35,7 +35,7 @@ export const bulletList: AnimationTemplate = {
   id: 'bullet-list',
   name: 'Bullet List',
   category: 'lists',
-  description: 'List rows reveal one by one — a dot pops, the text slides in.',
+  description: 'List rows reveal one by one - a dot pops, the text slides in.',
   tags: ['list', 'bullets', 'points', 'features', 'reveal', 'stagger'],
   durationFrames: 120,
   authorFps: 30,

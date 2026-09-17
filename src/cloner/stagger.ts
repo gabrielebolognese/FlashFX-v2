@@ -1,4 +1,4 @@
-// Cloner — stagger: per-instance LOCAL-TIME offset (not a transform modulator).
+// Cloner - stagger: per-instance LOCAL-TIME offset (not a transform modulator).
 //
 // Instance i plays the SOURCE's own keyframed animation on a time-shifted clock:
 // sourceLocalTime(t, i) = t − delayForIndex(i). This is what turns one "scale 0→1"
@@ -42,7 +42,7 @@ export function staggerDelays(stagger: ClonerStagger, count: number, fps: number
 
 /**
  * Instance `index`'s local animation clock at global frame `frameNumber`. Pure
- * arithmetic — scrubbing to any frame returns the same value for the same (frame,
+ * arithmetic - scrubbing to any frame returns the same value for the same (frame,
  * index), with no state cached outside the call.
  */
 export function sourceLocalTime(

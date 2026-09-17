@@ -11,7 +11,7 @@ interface ClipTiming {
 
 // Allowed [minDelta, maxDelta] a single clip can move the dragged edge before
 // it either hits a same-track neighbour, the frame-0 wall, or its own minimum
-// duration. maxDelta may be Infinity on a right edge with no right neighbour —
+// duration. maxDelta may be Infinity on a right edge with no right neighbour -
 // the timeline auto-expands to absorb that growth on commit.
 function clipDeltaRange(layer: Layer, allLayers: Layer[], edge: ResizeEdge): [number, number] {
   const others = layer.trackId

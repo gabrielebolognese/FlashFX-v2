@@ -10,7 +10,7 @@ const TONE_TEXT: Record<IslandTone, string> = {
 };
 
 /**
- * Top-center hub for progress + toasts + errors. Blur is allowed here — it floats
+ * Top-center hub for progress + toasts + errors. Blur is allowed here - it floats
  * over the (static) toolbar, never the live viewport. Clicking routes to the Tasks
  * panel for the full log. Spring entrance; z-95 (below modals, above canvas chrome).
  */

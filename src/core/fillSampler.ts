@@ -1,4 +1,4 @@
-// Pure CPU gradient sampler (B8e) — a faithful port of the shape fill/stroke gradient shader
+// Pure CPU gradient sampler (B8e) - a faithful port of the shape fill/stroke gradient shader
 // (renderer.ts gradientT / sampleGradientLayer / sampleFill / blendRGB) to plain TS. Used to CPU-bake
 // a gradient STROKE per stroke-vertex on pen-path (polygon) shapes, which the SDF pipeline renders in
 // the fragment shader but the tessellated path pipeline cannot. Same maths → the baked gradient
@@ -9,7 +9,7 @@ import type { Vec2, Vec4, ResolvedFill, ResolvedFillLayer } from './types';
 
 const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
 
-// W3C separable blend, per channel — exact port of blendChannel() in renderer.ts.
+// W3C separable blend, per channel - exact port of blendChannel() in renderer.ts.
 function blendChannel(mode: number, cb: number, cs: number): number {
   switch (mode) {
     case 1: return cb * cs;                                   // multiply
@@ -36,7 +36,7 @@ function blendRGB(mode: number, cb: Vec4, cs: Vec4): [number, number, number] {
   return [blendChannel(mode, cb[0], cs[0]), blendChannel(mode, cb[1], cs[1]), blendChannel(mode, cb[2], cs[2])];
 }
 
-// Gradient parameter in 0..1 — exact port of gradientT(). Linear uses the CSS gradient-line formula
+// Gradient parameter in 0..1 - exact port of gradientT(). Linear uses the CSS gradient-line formula
 // (0deg toward top); radial uses a circle with farthest-corner extent. boxSize is the shape box in px.
 function gradientT(gType: number, angle: number, cx: number, cy: number, uv: Vec2, boxSize: Vec2): number {
   const localX = (uv[0] - 0.5) * boxSize[0];
@@ -90,7 +90,7 @@ export function sampleResolvedFill(fill: ResolvedFill, uv: Vec2, boxSize: Vec2):
     const src = sampleLayer(fill.layers[idx], uv, boxSize);
     const mode = fill.layers[idx].blendMode;
     const blended = blendRGB(mode, [accR, accG, accB, accA], src);
-    // mix(src.rgb, blended, accA) — the shader blends toward the W3C result by the accumulated alpha.
+    // mix(src.rgb, blended, accA) - the shader blends toward the W3C result by the accumulated alpha.
     const mR = src[0] + (blended[0] - src[0]) * accA;
     const mG = src[1] + (blended[1] - src[1]) * accA;
     const mB = src[2] + (blended[2] - src[2]) * accA;

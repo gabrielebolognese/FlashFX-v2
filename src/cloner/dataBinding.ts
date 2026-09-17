@@ -1,9 +1,9 @@
-// Cloner — data-bound source (Prompt 4, Part B).
+// Cloner - data-bound source (Prompt 4, Part B).
 //
 // Two pure steps:
-//   1. buildInstanceOverrides — turn a data list + bindings into a per-instance
+//   1. buildInstanceOverrides - turn a data list + bindings into a per-instance
 //      sparse override map (instance `i` ← `data[i % data.length]`).
-//   2. buildDataBoundSources — APPLY those maps to the source layer via the shared
+//   2. buildDataBoundSources - APPLY those maps to the source layer via the shared
 //      instance-override mechanism (core/overrides), yielding one content-overridden
 //      source layer per instance. This is the connection that makes data binding
 //      real: the full per-instance render path renders instanceSources[i] at
@@ -22,7 +22,7 @@ export type InstanceOverride = Record<string, string | number>;
 
 /**
  * Build `instanceCount` override maps. `data.length` need not equal `instanceCount`
- * — instance `i` wraps via `i % data.length` (20 instances over a 5-row list repeat,
+ * - instance `i` wraps via `i % data.length` (20 instances over a 5-row list repeat,
  * they don't error or leave the tail unbound). Empty data → empty maps. Pure:
  * identical inputs → identical output, any order.
  */
@@ -51,7 +51,7 @@ export function buildInstanceOverrides(
 /**
  * Apply the per-instance override maps to the source layer, producing one
  * content-overridden source per instance (the inputs the full per-instance render
- * path renders). Pure — `applyOverrides` deep-clones, so the original `source` is
+ * path renders). Pure - `applyOverrides` deep-clones, so the original `source` is
  * never mutated. `instanceCount` need not match `data.length` (wraparound handled
  * upstream). The result is frame-independent (bound values are static data), so the
  * caller may cache it by (sourceId + binding + count).

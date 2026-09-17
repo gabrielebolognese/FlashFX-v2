@@ -4,11 +4,11 @@ import { createGridDistribution, createRadialDistribution, createPathDistributio
 import { DragInput } from '../components/DragInput';
 import { Boxes, Plus, Trash2, ChevronUp, ChevronDown } from 'lucide-react';
 
-// M16 — Cloner authoring UI. Reads the active cloner layer and edits its params through the
+// M16 - Cloner authoring UI. Reads the active cloner layer and edits its params through the
 // store: scalar/vector/enum via updateLayerProperty dot-paths (deepSet walks array indices +
 // nested objects), the effector array via the dedicated add/remove/reorder actions. Mirrors
 // FieldSamplingPanel (no props, self-selects the active layer). NOTE: the renderer does not
-// draw cloner instances yet — this makes the cloner authorable + persistable; visible output
+// draw cloner instances yet - this makes the cloner authorable + persistable; visible output
 // is the separate GPU chunk. (DragInput owns the per-drag undo entry via commitLabel.)
 
 const SOURCE_TYPES = new Set(['shape', 'text', 'image', 'video', 'lottieIcon']);

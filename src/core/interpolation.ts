@@ -82,7 +82,7 @@ let _layerById: Map<string, Layer> = new Map();
 
 // ---------------------------------------------------------------------------
 // Structural cache: the frame-INDEPENDENT data resolveFrame would otherwise rebuild
-// every frame — the id map, the render-order sort, and the track lookup sets. Keyed
+// every frame - the id map, the render-order sort, and the track lookup sets. Keyed
 // on the `layers` array reference (WeakMap → auto-evicts when the composition is
 // edited) and validated against the `tracks` reference, since a track-only edit
 // (e.g. toggling solo) keeps the same layers array but must still invalidate. During
@@ -123,7 +123,7 @@ function getStructuralCache(layers: Layer[], tracks: Track[]): StructuralCache {
     hasLayoutLayers: layers.some(
       (l) => l.type === 'hbox' || l.type === 'vbox' || l.type === 'grid' || l.type === 'layoutContainer',
     ),
-    // 2.5D — skip the per-frame world-matrix pass entirely for all-2D comps (the common case).
+    // 2.5D - skip the per-frame world-matrix pass entirely for all-2D comps (the common case).
     hasThreeDLayers: layers.some((l) => l.is3D === true),
   };
   _structCacheByLayers.set(layers, cache);
@@ -322,7 +322,7 @@ function resolveShapeModifiers(modifiers: ShapeLayer['modifiers'], frame: number
 function resolveShapeLayer(layer: ShapeLayer, frame: number, getStyle?: StyleLookup): ResolvedShape {
   const shape = layer.shape;
   const defaultColor: Vec4 = [0.5, 0.5, 0.5, 1];
-  // M21 — read fill/stroke THROUGH any linked color style before the material overlay.
+  // M21 - read fill/stroke THROUGH any linked color style before the material overlay.
   const fillColor = resolveDominantColor(layer.materialConfig, resolveStyleColor(layer.fillStyleId, shape.fillColor ?? defaultColor, getStyle));
   const strokeColor = resolveDominantColor(layer.strokeMaterialConfig, resolveStyleColor(layer.strokeStyleId, shape.strokeColor ?? [0, 0, 0, 1], getStyle));
   const base: ResolvedShape = {
@@ -382,7 +382,7 @@ function resolveShapeLayer(layer: ShapeLayer, frame: number, getStyle?: StyleLoo
     case 'polygon': {
       let verts = shape.vertices;
       let closedFlag = shape.closed;
-      // Shape morph (B8b): if the outline is animated, evaluate the pose at this frame FIRST — at/beyond
+      // Shape morph (B8b): if the outline is animated, evaluate the pose at this frame FIRST - at/beyond
       // a pose this returns the original bezier vertices (byte-identical); between poses, a morph.
       if (shape.pathKeyframes && shape.pathKeyframes.length > 0) {
         const p = evalPathKeyframes(shape.pathKeyframes, frame);
@@ -513,7 +513,7 @@ function composeTransforms(parent: ResolvedTransform, child: ResolvedTransform):
   };
 }
 
-// Per-character text animation: expand a text layer with active animators into per-glyph stamps —
+// Per-character text animation: expand a text layer with active animators into per-glyph stamps -
 // mirrors the cloner, so the renderer draws each glyph as a normal 1-char text quad (ZERO renderer
 // changes). SINGLE VISUAL LINE ONLY for now (no hard breaks / wrapping); multi-line falls back to a
 // normal single render (returns null) so placement is never wrong. BROWSER-GATED: glyph x/y come
@@ -563,7 +563,7 @@ function expandTextGlyphs(
     const advNext = measureAdvance(baseText, content, j + 1);
     const ch = content[j];
     const d = deltas[j];
-    // Skip whitespace (no glyph) and fully-transparent glyphs (cheap — a reveal hides many).
+    // Skip whitespace (no glyph) and fully-transparent glyphs (cheap - a reveal hides many).
     if (ch.trim() !== '' && d.opacity > 0.001) {
       // Decode swaps the SHOWN character (position/advance still use the real char, so glyphs flicker
       // in place). Absent → the real char.
@@ -613,7 +613,7 @@ function expandTextGlyphs(
     }
     advPrev = advNext;
   }
-  // Return the stamp list even when empty (every glyph currently hidden) — an empty result must draw
+  // Return the stamp list even when empty (every glyph currently hidden) - an empty result must draw
   // nothing, NOT fall back to rendering the whole string. null is reserved for "can't expand" above.
   return stamps;
 }
@@ -722,7 +722,7 @@ function resolveVideoLayer(layer: VideoLayer, frame: number, compositionFrameRat
 
 function resolveImageLayer(layer: ImageLayer): ResolvedImage {
   // Effects are static scalars for now (params copied through). When they become
-  // animatable, evaluate each param here via evaluateNumber(prop, frame) — the
+  // animatable, evaluate each param here via evaluateNumber(prop, frame) - the
   // renderer and shader stay unchanged.
   const effects = (layer.effects ?? [])
     .filter((e) => e.enabled !== false)
@@ -820,7 +820,7 @@ function worldTransformAt(
 // Derive the analytic motion-blur descriptor from frame-to-frame motion. We
 // re-resolve the world transform one frame earlier and diff the pivot position,
 // rotation and scale. This captures keyframed animation, motion paths, manual
-// moves and anything else that changes the transform — without inspecting
+// moves and anything else that changes the transform - without inspecting
 // keyframes directly. Returns undefined when blur is disabled or the layer is
 // effectively static, so the renderer keeps its zero-overhead fast path.
 function computeMotionBlur(
@@ -951,7 +951,7 @@ function measureLayerPreferredSize(layer: Layer, frame: number): { width: number
 // Resolve a cloner field ref → an already-sampled FieldGrid, reusing the procedural
 // field engine's rasterizer. Cached by the field's configJSON so it is NOT re-
 // rasterized every frame (field data is treated as static; keeps instance placement
-// stable/deterministic). The async worker path isn't needed here — CPU rasterization
+// stable/deterministic). The async worker path isn't needed here - CPU rasterization
 // is synchronous, matching the pure engine's synchronous contract.
 const CLONER_FIELD_RES = 128;
 const _clonerFieldCache = new Map<string, { hash: string; grid: FieldGrid }>();
@@ -975,17 +975,17 @@ function resolveClonerField(fieldRef: string, layers: Layer[]): FieldGrid | unde
 const EMPTY_VISITED: ReadonlySet<string> = new Set();
 
 // In-shape Repeater (B8d): hard cap on expanded copies (perf/runaway guard) + the reused
-// single-copy sentinel for shapes without a repeater (identity — keeps them byte-identical).
+// single-copy sentinel for shapes without a repeater (identity - keeps them byte-identical).
 const MAX_REPEATER_COPIES = 300;
 const SINGLE_COPY: readonly RepeaterCopy[] = [{ dx: 0, dy: 0, rotation: 0, scale: 1, opacity: 1 }];
 
-// 2.5D (M1) — resolve the frame's active camera. AE model: the active camera is the topmost
+// 2.5D (M1) - resolve the frame's active camera. AE model: the active camera is the topmost
 // enabled camera layer active at this frame; with none, a default camera frames the comp 1:1.
 // `sortedLayers` is in render order (topmost drawn last), so the last matching camera wins.
 /**
  * The camera eye position at `frame`, honouring the optional smooth spatial-bezier path
  * (`camera.spatialTangents`). When a segment's endpoints carry no tangent the control points fall
- * on the 1/3–2/3 line, so the result is byte-identical to the plain evaluated position — this is a
+ * on the 1/3–2/3 line, so the result is byte-identical to the plain evaluated position - this is a
  * strict, opt-in generalisation. Timing (the along-path parameter `u`) is extracted from the REAL
  * keyframe interpolation of the dominant axis, so easing/hold on the position keys still applies.
  * Exported so the 3D-view schematic can draw exactly what the renderer will show.
@@ -1061,12 +1061,12 @@ function resolveActiveCamera(composition: Composition, sortedLayers: Layer[], fr
         blurLevel: evaluateNumber(chosen.camera.blurLevel, frame),
       }
     : null;
-  // Note: filmSize/measureFilmSize/units are deliberately NOT read here — they affect only the
+  // Note: filmSize/measureFilmSize/units are deliberately NOT read here - they affect only the
   // dialog's derived-field display, never the render (zoom is the sole render-affecting field).
   return cameraFromParams({ eye, target, zoom, compW: width, compH: height, dof });
 }
 
-// 2.5D (M1) — a 3D layer's world model matrix: compose local model matrices down the parent
+// 2.5D (M1) - a 3D layer's world model matrix: compose local model matrices down the parent
 // chain (root→leaf). Uses the module-level `_layerById` populated by resolveFrame. Dormant
 // until the M3 `is3D` UI + M2 renderer consume it; harness-tested via camera3d directly.
 function worldMatrixFor(layerId: string, frame: number): Mat4 {
@@ -1084,12 +1084,12 @@ function worldMatrixFor(layerId: string, frame: number): Mat4 {
 
 export function resolveFrame(composition: Composition, frame: number, ctx?: ResolveContext): RenderFrame {
   const { settings, layers } = composition;
-  const getStyle = ctx?.getStyle; // M21 — linked-style lookup, read through by shape/text fill+stroke
+  const getStyle = ctx?.getStyle; // M21 - linked-style lookup, read through by shape/text fill+stroke
   const motionPaths = composition.motionPaths || [];
   const resolvedLayers: ResolvedLayer[] = [];
   const tracks = composition.tracks || [];
   // Frame-independent structural data (id map, render-order sort, track sets),
-  // cached across frames — see getStructuralCache. Solo: when any track is soloed,
+  // cached across frames - see getStructuralCache. Solo: when any track is soloed,
   // only soloed tracks render (AE/Premiere semantics); empty set → no-op.
   const struct = getStructuralCache(layers, tracks);
   _layerById = struct.layerById;
@@ -1275,7 +1275,7 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
           // Frame-mix: expand into a second video layer at frameB, drawn on top at opacity = mix, so
           // the two adjacent source frames cross-dissolve through the normal image pipeline (no shader
           // change). Reuses the cloner-stamp pattern; a synthetic id keys its own decoded texture.
-          // Skipped for interp:'flow' — there the renderer's optical-flow warp pre-pass already blends
+          // Skipped for interp:'flow' - there the renderer's optical-flow warp pre-pass already blends
           // both source frames into the single base texture, so a second overlay would double-composite.
           if (resolvedVideo.sourceFrameB != null && resolvedVideo.blendMix && resolvedVideo.interp !== 'flow') {
             resolvedLayers.push({
@@ -1313,7 +1313,7 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
         const rMask = resolveMask(layer.masks, frame);
         const rMasks = resolveMasks(layer.masks, frame);
         // In-shape Repeater (B8d): expand into N copies at accumulated transforms (cloner-stamp
-        // pattern — each copy is a resolved shape layer reusing the SAME geometry). Absent/disabled →
+        // pattern - each copy is a resolved shape layer reusing the SAME geometry). Absent/disabled →
         // a single copy with the world transform untouched (byte-identical).
         const rep = shapeLayer.repeater;
         const copies = rep && rep.enabled
@@ -1455,7 +1455,7 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
         } catch { /* skip on parse error */ }
       } else if (layer.type === 'fieldSampled') {
         const localFrame = frame - layer.inPoint;
-        // The field's on-canvas size lives in the serialized config — parse it (with the factory
+        // The field's on-canvas size lives in the serialized config - parse it (with the factory
         // default as fallback) so the renderer sizes the quad to the sample, not the whole comp.
         let canvasWidth = 600, canvasHeight = 800;
         try {
@@ -1537,7 +1537,7 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
         const isDataBound = !!(cloner.dataBinding && cloner.dataBinding.data.length > 0);
         const renderPath = selectClonerRenderPath({ layerType: source?.type ?? 'image', isSdfShape: isSdf, isDataBound });
         // Per-instance source animation reuses the EXISTING transform evaluator at
-        // each instance's staggered local frame — no keyframe re-implementation.
+        // each instance's staggered local frame - no keyframe re-implementation.
         const instances = computeInstanceTransforms(cloner, frame, {
           fps: settings.frameRate,
           getMotionPath: (id) => motionPaths.find((p) => p.id === id),
@@ -1556,7 +1556,7 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
         });
         // Data-bound source: apply the instance-override mechanism (core/overrides,
         // via buildDataBoundSources) to produce one content-overridden source per
-        // instance — the inputs the full per-instance render path renders.
+        // instance - the inputs the full per-instance render path renders.
         const instanceSources = isDataBound && source
           ? buildDataBoundSources(source, cloner.dataBinding!, instances.length)
           : undefined;
@@ -1724,7 +1724,7 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
             ...src,
             id: `${cl.id}#${inst.index}`,
             transform: composeTransforms(cl.transform, child),
-            // instances don't inherit the source's masks (mask coords are absolute — they'd
+            // instances don't inherit the source's masks (mask coords are absolute - they'd
             // pin every clone to the source's spot). Default sources have none anyway.
             mask: undefined,
             masks: undefined,
@@ -1761,7 +1761,7 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
   }
 
   // Track mattes (B10b): pair each matted source layer with the layer directly above (pure), then
-  // record `matte` / `consumedAsMatte` on the resolved layers by source id. This is metadata ONLY —
+  // record `matte` / `consumedAsMatte` on the resolved layers by source id. This is metadata ONLY -
   // rendering stays byte-identical until the renderer's matte composite pass (browser-gated) consumes
   // it; a no-op when no layer has a trackMatte, so all existing comps are unaffected.
   const mattePairing = pairTrackMattes(sortedLayers.map((l) => ({ id: l.id, trackMatte: (l as { trackMatte?: TrackMatteMode }).trackMatte })));

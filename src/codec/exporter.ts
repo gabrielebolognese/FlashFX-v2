@@ -43,10 +43,10 @@ export async function exportToMp4(
   // Pre-flight: fail fast and clearly on an empty/invalid composition rather than
   // spinning up the renderer + encoder only to produce a broken file.
   if (!Number.isFinite(totalFrames) || totalFrames <= 0) {
-    throw new Error('Nothing to export — the composition has no frames.');
+    throw new Error('Nothing to export - the composition has no frames.');
   }
   if (!Number.isFinite(frameRate) || frameRate <= 0) {
-    throw new Error('Nothing to export — invalid frame rate.');
+    throw new Error('Nothing to export - invalid frame rate.');
   }
 
   onProgress?.({
@@ -70,7 +70,7 @@ export async function exportToMp4(
 
   const canvas = renderer.getOffscreenCanvas()!;
 
-  // Mix + encode audio up front — the muxer needs the audio track configured at
+  // Mix + encode audio up front - the muxer needs the audio track configured at
   // construction. Failures are non-fatal: we fall back to a video-only export.
   let audio: EncodedAudio | null = null;
   if (settings.includeAudio ?? true) {
@@ -204,7 +204,7 @@ export async function exportToMp4(
     message: 'Building MP4 file...',
   });
 
-  // Validate the encode actually produced video before muxing — otherwise we'd hand back a
+  // Validate the encode actually produced video before muxing - otherwise we'd hand back a
   // structurally-broken (empty) MP4 that plays as nothing.
   if (encodedChunks.length === 0) {
     renderer.destroy();
@@ -231,7 +231,7 @@ export async function exportToMp4(
 
   const blob = new Blob([target.buffer], { type: 'video/mp4' });
 
-  // Final sanity check — a valid MP4 with even one frame is always well over 1KB (container
+  // Final sanity check - a valid MP4 with even one frame is always well over 1KB (container
   // boxes + at least one encoded frame). Anything smaller is broken; don't hand it back as "done".
   if (blob.size < 1024) {
     throw new Error('Export produced an empty or invalid file. Please try again.');

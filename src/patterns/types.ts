@@ -1,4 +1,4 @@
-// Procedural pattern engine — config schema. A generativePattern layer carries this as JSON. The
+// Procedural pattern engine - config schema. A generativePattern layer carries this as JSON. The
 // pure field math (patterns.ts) is shared by the current CPU renderer and the future GPU shader, so
 // the two never drift. Frame-pure: everything is a function of (uv, time, params) only.
 
@@ -28,7 +28,7 @@ export const PATTERN_TYPES: PatternType[] = [
   'clouds', 'voronoi', 'rings', 'spiral', 'interference', 'gradient', 'warp',
 ];
 
-// Frozen numeric ids — mirror these in the GPU shader's `switch(patternType)` so TS and WGSL can't
+// Frozen numeric ids - mirror these in the GPU shader's `switch(patternType)` so TS and WGSL can't
 // drift (same discipline as core/effects/effectRegistry EFFECT_TYPE).
 export const PATTERN_TYPE: Record<PatternType, number> = {
   waves: 0, plasma: 1, kaleidoscope: 2, mosaic: 3,

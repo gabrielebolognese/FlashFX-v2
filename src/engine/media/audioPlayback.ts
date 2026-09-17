@@ -203,15 +203,15 @@ class AudioPlaybackEngine {
 
     const volume = evaluateNumber(layer.audio.volume, currentFrame);
     const pitch = evaluateNumber(layer.audio.pitch, currentFrame);
-    // Pitch shift is a resample (Web Audio has no pitch-preserving rate) — so it
+    // Pitch shift is a resample (Web Audio has no pitch-preserving rate) - so it
     // also sets how fast the source buffer is consumed per composition-second.
     const rate = Math.max(0.25, Math.min(4, Math.pow(2, pitch / 12)));
 
     // Shared clip→source scheduling (the SAME math the export mixer's anchor
-    // reproduces — see engine/audio/audioScheduleMath + verify:audioschedule).
+    // reproduces - see engine/audio/audioScheduleMath + verify:audioschedule).
     // The preview anchors at (current playhead, ctx.currentTime, rate 1): a clip
     // already playing at the anchor starts now, advanced into its buffer by how
-    // far past the clip start we are — scaled by the clip's own rate. The old
+    // far past the clip start we are - scaled by the clip's own rate. The old
     // inline math advanced the offset UNSCALED, so pressing play with the
     // playhead parked mid-clip started a pitched clip at the wrong sample.
     const schedule = computeSourceSchedule(
@@ -249,7 +249,7 @@ class AudioPlaybackEngine {
 
     // A source with a finite duration ends on its OWN when its buffer/clip runs out
     // (e.g. a 3s SFX on a 10s layer, or the sample-accurate end just before the
-    // rAF-jittered outPoint crossing). Disconnect it from the master graph then —
+    // rAF-jittered outPoint crossing). Disconnect it from the master graph then -
     // otherwise the node leaks: fadeAndStop's teardown only runs when we explicitly
     // stop a STILL-PLAYING source, never for one that already ended. Keep the key in
     // activeKeys so the one-shot isn't re-scheduled while the clip is still in range;
@@ -300,12 +300,12 @@ class AudioPlaybackEngine {
         gain.gain.cancelScheduledValues(now);
         gain.gain.setValueAtTime(gain.gain.value, now);
         gain.gain.linearRampToValueAtTime(0, end);
-      } catch { /* automation rejected — stop still runs below */ }
+      } catch { /* automation rejected - stop still runs below */ }
       try {
         source.stop(end);
         source.onended = disconnect; // disconnect only after the fade is heard
         return;
-      } catch { /* already stopped — fall through to immediate teardown */ }
+      } catch { /* already stopped - fall through to immediate teardown */ }
     } else {
       try { source.stop(); } catch { /* already stopped */ }
     }
@@ -392,7 +392,7 @@ class AudioPlaybackEngine {
   destroy(): void {
     this.stopPlayback();
     // The AudioContext + master graph are owned by audioTransport (shared with
-    // video-clip audio), so don't close them here — just drop local references.
+    // video-clip audio), so don't close them here - just drop local references.
     this.context = null;
     this.masterGain = null;
     this.failedAssets.clear();

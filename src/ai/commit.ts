@@ -3,10 +3,10 @@ import type { SharedStyle } from '../core/styles';
 import { useEditorStore } from '../store/editor';
 import { useHistoryStore } from '../store/history';
 
-// COMMIT (browser only — imports the store, so it is NOT bundled into the Node compiler/harness).
+// COMMIT (browser only - imports the store, so it is NOT bundled into the Node compiler/harness).
 // Takes a compiled Composition + its palette styles and commits them as ONE undo step via the
 // snapshot-command pattern. We do NOT use the document loader: it clears history, which would make
-// the generation non-undoable. Scoped to AI commits only — this is not a general write path.
+// the generation non-undoable. Scoped to AI commits only - this is not a general write path.
 
 export function commitAiComposition(
   composition: Composition,

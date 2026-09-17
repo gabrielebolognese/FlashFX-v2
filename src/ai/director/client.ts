@@ -21,7 +21,7 @@ export function addUsage(a: Usage, b: Usage): Usage {
 }
 
 export interface ClientResponse {
-  /** The forced tool call's `input` — the raw DirectorOutput candidate (unvalidated). */
+  /** The forced tool call's `input` - the raw DirectorOutput candidate (unvalidated). */
   toolInput: unknown;
   usage: Usage;
 }
@@ -30,7 +30,7 @@ export interface DirectorClient {
   createMessage(req: AnthropicRequest): Promise<ClientResponse>;
 }
 
-// ── Pricing (ESTIMATE — verify against current Anthropic pricing before trusting the dollar figure).
+// ── Pricing (ESTIMATE - verify against current Anthropic pricing before trusting the dollar figure).
 // Per 1M tokens. Cache write ≈ 1.25× input, cache read ≈ 0.1× input (Anthropic's published multipliers).
 export interface Pricing { inputPerM: number; outputPerM: number; cacheWritePerM: number; cacheReadPerM: number }
 export const OPUS5_PRICING_ESTIMATE: Pricing = { inputPerM: 15, outputPerM: 75, cacheWritePerM: 18.75, cacheReadPerM: 1.5 };

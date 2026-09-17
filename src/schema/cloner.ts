@@ -3,9 +3,9 @@ import { zVec3, zId } from './primitives';
 import { EFFECTOR_BLEND_MODES, EFFECTOR_WAVEFORMS } from './enums';
 import type { Caps } from './caps';
 
-// Cloner / effector configuration — a faithful, strict mirror of src/cloner/types.ts. This is how
+// Cloner / effector configuration - a faithful, strict mirror of src/cloner/types.ts. This is how
 // the Coder expresses PARAMETRIC and INDEX-DRIVEN variation (the AI expression channel was dropped;
-// the cloner engine is already pure, frame-deterministic, seeded, per-index, and bans Math.random —
+// the cloner engine is already pure, frame-deterministic, seeded, per-index, and bans Math.random -
 // exactly what an expression language would have been for). renderCount and the effector-stack
 // length are the two hard caps enforced here at parse time.
 
@@ -30,7 +30,7 @@ const zFieldDist = z.strictObject({
 });
 export const zClonerDistribution = z.discriminatedUnion('type', [zGridDist, zRadialDist, zPathDist, zFieldDist]);
 
-// Effectors — each carries strength + blendMode (EffectorCommon).
+// Effectors - each carries strength + blendMode (EffectorCommon).
 const common = { strength: z.number(), blendMode: z.enum(EFFECTOR_BLEND_MODES) };
 
 const zRandomEff = z.strictObject({

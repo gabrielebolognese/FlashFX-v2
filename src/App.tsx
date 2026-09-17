@@ -87,13 +87,13 @@ function Editor() {
       // A numeric "data box" (DragInput scrubby field, or a number/range input): NOT free text.
       // Space should play the video here, not type a space (the user's complaint).
       const isDataField = target.tagName === 'INPUT' && (target.dataset.scrubby === 'true' || inputType === 'number' || inputType === 'range');
-      // Genuine text entry — where a space is a real character and Esc exits the field. This is the
+      // Genuine text entry - where a space is a real character and Esc exits the field. This is the
       // "text editing mode" exception (e.g. the text-layer content textarea, name/search fields).
       const isTextEntry =
         target.tagName === 'TEXTAREA' ||
         target.isContentEditable ||
         (target.tagName === 'INPUT' && !isDataField && ['text', 'search', 'url', 'email', 'password'].includes(inputType));
-      // Any focused input/textarea/contenteditable — used to gate letter-key shortcuts so they
+      // Any focused input/textarea/contenteditable - used to gate letter-key shortcuts so they
       // don't fire while a field (data OR text) is focused.
       const isTextInput = isTextEntry || isDataField || target.tagName === 'TEXTAREA' || target.isContentEditable;
 
@@ -110,7 +110,7 @@ function Editor() {
         return;
       }
 
-      // Easy Ease on the selected keyframes — AE F9 (both), Shift+F9 (in), Ctrl/Cmd+Shift+F9 (out).
+      // Easy Ease on the selected keyframes - AE F9 (both), Shift+F9 (in), Ctrl/Cmd+Shift+F9 (out).
       // Works from anywhere; a no-op when no keyframes are selected.
       if (e.key === 'F9') {
         e.preventDefault();
@@ -168,7 +168,7 @@ function Editor() {
         return;
       }
 
-      // M19 — Batch rename (Ctrl/Cmd+R) for a multi-selection. preventDefault so the browser
+      // M19 - Batch rename (Ctrl/Cmd+R) for a multi-selection. preventDefault so the browser
       // doesn't reload. Single-layer rename stays on F2.
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === 'r' || e.key === 'R') && !isTextInput) {
         if (useEditorStore.getState().selection.selectedIds.length >= 2) {
@@ -178,7 +178,7 @@ function Editor() {
         }
       }
 
-      // M12 — Shift+Enter ascends one group/isolation level. Handled BEFORE the plain-Enter
+      // M12 - Shift+Enter ascends one group/isolation level. Handled BEFORE the plain-Enter
       // branch below (which matches Enter without a shift guard) so it isn't swallowed.
       if (e.key === 'Enter' && e.shiftKey && !isTextInput) {
         const st = useEditorStore.getState();
@@ -211,7 +211,7 @@ function Editor() {
       if (e.key === 'Escape') {
         // In a field (text OR data): Esc exits the field first. In text editing this is the only
         // way out; in a data box it commits/cancels the edit. A SECOND Esc (nothing focused) then
-        // deselects. Don't preventDefault — let the field's own Esc-cancel run too.
+        // deselects. Don't preventDefault - let the field's own Esc-cancel run too.
         if (isTextEntry || isDataField) {
           target.blur();
           return;
@@ -239,8 +239,8 @@ function Editor() {
 
       // Trim operations
       if (!isTextInput) {
-        // Boolean shape ops — Figma-standard Alt+Shift+U/S/I/E (Union/Subtract/
-        // Intersect/Exclude) — and Flatten on Ctrl/Cmd+E. Alt mangles e.key on some
+        // Boolean shape ops - Figma-standard Alt+Shift+U/S/I/E (Union/Subtract/
+        // Intersect/Exclude) - and Flatten on Ctrl/Cmd+E. Alt mangles e.key on some
         // keyboard layouts, so match the physical key via e.code.
         if (e.altKey && e.shiftKey && !e.ctrlKey && !e.metaKey) {
           const boolOp =
@@ -259,7 +259,7 @@ function Editor() {
           useEditorStore.getState().flattenSelectedShapes();
           return;
         }
-        // M17 — Outline Text (Figma/Illustrator Ctrl+Shift+O): convert a text layer to editable
+        // M17 - Outline Text (Figma/Illustrator Ctrl+Shift+O): convert a text layer to editable
         // glyph paths. Gated on an active text layer.
         if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && (e.key === 'o' || e.key === 'O')) {
           const st = useEditorStore.getState();
@@ -270,13 +270,13 @@ function Editor() {
             return;
           }
         }
-        // M18 — Pencil / freehand tool (Shift+P, Figma parity).
+        // M18 - Pencil / freehand tool (Shift+P, Figma parity).
         if (e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && (e.key === 'P' || e.code === 'KeyP')) {
           e.preventDefault();
           useShapeToolStore.getState().setActiveTool('pencil');
           return;
         }
-        // M11 — Copy/Paste Properties (Figma Ctrl+Alt+C / Ctrl+Alt+V). Matched by physical
+        // M11 - Copy/Paste Properties (Figma Ctrl+Alt+C / Ctrl+Alt+V). Matched by physical
         // e.code (Alt mangles e.key) and placed BEFORE plain Ctrl+C/V so they don't fall
         // through to copySelection/pasteClipboard. Paste is GUARDED on a properties
         // clipboard: with no bundle copied, Ctrl+Alt+V falls through to distribute-vertical
@@ -291,8 +291,8 @@ function Editor() {
           useEditorStore.getState().pasteLayerProperties();
           return;
         }
-        // M15 — Tidy Up (Figma Ctrl+Alt+T): infer a row/column/grid + equalize spacing. Gated
-        // to a multi-selection (e.code — Alt mangles e.key) so it never fires for 0/1 layers.
+        // M15 - Tidy Up (Figma Ctrl+Alt+T): infer a row/column/grid + equalize spacing. Gated
+        // to a multi-selection (e.code - Alt mangles e.key) so it never fires for 0/1 layers.
         if ((e.ctrlKey || e.metaKey) && e.altKey && e.code === 'KeyT' && selection.selectedIds.length >= 2) {
           e.preventDefault();
           useEditorStore.getState().tidyUpSelection();
@@ -419,7 +419,7 @@ function Editor() {
       }
 
       // Spacebar toggles playback everywhere EXCEPT genuine text entry (text-layer content,
-      // name/search fields). In a numeric data box (DragInput/number/range) Space plays too —
+      // name/search fields). In a numeric data box (DragInput/number/range) Space plays too -
       // preventDefault stops the stray space char the user was seeing.
       if (e.key === ' ') {
         if (isTextEntry) return;
@@ -484,9 +484,9 @@ function Editor() {
           <div className="flex-1 min-w-0" />
         )}
         {workspace === 'editor' && uiMode === 'pro' && <SceneSwitcher />}
-        {/* Starter ⇄ Full-editor toggle lives in the background settings (Inspector, no selection) —
+        {/* Starter ⇄ Full-editor toggle lives in the background settings (Inspector, no selection) -
             EditorModeSwitch in BackgroundPanel. Removed from the top bar per the minimalist UX. */}
-        {/* Animation Builder mode toggle — HIDDEN from the public UI (the builder is not
+        {/* Animation Builder mode toggle - HIDDEN from the public UI (the builder is not
             production-ready). The BuilderLayout + setWorkspace path is kept intact so it can be
             re-exposed by restoring this button. */}
         <button
@@ -596,7 +596,7 @@ function PanelsMenu() {
 
       {open && (
         <div className="absolute right-0 top-full mt-1 z-50 bg-surface-2 border border-hairline rounded-lg shadow-overlay py-1 min-w-[180px]">
-          {/* Starter ⇄ Pro mode — the primary control; panel toggles below only apply in Pro. */}
+          {/* Starter ⇄ Pro mode - the primary control; panel toggles below only apply in Pro. */}
           <button
             onClick={() => { toggleUiMode(); setOpen(false); }}
             className="w-full px-3 py-1.5 flex items-center gap-2 text-[11px] font-medium text-slate-100 hover:bg-white/[0.04] transition-colors"
@@ -675,7 +675,7 @@ function App() {
         useOnboardingStore.getState().start();
       }
     } catch {
-      /* localStorage unavailable — skip onboarding rather than block boot */
+      /* localStorage unavailable - skip onboarding rather than block boot */
     }
   }, []);
 
@@ -702,7 +702,7 @@ function App() {
   }
 
   // Account gate: when accounts are enabled (Supabase configured), a visitor must sign in before
-  // reaching the dashboard/editor — so projects are created only with an account. When accounts are
+  // reaching the dashboard/editor - so projects are created only with an account. When accounts are
   // NOT enabled (no Supabase env), skip the gate so the app stays local-first and runs with zero
   // backend. Placed after all hooks (never gate before a hook runs).
   if (authEnabled && authStatus !== 'signed-in') {

@@ -63,7 +63,7 @@ export function ProjectApp({ editorComponent: EditorComponent }: Props) {
   }, [view, activeProjectId, loadDocument]);
 
   // The splash OVERLAYS the app (rather than replacing it) so the editor mounts and its WebGPU
-  // renderer warms up behind it — launchTemplate pre-rolls frames, then lifts the splash into a
+  // renderer warms up behind it - launchTemplate pre-rolls frames, then lifts the splash into a
   // smoothly-playing scene.
   return (
     <>
@@ -105,7 +105,7 @@ function captureRandomThumbnail(projectId: string): void {
           comp.settings.width,
           comp.settings.height
         );
-        // Guard again — the async render may have outlived the project being open.
+        // Guard again - the async render may have outlived the project being open.
         if (blob && useProjectStore.getState().activeProjectId === projectId) {
           await saveProjectPreview(projectId, blob);
         }

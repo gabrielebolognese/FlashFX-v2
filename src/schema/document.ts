@@ -44,7 +44,7 @@ export function makeComposition(caps: Caps) {
     settings: zSettings,
     layers: z.array(zDocumentLayer),
     tracks: z.array(zTrack),
-    /** AI panels (frames) — time ranges within THIS composition. Optional: hand scenes have none. */
+    /** AI panels (frames) - time ranges within THIS composition. Optional: hand scenes have none. */
     panels: makePanelList(caps).optional(),
     // background / motionPaths / markers / *Bindings are preserved by loose().
   });
@@ -58,7 +58,7 @@ export function makeAiMeta(caps: Caps) {
       brief: makeBrief(),
       styleContract: makeStyleContract(),
       panelPlan: makeDirectorPanelPlan(caps),
-      seed: z.int().describe('run seed — generation must be reproducible from it'),
+      seed: z.int().describe('run seed - generation must be reproducible from it'),
       digest: z.string().min(1).describe('content digest of the generating inputs'),
       tier: z.enum(['free', 'pro', 'max']).optional(),
     })

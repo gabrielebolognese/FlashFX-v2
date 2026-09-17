@@ -83,7 +83,7 @@ async function loadPipeline(
 
   const pipe = (await pipeline('automatic-speech-recognition', model, {
     device,
-    dtype: 'q8', // int8 quantized weights — small download, deterministic across runs
+    dtype: 'q8', // int8 quantized weights - small download, deterministic across runs
     progress_callback,
   } as Record<string, unknown>)) as AutomaticSpeechRecognitionPipeline;
 

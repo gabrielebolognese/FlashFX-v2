@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-// Global state for the "cinematic agent build" — the show that plays when a template is inserted:
+// Global state for the "cinematic agent build" - the show that plays when a template is inserted:
 // the editor's border pulses amber, a fake agent cursor glides around, and inspector property rows
 // light up as keyframes get placed. This store holds ONLY the visual/agent state; the actual
 // composition staging + choreography lives in the editor store's insertAnimationTemplateAnimated,
@@ -19,7 +19,7 @@ export type AgentCursorTarget =
   | { kind: 'screen'; x: number; y: number };
 
 interface AgentBuildState {
-  /** A cinematic build is running — drives the pulsing border and shows the cursor. */
+  /** A cinematic build is running - drives the pulsing border and shows the cursor. */
   active: boolean;
   /** Short status shown beside the cursor ("Placing keyframes…"). */
   label: string;

@@ -360,7 +360,7 @@ export function Toolbar() {
         { label: 'Simplify', shortcut: 'Ctrl+L', action: () => {
             const id = selection.activeId;
             if (!id) return;
-            const s = window.prompt('Simplify tolerance (px — higher removes more points):', '2');
+            const s = window.prompt('Simplify tolerance (px - higher removes more points):', '2');
             const t = s ? parseFloat(s) : NaN;
             if (Number.isFinite(t) && t > 0) simplifyShapePath(id, t);
           }, disabled: !isPolygonSel },
@@ -410,7 +410,7 @@ export function Toolbar() {
         { label: '', divider: true },
         { label: 'Reset Editor...', action: openResetDialog },
         { label: '', divider: true },
-        { label: 'Check for Updates...', action: () => alert('FlashFX runs in your browser and is always up to date — there is nothing to install or update.') },
+        { label: 'Check for Updates...', action: () => alert('FlashFX runs in your browser and is always up to date - there is nothing to install or update.') },
         { label: 'About FlashFX', action: () => alert('FlashFX - Motion Graphics Editor\nVersion 1.0.0') },
       ],
     },
@@ -482,7 +482,7 @@ export function Toolbar() {
             <div className="space-y-2">
               <SettingRow label="Width" value={composition.settings.width} onChange={(v) => setCompositionSetting('width', v)} />
               <SettingRow label="Height" value={composition.settings.height} onChange={(v) => setCompositionSetting('height', v)} />
-              {/* M14 — aspect presets reflow every top-level layer per its constraints (one undo). */}
+              {/* M14 - aspect presets reflow every top-level layer per its constraints (one undo). */}
               <div className="flex items-center gap-1.5">
                 <label className="text-[10px] text-slate-500 w-14 flex-shrink-0">Aspect</label>
                 <div className="flex flex-1 gap-1">
@@ -498,7 +498,7 @@ export function Toolbar() {
                 </div>
               </div>
               <SettingRow label="FPS" value={composition.settings.frameRate} onChange={(v) => setCompositionSetting('frameRate', v)} />
-              {/* Motion blur (Category 1 — B4a): global shutter angle/phase + full-quality samples. */}
+              {/* Motion blur (Category 1 - B4a): global shutter angle/phase + full-quality samples. */}
               <SettingRow label="Shutter °" value={composition.settings.shutterAngle ?? 180} onChange={(v) => setCompositionSetting('shutterAngle', Math.max(0, Math.min(360, v)))} suffix="deg" />
               <SettingRow label="Sh. Phase" value={composition.settings.shutterPhase ?? 0} onChange={(v) => setCompositionSetting('shutterPhase', Math.max(-360, Math.min(360, v)))} suffix="deg" />
               <SettingRow label="MB Samples" value={composition.settings.motionBlurSamples ?? 16} onChange={(v) => setCompositionSetting('motionBlurSamples', Math.max(2, Math.min(64, Math.round(v))))} />

@@ -6,7 +6,7 @@ import type {
 import { mediabunnyController } from './mediabunnyController';
 
 // Video decode backend. mediabunny (default) replaces the legacy hand-rolled mp4box+WebCodecs worker;
-// the legacy pump stays in-tree for instant rollback — set localStorage.ffx_video_engine='legacy' and
+// the legacy pump stays in-tree for instant rollback - set localStorage.ffx_video_engine='legacy' and
 // reload to fall back if a regression appears. Read once at load so the backend is stable per session.
 const USE_MEDIABUNNY: boolean = (() => {
   try { return (localStorage.getItem('ffx_video_engine') ?? 'mediabunny') !== 'legacy'; }
@@ -30,7 +30,7 @@ interface WorkerState {
   // Respawn backoff: how many times this worker has been recreated in the current
   // crash streak, and when the last respawn happened. A worker that keeps crashing
   // (corrupt file, or the browser's hardware-decoder ceiling) must NOT respawn
-  // forever — that infinite `new Worker()` loop is a tab-killing OOM.
+  // forever - that infinite `new Worker()` loop is a tab-killing OOM.
   respawns: number;
   lastRespawnAt: number;
   permanentlyFailed: boolean;
@@ -179,7 +179,7 @@ class VideoDecoderPool {
   private async ensureWorker(assetId: string): Promise<WorkerState | null> {
     let existing = this.workers.get(assetId);
     if (existing?.permanentlyFailed) {
-      // The cap must not disable an asset for the WHOLE SESSION — a transient decoder stall (e.g. the
+      // The cap must not disable an asset for the WHOLE SESSION - a transient decoder stall (e.g. the
       // hardware output pool briefly saturating) would otherwise black the clip out permanently. After
       // a cool-off, drop the dead state and re-init from the retained source so decoding can recover;
       // if it's genuinely unplayable it just re-fails and re-cools (throttled retry, never a loop).
@@ -327,7 +327,7 @@ class VideoDecoderPool {
 
       case 'ERROR': {
         state.consecutiveErrors++;
-        // Surface the real decoder error — it used to be swallowed at every layer, so a decode failure
+        // Surface the real decoder error - it used to be swallowed at every layer, so a decode failure
         // was undiagnosable (the clip just went black). This is the true underlying message.
         console.error(`[VideoDecoderPool] decode error for ${assetId} (#${state.consecutiveErrors}):`, msg.message);
         const req = state.inFlight.get(msg.requestId);
@@ -360,7 +360,7 @@ class VideoDecoderPool {
       req.reject(new Error('Worker crashed'));
     }
     state.inFlight.clear();
-    if (state.permanentlyFailed) return; // never respawn a known-bad asset — that's the loop
+    if (state.permanentlyFailed) return; // never respawn a known-bad asset - that's the loop
     this.respawnWorker(assetId);
   }
 
@@ -397,7 +397,7 @@ class VideoDecoderPool {
     state.worker = worker;
     state.consecutiveErrors = 0;
     // Reject requests that were in flight on the dead worker so their awaiters
-    // fail fast (and can retry) instead of hanging forever — the cause of
+    // fail fast (and can retry) instead of hanging forever - the cause of
     // permanent black frames after an error burst.
     for (const req of state.inFlight.values()) {
       req.reject(new Error('Decoder worker respawned; request cancelled.'));

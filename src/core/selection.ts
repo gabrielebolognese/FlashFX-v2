@@ -1,11 +1,11 @@
 import type { Layer, Vec4, LayerShadow, LayerGlow, LayerBlur } from './types';
 
-// M12 — selection accelerators. Pure selection-model logic:
-//  • select-all-with-same (fill / stroke / font / effect / type) — the batch-restyle enabler
+// M12 - selection accelerators. Pure selection-model logic:
+//  • select-all-with-same (fill / stroke / font / effect / type) - the batch-restyle enabler
 //  • deep-select + group-isolation resolvers (plain click = top group, Ctrl/Cmd click = leaf,
 //    double-click / Enter descend one level, Shift+Enter ascend).
 // Kept dependency-free (only ./types) so scripts/verify-selection.mjs bundles with no engine/DOM
-// stub — the graph walks below are re-implemented rather than imported from sceneGraph.ts, which
+// stub - the graph walks below are re-implemented rather than imported from sceneGraph.ts, which
 // pulls in engine/textAtlas. Proven by scripts/verify-selection.mjs.
 
 export type SameAttr = 'type' | 'fill' | 'stroke' | 'font' | 'effect';

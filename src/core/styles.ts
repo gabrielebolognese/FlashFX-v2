@@ -1,10 +1,10 @@
 import type { Vec4, TextSpanStyle, LayerShadow, LayerGlow, LayerBlur } from './types';
 
-// M21 — Shared linked styles. Named, reusable style definitions on the SceneDocument that layers
+// M21 - Shared linked styles. Named, reusable style definitions on the SceneDocument that layers
 // LINK to by id; the renderer reads THROUGH the style at resolve time (edit the definition → every
 // referent updates, for free, with no propagation pass and no stale copies). v1 ships COLOR styles
 // (shape + text fill/stroke); text-font and effect styles are the same mechanism extended (types
-// carried here already). Pure + deterministic — proven by scripts/verify-styles.mjs.
+// carried here already). Pure + deterministic - proven by scripts/verify-styles.mjs.
 
 export type SharedStyleType = 'color' | 'text' | 'effect';
 

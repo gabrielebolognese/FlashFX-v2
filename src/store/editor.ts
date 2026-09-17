@@ -41,7 +41,7 @@ import { createMotionPath } from './motionPath';
 import { useHistoryStore, type Command } from './history';
 import { mediaAssetManager, type ImageAssetMetadata } from '../engine/media/assetManager';
 
-// After adding an image, prompt (non-modally) if it doesn't fit the canvas — offering fit-vs-keep.
+// After adding an image, prompt (non-modally) if it doesn't fit the canvas - offering fit-vs-keep.
 function maybePromptImageSize(layerId: string, meta: ImageAssetMetadata, canvasW: number, canvasH: number): void {
   if (meta.width > canvasW || meta.height > canvasH) {
     useImageSizePromptStore.getState().show({
@@ -164,7 +164,7 @@ function layerSupportsMasks(layer: Layer): boolean {
 /** Layer kinds a Cloner can repeat as its source (M16). Excludes self/audio/group/precomp/layout. */
 const CLONER_SOURCE_TYPES = new Set<Layer['type']>(['shape', 'text', 'image', 'video', 'lottieIcon']);
 
-// M21 — read/write a layer's raw fill/stroke color (shape geometry, or the first text span).
+// M21 - read/write a layer's raw fill/stroke color (shape geometry, or the first text span).
 function layerRawColor(layer: Layer, slot: 'fill' | 'stroke'): Vec4 | null {
   if (layer.type === 'shape') return slot === 'fill' ? layer.shape.fillColor : layer.shape.strokeColor;
   if (layer.type === 'text') { const s = layer.content.spans[0]?.style; return s ? (slot === 'fill' ? s.color : s.strokeColor) : null; }
@@ -197,10 +197,10 @@ interface EditorState {
   /** The live, actively-edited composition (the mirror of the active registry entry). */
   composition: Composition;
   /** Multi-composition document: resting state of all compositions (precomps + root).
-   *  The active entry may be stale — `composition` is authoritative for it; use
+   *  The active entry may be stale - `composition` is authoritative for it; use
    *  `getComposition()` which merges the two. */
   compositions: Record<string, Composition>;
-  /** M21 — document-level shared/linked style registry. */
+  /** M21 - document-level shared/linked style registry. */
   styles: Record<string, SharedStyle>;
   /** The top-level composition id (what a project opens to). */
   rootCompositionId: string;
@@ -222,9 +222,9 @@ interface EditorState {
   renamingLayerId: string | null;
   selectionSource: SelectionSource;
   clipboard: ClipboardState | null;
-  /** Separate 'paste attributes' clipboard (M11) — holds an appearance bundle, not layers. */
+  /** Separate 'paste attributes' clipboard (M11) - holds an appearance bundle, not layers. */
   propertiesClipboard: LayerPropertyBundle | null;
-  /** M12 — the group currently isolated for editing (Figma double-click-to-enter); null = none. */
+  /** M12 - the group currently isolated for editing (Figma double-click-to-enter); null = none. */
   activeGroupId: string | null;
   randomizeColors: boolean;
 
@@ -249,7 +249,7 @@ interface EditorState {
   startRenameLayer: (id: string) => void;
   finishRenameLayer: () => void;
   renameLayer: (id: string, name: string) => void;
-  /** M19 — batch-rename layers from a token/number/regex pattern, one undo. */
+  /** M19 - batch-rename layers from a token/number/regex pattern, one undo. */
   renameLayers: (ids: string[], pattern: RenamePattern) => void;
   resetTransformPosition: (id: string) => void;
   resetTransformScale: (id: string) => void;
@@ -258,20 +258,20 @@ interface EditorState {
   deselectAll: () => void;
   /** Select every layer in the active composition (Ctrl/Cmd+A). */
   selectAllLayers: () => void;
-  /** M12 — replace the selection with every layer sharing the active layer's fill/stroke/font/effect/type. */
+  /** M12 - replace the selection with every layer sharing the active layer's fill/stroke/font/effect/type. */
   selectAllWithSame: (attr: SameAttr) => void;
-  /** M12 — group isolation: set/enter/exit the active editing group. Non-undoable (navigation-style). */
+  /** M12 - group isolation: set/enter/exit the active editing group. Non-undoable (navigation-style). */
   _setActiveGroup: (id: string | null) => void;
   enterGroupIsolation: (groupId: string) => void;
   exitGroupIsolation: () => void;
-  /** Copy the selection, then delete it — one undo (Ctrl/Cmd+X). */
+  /** Copy the selection, then delete it - one undo (Ctrl/Cmd+X). */
   cutSelection: () => void;
   /** Move the selection by (dx, dy) composition px, as one undo (arrow-key nudge). */
   nudgeSelection: (dx: number, dy: number) => void;
   toggleGroupCollapsed: (groupId: string) => void;
   loadComposition: (comp: Composition) => void;
 
-  // M21 — shared/linked color styles (document-level)
+  // M21 - shared/linked color styles (document-level)
   createColorStyle: (color: Vec4, name?: string) => string;
   updateStyleColor: (id: string, color: Vec4) => void;
   renameStyle: (id: string, name: string) => void;
@@ -344,21 +344,21 @@ interface EditorState {
   addFieldSampledLayer: (configJSON?: string) => void;
   addGenerativePatternLayer: (configJSON?: string) => void;
   addCameraLayer: () => void;
-  /** M16 — add a Cloner. Clones the single selected eligible layer, or a placeholder circle. */
+  /** M16 - add a Cloner. Clones the single selected eligible layer, or a placeholder circle. */
   addCloner: () => void;
-  /** M16 — wrap the active selected layer as a Cloner's source. */
+  /** M16 - wrap the active selected layer as a Cloner's source. */
   createClonerFromSelection: () => void;
-  /** M16 — append a default effector of the given type to a cloner's stack. */
+  /** M16 - append a default effector of the given type to a cloner's stack. */
   addClonerEffector: (layerId: string, type: ClonerEffector['type']) => void;
-  /** M16 — remove the effector at `index` from a cloner's stack. */
+  /** M16 - remove the effector at `index` from a cloner's stack. */
   removeClonerEffector: (layerId: string, index: number) => void;
-  /** M16 — move the effector at `index` up/down in the ordered stack. */
+  /** M16 - move the effector at `index` up/down in the ordered stack. */
   reorderClonerEffector: (layerId: string, index: number, dir: 'up' | 'down') => void;
   addAnimationItem: (presetName: string) => void;
   /** Insert a pre-built animation template (group + keyframed children) at the playhead. */
   insertAnimationTemplate: (id: string, center?: Vec2) => void;
   /** Insert a template with an ANIMATED build: layers appear one at a time (static), then the
-   *  keyframes are applied — used by the AI-panel demo. Committed as one undo step. Returns cancel. */
+   *  keyframes are applied - used by the AI-panel demo. Committed as one undo step. Returns cancel. */
   insertAnimationTemplateAnimated: (id: string, opts?: { perLayerMs?: number; onLayer?: (shown: number, total: number) => void; onKeyframes?: () => void; onDone?: () => void }) => { cancel: () => void };
   /** Insert every animation template back-to-back in sequence, starting at the playhead. */
   insertAllAnimationTemplates: () => void;
@@ -388,7 +388,7 @@ interface EditorState {
   // Add an image scaled to fit the canvas (contain), centered.
   addImageFitCanvas: (assetId: string) => void;
   // Add an image (contain-scaled) with a full-extent rectangle crop mask ready to
-  // drag inward — "Crop" for a media-pool image asset, reusing the mask system.
+  // drag inward - "Crop" for a media-pool image asset, reusing the mask system.
   cropImageAsset: (assetId: string) => void;
   // Enable a layer effect (shadow/glow/blur) with default params if not already on.
   enableLayerEffect: (layerId: string, kind: 'shadow' | 'glow' | 'blur') => void;
@@ -396,22 +396,22 @@ interface EditorState {
   addVideoSubclip: (assetId: string, startSec: number, endSec: number) => void;
   // Apply computed align/distribute results (from core/align) to layer positions. Undoable.
   applyAlignResults: (results: AlignResult[], label: string) => void;
-  /** M15 — Tidy Up: infer a row/column/grid from the selection and equalize spacing (one undo). */
+  /** M15 - Tidy Up: infer a row/column/grid from the selection and equalize spacing (one undo). */
   tidyUpSelection: () => void;
   // Path ops (Object menu → Path). All undoable.
   convertShapeToPath: (layerId: string) => void;
   reverseShapePath: (layerId: string) => void;
   simplifyShapePath: (layerId: string, tolerance: number) => void;
   booleanSelectedShapes: (op: BooleanOp) => void;
-  /** M22 — non-destructive boolean that PRESERVES holes (renders via the polygon+holes path);
+  /** M22 - non-destructive boolean that PRESERVES holes (renders via the polygon+holes path);
    *  the sources are hidden, not deleted. */
   compoundBooleanSelectedShapes: (op: BooleanOp) => void;
-  /** M22 — convert a shape's center-line stroke into a filled, editable outline PolygonShape. */
+  /** M22 - convert a shape's center-line stroke into a filled, editable outline PolygonShape. */
   outlineStroke: (layerId: string) => void;
   /** Bake the selected shapes to a single vector path (Figma-style Flatten): union
    *  of 2+ shapes, or convert one shape to a path. Destructive; one undo. */
   flattenSelectedShapes: () => void;
-  /** M17 — Convert a text layer to editable vector glyph paths (grouped, with counters as
+  /** M17 - Convert a text layer to editable vector glyph paths (grouped, with counters as
    *  holes), preserving transform + fill/stroke. Async (loads the bundled font). */
   outlineTextLayer: (layerId: string) => void;
   addCaptionClips: (segments: CaptionSegment[], options: CaptionOptions, clipStartFrame: number) => void;
@@ -425,7 +425,7 @@ interface EditorState {
   updateLayerProperty: (layerId: string, path: string, value: unknown) => void;
   /** Track matte (B10b): set/clear how this layer is matted by the layer directly above it. */
   setTrackMatte: (layerId: string, mode: TrackMatteMode | undefined) => void;
-  /** Path modifier stack (B8a) — trim/offset/roughen on a shape layer's outline. Params are edited
+  /** Path modifier stack (B8a) - trim/offset/roughen on a shape layer's outline. Params are edited
    *  through the generic updateLayerProperty/addKeyframe on `modifiers.<i>.<param>` dot-paths. */
   addShapeModifier: (layerId: string, type: ShapeModifierType) => void;
   removeShapeModifier: (layerId: string, index: number) => void;
@@ -443,7 +443,7 @@ interface EditorState {
   toggleShapeRepeater: (layerId: string) => void;
   toggleLayer3D: (layerId: string) => void;
   /** Enable 3D on every selected layer that supports it (skips camera/group/audio and already-3D
-   *  layers), as ONE undo step — so a whole scene can be prepped for a camera in a single click. */
+   *  layers), as ONE undo step - so a whole scene can be prepped for a camera in a single click. */
   convertSelectionTo3D: () => void;
   // Image effect-stack actions (see core/effects/effectRegistry). `type` is the
   // frozen numeric effect id; upsert sets one param (creating the effect if
@@ -469,7 +469,7 @@ interface EditorState {
   toggleSeparateDimensions: (layerId: string) => void;
   /** Add or update a keyframe on one axis of a separated position property (axis 0 = X, 1 = Y). */
   addSeparatedKeyframe: (layerId: string, axis: 0 | 1, frame: number, value: number) => void;
-  // ── Keyframe transforms (Batch 3) — all undoable, batched, operate on the targets ──
+  // ── Keyframe transforms (Batch 3) - all undoable, batched, operate on the targets ──
   copyKeyframes: (layerId: string, targets: KeyframeTarget[]) => void;
   pasteKeyframes: (layerId: string, atFrame: number) => void;
   duplicateKeyframes: (layerId: string, targets: KeyframeTarget[]) => void;
@@ -479,11 +479,11 @@ interface EditorState {
   alignKeyframes: (layerId: string, targets: KeyframeTarget[], dir: 'prev' | 'next') => void;
   reverseKeyframeValues: (layerId: string, targets: KeyframeTarget[]) => void;
   mirrorKeyframeTime: (layerId: string, targets: KeyframeTarget[], pivotFrame?: number) => void;
-  /** The Smoother — round jittery selected keyframe values into a gentle curve (endpoints pinned). */
+  /** The Smoother - round jittery selected keyframe values into a gentle curve (endpoints pinned). */
   smoothKeyframes: (layerId: string, targets: KeyframeTarget[]) => void;
-  /** The Wiggler — add seeded organic tremble (±amplitude) to interior selected keyframe values. */
+  /** The Wiggler - add seeded organic tremble (±amplitude) to interior selected keyframe values. */
   wiggleKeyframes: (layerId: string, targets: KeyframeTarget[], amplitude: number, seed: number) => void;
-  /** Exponential Scale assistant — turn a linear ramp between the selected keyframes into a geometric (perceptually-even) one. */
+  /** Exponential Scale assistant - turn a linear ramp between the selected keyframes into a geometric (perceptually-even) one. */
   exponentialScaleKeyframes: (layerId: string, targets: KeyframeTarget[]) => void;
   /** Enable/disable animated Time Remap on a video layer (seeds an identity source-time curve; motion-preserving). */
   setVideoTimeRemap: (layerId: string, enabled: boolean) => void;
@@ -521,9 +521,9 @@ interface EditorState {
   applyAnimationPreset: (layerId: string, presetId: string) => void;
   applyAnimationPresetBatch: (layerIds: string[], presetId: string, durationSeconds: number, atStart: boolean) => void;
   setCompositionSetting: (key: string, value: number) => void;
-  /** M14 — resize the composition frame and reflow every top-level layer per its constraints (one undo). */
+  /** M14 - resize the composition frame and reflow every top-level layer per its constraints (one undo). */
   setCompositionSize: (width: number, height: number) => void;
-  /** M14 — set a layer's reframe pin/scale constraints. */
+  /** M14 - set a layer's reframe pin/scale constraints. */
   setLayerConstraints: (layerId: string, patch: Partial<LayerConstraints>) => void;
   createGroup: () => void;
   ungroupSelection: () => void;
@@ -533,15 +533,15 @@ interface EditorState {
   pasteClipboard: (inPlace?: boolean) => void;
   duplicateSelection: () => void;
   toggleRandomizeColors: () => void;
-  /** M11 — copy the active (or given) layer's appearance bundle into propertiesClipboard. */
+  /** M11 - copy the active (or given) layer's appearance bundle into propertiesClipboard. */
   copyLayerProperties: (id?: string) => void;
-  /** M11 — apply the copied appearance bundle to the selection (or given ids), one undoable command. */
+  /** M11 - apply the copied appearance bundle to the selection (or given ids), one undoable command. */
   pasteLayerProperties: (ids?: string[]) => void;
-  /** M13 — swap a layer's media source (image/video/precomp), preserving everything else. */
+  /** M13 - swap a layer's media source (image/video/precomp), preserving everything else. */
   replaceLayerSource: (layerId: string, source: ReplaceSource) => void;
-  /** M13 — replace a layer's source from the first same-kind layer on the clipboard. */
+  /** M13 - replace a layer's source from the first same-kind layer on the clipboard. */
   replaceSourceFromClipboard: (layerId: string) => void;
-  /** M13 — replace a layer's source with an existing imported asset (metadata read from the pool). */
+  /** M13 - replace a layer's source with an existing imported asset (metadata read from the pool). */
   replaceSourceWithAsset: (layerId: string, assetId: string) => void;
 
   // Motion path actions
@@ -627,7 +627,7 @@ interface EditorState {
   extendToMaxLeft: () => void;
   extendToMaxRight: () => void;
 
-  // Reorder clips in time — ascending = earliest inPoint first (matching layer stack top-to-bottom)
+  // Reorder clips in time - ascending = earliest inPoint first (matching layer stack top-to-bottom)
   orderClipsAscending: () => void;
   orderClipsDescending: () => void;
 
@@ -790,7 +790,7 @@ function layerKeyframeFrames(layer: Layer): number[] {
   return frames;
 }
 
-/** The first transform property (in a sensible priority) that actually carries keyframes — its
+/** The first transform property (in a sensible priority) that actually carries keyframes - its
  *  dotted path drives which inspector row the agent flies to and rings. Null if none animate. */
 function heroPropPath(layer: Layer): string | null {
   const t = layer.transform;
@@ -844,7 +844,7 @@ function ensureLayerHasTrack(composition: Composition, layer: Layer): Compositio
     const maxOrder = composition.tracks.reduce((m, t) => Math.max(m, t.order), -1);
     order = maxOrder + 1;
   } else {
-    // New visual clips always go to the TOP — shift all existing tracks down
+    // New visual clips always go to the TOP - shift all existing tracks down
     const minVisualOrder = composition.tracks
       .filter((t) => t.type !== 'audio')
       .reduce((m, t) => Math.min(m, t.order), 0);
@@ -914,7 +914,7 @@ function findFirstFit(
 function pruneEmptyTracks(composition: Composition): Composition {
   const usedIds = new Set(composition.layers.map((l) => l.trackId).filter(Boolean) as string[]);
   // Keep tracks that host a clip OR were explicitly created by the user
-  // (keepIfEmpty) — an empty manually-added track must not be auto-removed.
+  // (keepIfEmpty) - an empty manually-added track must not be auto-removed.
   const survivors = composition.tracks.filter((t) => usedIds.has(t.id) || t.keepIfEmpty);
 
   const visual = survivors
@@ -1018,7 +1018,7 @@ function executeTrim(
   // The two halves together must render exactly what the original did. For
   // media clips, source time 0 aligns with (inPoint - startOffset), so pushing
   // clipB's inPoint forward to the playhead requires the same push on its
-  // startOffset — otherwise the right-hand half replays the source from the
+  // startOffset - otherwise the right-hand half replays the source from the
   // original clip's start. Comp frames, matching resolveVideoLayer/stripSilence.
   const splitDelta = playheadFrame - originalIn;
   if (clipB.type === 'video') {
@@ -1135,7 +1135,7 @@ function offsetLayerPosition(layer: Layer, dx: number, dy: number): void {
   }
 }
 
-/** Add `dRot` degrees to a layer's rotation (base + keyframes) — for the rotation
+/** Add `dRot` degrees to a layer's rotation (base + keyframes) - for the rotation
  *  component of a power-duplicate (spin-stepping about each object's own centre). */
 function offsetLayerRotation(layer: Layer, dRot: number): void {
   if (dRot === 0) return;
@@ -1358,7 +1358,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   renameLayers: (ids, pattern) => {
     const { composition } = get();
-    // Number by document (z-order) order — Figma-style — not click order.
+    // Number by document (z-order) order - Figma-style - not click order.
     const ordered = composition.layers.filter((l) => ids.includes(l.id));
     if (ordered.length === 0) return;
     const { results } = computeBatchNames(ordered.map((l) => ({ id: l.id, name: l.name, type: l.type })), pattern);
@@ -1386,7 +1386,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     return id;
   },
 
-  // Edit the definition — every linked referent updates for free (resolve reads through it).
+  // Edit the definition - every linked referent updates for free (resolve reads through it).
   updateStyleColor: (id, color) => {
     const cur = get().styles[id];
     if (!cur || cur.value.kind !== 'color') return;
@@ -1683,7 +1683,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     if (!scenes.includes(id)) return;
     const source = id === activeCompositionId ? composition : compositions[id];
     if (!source) return;
-    // Deep clone with a fresh composition id. Layer ids are kept — they're scoped
+    // Deep clone with a fresh composition id. Layer ids are kept - they're scoped
     // per composition, so duplicates across scenes never collide. Referenced
     // precomps are intentionally SHARED (not cloned).
     const clone: Composition = { ...(JSON.parse(JSON.stringify(source)) as Composition), id: uid(), name: `${source.name} copy` };
@@ -1732,7 +1732,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const newRoot = rootCompositionId === id ? remainingScenes[0] : rootCompositionId;
     useHistoryStore.getState().clear();
     if (navStack[0] === id) {
-      // Deleting the scene currently being viewed — switch to a neighbor.
+      // Deleting the scene currently being viewed - switch to a neighbor.
       const nextId = remainingScenes[Math.min(idx, remainingScenes.length - 1)];
       set({
         compositions: folded,
@@ -2036,7 +2036,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }
 
     const newComp = settleComposition(ensureLayerHasTrack({ ...composition, layers: [...composition.layers, layer] }, layer));
-    // Non-undoable set — history is written once, at commitTextEdit.
+    // Non-undoable set - history is written once, at commitTextEdit.
     set({ composition: newComp, selection: sel([layer.id], layer.id) });
     return layer.id;
   },
@@ -2059,7 +2059,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   placeQuickText: (layerId, opts) => {
     const presetId = opts.presetId;
-    if (!presetId) return; // static text — nothing to animate
+    if (!presetId) return; // static text - nothing to animate
     const fps = get().composition.settings.frameRate;
     const duration = opts.durationSeconds ?? 0.6;
     if (opts.granularity === 'whole') {
@@ -2067,7 +2067,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       return;
     }
     // Per word / per character: split into staggered pieces (reuses Text Motion Control), then
-    // apply the preset to each — pieces have staggered inPoints so `atStart` fans the entrance out.
+    // apply the preset to each - pieces have staggered inPoints so `atStart` fans the entrance out.
     const defaultStagger = opts.granularity === 'character' ? Math.max(1, Math.round(fps * 0.05)) : Math.max(1, Math.round(fps * 0.08));
     const stagger = opts.staggerFrames ?? defaultStagger;
     get().explodeTextLayer(layerId, opts.granularity, stagger);
@@ -2090,7 +2090,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       if (l.id !== layerId || l.type !== 'text') return l;
       const spans = l.content.spans.length > 0 ? l.content.spans : createDefaultTextContent('').spans;
       // Retype only the first span's text; preserve its style. Extra spans are dropped
-      // (on-canvas editing is single-style — mixed-run editing stays in the Inspector).
+      // (on-canvas editing is single-style - mixed-run editing stays in the Inspector).
       const first = { ...spans[0], text };
       return { ...l, content: { ...l.content, spans: [first] } };
     });
@@ -2108,13 +2108,13 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const text = layer && layer.type === 'text' ? (layer.content.spans[0]?.text ?? '') : '';
 
     if (wasJustCreated && text.trim() === '') {
-      // Abandoned empty text — discard with no undo entry (revert to pre-edit state).
+      // Abandoned empty text - discard with no undo entry (revert to pre-edit state).
       if (pre) set({ composition: pre, selection: preSel ?? selection });
       else set({ composition: { ...composition, layers: composition.layers.filter((l) => l.id !== layerId) } });
       return;
     }
 
-    // Nothing meaningful changed (edited existing text but left it identical) — no history noise.
+    // Nothing meaningful changed (edited existing text but left it identical) - no history noise.
     const preText = pre?.layers.find((l) => l.id === layerId && l.type === 'text');
     const preTextValue = preText && preText.type === 'text' ? (preText.content.spans[0]?.text ?? '') : undefined;
     if (!wasJustCreated && preTextValue === text) {
@@ -2712,7 +2712,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }
 
     // Layers arrive pre-timed at global positions (one clip's phrases after another). Put them on
-    // the shared track and de-overlap by time — including across the batch's source clips.
+    // the shared track and de-overlap by time - including across the batch's source clips.
     const subtitleLayers = deoverlapCaptionLayers(layers.map((l) => ({ ...l, trackId })));
 
     const newComp = settleComposition({
@@ -3038,7 +3038,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const layer = createImageLayer(name, cw / 2, ch / 2, assetId, meta.width, meta.height, meta.format, meta.fileSize, defaultClipFrames(composition));
     const contain = Math.min(cw / meta.width, ch / meta.height);
     layer.transform.scale.defaultValue = [contain, contain];
-    // Full-extent rectangle mask centered on the image — a no-op crop the user
+    // Full-extent rectangle mask centered on the image - a no-op crop the user
     // drags inward. Sized to the displayed (scaled) image.
     const mask = createMask('rectangle', cw / 2, ch / 2, meta.width * contain, meta.height * contain);
     layer.masks = [mask];
@@ -3055,7 +3055,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const layer = get().composition.layers.find((l) => l.id === layerId);
     if (!layer) return;
     const current = (layer as unknown as Record<'shadow' | 'glow' | 'blur', { enabled?: boolean } | undefined>)[kind];
-    if (current?.enabled) return; // already on — keep the user's existing params
+    if (current?.enabled) return; // already on - keep the user's existing params
     const def = kind === 'shadow' ? DEFAULT_SHADOW : kind === 'glow' ? DEFAULT_GLOW : DEFAULT_BLUR;
     // updateLayerProperty is itself undoable.
     get().updateLayerProperty(layerId, kind, current ? { ...current, enabled: true } : def);
@@ -3154,7 +3154,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const frame = useTimelineStore.getState().currentFrame;
     // Order operands bottom-of-stack first (by track z-order). Subtract/difference
     // then cuts the upper shapes out of the bottom survivor, and the result inherits
-    // a predictable fill — matching Figma/Illustrator/Affinity, which all subtract
+    // a predictable fill - matching Figma/Illustrator/Affinity, which all subtract
     // top-from-bottom by STACKING order (not selection order).
     const trackOrder = new Map(composition.tracks.map((t) => [t.id, t.order]));
     const zOf = (id: string) => { const l = composition.layers.find((x) => x.id === id); return l?.trackId ? (trackOrder.get(l.trackId) ?? 0) : 0; };
@@ -3400,7 +3400,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const style = layer.content.spans[0]?.style;
     if (!style) return;
     if (!canOutlineFont(style.fontFamily)) {
-      console.warn(`[outline] no bundled font for "${style.fontFamily}" — cannot create outlines`);
+      console.warn(`[outline] no bundled font for "${style.fontFamily}" - cannot create outlines`);
       return;
     }
     const frame = get().currentFrame;
@@ -3422,7 +3422,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     });
     if (!glyphs || glyphs.length === 0) return;
 
-    // Re-read state — the font fetch was async and the doc may have changed.
+    // Re-read state - the font fetch was async and the doc may have changed.
     const oldComp = get().composition;
     const oldSel = get().selection;
     const src = oldComp.layers.find((l) => l.id === layerId);
@@ -3605,7 +3605,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     if (idsToRemove.size === 0) return;
 
     // Asset-level teardown (scheduler registration + audio element) must only run
-    // when NO SURVIVING layer still references that asset — deleting one of two
+    // when NO SURVIVING layer still references that asset - deleting one of two
     // clips that share a source (e.g. the two halves of a Split) would otherwise
     // freeze the survivor's video and kill its audio. The texture is layer-level,
     // so it's always safe to destroy. Dedupe per asset so deleting BOTH twins at
@@ -3670,7 +3670,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     });
   },
 
-  // 2.5D (M3) — flip a layer's 3D switch. Enabling ensures the depth transform props
+  // 2.5D (M3) - flip a layer's 3D switch. Enabling ensures the depth transform props
   // (positionZ / rotationX / rotationY) exist so the inspector can show + keyframe them; the
   // props are left in place when disabling (all 0 → the 2D affine path is byte-identical).
   toggleLayer3D: (layerId) => {
@@ -3933,7 +3933,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         const prop = deepGet(updated, path) as AnimatableProperty | undefined;
         if (!prop || !prop.keyframes) continue;
         const newKfs = prop.keyframes.map((k: Keyframe) => frames.has(k.frame)
-          // Clear any named ease — an explicit interpolation/handle choice (menu or F9) must override it.
+          // Clear any named ease - an explicit interpolation/handle choice (menu or F9) must override it.
           ? { ...k, interpolation, easing: undefined, handleIn: handleIn ?? k.handleIn, handleOut: handleOut ?? k.handleOut }
           : k);
         updated = deepSet(updated, `${path}.keyframes`, newKfs) as Layer;
@@ -4653,7 +4653,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   setCompositionSetting: (key, value) => {
     const { composition } = get();
-    // Width/height changes reflow layers per their constraints — delegate so it's one command.
+    // Width/height changes reflow layers per their constraints - delegate so it's one command.
     if (key === 'width') { get().setCompositionSize(value, composition.settings.height); return; }
     if (key === 'height') { get().setCompositionSize(composition.settings.width, value); return; }
     const oldComp = composition;
@@ -4813,7 +4813,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   insertAnimationTemplateAnimated: (id, opts = {}) => {
     // The cinematic "agent build": the editor animates itself assembling the template. Three acts,
     // all on a rising-speed clock (a few slow, legible moves up front so the user registers "the
-    // agent is working", then it rushes) — while the whole editor border pulses amber and a fake
+    // agent is working", then it rushes) - while the whole editor border pulses amber and a fake
     // agent cursor flies around (see ui/agent-build). Nothing is undoable until the very end: the
     // reveal/keyframe steps are transient direct sets; only the final committed scene is one undo
     // step (so Ctrl+Z removes the whole insert, exactly like the instant path).
@@ -4830,7 +4830,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const built = instantiateAnimationTemplate(tpl, { playhead: startPlayhead, frameRate: oldComp.settings.frameRate, center: c });
     if (built.length === 0) { opts.onDone?.(); return noop; }
 
-    // Full (keyframed) set with tracks — the final committed state. `working` is SETTLED, so every
+    // Full (keyframed) set with tracks - the final committed state. `working` is SETTLED, so every
     // transient frame of the show can reuse its tracks/settings and just swap the `layers` array
     // WITHOUT re-running settleComposition (that O(N) reflow per frame was the source of the lag).
     let working = oldComp;
@@ -4856,7 +4856,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const oldTrackIds = new Set(oldComp.layers.map((l) => l.trackId).filter(Boolean) as string[]);
 
     // paint(): show ONLY the revealed layers and the tracks they use, so the timeline GROWS as the
-    // build proceeds — early frames are cheap and the user watches rows appear, instead of all ~170
+    // build proceeds - early frames are cheap and the user watches rows appear, instead of all ~170
     // empty tracks showing up front (which made every frame re-render the whole timeline, so the rAF
     // steps batched together and the reveal + scroll collapsed into one jump). Existing pre-insert
     // tracks are always kept. Returns the shown tracks so the caller can pin the scroll to the bottom.
@@ -4885,7 +4885,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       tl.setScrollY(Math.max(0, Math.min(maxScroll, top - vh * 0.6)));
     };
 
-    // The mathematical centre of each layer, in composition space, as a fraction of the comp — so the
+    // The mathematical centre of each layer, in composition space, as a fraction of the comp - so the
     // agent cursor can fly to the exact spot a shape/box/dot lands and "click" it into place (rather
     // than clicking at random). Uses the RESTING (static) pose + the parent chain (group offset), so
     // it targets where the layer actually appears on the reveal. Clamped to stay on the canvas.
@@ -4902,7 +4902,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const steps: { at: number; run: () => void }[] = [];
     const S = (at: number, run: () => void) => steps.push({ at, run });
 
-    // Act 1 — reveal layers in track order (group first → parents exist), the timeline growing and
+    // Act 1 - reveal layers in track order (group first → parents exist), the timeline growing and
     // auto-scrolling to keep the newest row visible, on a rising-speed (Rush-E) cadence. The cursor
     // flies to each shape's centre and clicks it into place as it appears.
     const LEADIN = 620;                 // beat so the user reads "the agent is working"
@@ -4922,10 +4922,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     });
     const revealEnd = t + 300;
 
-    // Act 2 — keyframes. Sweep EVERY layer top→bottom by track position (not just the animated ones —
+    // Act 2 - keyframes. Sweep EVERY layer top→bottom by track position (not just the animated ones -
     // otherwise, if a template's keyframed layers cluster near the top, the view barely scrolls), so
     // the timeline travels its full height. As the sweep passes each row it pages it into view and,
-    // if that layer animates, places its keyframes — a spread of "hero" layers get the slow, legible
+    // if that layer animates, places its keyframes - a spread of "hero" layers get the slow, legible
     // treatment (select → ring the property → jog the playhead), the rest snap fast; static rows are
     // just scrolled past a little quicker.
     const heroIds = new Set(pickHeroLayers(inserted, 6).map((h) => h.id));
@@ -4944,7 +4944,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         const frames = layerKeyframeFrames(l);
         const scrubFrame = (heroTurn++ % 2 === 0) ? Math.max(...frames) : Math.min(...frames);
         S(tk, () => {
-          set({ selection: sel([l.id], l.id) });          // transient — restored at commit / undo
+          set({ selection: sel([l.id], l.id) });          // transient - restored at commit / undo
           agent.highlightProp(path);
           agent.moveCursor({ kind: 'dom', selector: `[data-prop="${path}"]` }, 'hand');
           scrollRowIntoView(l.trackId);
@@ -4966,7 +4966,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const t3 = tk;
     S(Math.max(revealEnd, t3 - 40), () => agent.highlightProp(null));
 
-    // Commit — the whole animated scene as ONE undo step; restore playhead; end the show.
+    // Commit - the whole animated scene as ONE undo step; restore playhead; end the show.
     let committed = false;
     S(t3 + 320, () => {
       const newSel = sel(inserted.map((l) => l.id), inserted[0].id);
@@ -4994,7 +4994,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       const elapsed = now - startT;
       // Cap steps per frame: on a big template each paint re-renders a growing timeline, so a slow
       // frame could otherwise make dozens of steps come due at once and dump them together (the reveal
-      // and its auto-scroll would collapse into a single jump). A small cap keeps it visibly staged —
+      // and its auto-scroll would collapse into a single jump). A small cap keeps it visibly staged -
       // the build just takes a touch longer under load instead of skipping.
       let budget = 4;
       while (idx < steps.length && steps[idx].at <= elapsed && budget-- > 0) { steps[idx].run(); idx++; }
@@ -5007,7 +5007,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         cancelled = true;
         cancelAnimationFrame(raf);
         agent.end();
-        // If we were interrupted mid-show nothing was committed yet — revert the transient scene.
+        // If we were interrupted mid-show nothing was committed yet - revert the transient scene.
         if (!committed) {
           set({ composition: oldComp, selection: oldSel });
           useTimelineStore.getState().scrubTo(startPlayhead);
@@ -5089,7 +5089,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
     exec({
       label: 'Ungroup',
-      // Dissolving a group can't leave it as the isolation scope — exit isolation.
+      // Dissolving a group can't leave it as the isolation scope - exit isolation.
       execute: () => { set({ composition: newComp, selection: newSel, activeGroupId: null }); },
       undo: () => { set({ composition: oldComp, selection: oldSel }); },
     });
@@ -5313,7 +5313,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       handleIn: [v.handleIn[0], v.handleIn[1]] as Vec2,
       handleOut: [v.handleOut[0], v.handleOut[1]] as Vec2,
       vertexType: v.vertexType,
-      ...(v.handleMode ? { handleMode: v.handleMode } : {}), // M18 — keep fitted smooth-joint angle-lock
+      ...(v.handleMode ? { handleMode: v.handleMode } : {}), // M18 - keep fitted smooth-joint angle-lock
     }));
 
     const fillColor: [number, number, number, number] = closed ? [0.7, 0.7, 0.7, 1] : [0, 0, 0, 0];
@@ -5518,7 +5518,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     if (!b || b.type !== 'shape' || b.shape.type !== 'polygon' || b.shape.closed) return;
 
     // Bring B's local vertices into A's local frame via the position delta (exact for
-    // identity rotation/scale — the common freshly-drawn case).
+    // identity rotation/scale - the common freshly-drawn case).
     const posA = evaluateVec2(a.transform.position, 0);
     const posB = evaluateVec2(b.transform.position, 0);
     const dx = posB[0] - posA[0], dy = posB[1] - posA[1];
@@ -5882,7 +5882,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
     // Second pass: resolve overlaps. For each staggered layer, if it now
     // overlaps another clip on its track, find a compatible track that has
-    // space — or create a new one.
+    // space - or create a new one.
     let newTracks = [...composition.tracks];
     const staggeredIds = new Set(
       [...offsets.entries()].filter(([, v]) => v !== 0).map(([id]) => id)
@@ -6190,7 +6190,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     if (!layer) return;
 
     const duration = layer.outPoint - layer.inPoint;
-    // No upper wall — the timeline expands to fit. Only floor at 0.
+    // No upper wall - the timeline expands to fit. Only floor at 0.
     const clamped = Math.max(0, newInPoint);
     const newOutPoint = clamped + duration;
 
@@ -6353,7 +6353,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       // Drop onto a compressed track: order is what matters, not the timestamp.
       // We assign a fractional sort key so the clip lands at insertIndex, then
       // settleComposition's reflow snaps every clip to gapless integer
-      // positions. No overlap check — reflow resolves collisions by design.
+      // positions. No overlap check - reflow resolves collisions by design.
       const trackClips = composition.layers
         .filter((l) => l.trackId === intent.trackId && l.id !== layerId)
         .sort((a, b) => a.inPoint - b.inPoint);
@@ -6750,7 +6750,7 @@ function deepGet(obj: unknown, path: string): unknown {
 }
 
 // Immutable set at `key` on either an object or an array. Arrays MUST be cloned
-// via slice() with a numeric index — spreading an array into `{...arr}` would
+// via slice() with a numeric index - spreading an array into `{...arr}` would
 // corrupt it into an index-keyed object (breaks `effects.0.params.1` paths).
 function cloneWith(container: unknown, key: string, value: unknown): unknown {
   if (Array.isArray(container)) {
@@ -6782,7 +6782,7 @@ function lerp2(a: Vec2, b: Vec2, t: number): Vec2 {
 
 // Insert a point on the cubic segment between vertices a and b at parameter t,
 // updating only the local segment (a.handleOut, b.handleIn) via De Casteljau.
-// Straight segments (no handles) stay straight — a plain corner is inserted.
+// Straight segments (no handles) stay straight - a plain corner is inserted.
 function insertPointOnSegment(
   verts: PathVertex[],
   segIndex: number,

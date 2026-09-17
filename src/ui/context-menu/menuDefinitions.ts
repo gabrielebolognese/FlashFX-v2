@@ -47,12 +47,12 @@ function item(id: string, label: string, action: () => void, icon?: LucideIcon, 
   return { type: 'item', id, label, icon, shortcut, enabled: true, action };
 }
 
-// Checkable (radio/toggle) item — shows a ✓ when `checked`.
+// Checkable (radio/toggle) item - shows a ✓ when `checked`.
 function check(id: string, label: string, checked: boolean, action: () => void, icon?: LucideIcon, shortcut?: string): MenuEntry {
   return { type: 'item', id, label, icon, shortcut, enabled: true, checked, action };
 }
 
-// Selected keyframes resolved to (layer, property path, frame) — supplied by
+// Selected keyframes resolved to (layer, property path, frame) - supplied by
 // KeyframeTimeline so the keyframe menu can act on the real selection.
 export interface KeyframeMenuContext {
   layerId: string;
@@ -79,7 +79,7 @@ function pickReplacement(assetId: string): void {
   input.click();
 }
 
-// M13 — pick a NEW file, import it under a fresh asset id, and point one layer at it
+// M13 - pick a NEW file, import it under a fresh asset id, and point one layer at it
 // (distinct from pickReplacement, which globally rebinds an existing asset id).
 function pickNewSource(layerId: string, kind: 'image' | 'video'): void {
   const pid = useProjectStore.getState().activeProjectId;
@@ -98,7 +98,7 @@ function pickNewSource(layerId: string, kind: 'image' | 'video'): void {
   input.click();
 }
 
-// M12 — 'Select all with same…' submenu, offering only the attributes the layer actually
+// M12 - 'Select all with same…' submenu, offering only the attributes the layer actually
 // has (Fill/Stroke/Font/Effect/Type). Returns null when the layer can't be resolved.
 const SAME_ATTR_LABELS: Record<SameAttr, string> = {
   type: 'Same Type', fill: 'Same Fill', stroke: 'Same Stroke', font: 'Same Font', effect: 'Same Effect',
@@ -304,7 +304,7 @@ export function buildClipMenu(layerId: string): MenuEntry[] {
   const isText = layer?.type === 'text';
   const isPrecomp = layer?.type === 'precomp';
   const precompId = isPrecomp ? (layer as { compositionId?: string }).compositionId : undefined;
-  // M13 — a same-kind layer on the clipboard can replace this one's source.
+  // M13 - a same-kind layer on the clipboard can replace this one's source.
   const replaceKind = isImage ? 'image' : isVideo ? 'video' : isPrecomp ? 'precomp' : null;
   const clipboardHasSameKind = !!replaceKind && !!editor.clipboard?.layers.some((l) => l.type === replaceKind);
 
@@ -325,7 +325,7 @@ export function buildClipMenu(layerId: string): MenuEntry[] {
         item('clip-duplicate', 'Duplicate', () => editor.duplicateSelection(), Copy, 'Ctrl+D'),
         item('clip-delete', 'Delete', () => editor.removeLayer(layerId), Trash2, 'Del'),
         item('clip-rename', 'Rename', () => editor.startRenameLayer(layerId), Pencil, 'F2'),
-        // M11 — copy/paste appearance. Paste targets the whole selection when this clip is
+        // M11 - copy/paste appearance. Paste targets the whole selection when this clip is
         // part of it, else just this clip; disabled until something is copied.
         item('clip-copy-props', 'Copy Properties', () => editor.copyLayerProperties(layerId), Clipboard, 'Ctrl+Alt+C'),
         editor.propertiesClipboard
@@ -415,7 +415,7 @@ export function buildClipMenu(layerId: string): MenuEntry[] {
           : []),
       ],
     },
-    // M13 — Replace Source: swap this layer's media, keeping transform/keyframes/effects.
+    // M13 - Replace Source: swap this layer's media, keeping transform/keyframes/effects.
     ...(replaceKind ? [{
       type: 'submenu' as const,
       id: 'replace-source',
@@ -466,7 +466,7 @@ export function buildMultiClipMenu(): MenuEntry[] {
   ).length;
 
   return [
-    // Offline auto-captions — shown when the selection includes any audio clips. Transcribes each
+    // Offline auto-captions - shown when the selection includes any audio clips. Transcribes each
     // selected audio clip (Whisper Small, on-device) and drops phrase subtitles on a Subtitles track.
     ...(audioCount >= 1 ? [{
       type: 'group' as const,
@@ -476,7 +476,7 @@ export function buildMultiClipMenu(): MenuEntry[] {
           () => autoCaptionAudioLayers(useEditorStore.getState().selection.selectedIds), Captions),
       ],
     }] : []),
-    // Boolean path ops — shown only for 2+ selected shapes (Figma/Illustrator gate
+    // Boolean path ops - shown only for 2+ selected shapes (Figma/Illustrator gate
     // combining behind a multi-shape selection). Subtract cuts upper shapes from the
     // bottom one; all are destructive (a live boolean group is milestone M22).
     ...(shapeCount >= 2 ? [{
@@ -489,7 +489,7 @@ export function buildMultiClipMenu(): MenuEntry[] {
         item('bool-exclude', 'Exclude', () => editor.booleanSelectedShapes('xor'), Blend, 'Alt+Shift+E'),
         item('bool-flatten', 'Flatten', () => editor.flattenSelectedShapes(), Layers, 'Ctrl+E'),
         {
-          // M22 — non-destructive booleans that KEEP holes (o/8-style cutouts); sources hidden.
+          // M22 - non-destructive booleans that KEEP holes (o/8-style cutouts); sources hidden.
           type: 'submenu' as const, id: 'compound-bool', label: 'Compound (keep holes)', icon: Diff,
           items: [
             item('compound-union', 'Union', () => editor.compoundBooleanSelectedShapes('union'), Combine),
@@ -508,7 +508,7 @@ export function buildMultiClipMenu(): MenuEntry[] {
       ],
     },
     {
-      // M11 — copy the active layer's appearance, paste onto the whole selection.
+      // M11 - copy the active layer's appearance, paste onto the whole selection.
       type: 'group',
       label: 'Properties',
       items: [
@@ -930,7 +930,7 @@ export function buildMediaAssetMenu(assetType: 'image' | 'video' | 'audio', asse
       items: [
         item('audio-normalize', 'Normalize', () => runAudioOp(normalize, 'normalized'), AudioLines),
         item('audio-amplify', 'Amplify…', () => {
-          const s = window.prompt('Amplify by (dB — positive louder, negative quieter):', '6');
+          const s = window.prompt('Amplify by (dB - positive louder, negative quieter):', '6');
           const db = s ? parseFloat(s) : NaN;
           if (!Number.isFinite(db)) return;
           runAudioOp(amplifyBy(Math.pow(10, db / 20)), 'amplified');
@@ -1081,7 +1081,7 @@ export function buildKeyframeMenu(isSingle: boolean, ctx?: KeyframeMenuContext):
         kf('kf-ease-all', 'Ease All', setInterp('bezier', EASE_IO[0], EASE_IO[1]), Sparkles),
         kf('kf-linearize', 'Linearize All', setInterp('linear'), MoveVertical),
         kf('kf-smooth', 'Smooth All', setInterp('bezier', EASE_IO[0], EASE_IO[1]), Waves),
-        // Organic assistants (Category 1 — B4b): The Smoother rounds values; The Wiggler adds tremble.
+        // Organic assistants (Category 1 - B4b): The Smoother rounds values; The Wiggler adds tremble.
         kf('kf-smoother', 'Smoother (round values)', () => ed.smoothKeyframes(L, targets), Waves),
         kf('kf-expo-scale', 'Exponential Scale', () => ed.exponentialScaleKeyframes(L, targets), Maximize2),
         kf('kf-wiggler', 'Wiggler…', () => {

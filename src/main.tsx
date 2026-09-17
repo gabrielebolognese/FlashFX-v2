@@ -17,7 +17,7 @@ const root = createRoot(document.getElementById('root')!);
 // Pre-flight: a browser with no WebGPU at all (Safari, Firefox w/o flag, old browsers) can never
 // run the renderer/export. Show a clean "unsupported" screen instead of booting into the confusing
 // infinite-reset recovery overlay. (A GPU-present-but-no-adapter failure stays with the in-app
-// recovery flow — that's a driver/hardware issue, not a browser-choice one.)
+// recovery flow - that's a driver/hardware issue, not a browser-choice one.)
 if (!('gpu' in navigator)) {
   root.render(
     <StrictMode>

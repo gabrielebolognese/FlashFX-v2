@@ -1,14 +1,14 @@
 // Hard caps, enforced at PARSE time (as `.max(...)` on the relevant fields), configurable per
 // tier. See ./layers.ts / ./pipeline.ts where these are threaded into the schemas.
 //
-// FACTORY vs VALUE — the decision, stated:
+// FACTORY vs VALUE - the decision, stated:
 //   Caps are a FACTORY input (`makeSchemas(caps)`), not a module-level value. Rationale: the caps
 //   are per-tier and must appear as concrete `.max()` bounds in the *parsed* schema AND in the
 //   exported JSON Schema (so constrained decoding itself refuses an over-budget document). A single
 //   module-level schema could only bake ONE tier's numbers. The cost of the factory: JSON Schema
 //   for constrained decoding must be generated per tier (`toJSONSchema(makeSchemas(tierCaps)...)`),
 //   and the derived TS *types* are taken from one canonical bundle (`defaultSchemas`) because caps
-//   are runtime bounds, not type-level distinctions — the shape of a free-tier document and a pro-
+//   are runtime bounds, not type-level distinctions - the shape of a free-tier document and a pro-
 //   tier document is identical; only the numeric limits differ. So: types come from the default
 //   bundle, limits come from the factory. This keeps `z.infer` stable while limits stay per-tier.
 
@@ -66,9 +66,9 @@ export function capsForTier(tier: keyof typeof TIER_CAPS): Caps {
 
 // ONE frozen, most-permissive cap set for the CONSTRAINED-DECODING schema (the tool definition).
 // Decision (revised): a per-tier decode schema means a per-tier tool definition, which fragments the
-// prompt cache into separate prefixes — and a cold cache WRITE costs ~10× a read. So decoding always
+// prompt cache into separate prefixes - and a cold cache WRITE costs ~10× a read. So decoding always
 // uses this single frozen ceiling; the model can technically emit up to it. Per-TIER budget is
-// enforced elsewhere — in the job spec (layerBudget) and the semantic validator — because an
+// enforced elsewhere - in the job spec (layerBudget) and the semantic validator - because an
 // over-budget document is a rare, deterministically fixable failure, unlike an invalid enum which
 // constrained decoding must prevent structurally. Keep this a strict superset of every TIER_CAPS.
 export const DECODE_CAPS: Caps = {

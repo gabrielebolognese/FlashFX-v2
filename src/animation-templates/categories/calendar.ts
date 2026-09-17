@@ -2,7 +2,7 @@ import type { Layer, Vec2, Vec4 } from '../../core/types';
 import type { AnimationTemplate } from '../types';
 import { group, card, dot, label, assemble, popIn, flyIn, fadeIn, setKeys, SPRING, EASE_OUT, EASE_IO } from '../kit';
 
-// Flagship: an animated month calendar — a card, a month title that flies in, a weekday header row
+// Flagship: an animated month calendar - a card, a month title that flies in, a weekday header row
 // that staggers in, and a grid of day circles + numbers that cascade in, with one highlighted day
 // that pops and then pulses on a loop. Everything is ordinary shape/text/group layers with real
 // keyframes, so the user can edit any piece afterwards.

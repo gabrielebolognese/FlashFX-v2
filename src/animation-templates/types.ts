@@ -4,7 +4,7 @@ import type { Layer } from '../core/types';
 // a BUILDER FUNCTION that assembles ordinary shape/text/group layers with real keyframes + easing,
 // authored 0-based (frame 0 = animation start) around a given centre. On insert we rebase the
 // keyframes to the playhead. Because build() uses the factories, every id is already fresh and every
-// child is parent-linked to the group it makes — no cloning / id-regen needed.
+// child is parent-linked to the group it makes - no cloning / id-regen needed.
 
 export type TemplateCategory =
   | 'showcase'
@@ -24,7 +24,7 @@ export interface BuildCtx {
 }
 
 export interface AnimationTemplate {
-  /** Stable slug — the id the UI/store use. */
+  /** Stable slug - the id the UI/store use. */
   id: string;
   name: string;
   category: TemplateCategory;

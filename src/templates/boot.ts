@@ -19,6 +19,6 @@ export function clearTemplateParam(): void {
     url.searchParams.delete('template');
     window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
   } catch {
-    /* history/URL unavailable — harmless */
+    /* history/URL unavailable - harmless */
   }
 }

@@ -2,7 +2,7 @@ import type { HTMLAttributes, ReactNode } from 'react';
 import { cx } from './cx';
 
 /**
- * A styled container for the floating chrome — panels, menus/popovers, and the
+ * A styled container for the floating chrome - panels, menus/popovers, and the
  * dynamic island. `menu`/`island` carry the blurred material (allowed: they
  * float over STATIC content, never the live viewport); `panel` is solid.
  * Positioning stays the caller's job.

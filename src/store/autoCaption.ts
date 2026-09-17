@@ -28,7 +28,7 @@ export const AUTO_CAPTION_OPTIONS: CaptionOptions = {
 export interface ClipCaptionJob {
   assetId: string;
   name: string;
-  /** Played source window of the clip (seconds) — startOffset/fps and (out-in)/fps. */
+  /** Played source window of the clip (seconds) - startOffset/fps and (out-in)/fps. */
   startSec: number;
   spanSec: number;
   /** The clip's global in-point (frames): the offset added to clip-local transcript timings. */

@@ -1,9 +1,9 @@
-// Cloner — effectors: pure per-instance transform modulation + stack composition.
+// Cloner - effectors: pure per-instance transform modulation + stack composition.
 //
 // FRAME-PURITY is the whole point of this file. Every effector's output is a pure
 // function of (index, basePosition, time, its params). The Random effector is the
 // ONE place a naive implementation silently breaks purity: Math.random()/Date are
-// BANNED — a seeded hash of (seed, index) is used so a scrub is always reproducible.
+// BANNED - a seeded hash of (seed, index) is used so a scrub is always reproducible.
 
 import { sampleFieldBilinear } from '../field-sampling/fields';
 import type { FieldGrid } from '../field-sampling/fields';
@@ -25,7 +25,7 @@ import type {
 /** Resolver for the field-falloff variant: field ref → already-sampled buffer. */
 type GetField = (fieldRef: string) => FieldGrid | undefined;
 
-// House RNG — identical algorithm to the mulberry32 copies in particles/procedural/
+// House RNG - identical algorithm to the mulberry32 copies in particles/procedural/
 // stagger (this codebase keeps a private copy per module rather than a shared util).
 function mulberry32(seed: number): () => number {
   let s = seed | 0;
@@ -37,7 +37,7 @@ function mulberry32(seed: number): () => number {
   };
 }
 
-// fmix32 integer hash — decorrelates (seed, index) so adjacent indices don't get
+// fmix32 integer hash - decorrelates (seed, index) so adjacent indices don't get
 // correlated first draws (acceptance: distinct output, no collisions over 0..999).
 function hashSeed(seed: number, index: number): number {
   let h = (seed | 0) ^ Math.imul(index + 1, 0x9e3779b1);
@@ -209,7 +209,7 @@ export function effectorOutput(
  *   add:      acc + delta·strength               (delta is an offset/fraction)
  *   multiply: acc · (1 + delta·strength)          (delta is a fractional deviation)
  *   override: lerp(acc, delta, strength)          (delta is the ABSOLUTE target;
- *             partial-influence replace — full at strength 1, half at 0.5)
+ *             partial-influence replace - full at strength 1, half at 0.5)
  */
 function blend(acc: number, delta: number, mode: EffectorBlendMode, strength: number): number {
   switch (mode) {
@@ -224,7 +224,7 @@ function blend(acc: number, delta: number, mode: EffectorBlendMode, strength: nu
 
 /**
  * Compose an ordered effector stack on top of a base InstanceTransform. Effectors
- * apply IN ARRAY ORDER (order is significant — add-then-multiply ≠ multiply-then-add).
+ * apply IN ARRAY ORDER (order is significant - add-then-multiply ≠ multiply-then-add).
  * Pure: builds a fresh transform, mutates nothing.
  */
 export function applyEffectorStack(

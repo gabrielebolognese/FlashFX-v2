@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 
 // GitHub-style destructive confirmation: the user must type the project's exact name to enable
-// the permanent-delete button. Used from the Trash view — this is the irreversible erase.
+// the permanent-delete button. Used from the Trash view - this is the irreversible erase.
 interface Props {
   name: string;
   onConfirm: () => void;

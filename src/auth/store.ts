@@ -5,7 +5,7 @@ import { captureError, trackEvent } from '../lib/telemetry';
 import type { AuthStatus, AuthUser, AuthResult } from './types';
 
 // Phase 1 groundwork: a null-guarded auth layer over Supabase Auth. The app is
-// local-first — it runs identically with no accounts. When Supabase is configured
+// local-first - it runs identically with no accounts. When Supabase is configured
 // (env vars present) `enabled` flips true and the sign-in surfaces appear; until
 // then everything is a clean no-op. No RLS/user_id migration is wired yet.
 

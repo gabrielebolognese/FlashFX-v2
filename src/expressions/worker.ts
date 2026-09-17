@@ -144,7 +144,7 @@ function buildScope(context: ExpressionContext) {
 
     const elapsed = firstFrame - frame;
 
-    // offset: continuous backward accumulation (mirror of loopOut offset — same periodic extension)
+    // offset: continuous backward accumulation (mirror of loopOut offset - same periodic extension)
     if (type === 'offset') return loopOffset(keyframes, frame);
 
     if (type === 'pingpong') {

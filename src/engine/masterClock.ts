@@ -11,7 +11,7 @@ import { audioTransport } from './audio/audioTransport';
  *
  * Pure arithmetic lives in masterClockMath (harness-proven); this wraps it with the
  * real context. The ctx and perf clocks have different origins, so an anchored run
- * stays on whichever source it was anchored against — re-anchor to switch.
+ * stays on whichever source it was anchored against - re-anchor to switch.
  */
 export class MasterClock {
   private anchor: ClockAnchor = { anchorFrame: 0, anchorTime: 0 };

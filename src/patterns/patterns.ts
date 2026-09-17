@@ -1,6 +1,6 @@
 import type { PatternConfig, PatternStop } from './types';
 
-// PURE pattern field math — deterministic function of (uv, aspect, time). Written to mirror the WGSL
+// PURE pattern field math - deterministic function of (uv, aspect, time). Written to mirror the WGSL
 // utilities in renderer.ts (hash21/valueNoise/fbm) so it can port 1:1 to a GPU fragment shader.
 
 function rot(x: number, y: number, deg: number): [number, number] {

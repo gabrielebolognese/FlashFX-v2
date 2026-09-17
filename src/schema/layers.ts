@@ -13,10 +13,10 @@ import type { Caps } from './caps';
 export { zMotionPresetAttachment };
 
 // LAYERS in two forms (see properties.ts for the same split rationale):
-//   • makeAiLayer(caps) — the STRICT, closed, compact union the Coder emits. Colors are ROLE
+//   • makeAiLayer(caps) - the STRICT, closed, compact union the Coder emits. Colors are ROLE
 //     references (never literals). Every layer carries `panelId` (explicit membership, so panel and
 //     layer cannot desync) and a namespaced `id` that assembly MUST preserve verbatim.
-//   • zDocumentLayer — the round-trip form. Core identity/timing fields are validated; the rich
+//   • zDocumentLayer - the round-trip form. Core identity/timing fields are validated; the rich
 //     per-type payload + decorations (shadow/glow/blur/masks/material/pattern) PASS THROUGH so a
 //     hand-authored scene round-trips LOSSLESSLY. Deliberately preserve-not-lock (see summary).
 
@@ -24,7 +24,7 @@ function aiBase(caps: Caps) {
   return {
     id: zNamespacedId,
     name: zSemanticName,
-    // Membership is the enclosing fragment — no panelId here (it would be pure drift risk). Assembly
+    // Membership is the enclosing fragment - no panelId here (it would be pure drift risk). Assembly
     // writes panelId onto the DOCUMENT layer, where panels are time ranges in one composition.
     parentId: zNamespacedId.nullable().default(null),
     blendMode: z.enum(BLEND_MODES).default('normal'),
@@ -96,7 +96,7 @@ export function makeAiLayer(caps: Caps) {
   });
   const aiCloner = z.strictObject({ ...base, type: z.literal('cloner'), ...makeClonerConfig(caps) });
 
-  // NOTE: camera and audio are intentionally absent — they are forbidden from the AI vocabulary
+  // NOTE: camera and audio are intentionally absent - they are forbidden from the AI vocabulary
   // (see AI_LAYER_TYPES). The document schema still round-trips them; the Coder just never emits them.
   return z.discriminatedUnion('type', [aiShape, aiText, aiGroup, aiImage, aiVideo, aiCloner])
     .describe('a Coder-authored layer (compact, strict; colors are palette roles)');
@@ -127,7 +127,7 @@ const zDocLayerCommon = {
 // A single loose object rather than a discriminated union: the common identity/timing fields are
 // validated, `type` must be a known document layer type, and every per-type payload + decoration
 // PASSES THROUGH (loose) so a hand-authored scene round-trips byte-for-byte. (A discriminated union
-// of 18 field-locked members would be the field-locking upgrade — see summary; not needed for
+// of 18 field-locked members would be the field-locking upgrade - see summary; not needed for
 // lossless round-trip.)
 export const zDocumentLayer = z
   .looseObject({ ...zDocLayerCommon, type: z.enum(DOCUMENT_LAYER_TYPES) })

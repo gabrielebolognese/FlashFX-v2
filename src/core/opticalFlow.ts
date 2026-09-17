@@ -1,7 +1,7 @@
 // Pure helpers for optical-flow retiming (B6). The actual flow ESTIMATOR + WARP are WebGPU fragment
 // passes (B6b, browser-gated); these node-testable helpers pick the frame pair, the warp blend
-// factor, and the flow-field cache key so a flow field isn't recomputed on every scrub. Leaf module —
-// no engine/WebGPU imports — so it bundles in a harness.
+// factor, and the flow-field cache key so a flow field isn't recomputed on every scrub. Leaf module -
+// no engine/WebGPU imports - so it bundles in a harness.
 
 export type RetimeInterp = 'mix' | 'flow';
 
@@ -11,7 +11,7 @@ export function warpT(mix: number): number {
 }
 
 /**
- * Cache key for a computed flow field — unique per (asset, ordered frame pair, resolution, quality).
+ * Cache key for a computed flow field - unique per (asset, ordered frame pair, resolution, quality).
  * Keying on the pair (not the comp frame) means scrubbing back and forth reuses the same flow field.
  */
 export function flowFieldKey(assetId: string, frameA: number, frameB: number, width: number, height: number, quality: number): string {

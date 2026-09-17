@@ -24,7 +24,7 @@ import { usePanelStore, type EditorWorkspace } from '../../store/panels';
 import { useEditorStore } from '../../store/editor';
 
 export function PreviewControls() {
-  // Workspaces (Design/Edit/Animate/Review) only mean something in the full editor — the starter
+  // Workspaces (Design/Edit/Animate/Review) only mean something in the full editor - the starter
   // layout ignores editorWorkspace, so the switch would render live-but-inert there. Gate it.
   const uiMode = usePanelStore((s) => s.uiMode);
   const quality = usePreviewStore((s) => s.quality);
@@ -126,7 +126,7 @@ export function PreviewControls() {
         activeColor="text-slate-200"
       />
 
-      {/* Continuous rasterization (vector quality) — visual preview only */}
+      {/* Continuous rasterization (vector quality) - visual preview only */}
       <ToggleButton
         icon={<Sun size={12} />}
         active={pixelPreview}
@@ -137,7 +137,7 @@ export function PreviewControls() {
 
       <Divider />
 
-      {/* Solo — acts on the selected layer's track; per-track solo lives on the timeline rows */}
+      {/* Solo - acts on the selected layer's track; per-track solo lives on the timeline rows */}
       <ToggleButton
         icon={<Circle size={12} fill={anySolo ? 'currentColor' : 'none'} />}
         active={anySolo}
@@ -149,7 +149,7 @@ export function PreviewControls() {
 
       <Divider />
 
-      {/* Audio-master playback clock (experimental A/V-sync rework — A/B toggle) */}
+      {/* Audio-master playback clock (experimental A/V-sync rework - A/B toggle) */}
       <ToggleButton
         icon={<AudioLines size={12} />}
         active={audioMasterClock}

@@ -54,7 +54,7 @@ const SCRUB_MAX_SPEED = 18; // px per rAF tick at maximum proximity
 function getClipColor(layer: Layer): string {
   if (layer.labelColor) return layer.labelColor;
   switch (layer.type) {
-    // Full-saturation role colours — clips stay vibrant against the dark well.
+    // Full-saturation role colours - clips stay vibrant against the dark well.
     case 'video': return '#22c55e';
     case 'text': return '#3b82f6';
     case 'image': return '#22c55e';
@@ -84,7 +84,7 @@ function getTrackHeight(track: Track): number {
   return track.type === 'video' ? VIDEO_ROW_HEIGHT : track.type === 'audio' ? AUDIO_ROW_HEIGHT : ROW_HEIGHT;
 }
 
-// Mirror of editor.ts layerTypeToTrackType — used for cross-type drop checks.
+// Mirror of editor.ts layerTypeToTrackType - used for cross-type drop checks.
 function layerTypeToTrack(t: Layer['type']): Track['type'] {
   switch (t) {
     case 'video': return 'video';
@@ -110,7 +110,7 @@ interface ClipDragState {
   startInPoint: number;
   startTrackId: string | null;
   currentFrame: number;
-  // Track that the ghost is rendered on (null when intent is newTrack — ghost
+  // Track that the ghost is rendered on (null when intent is newTrack - ghost
   // floats at the predicted insertion gap).
   ghostTrackId: string | null;
   // Resolved intent that will be committed on pointerup. null while the drag
@@ -124,7 +124,7 @@ interface ClipDragState {
 }
 
 interface ClipResizeState {
-  // The grabbed clip — drives the tooltip and the raw pixel→frame delta.
+  // The grabbed clip - drives the tooltip and the raw pixel→frame delta.
   anchorId: string;
   // Every clip that resizes together this gesture (the live multi-selection,
   // or just the anchor when it wasn't part of a selection).
@@ -135,7 +135,7 @@ interface ClipResizeState {
   // mid-gesture, so these stay the resize origin).
   startInPoint: number;
   startOutPoint: number;
-  // Anchor's previewed bounds — derived from previewDelta, shown in the tooltip.
+  // Anchor's previewed bounds - derived from previewDelta, shown in the tooltip.
   previewInPoint: number;
   previewOutPoint: number;
   // The single clamped delta applied to every target clip's dragged edge.
@@ -186,7 +186,7 @@ export function TrackArea({ layers, tracks, selectedIds, rulerOnly, ghostRowCoun
   const selectedIdsRef = useRef(selectedIds);
   selectedIdsRef.current = selectedIds;
 
-  // currentFrame / isPlaying / followPlayhead are intentionally NOT subscribed here —
+  // currentFrame / isPlaying / followPlayhead are intentionally NOT subscribed here -
   // they change every played frame; the <TimelinePlayhead> / <FollowPlayheadDriver>
   // leaves own those subscriptions so the clip tree doesn't re-render during playback.
   const zoomLevel = useTimelineStore((s) => s.zoomLevel);
@@ -224,7 +224,7 @@ export function TrackArea({ layers, tracks, selectedIds, rulerOnly, ghostRowCoun
       setContainerWidth(w);
       // Publish to the store so menu-driven fit/jump actions know the viewport width, and the
       // cinematic build can page vertical auto-scroll by the real viewport height. ONLY the main
-      // (non-ruler) instance publishes the height — the ruler is ~21px and would clobber it, making
+      // (non-ruler) instance publishes the height - the ruler is ~21px and would clobber it, making
       // the build's auto-scroll page by the wrong amount (frontier row lands off-screen).
       useTimelineStore.getState().setContainerWidth(w);
       if (!rulerOnly) useTimelineStore.getState().setContainerHeight(entries[0].contentRect.height);
@@ -305,7 +305,7 @@ export function TrackArea({ layers, tracks, selectedIds, rulerOnly, ghostRowCoun
     return () => { cancelAnimationFrame(scrubRafRef.current); };
   }, []);
 
-  // Native (non-passive) wheel handler — see the effect below for WHY it's not `onWheel`. All state
+  // Native (non-passive) wheel handler - see the effect below for WHY it's not `onWheel`. All state
   // is read FRESH from the store/element so rapid wheel events never use a stale scrollX (which made
   // scrolling feel like it was fighting itself). Plain wheel ONLY scrolls; zoom is Ctrl/Meta only.
   const handleWheel = useCallback((e: WheelEvent) => {
@@ -335,7 +335,7 @@ export function TrackArea({ layers, tracks, selectedIds, rulerOnly, ghostRowCoun
 
   // Attach the wheel handler NATIVELY with { passive: false }. React's `onWheel` is registered as a
   // PASSIVE listener, so `e.preventDefault()` there is a no-op and the browser ALSO scrolls the
-  // element — the JS scroll and the native scroll fight, which read as the timeline jumping / seeming
+  // element - the JS scroll and the native scroll fight, which read as the timeline jumping / seeming
   // to zoom in and out. A non-passive native listener makes preventDefault actually stick.
   useEffect(() => {
     const el = containerRef.current;
@@ -371,7 +371,7 @@ export function TrackArea({ layers, tracks, selectedIds, rulerOnly, ghostRowCoun
 
   // Edge-resize start handler. Captures the originating clip endpoints and the
   // full set of clips that should resize together so the entire interaction
-  // lives in local pixel space — no store writes occur until pointerup commits
+  // lives in local pixel space - no store writes occur until pointerup commits
   // a single resizeClips operation.
   const handleResizePointerDown = useCallback(
     (layerId: string, edge: 'left' | 'right', e: React.PointerEvent) => {
@@ -423,7 +423,7 @@ export function TrackArea({ layers, tracks, selectedIds, rulerOnly, ghostRowCoun
       if (!layer) return;
       const duration = layer.outPoint - layer.inPoint;
 
-      // Compute raw new frame position. No upper wall — timeline auto-expands
+      // Compute raw new frame position. No upper wall - timeline auto-expands
       // to accommodate clips dragged past the current end (commit on release).
       const frameDelta = Math.round(dx / getFrameWidth(zoomLevelRef.current));
       const rawInPoint = Math.max(0, drag.startInPoint + frameDelta);
@@ -448,7 +448,7 @@ export function TrackArea({ layers, tracks, selectedIds, rulerOnly, ghostRowCoun
       // Premiere-style: the body of each row is the dominant drop zone, and
       // a thin BOUNDARY_PX band straddling each row boundary line is the
       // newTrack insertion zone. Fixed pixels (not percentages) keep the
-      // body stable even on short rows — a 22px audio row gets a ~14px
+      // body stable even on short rows - a 22px audio row gets a ~14px
       // body, far easier to hit than the previous 11px body.
       const container = containerRef.current;
       const tracks = sortedTracksRef.current;
@@ -491,7 +491,7 @@ export function TrackArea({ layers, tracks, selectedIds, rulerOnly, ghostRowCoun
             accBody += h;
           }
           if (!zone) {
-            // Below the last row — append a new track at the end.
+            // Below the last row - append a new track at the end.
             zone = { kind: 'boundary', insertOrder: tracks.length, lineY: accBody };
           }
         }
@@ -611,7 +611,7 @@ export function TrackArea({ layers, tracks, selectedIds, rulerOnly, ghostRowCoun
     };
   }, [clipDrag !== null, canPlaceOnTrack, commitClipMove]); // Re-subscribe when drag starts/stops
 
-  // Edge-resize: pointer move + up + auto-scroll. Pure frontend preview —
+  // Edge-resize: pointer move + up + auto-scroll. Pure frontend preview -
   // we maintain integer frame boundaries in local state, render the active
   // clip from those values, and only call setClipBounds once on release.
   useEffect(() => {
@@ -713,15 +713,15 @@ export function TrackArea({ layers, tracks, selectedIds, rulerOnly, ghostRowCoun
   // ── Timeline marquee (drag) selection ───────────────────────────────
   // Activation rule: ANY drag starting on EMPTY timeline space begins a marquee.
   // Clip-body and resize-handle pointerdowns call stopPropagation, so this
-  // handler never fires over a clip — guaranteeing clip-move / resize and
+  // handler never fires over a clip - guaranteeing clip-move / resize and
   // marquee selection are mutually exclusive interaction states.
   //
   // Without Ctrl/Cmd the marquee REPLACES the selection with whatever it hits.
-  // With Ctrl/Cmd the marquee is ADDITIVE — touched clips merge into the
+  // With Ctrl/Cmd the marquee is ADDITIVE - touched clips merge into the
   // existing selection. A plain click (no drag) on empty space still clears.
   //
   // Hit-testing is intersection-based and only walks the (small) per-track clip
-  // lists, accumulating track Y offsets once — no full-scene scan per frame.
+  // lists, accumulating track Y offsets once - no full-scene scan per frame.
   const runMarqueeHitTest = useCallback(
     (mRect: { x: number; y: number; w: number; h: number }): string[] => {
       const hits: string[] = [];
@@ -759,7 +759,7 @@ export function TrackArea({ layers, tracks, selectedIds, rulerOnly, ghostRowCoun
 
       const additive = e.ctrlKey || e.metaKey;
 
-      // Always start a potential marquee — whether additive or not. If the user
+      // Always start a potential marquee - whether additive or not. If the user
       // releases without moving past the threshold it degrades to a click
       // (clear selection when non-additive, no-op when additive).
       const rect = container.getBoundingClientRect();
@@ -944,7 +944,7 @@ export function TrackArea({ layers, tracks, selectedIds, rulerOnly, ghostRowCoun
 
           // Live gapless reflow preview: when dragging onto a compressed track,
           // recompute every clip's display position as if the dragged clip were
-          // already inserted at its predicted index. Pure render-time math — no
+          // already inserted at its predicted index. Pure render-time math - no
           // store mutation happens until pointerup.
           let previewLayout: Map<string, { in: number; out: number }> | null = null;
           if (clipDrag?.isDragging && clipDrag.intent?.kind === 'compressedInsert' && clipDrag.intent.trackId === track.id) {
@@ -1070,7 +1070,7 @@ export function TrackArea({ layers, tracks, selectedIds, rulerOnly, ghostRowCoun
                       cursor: isResizeTarget ? 'ew-resize' : 'grab',
                     }}
                   >
-                    {/* Body — initiates move/select drag */}
+                    {/* Body - initiates move/select drag */}
                     <div
                       className="absolute inset-0"
                       style={{ left: RESIZE_EDGE_PX, right: RESIZE_EDGE_PX, cursor: 'grab' }}
@@ -1151,7 +1151,7 @@ export function TrackArea({ layers, tracks, selectedIds, rulerOnly, ghostRowCoun
                       </span>
                     )}
 
-                    {/* Text preview — a little of the clip's actual text, ellipsized if it can't fit. */}
+                    {/* Text preview - a little of the clip's actual text, ellipsized if it can't fit. */}
                     {layer.type === 'text' && barWidth > 24 && (() => {
                       const preview = layer.content.spans.map((s) => s.text).join('').replace(/\s+/g, ' ').trim() || layer.name;
                       return (
@@ -1165,7 +1165,7 @@ export function TrackArea({ layers, tracks, selectedIds, rulerOnly, ghostRowCoun
                       );
                     })()}
 
-                    {/* Edge handles — hover surface, no permanent indicator */}
+                    {/* Edge handles - hover surface, no permanent indicator */}
                     {showHandles && (
                       <>
                         <div
@@ -1210,7 +1210,7 @@ export function TrackArea({ layers, tracks, selectedIds, rulerOnly, ghostRowCoun
           );
         })}
 
-        {/* Ghost lanes — empty placeholder rows that fill the timeline so it
+        {/* Ghost lanes - empty placeholder rows that fill the timeline so it
             never reads as blank. Each real clip the user creates spawns a track,
             consuming one ghost lane from the top of the stack. */}
         {Array.from({ length: ghostRowCount }).map((_, i) => (
@@ -1398,7 +1398,7 @@ function peakWindow(peaks: Float32Array, totalDuration: number, sourceStartSec: 
 
 /**
  * CapCut / DaVinci-style waveform: a FILLED min/max envelope drawn on a canvas (crisp at device DPR),
- * with a brighter inner "RMS" core and a faint baseline — not a thin SVG stroke. Per screen column we
+ * with a brighter inner "RMS" core and a faint baseline - not a thin SVG stroke. Per screen column we
  * take the true peak extremes over the peaks it covers, so transients never wash out on zoomed-out
  * clips. `midY`/`amp` place + scale it (audio is centered; a video's audio sits in the lower band).
  */
@@ -1421,7 +1421,7 @@ function WaveformCanvas({ peaks, startPeak, visiblePeaks, width, height, midY, a
     ctx.clearRect(0, 0, W, H);
 
     // Per-column magnitude (the peak excursion over the source peaks that column covers), plus the
-    // loudest column — used to NORMALIZE so the clip fills the lane and stays clearly visible even
+    // loudest column - used to NORMALIZE so the clip fills the lane and stays clearly visible even
     // when the recording is quiet, while preserving the relative dynamics that make it read as the
     // actual audio.
     const cols = W;
@@ -1446,10 +1446,10 @@ function WaveformCanvas({ peaks, startPeak, visiblePeaks, width, height, midY, a
     ctx.fillStyle = core;
     ctx.fillRect(0, midY - 0.5, W, 1);
     ctx.globalAlpha = 1;
-    if (loudest < 1e-4) return; // silent clip — just the baseline
+    if (loudest < 1e-4) return; // silent clip - just the baseline
 
     const norm = 1 / loudest;
-    // Symmetric (mirrored) filled envelope — balanced around the centre, the CapCut/Resolve look.
+    // Symmetric (mirrored) filled envelope - balanced around the centre, the CapCut/Resolve look.
     const drawEnvelope = (scale: number, style: string) => {
       ctx.beginPath();
       ctx.moveTo(0, midY - mag[0] * amp * norm * scale);
@@ -1502,7 +1502,7 @@ function VideoAudioWaveformStrip({ layer, clipWidth, clipHeight, compositionFram
     lastWaveform.current = mediaAssetManager.getWaveform(assetId);
     mediaAssetManager.ensureWaveform(assetId); // waveforms are computed lazily now (not eagerly on open)
     // Only re-render when THIS clip's waveform actually changes. The manager's notify() is global, so
-    // an unfiltered subscription re-rendered every waveform strip on every asset event — importing N
+    // an unfiltered subscription re-rendered every waveform strip on every asset event - importing N
     // clips caused an O(strips × imports) re-render storm.
     return mediaAssetManager.subscribe(() => {
       const w = mediaAssetManager.getWaveform(assetId);
@@ -1604,7 +1604,7 @@ function VideoThumbnailStrip({
 
   // Sample the source at a COARSE fixed grid (~every 0.5s of source), NOT at barWidth-derived frames.
   // Otherwise every zoom/scroll tick shifts each thumbnail's source frame, misses THUMB_CACHE, and
-  // re-fires a full keyframe-reseek decode per thumb per clip through the shared playback pool — the
+  // re-fires a full keyframe-reseek decode per thumb per clip through the shared playback pool - the
   // "many clips = decode storm / crash" amplifier. Quantizing keeps the sample points stable across
   // zoom so the cache actually hits and adjacent thumbs collapse onto the same decode.
   const gridFrames = Math.max(1, Math.round(sourceFrameRate * 0.5));
@@ -1697,10 +1697,10 @@ function VideoThumb({ assetId, sourceFrame, width, height }: {
           frame.close();
         }
       })
-      .catch(() => { /* asset not decodable right now — leave blank */ })
+      .catch(() => { /* asset not decodable right now - leave blank */ })
       .finally(() => { THUMB_PENDING.delete(key); });
 
-    // NOTE: do NOT cancelFrame here — React runs this cleanup on every dep change (zoom/scroll
+    // NOTE: do NOT cancelFrame here - React runs this cleanup on every dep change (zoom/scroll
     // recomputes cw/ch), which would cancel the in-flight decode a re-render is about to re-request
     // and could keep thumbnails from ever completing. Quantized source frames already bound the work.
     return () => { cancelled = true; };

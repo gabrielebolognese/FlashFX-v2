@@ -6,23 +6,23 @@
 // `case` in the renderer's IMAGE_SHADER. Never renumber or reuse a type.
 //
 // The 5 "legacy" filters (brightness/contrast/saturation/exposure/gamma) are NOT
-// in this registry — they keep routing to `layer.filters.*` and their dedicated
+// in this registry - they keep routing to `layer.filters.*` and their dedicated
 // uniform fields. Everything else becomes a LayerEffect.
 
 // Which renderer stage an effect runs in (all share one ordered effects[] stack
 // and the same uniform slots; each slot matches exactly one stage's WGSL switch):
-//   'color'   — class A, per-pixel, AFTER the texture sample.
-//   'warp'    — class B, remaps the sampling UV BEFORE the sample.
-//   'spatial' — class C, texture-aware, runs right after the base sample and can
+//   'color'   - class A, per-pixel, AFTER the texture sample.
+//   'warp'    - class B, remaps the sampling UV BEFORE the sample.
+//   'spatial' - class C, texture-aware, runs right after the base sample and can
 //               re-read the texture (chromatic multi-tap, convolution, morphology).
-//   'wire'    — duplicates an existing real pass (Blur/Glow); 'legacy' — the 5
+//   'wire'    - duplicates an existing real pass (Blur/Glow); 'legacy' - the 5
 //               fixed-uniform filters.
 export type EffectClass = 'color' | 'warp' | 'spatial' | 'wire' | 'legacy';
 
 export interface EffectDef {
   /** Matches the filter id in filterDefinitions.ts. */
   id: string;
-  /** Frozen numeric id — matches the WGSL case and is serialized. */
+  /** Frozen numeric id - matches the WGSL case and is serialized. */
   type: number;
   klass: EffectClass;
   /** Number of meaningful params (max 7). */
@@ -42,65 +42,65 @@ export const LEGACY_FILTER_IDS: readonly string[] = [
 //   A1 100–119, A2 120–139, A3 140–160, cellular-pattern color 161–162.
 //   B1 geometry/radial 200–218, B2 waves/tiling/cellular 220–234.
 //   B3 chromatic/retro 240–250, C1 convolution 260–273, C2 morph/matte 280–289,
-//   W lighting 290–294, C3 painterly 300–312 (all 'spatial' — texture-aware
+//   W lighting 290–294, C3 painterly 300–312 (all 'spatial' - texture-aware
 //   single-pass, not pre-sample warps).
-// (Batch W's blur/glow filters have NO type id here — they wire to layer.blur/glow
+// (Batch W's blur/glow filters have NO type id here - they wire to layer.blur/glow
 //  via wireEffects.ts and the renderer's real RTT passes.)
 // These numbers are imported by the renderer to build the WGSL `switch` cases, so
 // registry and shader can never drift.
 export const EFFECT_TYPE = {
-  // A1 — tone / color grade (100–119)
+  // A1 - tone / color grade (100–119)
   vibrance: 100, hueShift: 101, temperature: 102, tint: 103, whiteBalance: 104,
   blacks: 105, whites: 106, shadows: 107, highlights: 108, midtones: 109,
   lift: 110, gammaColor: 111, gain: 112, levels: 113,
   curvesRGB: 114, curvesR: 115, curvesG: 116, curvesB: 117,
   posterize: 118, solarize: 119,
-  // A2 — stylization & palette mapping (120–139)
+  // A2 - stylization & palette mapping (120–139)
   threshold: 120, invert: 121, colorize: 122, duotone: 123, tritone: 124,
   gradientMap: 125, sepia: 126, monochrome: 127, bwMixer: 128, colorBalance: 129,
   splitToning: 130, falseColor: 131, thermalVision: 132, infrared: 133,
   selectiveColor: 134, replaceColor: 135, channelMixer: 136,
   extractRed: 137, extractGreen: 138, extractBlue: 139,
-  // A3 — channel/alpha math + procedural + grain (140–160)
+  // A3 - channel/alpha math + procedural + grain (140–160)
   alphaOnly: 140, swapChannels: 141, opacity: 142, alphaThreshold: 143,
   lumaKey: 144, spillSuppression: 145, gradientFill: 146, noiseFill: 147,
   patternFill: 148, checkerboard: 149, dots: 150, stripes: 151, plasma: 152,
   clouds: 153, addNoise: 154, filmGrain: 155, gaussianNoise: 156,
   saltAndPepper: 157, perlinNoise: 158, fractalNoise: 159, dust: 160,
-  // Cellular pattern generators (class A color — produce a pattern, not a warp)
+  // Cellular pattern generators (class A color - produce a pattern, not a warp)
   voronoiPattern: 161, cellularPattern: 162,
   // Chroma key (green-screen): keys out pixels near a fixed green key color.
   // params: [tolerance, keyR, keyG, keyB, softness]. Slider drives tolerance.
   chromaKey: 163,
-  // B1 — geometry & radial distortion (200–218), UV warp (class B)
+  // B1 - geometry & radial distortion (200–218), UV warp (class B)
   rotate: 200, flipH: 201, flipV: 202, scale: 203, crop: 204, perspective: 205,
   shear: 206, skew: 207, affineTransform: 208, offset: 209, lensDistortion: 210,
   barrelDistortion: 211, pincushion: 212, fisheye: 213, spherize: 214, bulge: 215,
   pinch: 216, twirl: 217, polarCoordinates: 218,
-  // B2 — waves, tiling, pixelation, cellular (220–234), UV warp (class B)
+  // B2 - waves, tiling, pixelation, cellular (220–234), UV warp (class B)
   wave: 220, ripple: 221, zigzag: 222, turbulentDisplace: 223, perspectiveWarp: 224,
   mirror: 225, kaleidoscope: 226, pixelate: 227, mosaic: 228, hexPixelate: 229,
   blockPixelation: 230, crystallize: 231, voronoi: 232, facet: 233, pointillize: 234,
-  // B3 — chromatic & retro (240–250). Multi-tap: re-sample the texture at per-channel
+  // B3 - chromatic & retro (240–250). Multi-tap: re-sample the texture at per-channel
   // offset UVs. Run in the texture-aware "spatial" stage (class C-single-pass).
   rgbSplit: 240, channelOffset: 241, chromaticAberration: 242, refraction: 243,
   heatDistortion: 244, digitalGlitch: 245, vhs: 246, vhsNoise: 247, crtMonitor: 248,
   scanlines: 249, scanlineNoise: 250,
-  // C1 — convolution: sharpen + edge detect (260–273). Single-pass 3x3+ neighbour
+  // C1 - convolution: sharpen + edge detect (260–273). Single-pass 3x3+ neighbour
   // taps read straight from the texture (no RTT yet). Also spatial stage.
   sharpen: 260, unsharpMask: 261, highPass: 262, edgeEnhance: 263, detailEnhance: 264,
   clarity: 265, localContrast: 266, sobel: 267, laplacian: 268, outline: 269,
   findEdges: 270, glowEdges: 271, emboss: 272, edgeDetectColor: 273,
-  // C2 — morphological & matte (280–289). Disc-sampled (constant tap count); the
+  // C2 - morphological & matte (280–289). Disc-sampled (constant tap count); the
   // 2-pass ops (opening/closing) are single-pass approximations pending RTT.
   dilate: 280, erode: 281, opening: 282, closing: 283, distanceTransform: 284,
   matteExpansion: 285, matteShrink: 286, featherAlpha: 287, alphaBlur: 288,
   channelBlur: 289,
-  // W (lighting) — single-pass radial light shafts in the spatial stage (290–294).
+  // W (lighting) - single-pass radial light shafts in the spatial stage (290–294).
   // The blur/glow half of batch W is NOT here: those route to layer.blur/glow via
   // src/core/effects/wireEffects.ts (real RTT), not the WGSL switch.
   lightRays: 290, sunRays: 291, lightWrap: 292, lensFlare: 293, specularHighlight: 294,
-  // C3 — artistic / painterly (300–312), spatial stage (Kuwahara / edge×posterize /
+  // C3 - artistic / painterly (300–312), spatial stage (Kuwahara / edge×posterize /
   // screen-space hatch & halftone / voronoi glass).
   oilPainting: 300, watercolor: 301, pencilSketch: 302, ink: 303, comic: 304,
   cartoon: 305, posterPaint: 306, chalk: 307, halftone: 308, crossHatch: 309,
@@ -129,7 +129,7 @@ export const EFFECT_DEFS: EffectDef[] = [
   { id: 'posterize',   type: EFFECT_TYPE.posterize,   klass: 'color', paramCount: 1, defaults: [8] },
   { id: 'solarize',    type: EFFECT_TYPE.solarize,    klass: 'color', paramCount: 1, defaults: [0.5] },
 
-  // A2 — stylization & palette mapping
+  // A2 - stylization & palette mapping
   { id: 'threshold',     type: EFFECT_TYPE.threshold,     klass: 'color', paramCount: 1, defaults: [0.5] },
   { id: 'invert',        type: EFFECT_TYPE.invert,        klass: 'color', paramCount: 1, defaults: [0] },
   { id: 'negative',      type: EFFECT_TYPE.invert,        klass: 'color', paramCount: 1, defaults: [0] }, // alias of invert
@@ -152,14 +152,14 @@ export const EFFECT_DEFS: EffectDef[] = [
   { id: 'extractGreen',  type: EFFECT_TYPE.extractGreen,  klass: 'color', paramCount: 1, defaults: [0] },
   { id: 'extractBlue',   type: EFFECT_TYPE.extractBlue,   klass: 'color', paramCount: 1, defaults: [0] },
 
-  // A3 — channel/alpha math + procedural + grain (many read uv + time)
+  // A3 - channel/alpha math + procedural + grain (many read uv + time)
   { id: 'alphaOnly',     type: EFFECT_TYPE.alphaOnly,     klass: 'color', paramCount: 1, defaults: [0] },
   { id: 'swapChannels',  type: EFFECT_TYPE.swapChannels,  klass: 'color', paramCount: 1, defaults: [0] },
   { id: 'opacity',       type: EFFECT_TYPE.opacity,       klass: 'color', paramCount: 1, defaults: [1] },
   { id: 'alphaThreshold',type: EFFECT_TYPE.alphaThreshold,klass: 'color', paramCount: 1, defaults: [0] },
   { id: 'lumaKey',       type: EFFECT_TYPE.lumaKey,       klass: 'color', paramCount: 1, defaults: [0] },
   { id: 'spillSuppression',type: EFFECT_TYPE.spillSuppression, klass: 'color', paramCount: 1, defaults: [0] },
-  // [tolerance, keyR, keyG, keyB, softness] — key color defaults to green.
+  // [tolerance, keyR, keyG, keyB, softness] - key color defaults to green.
   { id: 'chromaKey',     type: EFFECT_TYPE.chromaKey,     klass: 'color', paramCount: 5, defaults: [0, 0, 1, 0, 0.1] },
   { id: 'gradientFill',  type: EFFECT_TYPE.gradientFill,  klass: 'color', paramCount: 1, defaults: [0] },
   { id: 'noiseFill',     type: EFFECT_TYPE.noiseFill,     klass: 'color', paramCount: 1, defaults: [0] },
@@ -180,7 +180,7 @@ export const EFFECT_DEFS: EffectDef[] = [
   { id: 'voronoiPattern',type: EFFECT_TYPE.voronoiPattern,klass: 'color', paramCount: 1, defaults: [0] },
   { id: 'cellularPattern',type: EFFECT_TYPE.cellularPattern,klass: 'color', paramCount: 1, defaults: [0] },
 
-  // ── B1: geometry & radial distortion (class B — pre-sample UV warp) ──
+  // ── B1: geometry & radial distortion (class B - pre-sample UV warp) ──
   { id: 'rotate',           type: EFFECT_TYPE.rotate,           klass: 'warp', paramCount: 1, defaults: [0] },
   { id: 'flipH',            type: EFFECT_TYPE.flipH,            klass: 'warp', paramCount: 1, defaults: [0] },
   { id: 'flipV',            type: EFFECT_TYPE.flipV,            klass: 'warp', paramCount: 1, defaults: [0] },
@@ -201,7 +201,7 @@ export const EFFECT_DEFS: EffectDef[] = [
   { id: 'twirl',            type: EFFECT_TYPE.twirl,            klass: 'warp', paramCount: 1, defaults: [0] },
   { id: 'polarCoordinates', type: EFFECT_TYPE.polarCoordinates, klass: 'warp', paramCount: 1, defaults: [0] },
 
-  // ── B2: waves, tiling, pixelation, cellular (class B — pre-sample UV warp) ──
+  // ── B2: waves, tiling, pixelation, cellular (class B - pre-sample UV warp) ──
   { id: 'wave',             type: EFFECT_TYPE.wave,             klass: 'warp', paramCount: 1, defaults: [0] },
   { id: 'ripple',           type: EFFECT_TYPE.ripple,           klass: 'warp', paramCount: 1, defaults: [0] },
   { id: 'zigzag',           type: EFFECT_TYPE.zigzag,           klass: 'warp', paramCount: 1, defaults: [0] },
@@ -218,7 +218,7 @@ export const EFFECT_DEFS: EffectDef[] = [
   { id: 'facet',            type: EFFECT_TYPE.facet,            klass: 'warp', paramCount: 1, defaults: [1] },
   { id: 'pointillize',      type: EFFECT_TYPE.pointillize,      klass: 'warp', paramCount: 1, defaults: [1] },
 
-  // ── B3: chromatic & retro (class C single-pass — texture-aware spatial stage) ──
+  // ── B3: chromatic & retro (class C single-pass - texture-aware spatial stage) ──
   { id: 'rgbSplit',            type: EFFECT_TYPE.rgbSplit,            klass: 'spatial', paramCount: 1, defaults: [0] },
   { id: 'rgbSplitMotion',      type: EFFECT_TYPE.rgbSplit,            klass: 'spatial', paramCount: 1, defaults: [0] }, // alias of rgbSplit
   { id: 'channelOffset',       type: EFFECT_TYPE.channelOffset,       klass: 'spatial', paramCount: 1, defaults: [0] },
@@ -232,7 +232,7 @@ export const EFFECT_DEFS: EffectDef[] = [
   { id: 'scanlines',           type: EFFECT_TYPE.scanlines,           klass: 'spatial', paramCount: 1, defaults: [0] },
   { id: 'scanlineNoise',       type: EFFECT_TYPE.scanlineNoise,       klass: 'spatial', paramCount: 1, defaults: [0] },
 
-  // ── C1: convolution — sharpen & edge detect (class C single-pass) ──
+  // ── C1: convolution - sharpen & edge detect (class C single-pass) ──
   { id: 'sharpen',         type: EFFECT_TYPE.sharpen,         klass: 'spatial', paramCount: 1, defaults: [0] },
   { id: 'unsharpMask',     type: EFFECT_TYPE.unsharpMask,     klass: 'spatial', paramCount: 1, defaults: [0] },
   { id: 'highPass',        type: EFFECT_TYPE.highPass,        klass: 'spatial', paramCount: 1, defaults: [0] },

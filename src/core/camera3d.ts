@@ -1,4 +1,4 @@
-// 2.5D camera + 3D-layer world-matrix math (M1). Pure — no React/DOM/WebGPU — so the whole
+// 2.5D camera + 3D-layer world-matrix math (M1). Pure - no React/DOM/WebGPU - so the whole
 // camera model is harness-testable. The renderer does not consume any of this yet (that is M2);
 // M1 only produces the View/Projection matrices and per-3D-layer world matrices.
 //
@@ -14,7 +14,7 @@ import type { ResolvedTransform } from './types';
 // The renderer's raster space is Y-DOWN (comp y=0 is the top; ndc.y=+1 is the top). A camera
 // with a conventional +Y up vector would flip both screen axes vs. every existing 2D pipeline,
 // so comp "up" is −Y here. With this, a flat card at z=0 under the default camera projects to
-// EXACTLY the 2D map ndc=(2x/W−1, 1−2y/H) — the AE parity property, pinned in verify:camera3d.
+// EXACTLY the 2D map ndc=(2x/W−1, 1−2y/H) - the AE parity property, pinned in verify:camera3d.
 const COMP_UP: Vec3 = [0, -1, 0];
 
 export const deg2rad = (d: number): number => (d * Math.PI) / 180;
@@ -27,7 +27,7 @@ export function forwardVector(rotXDeg: number, rotYDeg: number, rotZDeg: number)
   return [v[0], v[1], v[2]];
 }
 
-/** A camera resolved to concrete matrices for a single frame — the payload M2's renderer reads. */
+/** A camera resolved to concrete matrices for a single frame - the payload M2's renderer reads. */
 export interface ResolvedCamera {
   /** world → camera space. */
   view: Mat4;
@@ -51,7 +51,7 @@ export function fovYForZoom(zoom: number, compH: number): number {
   return 2 * Math.atan(compH / 2 / Math.max(1e-6, zoom));
 }
 
-/** Zoom (px) for a given vertical FOV — the inverse of {@link fovYForZoom}. */
+/** Zoom (px) for a given vertical FOV - the inverse of {@link fovYForZoom}. */
 export function zoomForFovY(fovY: number, compH: number): number {
   return compH / 2 / Math.tan(fovY / 2);
 }
@@ -77,7 +77,7 @@ export function cubicBezierVec3(p0: Vec3, p1: Vec3, p2: Vec3, p3: Vec3, u: numbe
 // Zoom is the only stored render field; the rest are derived here for the dialog display, so they
 // can never desync. Worked default: 1920×1080, 50mm, horizontal → Z=2666.67px, θ≈39.6°.
 
-/** Comp size (px) along the Measure-Film-Size axis — the `C` anchor. */
+/** Comp size (px) along the Measure-Film-Size axis - the `C` anchor. */
 export function compMeasureDim(axis: 'horizontal' | 'vertical' | 'diagonal', compW: number, compH: number): number {
   if (axis === 'vertical') return compH;
   if (axis === 'diagonal') return Math.hypot(compW, compH);
@@ -134,7 +134,7 @@ export function apertureForFStop(zoom: number, fStop: number): number {
 
 /**
  * Per-layer circle-of-confusion BLUR RADIUS (px) for a 3D card at camera-space depth `D` (px,
- * pass abs — depth is negative in front). Thin-lens projection: CoC = A·(|D−S|/D)·(f/S)·blurLevel
+ * pass abs - depth is negative in front). Thin-lens projection: CoC = A·(|D−S|/D)·(f/S)·blurLevel
  * (A=aperture px, S=focus distance px, f=zoom px, blurLevel a fraction where 1=100%); radius is
  * half the CoC. Zero at the focus plane (D==S); grows with defocus and aperture; saturates in the
  * far field. Guarded: D≤0 or S≤0 → 0 (2D layers / behind camera never blur).
@@ -199,17 +199,17 @@ export function defaultCamera(compW: number, compH: number): ResolvedCamera {
 }
 
 /** MVP for a 3D layer: camera.viewProjection · worldMatrix. Multiply a local corner (px, z=0)
- *  by this and do the perspective divide to get clip space — the M2 renderer's vertex path. */
+ *  by this and do the perspective divide to get clip space - the M2 renderer's vertex path. */
 export function mvp(camera: ResolvedCamera, worldMatrix: Mat4): Mat4 {
   return multiply(camera.viewProjection, worldMatrix);
 }
 
 /**
  * MVP for a renderer "card": the matrix the vertex shader multiplies the LOCAL quad corner by
- * (corner already scaled — quadSize carries scale, exactly as the 2D path). It reproduces the
- * renderer's 2D placement `world = R(local − pivot) + pivot + pos` — i.e.
+ * (corner already scaled - quadSize carries scale, exactly as the 2D path). It reproduces the
+ * renderer's 2D placement `world = R(local − pivot) + pivot + pos` - i.e.
  *   A3D = T(pos) · T(pivot) · Rz · Ry · Rx · T(−pivot)
- * extended into 3D (pos.z, X/Y rotation) — then projects through the camera: `P·V·A3D`. When
+ * extended into 3D (pos.z, X/Y rotation) - then projects through the camera: `P·V·A3D`. When
  * rotX=rotY=posZ=0 under the default camera this equals the 2D map (parity). `pivot`/`pos.xy`
  * are the SAME anchor/position values the pipeline's uniform packer already writes.
  */
@@ -239,7 +239,7 @@ export interface DepthSortItem { is3D: boolean; depth: number }
 /**
  * Painter's composite order (AE Classic-3D model). Returns a permutation of input indices:
  * runs of *consecutive* 3D layers are sorted far→near (ascending camera-space depth); 2D layers
- * pin the order — they split the 3D runs and never move. Stable within equal depths. This is the
+ * pin the order - they split the 3D runs and never move. Stable within equal depths. This is the
  * exact AE rule (2D layers act as dividers; 3D layers only sort among their contiguous group).
  */
 export function painterOrder(items: DepthSortItem[]): number[] {

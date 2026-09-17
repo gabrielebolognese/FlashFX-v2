@@ -2,18 +2,18 @@ import type { Rect } from './types';
 
 // Pure equal-spacing / smart-distribution snapping (Penpot's snap engine model).
 // While a rect is dragged near a run of objects, this emits a snap correction that
-// makes the gap equal — either centring between two neighbours, or matching an
-// existing run gap — plus the gap segments to draw as "= px" badges. Runs once per
+// makes the gap equal - either centring between two neighbours, or matching an
+// existing run gap - plus the gap segments to draw as "= px" badges. Runs once per
 // axis; a SEPARATE producer from edge/centre alignment snap (the caller arbitrates
 // by smallest correction, with alignment's tighter tolerance winning ties).
-// Dependency-free + deterministic — proven by scripts/verify-equalgap.mjs.
+// Dependency-free + deterministic - proven by scripts/verify-equalgap.mjs.
 
 /** A now-equal gap to annotate: an along-axis span at a cross-axis coordinate. */
 export interface GapBadge {
   axis: 'x' | 'y';
   a1: number;    // along-axis start (world)
   a2: number;    // along-axis end (world)
-  cross: number; // cross-axis coordinate (world) — badge sits here
+  cross: number; // cross-axis coordinate (world) - badge sits here
   gap: number;   // the equal gap value (label)
 }
 
@@ -58,7 +58,7 @@ export function computeEqualGapSnap(
 
   const options: EqualGapSnap[] = [];
 
-  // Case A — centre between the two nearest neighbours (equidistant). The window is
+  // Case A - centre between the two nearest neighbours (equidistant). The window is
   // DOUBLED because the free space is split in two (Penpot's `md-snap`).
   if (L && R) {
     const free = aMin(R, axis) - aMax(L, axis);
@@ -79,7 +79,7 @@ export function computeEqualGapSnap(
     }
   }
 
-  // Case B — match the existing gap between the two nearest LEFT neighbours.
+  // Case B - match the existing gap between the two nearest LEFT neighbours.
   if (L && lt[1]) {
     const g = aMin(L, axis) - aMax(lt[1], axis);
     const sideL = dMin - aMax(L, axis);
@@ -95,7 +95,7 @@ export function computeEqualGapSnap(
     }
   }
 
-  // Case C — match the existing gap between the two nearest RIGHT neighbours.
+  // Case C - match the existing gap between the two nearest RIGHT neighbours.
   if (R && gt[1]) {
     const g = aMin(gt[1], axis) - aMax(R, axis);
     const sideR = aMin(R, axis) - dMax;

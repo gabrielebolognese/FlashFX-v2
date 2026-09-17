@@ -1,7 +1,7 @@
 import { MonitorX } from 'lucide-react';
 
 /**
- * Shown pre-flight (before the app boots) when the browser has no WebGPU at all —
+ * Shown pre-flight (before the app boots) when the browser has no WebGPU at all -
  * e.g. Safari, Firefox without the flag, or an old browser. Without this, such
  * users boot the whole app and then hit a confusing infinite "reset" overlay. This
  * gives them a clear, honest dead-end with what to do instead.

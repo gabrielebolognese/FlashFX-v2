@@ -19,7 +19,7 @@ function initialNav(): NavSection {
   try {
     const v = new URLSearchParams(window.location.search).get('view');
     if (v === 'templates' || v === 'starred' || v === 'trash' || v === 'all' || v === 'recents') return v;
-  } catch { /* no URL — fall through */ }
+  } catch { /* no URL - fall through */ }
   return 'recents';
 }
 

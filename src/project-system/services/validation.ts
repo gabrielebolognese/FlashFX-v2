@@ -229,7 +229,7 @@ function ensureShapeGeometry(val: unknown): ShapeGeometry | null {
         strokeWidth,
       };
     case 'polygon': {
-      // B8b — preserve animated outline (path poses); else stripped on save/load.
+      // B8b - preserve animated outline (path poses); else stripped on save/load.
       const pathKeyframes = Array.isArray(s.pathKeyframes)
         ? (s.pathKeyframes as unknown[])
             .filter((k): k is Record<string, unknown> => isObject(k) && typeof k.frame === 'number' && Array.isArray(k.vertices))
@@ -251,11 +251,11 @@ function ensureShapeGeometry(val: unknown): ShapeGeometry | null {
         strokeColor,
         strokeWidth,
         ...(pathKeyframes && pathKeyframes.length > 0 ? { pathKeyframes } : {}),
-        // B8c — preserve dashed stroke (pattern + animatable offset).
+        // B8c - preserve dashed stroke (pattern + animatable offset).
         ...(Array.isArray(s.strokeDash) && s.strokeDash.some((d) => typeof d === 'number' && d > 0)
           ? { strokeDash: (s.strokeDash as unknown[]).filter((d): d is number => typeof d === 'number' && d > 0), dashOffset: ensureAnimatableProperty(s.dashOffset, 'Dash Offset', 'number', 0) }
           : {}),
-        // M17 — preserve glyph counters + fill rule (else stripped on save/load).
+        // M17 - preserve glyph counters + fill rule (else stripped on save/load).
         ...(Array.isArray(s.holes) ? { holes: s.holes as PathVertex[][] } : {}),
         ...(s.fillRule === 'evenodd' || s.fillRule === 'nonzero' ? { fillRule: s.fillRule } : {}),
       };
@@ -403,7 +403,7 @@ function ensureMasks(val: unknown): Mask[] | undefined {
       opacity: ensureAnimatableProperty(m.opacity, 'Mask Opacity', 'number', 1),
       points: typeof m.points === 'number' ? m.points : 5,
       innerRadius: ensureAnimatableProperty(m.innerRadius, 'Inner Radius', 'number', 40),
-      // B10c foundation — preserve an optional freeform outline + per-vertex feather.
+      // B10c foundation - preserve an optional freeform outline + per-vertex feather.
       ...(Array.isArray(m.vertices) ? { vertices: m.vertices as Mask['vertices'] } : {}),
       ...(Array.isArray(m.pathKeyframes) ? { pathKeyframes: m.pathKeyframes as Mask['pathKeyframes'] } : {}),
       ...(Array.isArray(m.feathers) ? { feathers: (m.feathers as unknown[]).filter((f): f is number => typeof f === 'number') } : {}),
@@ -432,13 +432,13 @@ function validateLayer(raw: unknown): Layer | null {
     masks: ensureMasks(r.masks),
     inPoint: typeof r.inPoint === 'number' ? r.inPoint : 0,
     outPoint: typeof r.outPoint === 'number' ? r.outPoint : 150,
-    // B10b — preserve the track-matte mode (else stripped on save/load).
+    // B10b - preserve the track-matte mode (else stripped on save/load).
     ...(r.trackMatte === 'alpha' || r.trackMatte === 'alphaInv' || r.trackMatte === 'luma' || r.trackMatte === 'lumaInv' ? { trackMatte: r.trackMatte } : {}),
     ...(typeof r.labelColor === 'string' ? { labelColor: r.labelColor } : {}),
-    // M14 reframe constraints — preserve through the round-trip (else stripped on save/load,
+    // M14 reframe constraints - preserve through the round-trip (else stripped on save/load,
     // the same data-loss class that bit cloner/precomp).
     ...(isObject(r.constraints) ? { constraints: r.constraints as unknown as LayerConstraints } : {}),
-    // Per-layer effects are app-generated structured blobs — preserve them
+    // Per-layer effects are app-generated structured blobs - preserve them
     // through the round-trip rather than dropping them (was a data-loss bug).
     ...(isObject(r.shadow) ? { shadow: r.shadow as unknown as LayerShadow } : {}),
     ...(isObject(r.glow) ? { glow: r.glow as unknown as LayerGlow } : {}),
@@ -454,7 +454,7 @@ function validateLayer(raw: unknown): Layer | null {
         ...baseFields,
         type: 'shape',
         shape,
-        // Preserve the path-modifier stack (B8a) — else stripped on save/load.
+        // Preserve the path-modifier stack (B8a) - else stripped on save/load.
         ...((): { modifiers?: ShapeModifier[] } => { const m = ensureShapeModifiers(r.modifiers); return m ? { modifiers: m } : {}; })(),
         // Preserve the in-shape Repeater (B8d).
         ...((): { repeater?: ShapeRepeater } => { const rp = ensureShapeRepeater(r.repeater); return rp ? { repeater: rp } : {}; })(),
@@ -462,7 +462,7 @@ function validateLayer(raw: unknown): Layer | null {
         ...(isObject(r.materialConfig) ? { materialConfig: r.materialConfig as unknown as ShapeMaterialConfig } : {}),
         ...(isObject(r.strokeMaterialConfig) ? { strokeMaterialConfig: r.strokeMaterialConfig as unknown as ShapeMaterialConfig } : {}),
         ...(isObject(r.patternFill) ? { patternFill: r.patternFill as unknown as ShapePatternConfig } : {}),
-        // M21 — preserve linked-style refs (else stripped on save/load).
+        // M21 - preserve linked-style refs (else stripped on save/load).
         ...(typeof r.fillStyleId === 'string' ? { fillStyleId: r.fillStyleId } : {}),
         ...(typeof r.strokeStyleId === 'string' ? { strokeStyleId: r.strokeStyleId } : {}),
       } as ShapeLayer;
@@ -515,7 +515,7 @@ function validateLayer(raw: unknown): Layer | null {
         content: textContent,
         layoutConfig,
         animOverrides,
-        // M21 — preserve linked-style refs.
+        // M21 - preserve linked-style refs.
         ...(typeof r.fillStyleId === 'string' ? { fillStyleId: r.fillStyleId } : {}),
         ...(typeof r.strokeStyleId === 'string' ? { strokeStyleId: r.strokeStyleId } : {}),
         ...(animators ? { animators } : {}),
@@ -550,7 +550,7 @@ function validateLayer(raw: unknown): Layer | null {
           ...(v.reversed === true ? { reversed: true } : {}),
           ...(v.frameBlend === true ? { frameBlend: true } : {}),
           ...(v.retimeInterp === 'flow' || v.retimeInterp === 'mix' ? { retimeInterp: v.retimeInterp } : {}),
-          // Animated Time Remap (an AnimatableProperty) — preserve on round-trip if it looks valid.
+          // Animated Time Remap (an AnimatableProperty) - preserve on round-trip if it looks valid.
           ...(isObject(v.timeRemap) && Array.isArray((v.timeRemap as Record<string, unknown>).keyframes)
             ? { timeRemap: v.timeRemap as unknown as VideoLayer['video']['timeRemap'] } : {}),
         },

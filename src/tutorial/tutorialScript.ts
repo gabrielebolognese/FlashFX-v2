@@ -1,13 +1,13 @@
 import type { TutorialApi, TutorialChapter } from './types';
 
-// Phase 3 storyboard — the full cohesive build. FlashFX assembles a title card live against the
+// Phase 3 storyboard - the full cohesive build. FlashFX assembles a title card live against the
 // REAL editor store: gradient stage → shapes → boolean-with-holes → shared styles → text →
 // keyframed fly-in → glow/shadow → particles → outline + auto-tidy → play & hand off.
 //
 // Everything is a fixed constant so the build looks identical every run. Positions are in the
 // Tutorial project's composition space (1920×1080, centre 960,540). Colours are RGBA in 0–1.
 //
-// Deliberately NOT shown: the Cloner (its GPU render path is unbuilt — see CLAUDE.md — so it would
+// Deliberately NOT shown: the Cloner (its GPU render path is unbuilt - see CLAUDE.md - so it would
 // add an invisible layer). Particles carry the "repetition / energy" beat instead. Final visual
 // polish (exact positions/timing) is a browser-tuning pass, as the plan notes.
 
@@ -19,7 +19,7 @@ const VIOLET: RGBA = [0.55, 0.45, 0.95, 1];
 const SLATE: RGBA = [0.78, 0.83, 0.92, 1];
 const TEAL: RGBA = [0.1, 0.85, 0.7, 1]; // the shared-style recolour target (big, obvious shift)
 
-// The app's own "Ease Out" bezier handles (menuDefinitions.ts) — reused so the fly-in decelerates
+// The app's own "Ease Out" bezier handles (menuDefinitions.ts) - reused so the fly-in decelerates
 // exactly like a hand-authored ease.
 const EASE_OUT: [[number, number], [number, number]] = [[0.58, 1], [0.001, 0.001]];
 
@@ -85,7 +85,7 @@ export const tutorialScript: TutorialChapter[] = [
     steps: [
       {
         id: 'intro',
-        say: 'Welcome to FlashFX. Sit back — I’ll build a title card from scratch so you can see what’s possible.',
+        say: 'Welcome to FlashFX. Sit back - I’ll build a title card from scratch so you can see what’s possible.',
         hold: 2800,
         spotlight: 'canvas',
       },
@@ -198,7 +198,7 @@ export const tutorialScript: TutorialChapter[] = [
       },
       {
         id: 'difference',
-        say: '…and subtract it for a clean, real hole — not a fake overlay.',
+        say: '…and subtract it for a clean, real hole - not a fake overlay.',
         hold: 2200,
         spotlight: 'canvas',
         run: (api) => {
@@ -248,7 +248,7 @@ export const tutorialScript: TutorialChapter[] = [
     steps: [
       {
         id: 'keyframes',
-        say: 'Keyframes bring it to life — I’ll make the headline rise and scale into place, with an ease.',
+        say: 'Keyframes bring it to life - I’ll make the headline rise and scale into place, with an ease.',
         hold: 2600,
         spotlight: 'timeline',
         run: (api) => {
@@ -282,7 +282,7 @@ export const tutorialScript: TutorialChapter[] = [
     steps: [
       {
         id: 'glow-shadow',
-        say: 'Depth in a click — a soft glow and a drop shadow on the title.',
+        say: 'Depth in a click - a soft glow and a drop shadow on the title.',
         hold: 2200,
         spotlight: 'canvas',
         run: (api) => {
@@ -299,7 +299,7 @@ export const tutorialScript: TutorialChapter[] = [
     steps: [
       {
         id: 'burst',
-        say: 'A particle system adds energy — thousands of GPU sprites, live. Watch it when we play.',
+        say: 'A particle system adds energy - thousands of GPU sprites, live. Watch it when we play.',
         hold: 2200,
         spotlight: 'canvas',
         run: (api) => {
@@ -314,7 +314,7 @@ export const tutorialScript: TutorialChapter[] = [
     steps: [
       {
         id: 'outline',
-        say: 'Text can become editable vector paths — here’s the tagline, outlined glyph by glyph.',
+        say: 'Text can become editable vector paths - here’s the tagline, outlined glyph by glyph.',
         hold: 2200,
         spotlight: 'canvas',
         run: async (api) => {
@@ -359,7 +359,7 @@ export const tutorialScript: TutorialChapter[] = [
       },
       {
         id: 'go',
-        say: 'The headline flies in, the particles ignite — your piece, running live.',
+        say: 'The headline flies in, the particles ignite - your piece, running live.',
         hold: 5200,
         spotlight: 'canvas',
         run: (api) => { api.timeline().play(); },

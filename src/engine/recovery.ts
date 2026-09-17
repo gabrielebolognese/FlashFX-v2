@@ -63,7 +63,7 @@ class EditorRecovery {
           session_id: this.sessionId,
           user_agent: typeof navigator !== 'undefined' ? navigator.userAgent : null,
         })
-        .then(undefined, () => { /* offline / unreachable — ignore */ });
+        .then(undefined, () => { /* offline / unreachable - ignore */ });
     }
   }
 

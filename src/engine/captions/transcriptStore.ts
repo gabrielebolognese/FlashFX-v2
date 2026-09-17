@@ -24,5 +24,5 @@ export function persistTranscript(args: {
       processing_ms: Math.round(args.processingMs),
       segments: args.segments,
     })
-    .then(undefined, () => { /* offline / unreachable — ignore */ });
+    .then(undefined, () => { /* offline / unreachable - ignore */ });
 }

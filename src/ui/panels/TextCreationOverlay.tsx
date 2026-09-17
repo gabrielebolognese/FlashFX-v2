@@ -30,7 +30,7 @@ function getBox(drag: DragState) {
 /**
  * Text tool: drag out a box (like the shape tools) to make a fixed paragraph frame, or
  * click for an auto-growing point text. Either way an EMPTY text layer is created and
- * on-canvas editing starts immediately — the user types straight onto the canvas.
+ * on-canvas editing starts immediately - the user types straight onto the canvas.
  */
 export function TextCreationOverlay({ style, compW, compH }: TextCreationOverlayProps) {
   const activeTool = useShapeToolStore((s) => s.activeTool);

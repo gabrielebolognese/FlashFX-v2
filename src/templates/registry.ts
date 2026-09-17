@@ -5,10 +5,10 @@ import { PARTICLE_PRESETS } from '../particles/presets';
 type RGB = [number, number, number];
 
 // The deep-link template whitelist. Add an entry here (and nothing else) to expose a new
-// `/?template=<id>` landing-page CTA. Keep ids URL-safe, lowercase, stable — the landing page
+// `/?template=<id>` landing-page CTA. Keep ids URL-safe, lowercase, stable - the landing page
 // hard-codes them.
 
-// Set the scene's backdrop gradient (behind the template's own full-frame scene — insurance so a
+// Set the scene's backdrop gradient (behind the template's own full-frame scene - insurance so a
 // scene always sits on a fitting sky even if a builder doesn't paint the whole frame).
 function setBackdrop(editor: TemplateEditor, angle: number, stops: { color: RGB; position: number }[]) {
   const bg = editor.composition.background.layers[0];

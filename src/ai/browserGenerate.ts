@@ -6,11 +6,11 @@ import { generate, type GenerateResult } from './generate';
 import { commitAiComposition } from './commit';
 import { estimateCostUsd, type DirectorClient } from './director/client';
 
-// Browser entry point for the AI pipeline. This is the DYNAMIC-IMPORT boundary — the panel imports
+// Browser entry point for the AI pipeline. This is the DYNAMIC-IMPORT boundary - the panel imports
 // it lazily (await import) so the engine + zod + prompt templates stay OUT of the initial bundle
 // until the user actually generates. The system prompts + tool schemas are byte-stable, so they're
 // built once at module load (cache-friendly and cheap). Splitting generate() from commit() lets the
-// caller drop a result if the user hit Stop mid-flight — nothing lands on the canvas unless committed.
+// caller drop a result if the user hit Stop mid-flight - nothing lands on the canvas unless committed.
 
 const directorSystemPrompt = renderDirectorMarkers(directorTemplate);
 const coderSystemPrompt = renderCoderMarkers(coderTemplate);
@@ -34,7 +34,7 @@ export interface GenerateSceneSummary {
   costUsd: number;
 }
 
-/** Run Director → Coder → assemble → auto-fix. Does NOT touch the editor — the caller commits. */
+/** Run Director → Coder → assemble → auto-fix. Does NOT touch the editor - the caller commits. */
 export async function generateScene(o: GenerateSceneOpts): Promise<GenerateResult> {
   return generate({
     description: o.description,

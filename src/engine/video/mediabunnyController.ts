@@ -4,13 +4,13 @@ import type { VideoMetadata } from './videoWorker.types';
 // mediabunny-backed video decode. Playback requests are served by a small pool of LONG-LIVED FORWARD
 // iterators ("cursors"), NOT per-frame getSample(t): getSample spins up a fresh VideoDecoder and
 // re-decodes the whole GOP from a keyframe on EVERY call (verified in mediabunny's source), so
-// per-frame playback that way costs ~GOP/2 decodes per displayed frame — the "freeze ~1s then jump"
+// per-frame playback that way costs ~GOP/2 decodes per displayed frame - the "freeze ~1s then jump"
 // stall. A cursor is one VideoSampleSink.samples() generator that keeps a decoder open and pre-decodes
 // ahead; sequential decodeFrame(i) advances it one next() = exactly one decode. Only a backward/large
 // jump reseeks (tear down + reopen). Mirrors OpenCut's VideoCache. Export keeps a separate exact path.
 //
 // This runs on the main thread (WebCodecs decodes off-thread natively; OpenCut drives it the same way)
-// and stays behind the videoDecoderPool public API — the scheduler/renderer/audio path are untouched.
+// and stays behind the videoDecoderPool public API - the scheduler/renderer/audio path are untouched.
 
 const CURSOR_POOL_SIZE = 2;   // enough for two layers on one asset (split clip / two regions)
 const FORWARD_WINDOW = 16;    // frames a request may sit ahead of a cursor before it counts as a jump
@@ -174,7 +174,7 @@ class MediabunnyController {
         throw new SupersededError();
       }
       const { value, done } = await c.it!.next();
-      if (done) break; // EOF — clamp to the last frame
+      if (done) break; // EOF - clamp to the last frame
       if (c.sample && c.index < i) c.sample.close(); // drop a skipped intermediate
       c.sample = value;
       c.index = this.indexOf(ctl, value);
@@ -185,7 +185,7 @@ class MediabunnyController {
     return c.sample.toVideoFrame();
   }
 
-  // Export: deterministic, order-independent exact decode — must NOT share playback cursors (their
+  // Export: deterministic, order-independent exact decode - must NOT share playback cursors (their
   // state depends on scrub history). Uses the single-shot getSample path.
   async decodeFrameForExport(assetId: string, frameIndex: number): Promise<VideoFrame> {
     const ctl = this.assets.get(assetId);

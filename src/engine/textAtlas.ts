@@ -23,7 +23,7 @@ const DESCENDER_RATIO = 0.25;
 
 // Bumped once the bundled fonts finish loading (see engine/fonts.ts). Folded into the cache
 // key so text rasterized against the sans-serif fallback (pre-load) is re-rasterized against
-// the real face afterwards — both this bitmap cache and the renderer's key-based GPU texture
+// the real face afterwards - both this bitmap cache and the renderer's key-based GPU texture
 // cache miss and rebuild.
 let fontEpoch = 0;
 export function bumpFontEpoch(): void {
@@ -148,7 +148,7 @@ function computeLayout(ctx: OffscreenCanvasRenderingContext2D, text: ResolvedTex
   };
 }
 
-// Measurement only needs a 2D context — reuse a single scratch canvas/context
+// Measurement only needs a 2D context - reuse a single scratch canvas/context
 // across all calls instead of allocating a fresh OffscreenCanvas per text layer
 // per frame (a measurable per-frame cost). Every call sets ctx.font before
 // measuring, so there's no stale-state hazard from sharing it.

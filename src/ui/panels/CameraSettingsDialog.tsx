@@ -8,7 +8,7 @@ import {
 } from '../../core/camera3d';
 
 // After Effects "Camera Settings" dialog. The lens fields (Zoom / Angle of View / Focal Length /
-// Film Size) are interlocked — editing any one recomputes the others — but only ZOOM is stored
+// Film Size) are interlocked - editing any one recomputes the others - but only ZOOM is stored
 // (the render-affecting field); Focal Length / AOV / F-Stop are derived on the fly, so they can't
 // desync. See camera3d.ts for the algebra. Units are display-only.
 export function CameraSettingsDialog({ layer, onClose }: { layer: CameraLayer; onClose: () => void }) {
@@ -83,7 +83,7 @@ export function CameraSettingsDialog({ layer, onClose }: { layer: CameraLayer; o
         </div>
 
         <div className="flex items-stretch">
-          {/* Left: tutorial video placeholder (no video yet — just the placeholder). */}
+          {/* Left: tutorial video placeholder (no video yet - just the placeholder). */}
           <div className="w-1/2 p-4 border-r border-hairline flex flex-col gap-3">
             <p className="text-[12px] text-slate-300 font-medium leading-snug">Confused on how to use the camera? Watch this quick tutorial</p>
             <div className="flex-1 min-h-[240px] rounded-lg border border-hairline relative overflow-hidden flex items-center justify-center">

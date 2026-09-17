@@ -1,4 +1,4 @@
-// The single shared AudioContext + master output graph for ALL preview audio —
+// The single shared AudioContext + master output graph for ALL preview audio -
 // audio layers (AudioBufferSourceNodes) AND video-clip audio (MediaElementSource).
 //
 // Previously audioPlayback and videoAudioPlayer each created their OWN context:
@@ -6,7 +6,7 @@
 // private context was created suspended and never resumed → video audio was silent
 // on load and the meters were dead. Owning ONE context + graph here fixes both, and
 // gives the whole session a single clock (the basis for the audio-master rework).
-// The first caller — video import OR play — lazily creates it (suspended until a
+// The first caller - video import OR play - lazily creates it (suspended until a
 // user gesture resumes it).
 
 let ctx: AudioContext | null = null;
@@ -40,7 +40,7 @@ function ensure(): void {
   masterAnalyser.connect(ctx.destination);
 
   // Keep-alive: a silent constant source keeps the context's currentTime advancing
-  // reliably (the audio master clock) even when no audible layer is scheduled — e.g.
+  // reliably (the audio master clock) even when no audible layer is scheduled - e.g.
   // an image/text-only composition.
   try {
     const keepAlive = ctx.createConstantSource();
@@ -85,7 +85,7 @@ export const audioTransport = {
   currentTime(): number {
     return ctx ? ctx.currentTime : 0;
   },
-  /** ctx.outputLatency (+ baseLatency) in seconds — audible-vs-scheduled offset. */
+  /** ctx.outputLatency (+ baseLatency) in seconds - audible-vs-scheduled offset. */
   outputLatencySec(): number {
     if (!ctx) return 0;
     const out = (ctx as AudioContext & { outputLatency?: number }).outputLatency ?? 0;

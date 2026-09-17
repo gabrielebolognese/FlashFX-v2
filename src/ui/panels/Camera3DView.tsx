@@ -11,16 +11,16 @@ import { fovYForZoom, compMeasureDim, fStopForAperture } from '../../core/camera
 import { CameraSettingsDialog } from './CameraSettingsDialog';
 
 // AE-style 3D VIEW: an orthographic schematic of the scene where the camera lives in the world
-// beside the 3D layers, and you drag it (and its Point of Interest) to place it — Top (X→Z) or
+// beside the 3D layers, and you drag it (and its Point of Interest) to place it - Top (X→Z) or
 // Side (Z→Y), switchable. Pure SVG over the harness-verified camera math (no WebGPU). Dragging
 // writes the camera transform, so the main canvas updates live. Shown in the inspector when a
 // camera is selected.
 //
 // UX: full-width Top/Side tabs; DOUBLE-CLICK the camera opens Camera Settings; precision drag
 // (slower than the pointer) for fine placement; aperture (mm) iris handles; and a full CAMERA-PATH
-// KEYFRAME editor — a rhombus that follows the camera to key its position, world-anchored keyframe
+// KEYFRAME editor - a rhombus that follows the camera to key its position, world-anchored keyframe
 // markers, a dotted preview / solid path line, right-click a segment for Smooth / Straight / Hold,
-// and — for smooth segments — draggable SPATIAL-BEZIER tangent handles that bow the path (the two
+// and - for smooth segments - draggable SPATIAL-BEZIER tangent handles that bow the path (the two
 // sides mirror for C1 continuity). The path is sampled from the real evaluated eye, so what you see
 // is exactly what renders.
 
@@ -394,7 +394,7 @@ function OrthoView({ label, hAxis, vAxis, W, H, eye, poi, fov, apertureMm, fStop
             <circle cx={t.ix} cy={t.iy} r={4} fill="#0e1420" stroke="#fbbf24" strokeWidth={2} />
           </g>
         ))}
-        {/* Keyframe markers — world-anchored; click to seek, right-click for options. */}
+        {/* Keyframe markers - world-anchored; click to seek, right-click for options. */}
         {kfScreen.map((k) => (
           <g key={`k${k.frame}`} style={{ cursor: 'pointer' }}
             onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onSeek(k.frame); }}>

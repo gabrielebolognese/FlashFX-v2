@@ -4,7 +4,7 @@ import { useLegalStore } from './legalStore';
 
 /**
  * Opt-in analytics consent banner. Shows once until the user chooses; analytics stay off
- * until "Accept". Solid surface (no blur — it can float over the live viewport).
+ * until "Accept". Solid surface (no blur - it can float over the live viewport).
  */
 export function ConsentBanner() {
   const status = useConsentStore((s) => s.status);

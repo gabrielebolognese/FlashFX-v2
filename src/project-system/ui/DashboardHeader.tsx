@@ -143,9 +143,9 @@ function CloudStatus() {
   const lastSyncedAt = useCloudSyncStore((s) => s.lastSyncedAt);
   const mediaCapped = useCloudSyncStore((s) => s.mediaCapped);
   const title =
-    mediaCapped ? 'Cloud storage full — some media isn’t synced. Upgrade for more space.'
+    mediaCapped ? 'Cloud storage full - some media isn’t synced. Upgrade for more space.'
     : status === 'syncing' ? 'Syncing to cloud…'
-    : status === 'error' ? 'Cloud sync unavailable — your work is saved on this device'
+    : status === 'error' ? 'Cloud sync unavailable - your work is saved on this device'
     : lastSyncedAt ? 'Projects synced to your account'
     : 'Cloud sync';
   return (

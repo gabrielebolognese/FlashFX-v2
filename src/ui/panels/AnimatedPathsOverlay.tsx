@@ -24,7 +24,7 @@ function positionProp(layer: Layer) {
  * Canvas "Show Motion Paths" toggle: draws the position trajectory of every layer whose position is
  * keyframed. The curve honours spatial tangents automatically (it samples `evaluateVec2`, which now
  * follows the spatial motion path), so Auto-Bezier keyframes read as smooth arcs. For the SELECTED
- * layer it also draws AE-style per-frame SPACING DOTS — the velocity/weight X-ray: dots bunch where
+ * layer it also draws AE-style per-frame SPACING DOTS - the velocity/weight X-ray: dots bunch where
  * the motion is slow (eased) and spread where it's fast. Read-only (manual tangent dragging is B3b).
  */
 export function AnimatedPathsOverlay({ compW, compH, style }: { compW: number; compH: number; style: CSSProperties }) {

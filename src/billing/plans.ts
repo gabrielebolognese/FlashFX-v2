@@ -5,7 +5,7 @@ import { create } from 'zustand';
 // flips an account's plan. Until billing exists, everyone is 'free'.
 //
 // COST NOTE: `free.cloudMediaBytes` is PER ACCOUNT. On Supabase's 1 GB Free tier a couple of free
-// users with media fill the whole backend — this assumes you're on Supabase Pro before free media
+// users with media fill the whole backend - this assumes you're on Supabase Pro before free media
 // sync sees traffic, and `FREE_MEDIA_SYNC_ENABLED` is the kill-switch to shut it off if cost spikes.
 
 export type Plan = 'free' | 'pro';

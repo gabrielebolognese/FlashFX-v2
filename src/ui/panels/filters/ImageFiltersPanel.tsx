@@ -12,7 +12,7 @@ const EFFECT_ID_TO_LABEL: Record<string, string> = {};
 for (const cat of FILTER_CATEGORIES) for (const f of cat.filters) EFFECT_ID_TO_LABEL[f.id] = f.label;
 
 // A filter actually renders iff it routes to the legacy uniforms, a blur/glow wire
-// effect, or the effect stack. Anything else is not yet wired to the renderer — we
+// effect, or the effect stack. Anything else is not yet wired to the renderer - we
 // lock it honestly rather than showing a slider that does nothing.
 function isFilterReal(id: string): boolean {
   return isLegacyFilter(id) || isWireFilter(id) || !!getEffectDef(id);
@@ -64,7 +64,7 @@ export function ImageFiltersPanel({ layer }: { layer: ImageLayer }) {
       setLayerEffectParam(layer.id, def.type, 0, value, def.defaults);
       return;
     }
-    // Not implemented yet — keep local UI state so the slider still moves.
+    // Not implemented yet - keep local UI state so the slider still moves.
     setFilterValues((prev) => ({ ...prev, [filterId]: value }));
   }, [layer.id, updateLayerProperty, setLayerEffectParam]);
 
@@ -319,12 +319,12 @@ function FilterControl({
   onChange: (v: number) => void;
   onReset: () => void;
 }) {
-  // Not yet wired to the renderer — show it locked instead of a dead slider.
+  // Not yet wired to the renderer - show it locked instead of a dead slider.
   if (!implemented) {
     return (
       <div
         className="flex items-center gap-1.5 py-[3px] px-2 rounded opacity-40 cursor-not-allowed"
-        title={`${filter.label} — not yet available`}
+        title={`${filter.label} - not yet available`}
       >
         <label className="text-[10px] text-slate-500 flex-1 truncate">{filter.label}</label>
         <Lock size={9} className="text-slate-600 flex-shrink-0" />

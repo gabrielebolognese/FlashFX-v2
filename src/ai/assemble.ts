@@ -96,7 +96,7 @@ function expandTransform(layerId: string, t: AiTransform, compW: number, compH: 
 }
 
 /** An IDENTITY transform. AI-created groups always carry this at authoring time so local and world
- *  coincide — grouping is purely organizational and the model never reasons about coordinate spaces
+ *  coincide - grouping is purely organizational and the model never reasons about coordinate spaces
  *  (which fixes slideIn/slideOut misbehaving inside groups). */
 function identityTransform(layerId: string): Transform {
   return {
@@ -133,7 +133,7 @@ export function assemble(fragments: CoderFragment[], panels: Panel[], style: Sty
   // staggerReveal/staggerExit requests deferred until every child exists. `start`/`step` are already
   // in absolute frames (panel offset + panel-local start, doctrine gap or override).
   const staggerReqs: { groupId: string; childPreset: string; start: number; duration: number; step: number; order: 'forward' | 'reverse' }[] = [];
-  // staggerDoctrine.gapMs wired through to frames — the default per-child delay for staggered presets.
+  // staggerDoctrine.gapMs wired through to frames - the default per-child delay for staggered presets.
   const gapFrames = Math.max(1, Math.round((style.staggerDoctrine.gapMs * opts.fps) / 1000));
 
   for (const frag of fragments) {

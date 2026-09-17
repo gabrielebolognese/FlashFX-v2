@@ -3,7 +3,7 @@ import type { Layer, Vec2, Vec4, FontWeight } from '../../core/types';
 import { group, card, label, setKeys, assemble, EASE_OUT, EASE_IO } from '../kit';
 import { createCameraLayer, createProperty } from '../../core/factory';
 
-// Blackjack Deal — a top-down casino table. The dealer distributes two hands (Player A♠ 10♥ = 21,
+// Blackjack Deal - a top-down casino table. The dealer distributes two hands (Player A♠ 10♥ = 21,
 // Dealer K♦ 7♣ = 17) with staggered card throws; a slow 2.5D camera push-in + drift gives it depth
 // and energy; and a monospace commentary types each hand out one character at a time. ~13s @ 30fps.
 //
@@ -45,7 +45,7 @@ function deal(layers: Layer[], rest: Vec2, rank: string, red: boolean, rot: numb
   layers.push(c, t);
 }
 
-/** Type a line of text one character at a time — one is3D monospace label per glyph, staggered. */
+/** Type a line of text one character at a time - one is3D monospace label per glyph, staggered. */
 function typeLine(layers: Layer[], text: string, x: number, y: number, at: number, size: number, color: Vec4, weight: FontWeight = 700): void {
   const adv = size * 0.6; // monospace advance so the reveal is even
   const CPS = 2;          // frames per character
@@ -55,7 +55,7 @@ function typeLine(layers: Layer[], text: string, x: number, y: number, at: numbe
     const gx = x + i * adv;
     const l = label(ch, [gx, y], { size, weight, color, align: 'left' });
     if (l.content?.spans?.[0]) l.content.spans[0].style.fontFamily = MONO;
-    depth(l, 0); // focal plane — scales with the cards under the push-in, stays in frame
+    depth(l, 0); // focal plane - scales with the cards under the push-in, stays in frame
     const f = at + i * CPS;
     setKeys(l.transform.opacity, [{ f: 0, v: 0 }, { f: Math.max(0, f - 1), v: 0 }, { f: f + 2, v: 1 }]);
     setKeys(l.transform.position, [{ f: f, v: [gx, y + 10] }, { f: f + 6, v: [gx, y], ease: EASE_OUT }]);
@@ -69,7 +69,7 @@ function build(ctx: BuildCtx): Layer[] {
   const g = group('Blackjack', ctx.center);
   const layers: Layer[] = [];
 
-  // Felt table (rim behind, rounded felt in front) — farthest depth so the camera push reads.
+  // Felt table (rim behind, rounded felt in front) - farthest depth so the camera push reads.
   const rim = depth(card([0, 0], W + 240, H + 180, 130, FELT_RIM), 210);
   setKeys(rim.transform.opacity, [{ f: 0, v: 0 }, { f: 14, v: 1 }]);
   const felt = depth(card([0, 30], W - 30, H - 110, 90, FELT), 150);
@@ -82,13 +82,13 @@ function build(ctx: BuildCtx): Layer[] {
   deal(layers, [90, -250], '7♣', false, 6, 78);   // dealer 2: 7♣
   deal(layers, [90, 155], '10♥', true, 5, 96);    // player 2: 10♥ (completes 21)
 
-  // Commentary — types out each hand character by character (monospace, left-anchored). Kept in the
+  // Commentary - types out each hand character by character (monospace, left-anchored). Kept in the
   // upper-middle-left band so the push-in never clips it.
   typeLine(layers, 'PLAYER  A♠  10♥   = 21', -560, 300, 132, 40, LIGHT);
   typeLine(layers, 'DEALER  K♦  7♣    = 17', -560, 356, 206, 40, LIGHT);
   typeLine(layers, 'BLACKJACK', -560, 414, 276, 56, GOLD, 800);
 
-  // Camera — a slow cinematic push-in with a gentle drift (comp space; mirrors parallax.ts). Kept
+  // Camera - a slow cinematic push-in with a gentle drift (comp space; mirrors parallax.ts). Kept
   // modest so the spread-out top-down table stays fully framed through the whole move.
   const cam = createCameraLayer('Camera', W, H, DUR);
   cam.transform.position = createProperty('Position', 'vec2', [cx, cy]);

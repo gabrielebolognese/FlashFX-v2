@@ -1,6 +1,6 @@
 // Mask reveal wipes (B10a). Pure builders that keyframe an EXISTING parametric mask's position + size
 // so the masked content wipes/irises on over time. Uses the mask render that already ships (analytic
-// SDF + feather), so there is NO engine change — this only computes keyframe values. A mask shows the
+// SDF + feather), so there is NO engine change - this only computes keyframe values. A mask shows the
 // content INSIDE its shape (assuming not inverted), so growing the mask from nothing reveals the layer.
 // Leaf module: imports only the Vec2 type → node-harnessable (`verify:mask-reveal`).
 

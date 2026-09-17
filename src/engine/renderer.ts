@@ -199,7 +199,7 @@ fn fs(in: VertexOutput) -> @location(0) vec4f {
 `;
 
 const MASK_WGSL = /* wgsl */ `
-// N-pointed star SDF (mask variant — identical math to starSDF). Inside < 0.
+// N-pointed star SDF (mask variant - identical math to starSDF). Inside < 0.
 fn mask_starSDF(p: vec2f, points: f32, outerR: f32, innerR: f32) -> f32 {
   let pi = 3.14159265;
   let n = max(points, 2.0);
@@ -392,7 +392,7 @@ fn circleSDF(p: vec2f, r: f32) -> f32 {
 }
 
 // N-pointed star SDF. Reflect the point into one point-sector, then measure the signed distance to
-// that point's edge — the segment from the outer tip to the adjacent inner vertex. Inside < 0.
+// that point's edge - the segment from the outer tip to the adjacent inner vertex. Inside < 0.
 fn starSDF(p: vec2f, points: f32, outerR: f32, innerR: f32) -> f32 {
   let pi = 3.14159265;
   let n = max(points, 2.0);
@@ -935,7 +935,7 @@ fn fs(in: VO) -> @location(0) vec4f {
   //  multiply: dst*mix(1,col,a)  [blend dst,zero]     screen: col*a*(1-dst)+dst  [blend one-minus-dst,one]
   if (m == 2) { return vec4f(mix(vec3f(1.0), col, a), 1.0); }
   if (m == 3) { return vec4f(col * a, a); }
-  return vec4f(col, a); // normal (over) / add (src-alpha,one) — same output, different blend state
+  return vec4f(col, a); // normal (over) / add (src-alpha,one) - same output, different blend state
 }
 `;
 // 2.5D (M2): +80 bytes (is3D f108, mvp f112..127) → struct 512, fits UNIFORM_ALIGN (512) exactly.
@@ -1261,7 +1261,7 @@ fn morphClose(uv: vec2f, rad: vec2f) -> vec4f {
 }
 
 // Kuwahara edge-preserving smoothing: the mean of whichever of the 4 corner 3x3
-// quadrants has the least colour variance — the classic oil-painting operator.
+// quadrants has the least colour variance - the classic oil-painting operator.
 fn kuwahara(uv: vec2f, rad: vec2f) -> vec3f {
   var bestMean = sampleTex(uv);
   var bestVar = 1.0e9;
@@ -1833,7 +1833,7 @@ fn applySpatialEffect(color: vec4f, a: vec4f, b: vec4f, uv: vec2f, texel: vec2f,
       c = c + vec3f((hash21(uv * 400.0 + floor(time)) - 0.5) * p0 * 0.15);
     }
 
-    // ── C1: convolution — sharpen & edge detect ──
+    // ── C1: convolution - sharpen & edge detect ──
     case ${EFFECT_TYPE.sharpen}: {
       let n = sampleTex(uv + vec2f(0.0, -texel.y)) + sampleTex(uv + vec2f(0.0, texel.y))
             + sampleTex(uv + vec2f(-texel.x, 0.0)) + sampleTex(uv + vec2f(texel.x, 0.0));
@@ -2125,7 +2125,7 @@ const IMAGE_MVP_FLAG = 256; // float index of is3D
 const IMAGE_MVP_BASE = 260; // float index of mvp[0]
 
 // 2.5D (M2): pack a 3D layer's MVP into its pipeline uniform view. NO-OP for 2D layers or when
-// there is no active camera — the is3D flag stays 0 (buffers are zero-initialized) and the 2D
+// there is no active camera - the is3D flag stays 0 (buffers are zero-initialized) and the 2D
 // vertex path runs unchanged, so 2D output is byte-identical regardless of the appended fields.
 // pivot/position are the SAME anchor/position the packer already wrote to the quad uniform, so
 // a flat card at z=0 under the default camera matches the 2D placement (parity, verify:camera3d).
@@ -2218,7 +2218,7 @@ const PATH_INITIAL_VERTS = 4096;
 // in isolation into a layer texture, then this pass reconstructs a per-pixel
 // velocity vector (linear + rotational + scale) from the layer's frame-to-frame
 // motion and averages samples taken ALONG that velocity. Sampling is purely
-// directional — never radial or gaussian — so a streak forms in the direction
+// directional - never radial or gaussian - so a streak forms in the direction
 // of travel. Static pixels (zero velocity) return the source untouched.
 const BLUR_UNIFORM_SIZE = 48;
 const BLUR_SHADER = /* wgsl */ `
@@ -2814,8 +2814,8 @@ export class WebGPURenderer {
   // Driven by the quality/export settings (4 = draft, 8 = preview, 16 = high).
   private motionBlurSamples = 16;
   // Preview-only: when set, per-layer effects (shadow/glow/blur/motion-blur) are
-  // skipped for speed. An INSTANCE flag (not global) so the export renderer — a
-  // separate WebGPURenderer — always renders effects regardless of this preview toggle.
+  // skipped for speed. An INSTANCE flag (not global) so the export renderer - a
+  // separate WebGPURenderer - always renders effects regardless of this preview toggle.
   private effectsPreviewDisabled = false;
   // "Disable camera" preview toggle: render the SCREEN as if no camera exists (flat 2D), so a
   // 3D/2.5D comp can be edited normally. Never affects the offscreen (export) render.
@@ -3313,7 +3313,7 @@ export class WebGPURenderer {
       primitive: { topology: 'triangle-list' },
     });
 
-    // Procedural pattern pipelines — one per blend mode (blend-with-below). Guarded so a shader failure
+    // Procedural pattern pipelines - one per blend mode (blend-with-below). Guarded so a shader failure
     // only disables the GPU pattern path (falls back to the CPU renderer), never the whole renderer.
     let patternPipelines: Record<PatternBlendKey, GPURenderPipeline> | null = null;
     let patternUniformBuffer: GPUBuffer | null = null;
@@ -3333,7 +3333,7 @@ export class WebGPURenderer {
       const mk = (blend: GPUBlendState) => device.createRenderPipeline({ layout: patternLayout, vertex: { module: patternModule, entryPoint: 'vs' }, fragment: { module: patternModule, entryPoint: 'fs', targets: [{ format, blend }] }, primitive: { topology: 'triangle-list' } });
       patternPipelines = { normal: mk(blends.normal), add: mk(blends.add), multiply: mk(blends.multiply), screen: mk(blends.screen) };
     } catch (err) {
-      console.warn('[renderer] pattern GPU pipelines unavailable — using CPU fallback', err);
+      console.warn('[renderer] pattern GPU pipelines unavailable - using CPU fallback', err);
       patternPipelines = null; patternUniformBuffer = null; patternBindGroupLayout = null;
     }
 
@@ -3360,12 +3360,12 @@ export class WebGPURenderer {
 
   // Allocate (or reuse) the scene + isolated-layer textures used by the
   // motion-blur passes. Allocation only happens on first use and when the
-  // target dimensions change — never per frame — so VRAM stays bounded.
+  // target dimensions change - never per frame - so VRAM stays bounded.
   // Per-precomp offscreen render targets (nested composition → texture), pooled by
   // precomp layer id and reused across frames; reallocated on a size change.
   private precompTexPool = new Map<string, { tex: GPUTexture; view: GPUTextureView; w: number; h: number }>();
 
-  // --- Optical-flow retiming (B6b) — OPT-IN (video.retimeInterp==='flow'), OFF by default. Every GPU
+  // --- Optical-flow retiming (B6b) - OPT-IN (video.retimeInterp==='flow'), OFF by default. Every GPU
   // call is guarded; on ANY failure the pipeline is disabled and the layer falls back to the crisp
   // source frame, so a bad/invalid shader can never break the renderer or existing (mix/off) video. ---
   private flowWarp: { pipeline: GPURenderPipeline; layout: GPUBindGroupLayout; sampler: GPUSampler } | null | undefined = undefined;
@@ -3394,10 +3394,10 @@ export class WebGPURenderer {
       const sampler = device.createSampler({ magFilter: 'linear', minFilter: 'linear', addressModeU: 'clamp-to-edge', addressModeV: 'clamp-to-edge' });
       this.flowUniformBuf = device.createBuffer({ size: FLOW_UNIFORM_SIZE, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
       this.flowWarp = { pipeline, layout, sampler };
-      // A WGSL compile/validation error surfaces asynchronously — disable flow on the next frame if so.
-      device.popErrorScope().then((err) => { if (err) { console.warn('[flow] shader invalid — disabling optical-flow warp:', err.message); this.flowWarp = null; } }).catch(() => {});
+      // A WGSL compile/validation error surfaces asynchronously - disable flow on the next frame if so.
+      device.popErrorScope().then((err) => { if (err) { console.warn('[flow] shader invalid - disabling optical-flow warp:', err.message); this.flowWarp = null; } }).catch(() => {});
     } catch (e) {
-      console.warn('[flow] optical-flow warp unavailable — falling back to crisp frames:', e);
+      console.warn('[flow] optical-flow warp unavailable - falling back to crisp frames:', e);
       this.flowWarp = null;
     }
     return this.flowWarp;
@@ -3431,7 +3431,7 @@ export class WebGPURenderer {
       const texB = videoTextureCache.getTexture(bId);
       const fw = this.ensureFlowWarp(device, format);
       if (!texA || !texB || !fw || !this.flowUniformBuf) return null;
-      // Size the warp target to texA's ACTUAL pixel dims — the shader maps uv = pos.xy / dims(texA),
+      // Size the warp target to texA's ACTUAL pixel dims - the shader maps uv = pos.xy / dims(texA),
       // so the render-target size must equal the sampled texture size for the identity mapping to hold.
       const warpView = this.ensureFlowTexture(gpu, `${layerId}:warp`, texA.width, texA.height);
       const uni = new Float32Array([video.blendMix, 16, 0, 0]); // t, strength (max flow in texels)
@@ -3613,7 +3613,7 @@ export class WebGPURenderer {
     // requesting the exact frame and holding on a decode miss (framePresentation).
     this.presentLatest = presentLatest;
     // "Disable camera" (screen only): drop the frame's active camera so every layer takes the
-    // flat 2D vertex path — the whole M2 3D/MVP path is gated on frame.camera, so this renders
+    // flat 2D vertex path - the whole M2 3D/MVP path is gated on frame.camera, so this renders
     // exactly as if no camera existed. Export (offscreen) always keeps the camera.
     const f = this.cameraDisabled && target === 'screen' ? { ...frame, camera: undefined } : frame;
     // Capture WebGPU validation errors for the screen render. Without a scope they are
@@ -3632,9 +3632,9 @@ export class WebGPURenderer {
         dev.popErrorScope().then((e) => {
           if (e && this.gpuValidationLogged < 5) {
             this.gpuValidationLogged++;
-            console.error('[renderer] WebGPU validation error (captured — not fatal):', e.message);
+            console.error('[renderer] WebGPU validation error (captured - not fatal):', e.message);
           }
-        }).catch(() => { /* scope stack imbalance under device loss — ignore */ });
+        }).catch(() => { /* scope stack imbalance under device loss - ignore */ });
       }
     }
   }
@@ -3660,7 +3660,7 @@ export class WebGPURenderer {
 
     const { device, context, pipeline, textPipeline, imagePipeline, bgPipeline, pathPipeline, uniformBuffer, textUniformBuffer, imageUniformBuffer, pathUniformBuffer, bgBindGroup, bindGroupLayout, textBindGroupLayout, imageBindGroupLayout, pathBindGroupLayout, textSampler } = gpu;
 
-    // Upload background uniforms (per-call — a nested precomp frame has its own bg).
+    // Upload background uniforms (per-call - a nested precomp frame has its own bg).
     this.uploadBackgroundUniforms(gpu, frame.background);
 
     // Cached Render Tree bookkeeping runs ONLY at the top level; nested precomp
@@ -3702,7 +3702,7 @@ export class WebGPURenderer {
 
     // Expand procedural grid/tile layers into multiple instances. Each per-layer
     // uniform buffer holds MAX_LAYERS slots, and buckets partition expandedLayers,
-    // so the total is HARD-CAPPED at MAX_LAYERS — without this a dense tile pattern
+    // so the total is HARD-CAPPED at MAX_LAYERS - without this a dense tile pattern
     // (a 10px tile on 1080p = >21,000 instances) overflows writeBuffer/setBindGroup
     // and drops the whole layer to black with a WebGPU validation-error flood.
     const expandedLayers: ResolvedLayer[] = [];
@@ -3766,7 +3766,7 @@ export class WebGPURenderer {
     for (let i = 0; i < expandedLayers.length; i++) {
       const layer = expandedLayers[i];
       if (layer.layerType === 'text') {
-        // Skip the layer being edited on-canvas — the textarea overlay renders its text.
+        // Skip the layer being edited on-canvas - the textarea overlay renders its text.
         if (layer.id === this.editingTextLayerId) continue;
         textLayers.push({ index: i, layer });
       } else if (layer.layerType === 'video') {
@@ -3784,7 +3784,7 @@ export class WebGPURenderer {
       } else if (layer.shape) {
         shapeLayers.push({ index: i, layer });
       }
-      // else: an undrawable resolved layer (no recognized payload — e.g. a cloner meta that
+      // else: an undrawable resolved layer (no recognized payload - e.g. a cloner meta that
       // slipped through, or a future layer type) is SKIPPED, not force-bucketed as a shape.
       // The shape packer dereferences layer.shape, so bucketing a shape-less layer crashed the
       // whole frame (this was the cloner editor-crash).
@@ -3870,7 +3870,7 @@ export class WebGPURenderer {
         const currentIdx = videoTextureCache.getCurrentFrameIndex(vidLayer.id);
         if (this.presentLatest) {
           // Audio-master: display the newest decoded frame ≤ target and drop the
-          // rest; hold the current texture on a miss — never block. Selection is
+          // rest; hold the current texture on a miss - never block. Selection is
           // PER LAYER (two layers on one asset can need different source frames).
           const pick = frameScheduler.getPresentableFrame(
             video.assetId,
@@ -3883,7 +3883,7 @@ export class WebGPURenderer {
           }
         } else if (currentIdx !== sourceFrame) {
           // Classic path: request the EXACT source frame, hold last on a miss.
-          // Only upload when the texture doesn't already hold it — avoids a
+          // Only upload when the texture doesn't already hold it - avoids a
           // redundant GPU copy every render while paused.
           const videoFrame = frameScheduler.getFrame(video.assetId, sourceFrame);
           if (videoFrame) {
@@ -4242,7 +4242,7 @@ export class WebGPURenderer {
         // 2.5D DOF: a 3D layer off the camera's focus plane gets a camera depth-of-field blur,
         // synthesized as a per-layer gaussian from the circle-of-confusion radius and pushed
         // through the existing blur pipeline. Only when the layer has no blur of its own. The
-        // blur is per-layer-uniform (one CoC from the card's depth) — the 2.5D painter model has
+        // blur is per-layer-uniform (one CoC from the card's depth) - the 2.5D painter model has
         // no intra-layer depth, so this is the correct approximation.
         let dofBlurFx: ResolvedLayer['blur'] | undefined;
         if (fx && is3DLayer && frame.camera?.dof && rl3d.worldMatrix) {
@@ -4324,7 +4324,7 @@ export class WebGPURenderer {
       }
     }
 
-    // 2.5D (M2): painter's z-sort — runs of 3D layers composite far→near while 2D layers pin the
+    // 2.5D (M2): painter's z-sort - runs of 3D layers composite far→near while 2D layers pin the
     // order (AE Classic-3D model). Gated on an actual 3D layer + active camera, so all-2D comps
     // keep the exact original draw order (byte-identical). Sort is stable for equal depths.
     if (frame.camera && draws.some((d) => d.is3D)) {
@@ -4872,7 +4872,7 @@ export class WebGPURenderer {
 
   /**
    * Render a one-off resolved frame off-screen (on the LIVE device, reusing this renderer's
-   * warmed-up texture/text/video caches) and return it as a small WebP blob — used for
+   * warmed-up texture/text/video caches) and return it as a small WebP blob - used for
    * project-card thumbnails. Never touches the visible canvas, so there's no flash. Renders
    * at full comp resolution for correctness, then downscales to `maxDim` for storage.
    * Returns null if capture isn't possible. The camera is always kept (unlike the "disable
@@ -4962,7 +4962,7 @@ export class WebGPURenderer {
 
     // shapeParams: vec4 at floats 12..15. Star uses (points, outerR, innerR);
     // every other SDF shape (rectangle, polygon fallback) uses it for the four
-    // rounded-box corner radii [tl, tr, br, bl] — all equal to borderRadius unless
+    // rounded-box corner radii [tl, tr, br, bl] - all equal to borderRadius unless
     // the rectangle has independent corners, which keeps the uniform case identical.
     if (s.renderType === 'star') {
       data[12] = s.points;

@@ -5,7 +5,7 @@ import type { TextAnimatorDelta, TextSplitMode } from './types';
 // Pure per-character text-animation core. Given the string and a set of frame-resolved animators
 // (offset already baked into each selector), it produces a per-character transform/opacity delta by
 // blending each animator's property deltas by its range-selector weight (value = base + delta·weight).
-// No canvas, no React, no Date/Math.random — fully deterministic and unit-testable
+// No canvas, no React, no Date/Math.random - fully deterministic and unit-testable
 // (scripts/verify-textanimator.mjs). Glyph PLACEMENT (x/y from canvas measurement) is a separate,
 // browser-only concern handled at resolve time; this file only computes the per-index deltas.
 

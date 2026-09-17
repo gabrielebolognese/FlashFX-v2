@@ -5,7 +5,7 @@ import { cx } from './cx';
 
 /**
  * The modal shell every dialog reinvents: a dimmed scrim (blur is allowed here
- * — it floats over static content), a tokenized panel, a header with title +
+ * - it floats over static content), a tokenized panel, a header with title +
  * close, and an optional footer action bar. Escape / scrim-click close unless
  * `dismissable` is false (e.g. while a job runs).
  */

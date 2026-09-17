@@ -3,12 +3,12 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import { createAnthropicClient, type DirectorClient } from '../ai/director/client';
 
 // BYOK (bring-your-own-key) settings for the AI panel. The Anthropic key is the USER's own and is
-// stored ONLY in their browser (localStorage) — never in the app bundle, never sent anywhere but
+// stored ONLY in their browser (localStorage) - never in the app bundle, never sent anywhere but
 // Anthropic (or a proxy the user explicitly points at). The app ships with no key; AI stays inert
 // until one is provided, so the editor still runs with zero keys.
 //
 // `proxyUrl` is the proxy-ready seam: set it and requests go to your own endpoint (which injects the
-// real key server-side) instead of api.anthropic.com — a config swap, not a code change. That is the
+// real key server-side) instead of api.anthropic.com - a config swap, not a code change. That is the
 // path to switch to once auth + billing exist and a public key-holding endpoint is safe to expose.
 
 interface AiSettingsState {

@@ -4,7 +4,7 @@ import { useEditorStore } from '../../store/editor';
 import { computeBatchNames } from '../../core/batchRename';
 import { Pencil, X, AlertTriangle, ArrowUp, ArrowDown } from 'lucide-react';
 
-// M19 — Batch rename modal. Composes new names from a token/number template + optional regex,
+// M19 - Batch rename modal. Composes new names from a token/number template + optional regex,
 // with a live preview, and commits via the undoable renameLayers store action. Numbering follows
 // document (z-order) order, resolved in the store at commit time.
 
@@ -86,7 +86,7 @@ export function RenameModal() {
               <input className={INPUT} value={pattern.replace ?? ''} onChange={(e) => setPattern({ replace: e.target.value })} placeholder="$1" />
             </div>
             {regexError && (
-              <div className="flex items-center gap-1.5 text-[11px] text-amber-400"><AlertTriangle size={12} />Invalid regex — ignored</div>
+              <div className="flex items-center gap-1.5 text-[11px] text-amber-400"><AlertTriangle size={12} />Invalid regex - ignored</div>
             )}
           </div>
 

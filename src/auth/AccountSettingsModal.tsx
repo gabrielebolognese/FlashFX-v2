@@ -143,7 +143,7 @@ function StorageBar({ label, used, total }: { label: string; used?: number; tota
     <div>
       <div className="flex items-center justify-between text-[10.5px]">
         <span className="text-slate-400">{label}</span>
-        <span className="text-slate-600">{used != null && total != null ? `${formatBytes(used)} / ${formatBytes(total)}` : '—'}</span>
+        <span className="text-slate-600">{used != null && total != null ? `${formatBytes(used)} / ${formatBytes(total)}` : '-'}</span>
       </div>
       <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-[#1a2233]">
         <div className="h-full rounded-full bg-[#f7b500]" style={{ width: `${pct}%` }} />

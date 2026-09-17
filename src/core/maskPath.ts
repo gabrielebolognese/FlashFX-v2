@@ -1,6 +1,6 @@
 // Freeform path mask resolution (B10c, foundation). Pure helpers that evaluate a mask's optional
 // bezier outline + per-vertex feather for the current frame. Animated outlines reuse B8b's
-// `evalPathKeyframes` (arc-length resample + correspondence — handles poses with different vertex
+// `evalPathKeyframes` (arc-length resample + correspondence - handles poses with different vertex
 // counts). This is the DATA + MATH foundation only: the freeform-coverage SHADER that draws an
 // arbitrary mask outline is the remaining browser-gated step (the shipping mask primitives are
 // analytic SDFs and cannot draw a general polygon). Leaf-ish: imports only `evalPathKeyframes`

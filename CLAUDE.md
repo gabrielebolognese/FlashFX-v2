@@ -58,6 +58,7 @@ Note: consumers import these modules by **deep path**, not through a barrel. The
 - Store actions are the mutation API; components should call actions, not reconstruct composition state inline.
 - Keep pure logic in `core/` (and feature modules) unit-testable and free of React/DOM/WebGPU imports so it can run in workers.
 - Per `.bolt/prompt`: UI uses **Tailwind** classes and **lucide-react** icons; avoid adding new UI/icon/theme dependencies unless necessary.
+- **Never use em dashes** (the U+2014 character) anywhere: not in user-facing text (tutorials, messages, labels, placeholders, options, dialogs) and not in code comments/strings. Use a hyphen, colon, comma, or parentheses instead. A `grep` for that character across `src` must stay empty.
 
 ### Codebase health (July 2026 cleanup)
 

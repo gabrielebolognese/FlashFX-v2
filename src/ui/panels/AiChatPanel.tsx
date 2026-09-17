@@ -11,7 +11,7 @@ import { useIslandStore } from '../island/islandStore';
 // generates a whole scene and commits it as ONE undo step (Ctrl+Z reverts). The heavy engine (+zod
 // +prompts) is dynamically imported on first generate so it stays out of the initial bundle.
 // Model access is BYOK: the user's own Anthropic key lives only in their browser (see store/aiSettings);
-// the app ships with no key. Multi-turn editing isn't supported yet — each prompt builds a fresh scene.
+// the app ships with no key. Multi-turn editing isn't supported yet - each prompt builds a fresh scene.
 
 type Msg = AiMsg;
 
@@ -39,7 +39,7 @@ export function AiChatPanel() {
   const proxyUrl = useAiSettingsStore((s) => s.proxyUrl);
   const configured = isAiConfigured({ apiKey, proxyUrl });
 
-  // Transient, per-mount generation state — a half-finished generation can't survive an unmount.
+  // Transient, per-mount generation state - a half-finished generation can't survive an unmount.
   const [generating, setGenerating] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [showKey, setShowKey] = useState(false);
@@ -56,7 +56,7 @@ export function AiChatPanel() {
 
   const stop = useCallback(() => {
     // The in-flight request can't be aborted mid-call (no signal threaded through the pipeline yet),
-    // so Stop detaches the UI and discards the result when it resolves — nothing is committed.
+    // so Stop detaches the UI and discards the result when it resolves - nothing is committed.
     abortedRef.current = true; stopTick(); setGenerating(false);
     setMessages((m) => m.map((x) => (x.streaming ? { ...x, streaming: false, text: x.text || 'Stopped.' } : x)));
   }, [stopTick, setMessages]);
@@ -88,7 +88,7 @@ export function AiChatPanel() {
     try {
       const { generateScene, commitScene } = await import('../../ai/browserGenerate');
       const result = await generateScene({ description: text, client, canvas, fps, seed });
-      if (abortedRef.current) return; // user hit Stop — drop the result, commit nothing
+      if (abortedRef.current) return; // user hit Stop - drop the result, commit nothing
       const s = commitScene(result);
       const plural = (n: number) => (n === 1 ? '' : 's');
       const parts = [`Built ${s.layers} layer${plural(s.layers)} across ${s.panels} panel${plural(s.panels)}`];
@@ -119,7 +119,7 @@ export function AiChatPanel() {
         <span className="text-[12px] font-semibold text-slate-200">AI Assistant</span>
         <div className="ml-auto flex items-center gap-1">
           <button
-            title={configured ? 'Model connected — manage key' : 'Connect your Anthropic key'}
+            title={configured ? 'Model connected - manage key' : 'Connect your Anthropic key'}
             className={`p-1 rounded hover:bg-white/5 ${configured ? 'text-emerald-400' : 'text-amber-400'}`}
             onClick={() => setShowKey((v) => !v)}
           >
@@ -137,7 +137,7 @@ export function AiChatPanel() {
         {messages.length === 0 && (
           <div className="h-full flex flex-col items-center justify-center text-center gap-2 text-slate-600 px-3">
             <Sparkles size={22} />
-            <p className="text-[12px] leading-relaxed">Describe a scene and the assistant will build it — layers, motion, and palette — onto the canvas.</p>
+            <p className="text-[12px] leading-relaxed">Describe a scene and the assistant will build it - layers, motion, and palette - onto the canvas.</p>
             {!configured && (
               <button onClick={() => setShowKey(true)} className="mt-1 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-surface-3 border border-hairline text-[11px] text-amber-300 hover:bg-white/5">
                 <KeyRound size={12} /> Connect your Anthropic key to start
@@ -223,7 +223,7 @@ function KeyPanel({ onClose }: { onClose: () => void }) {
         />
       </label>
       <label className="block">
-        <span className="text-[10px] text-slate-500">Proxy URL (optional — advanced)</span>
+        <span className="text-[10px] text-slate-500">Proxy URL (optional - advanced)</span>
         <input
           type="text"
           value={proxy}

@@ -1,4 +1,4 @@
-// M20 — Rulers & pixel snapping. Pure, dependency-free (no ./interpolation, so the harness needs
+// M20 - Rulers & pixel snapping. Pure, dependency-free (no ./interpolation, so the harness needs
 // no Worker stub). Generates adaptive "nice-number" ruler ticks (major labelled + minor) that
 // track pan/zoom, plus the live snap-to-pixel rounding helpers. Deterministic; every emitted
 // number normalized with `+ 0` (kills -0).

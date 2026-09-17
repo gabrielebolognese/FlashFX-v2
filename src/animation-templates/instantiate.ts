@@ -3,7 +3,7 @@ import type { AnimationTemplate } from './types';
 
 // Pure instantiation: build a template's layers and rebase their (0-based) keyframes + clip ranges to
 // the playhead, rescaling if the comp fps differs from the authoring fps. Returns ready-to-insert
-// layers (group first). No store/DOM/renderer imports — harness-testable.
+// layers (group first). No store/DOM/renderer imports - harness-testable.
 
 function isProp(v: unknown): v is AnimatableProperty {
   return !!v && typeof v === 'object'
@@ -19,7 +19,7 @@ function walkProps(node: unknown, fn: (p: AnimatableProperty) => void): void {
     return;
   }
   if (isProp(node)) {
-    fn(node); // a property's keyframes hold plain values — don't descend into it
+    fn(node); // a property's keyframes hold plain values - don't descend into it
     return;
   }
   for (const key of Object.keys(node)) walkProps((node as Record<string, unknown>)[key], fn);

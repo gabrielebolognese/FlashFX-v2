@@ -13,7 +13,7 @@ export function ProjectLoadingSplash() {
         <div className="w-5 h-5 border-2 border-[#f7b500]/25 border-t-[#f7b500] rounded-full animate-spin" />
         <div className="text-[13px] font-medium text-slate-300">Loading project…</div>
       </div>
-      {/* Indeterminate progress sliver — opacity/transform only, so it animates through jank. */}
+      {/* Indeterminate progress sliver - opacity/transform only, so it animates through jank. */}
       <div className="w-48 h-1 rounded-full bg-[#141c28] overflow-hidden">
         <div className="h-full w-1/3 rounded-full bg-[#f7b500] animate-ffx-loadbar" />
       </div>

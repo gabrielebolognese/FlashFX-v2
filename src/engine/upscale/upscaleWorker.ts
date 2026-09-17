@@ -92,7 +92,7 @@ ctx.addEventListener('message', async (event: MessageEvent<UpscaleInbound>) => {
     try {
       result = await run(msg.model, device, msg.image);
     } catch (err) {
-      // Swin2SR's ONNX ops aren't all supported on the WebGPU EP — fall back to
+      // Swin2SR's ONNX ops aren't all supported on the WebGPU EP - fall back to
       // WASM for the whole load+inference (cached weights are reused).
       if (device === 'webgpu') {
         device = 'wasm';

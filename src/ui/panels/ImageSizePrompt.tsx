@@ -3,7 +3,7 @@ import { useImageSizePromptStore } from '../../store/imageSizePrompt';
 import { useEditorStore } from '../../store/editor';
 
 // Non-modal banner shown after importing an image that's larger than the canvas. It doesn't block the
-// editor — the user can ignore it — and offers to resize the image to fit or keep it at its size.
+// editor - the user can ignore it - and offers to resize the image to fit or keep it at its size.
 export function ImageSizePrompt() {
   const prompt = useImageSizePromptStore((s) => s.prompt);
   const dismiss = useImageSizePromptStore((s) => s.dismiss);

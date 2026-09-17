@@ -7,7 +7,7 @@ import { zEasingName } from './easing';
 // the expander has to tolerate. This is the schema half of the AI preset catalog (the expander that
 // turns these into keyframes lives engine-side in src/ai/presetCatalog.ts, keyed by the same names).
 //
-// Params are all defaulted, and the whole `params` object defaults to `{}` — so with io:'input' the
+// Params are all defaulted, and the whole `params` object defaults to `{}` - so with io:'input' the
 // Coder may omit params entirely and get sensible motion. Ranges are structural (survive JSON Schema).
 
 const SLIDE_DIR = z.enum(['left', 'right', 'up', 'down']);

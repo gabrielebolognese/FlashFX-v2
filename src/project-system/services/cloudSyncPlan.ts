@@ -1,6 +1,6 @@
 // Pure last-write-wins sync planner. Given the local project list and the cloud project list (each
 // item = id + a logical last-modified time + a deleted tombstone flag), it decides what to push,
-// pull, or delete on each side. No I/O, no Supabase, no React — so it is fully unit-testable and the
+// pull, or delete on each side. No I/O, no Supabase, no React - so it is fully unit-testable and the
 // conflict rules are provable (see scripts/verify-cloudsync.mjs). The actual transfer (scene JSON +
 // media blobs) is a separate layer that consumes this plan.
 

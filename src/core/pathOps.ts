@@ -122,7 +122,7 @@ export interface BooleanResultLayer {
 }
 
 /** A boolean result that KEEPS its holes (glyph-counter style), for the M17 polygon+holes render
- *  path — the missing capability the destructive booleanLayers dropped. */
+ *  path - the missing capability the destructive booleanLayers dropped. */
 export interface CompoundResult {
   position: Vec2;
   vertices: PathVertex[];   // outer ring, centered on `position`
@@ -137,7 +137,7 @@ function dedupeRing(ring: readonly number[][] | undefined): number[][] | null {
 
 /**
  * Boolean op over already-world-space rings, PRESERVING holes (polygon-clipping returns them; the
- * legacy booleanLayers threw them away). Pure — takes/returns plain geometry. Each result is
+ * legacy booleanLayers threw them away). Pure - takes/returns plain geometry. Each result is
  * recentered on its outer-ring centroid; holes share that centroid.
  */
 export function booleanRings(op: BooleanOp, rings: Vec2[][]): CompoundResult[] {
@@ -165,7 +165,7 @@ export function booleanRings(op: BooleanOp, rings: Vec2[][]): CompoundResult[] {
   return out;
 }
 
-/** Layer-space boolean that keeps holes — the non-destructive compound-boolean source. */
+/** Layer-space boolean that keeps holes - the non-destructive compound-boolean source. */
 export function booleanLayersWithHoles(op: BooleanOp, layers: Layer[], ids: string[], frame: number): CompoundResult[] {
   const rings: Vec2[][] = [];
   for (const id of ids) {
@@ -179,7 +179,7 @@ export function booleanLayersWithHoles(op: BooleanOp, layers: Layer[], ids: stri
 
 /**
  * Run a boolean op over the given shape layers (world space) and return one
- * result-layer spec per output polygon — each recentered around its centroid
+ * result-layer spec per output polygon - each recentered around its centroid
  * (matching createPenPath) so the new layer's transform anchors sensibly. Holes
  * aren't representable as a single PolygonShape and are dropped (outer ring only).
  */

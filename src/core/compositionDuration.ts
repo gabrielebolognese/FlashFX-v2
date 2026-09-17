@@ -13,7 +13,7 @@ import type { Composition, CompositionSettings, Layer } from './types';
  *     timeline UI, playback, exports, etc. stay in sync without per-call
  *     plumbing.
  *
- * These helpers are pure — they take a snapshot in, return a snapshot out,
+ * These helpers are pure - they take a snapshot in, return a snapshot out,
  * and never reach into stores. The store layer is responsible for calling
  * `recomputeCompositionDuration(comp)` after any layer mutation.
  */

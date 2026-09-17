@@ -51,7 +51,7 @@ export function buildCoderRequest(o: BuildCoderRequestOpts): AnthropicRequest {
   return {
     model: o.model,
     max_tokens: o.maxTokens,
-    // tools first (the frozen decode schema — the most stable, cacheable content).
+    // tools first (the frozen decode schema - the most stable, cacheable content).
     tools: [{
       name: CODER_TOOL_NAME,
       description: "Emit this panel's layers as a CoderFragment (frames).",

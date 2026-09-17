@@ -5,7 +5,7 @@ import { type DirectorClient, type Usage, ZERO_USAGE, addUsage } from '../direct
 // The Coder stage: one panel Job → a validated CoderFragment (this panel's layers), with usage.
 // Mirrors runDirector: the network call is behind `client` (the SAME Anthropic wire client), output
 // is FORCED (tool_choice), and on a validation failure (structural OR Coder-semantic) we retry ONCE
-// with the errors fed back, then fail loudly — two attempts, never a silent bad fragment.
+// with the errors fed back, then fail loudly - two attempts, never a silent bad fragment.
 
 export const CODER_MODEL = 'claude-opus-5';
 export const CODER_MAX_TOKENS = 8192; // a panel's worth of layers with headroom (a truncated tool call is unrecoverable)
@@ -35,7 +35,7 @@ export interface RunCoderOpts {
 }
 
 /**
- * Coder-local semantic checks — the cross-fragment rules Zod can't express that assembly would
+ * Coder-local semantic checks - the cross-fragment rules Zod can't express that assembly would
  * otherwise reject: panel identity, id-namespace ownership, budget, unique ids, and that every
  * element the panel declares on-screen at a boundary is realized as a layer here.
  */

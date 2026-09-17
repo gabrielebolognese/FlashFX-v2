@@ -12,7 +12,7 @@ export interface LayerBounds {
 export type AlignAxis = 'left' | 'centerH' | 'right' | 'top' | 'centerV' | 'bottom';
 
 function getLayerSize(layer: Layer, frame: number): { w: number; h: number } | null {
-  // group/audio have no spatial box; camera is a viewpoint, not a card — never align/nudge it.
+  // group/audio have no spatial box; camera is a viewpoint, not a card - never align/nudge it.
   if (layer.type === 'group' || layer.type === 'audio' || layer.type === 'camera') return null;
   if (layer.type === 'video') {
     const vl = layer as any;
@@ -804,7 +804,7 @@ export function computeMatchCanvasAspect(layers: Layer[], frame: number, canvasW
   return results;
 }
 
-// ── M15: Tidy Up — infer a row/column/grid from current positions and equalize spacing ──
+// ── M15: Tidy Up - infer a row/column/grid from current positions and equalize spacing ──
 // One-click cleanup (Figma "Tidy up"): cluster the selection into rows by Y, infer 1D row /
 // 1D column / 2D grid, derive the MODAL gap, and reflow anchored at the block's top-left with
 // each item centered in a content-sized cell. Returns AlignResult[] straight into

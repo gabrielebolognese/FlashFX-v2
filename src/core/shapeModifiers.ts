@@ -1,11 +1,11 @@
-// Pure path-modifier operators for shape layers (B8a) — Trim Paths (draw-on), Offset Paths
+// Pure path-modifier operators for shape layers (B8a) - Trim Paths (draw-on), Offset Paths
 // (inset/outset), and Roughen (jagged edges). Each is a deterministic PathVertex[] → PathVertex[]
 // transform applied at RESOLVE time (see resolveShapeLayer), so the already-existing polygon
 // tessellation pipeline draws the result with NO renderer change. A leaf module: it imports only
 // `evalCubic` (itself pure) + types, so it bundles in a node harness (`verify:shape-motion`).
 //
 // Modifiers are OPT-IN: with none present the resolver returns the original vertices untouched, so
-// existing shapes are byte-identical. Trim/Roughen emit a flattened polyline (corner vertices) — the
+// existing shapes are byte-identical. Trim/Roughen emit a flattened polyline (corner vertices) - the
 // tessellator flattens beziers anyway, so the rendered result matches a curve-preserving trim while
 // keeping the maths robust and testable. Offset preserves vertex count and relative handles.
 
@@ -40,7 +40,7 @@ function centroidOf(vertices: PathVertex[]): Vec2 {
   return [cx / vertices.length, cy / vertices.length];
 }
 
-/** Deterministic PRNG (house mulberry32) — Roughen must be frame-pure, so no Math.random/Date. */
+/** Deterministic PRNG (house mulberry32) - Roughen must be frame-pure, so no Math.random/Date. */
 export function mulberry32(seed: number): () => number {
   let a = seed >>> 0;
   return function () {
@@ -98,7 +98,7 @@ function collectContiguous(pts: Vec2[], cum: number[], a: number, b: number): Ve
  * Trim Paths (draw-on). `start`/`end` are fractions in [0,1] of the total path length; `offset`
  * shifts the visible window (fraction; wraps on closed paths). Returns a flattened open sub-path.
  * Full coverage (window length ≥ 1) returns the ORIGINAL vertices so 100% trim is byte-identical to
- * no modifier. Empty window returns no vertices (nothing drawn — a 0% draw-on).
+ * no modifier. Empty window returns no vertices (nothing drawn - a 0% draw-on).
  */
 export function trimPath(
   vertices: PathVertex[],
@@ -123,7 +123,7 @@ export function trimPath(
   lo += offset; hi += offset;
   let ptsOut: Vec2[];
   if (closed) {
-    // periodic ring — normalize the start into [0,1); the window may cross the seam.
+    // periodic ring - normalize the start into [0,1); the window may cross the seam.
     const loW = ((lo % 1) + 1) % 1;
     const hiW = loW + covered;
     if (hiW <= 1 + 1e-9) {
@@ -143,11 +143,11 @@ export function trimPath(
 }
 
 /**
- * Dash a path (B8c) — split the outline into the "on" segments of a dash pattern, each returned as its
+ * Dash a path (B8c) - split the outline into the "on" segments of a dash pattern, each returned as its
  * own open polyline contour (so the renderer strokes each piece). `dashArray` is [on, off, on, off, …]
  * lengths in px (an odd-length array is doubled, SVG-style); `dashOffset` shifts the pattern along the
  * path (the pattern position at arc 0 is `dashOffset`). An empty/zero pattern returns the whole path as
- * one contour (no dashing). Pure arc-length walk — mirrors trim; the fill is unaffected (stroke only).
+ * one contour (no dashing). Pure arc-length walk - mirrors trim; the fill is unaffected (stroke only).
  */
 export function dashPath(vertices: PathVertex[], closed: boolean, dashArray: number[], dashOffset: number, perSeg = 24): PathVertex[][] {
   if (vertices.length < 2) return [vertices.map(clonePathVertex)];
@@ -188,7 +188,7 @@ export function offsetPath(vertices: PathVertex[], closed: boolean, amount: numb
   const n = vertices.length;
   if (n < 2 || amount === 0) return vertices.map((v) => ({ ...v }));
 
-  // centroid (of anchor positions) — used to orient every normal outward, winding-agnostic.
+  // centroid (of anchor positions) - used to orient every normal outward, winding-agnostic.
   let cx = 0, cy = 0;
   for (const v of vertices) { cx += v.position[0]; cy += v.position[1]; }
   const centroid: Vec2 = [cx / n, cy / n];
@@ -229,7 +229,7 @@ export function roughenPath(
 ): { vertices: PathVertex[]; closed: boolean } {
   if (amount === 0 || vertices.length < 2) return { vertices: vertices.map((v) => ({ ...v })), closed };
   const flat = flattenAll(vertices, closed, perSeg);
-  // For a closed ring the last point duplicates the first — drop it and let `closed` re-close.
+  // For a closed ring the last point duplicates the first - drop it and let `closed` re-close.
   const pts = closed ? flat.pts.slice(0, -1) : flat.pts;
   const m = pts.length;
   if (m < 2) return { vertices: vertices.map((v) => ({ ...v })), closed };
@@ -247,7 +247,7 @@ export function roughenPath(
 
 /**
  * Pucker & Bloat. Bows each edge outward (bloat, amount > 0) or inward (pucker, amount < 0) while the
- * original ANCHORS stay put — the distinguishing look vs. a plain scale (flowers / spikes). Implemented
+ * original ANCHORS stay put - the distinguishing look vs. a plain scale (flowers / spikes). Implemented
  * by subdividing each segment and pushing every sample along its outward normal by
  * `amount · sin(π·tLocal)`, which is 0 at the anchors and peaks at the edge midpoints. Emits a
  * flattened polyline. `amount = 0` is a no-op.
@@ -269,7 +269,7 @@ export function puckerBloat(vertices: PathVertex[], closed: boolean, amount: num
       tLoc.push(k / perSeg); // k === perSeg → 1 → an anchor → sin(π)=0
     }
   }
-  // For a closed ring the final sample duplicates the first anchor — drop it (closed re-closes).
+  // For a closed ring the final sample duplicates the first anchor - drop it (closed re-closes).
   const usePts = closed ? pts.slice(0, -1) : pts;
   const useT = closed ? tLoc.slice(0, -1) : tLoc;
   const m = usePts.length;
@@ -321,7 +321,7 @@ export function morphPaths(vA: PathVertex[], cA: boolean, vB: PathVertex[], cB: 
 
 /**
  * Evaluate an animated outline at `frame`. At or beyond a pose (and outside the range) returns that
- * pose's ORIGINAL vertices — beziers intact, byte-identical to the authored shape. Strictly BETWEEN
+ * pose's ORIGINAL vertices - beziers intact, byte-identical to the authored shape. Strictly BETWEEN
  * two poses returns a morphed polyline. `hold` interpolation on a pose freezes it until the next.
  */
 export function evalPathKeyframes(kfs: PathKeyframe[], frame: number): { vertices: PathVertex[]; closed: boolean } {
@@ -356,7 +356,7 @@ export interface RepeaterCopy {
 /**
  * Per-copy transforms for a shape Repeater (AE Repeater / MoGraph clone-in-place). Copy 0 is the
  * original (no offset). Each subsequent copy accumulates the per-copy delta UNDER the growing
- * rotation+scale — i.e. copy i's offset is Σ_{k<i} scale^k · R(k·rot) · (offsetX, offsetY) — so a
+ * rotation+scale - i.e. copy i's offset is Σ_{k<i} scale^k · R(k·rot) · (offsetX, offsetY) - so a
  * rotation makes copies fan into a radial array and a scale makes a spiral, exactly like AE. Opacity
  * ramps linearly from `startOpacity` (copy 0) to `endOpacity` (last copy). Pure & deterministic.
  */
@@ -384,7 +384,7 @@ export function repeaterTransforms(
   return out;
 }
 
-// ── Resolved (numeric) modifier stack — the AnimatableProperty params are evaluated to numbers by
+// ── Resolved (numeric) modifier stack - the AnimatableProperty params are evaluated to numbers by
 //    the caller (resolveShapeLayer), keeping this module free of the interpolation engine. ──
 
 export type ResolvedShapeModifier =

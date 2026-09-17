@@ -26,7 +26,7 @@ const FRAME_CACHE_BYTES = 512 * 1024 * 1024; // frameScheduler.ts MEMORY_BUDGET_
 const GPU_FRAME_MULT = 8; // offscreen canvas + renderer pools + <=5 in-flight VideoFrames
 const FIXED_OVERHEAD = 64 * 1024 * 1024; // muxer + encoder + wasm
 
-/** Encoded video bitstream size — identical to the modal's "Est. Size". */
+/** Encoded video bitstream size - identical to the modal's "Est. Size". */
 export function encodedVideoBytes(i: ExportMemoryInputs): number {
   return (i.bitrate * i.durationFrames) / (8 * i.frameRate);
 }

@@ -1,11 +1,11 @@
 // PERMANENT fixtures. These are the renderer regression suite, the seed for the Coder's golden
-// examples, and what the preset curves get tuned against — written to be read many times. Hand-
+// examples, and what the preset curves get tuned against - written to be read many times. Hand-
 // authored plan (ms) + fragments (frames), covering: shape (rect/circle), text, group + parenting,
 // the cloner/effector path, multi-panel structure with boundary contracts + a transition, and every
 // preset category (entrance fadeIn/slideIn/popIn, emphasis emphasisPulse, staggered group reveal).
 //
 // Deliberately NOT covered visually: image/video/audio (need registered assets) and camera (needs
-// 3D layers to matter) — both are supported by the compiler but excluded here so the visual check
+// 3D layers to matter) - both are supported by the compiler but excluded here so the visual check
 // renders with no external dependencies.
 
 // Loose typing on purpose: compile() parses these through the Zod schema, which is the real check.
@@ -64,7 +64,7 @@ const showreel: Fixture = {
           distribution: { type: 'grid', countX: 7, countY: 1, countZ: 1, spacing: { x: 90, y: 0, z: 0 }, origin: { x: -270, y: 0, z: 0 }, rowOffset: 0 },
           effectors: [], stagger: { delaySeconds: 0 }, renderCount: 7,
           transform: { position: [960, 320] } },
-        // Group + parenting + staggered reveal of three chips. The group carries NO transform — AI
+        // Group + parenting + staggered reveal of three chips. The group carries NO transform - AI
         // groups are identity, so children author WORLD coordinates and stepFrames is left to the
         // staggerDoctrine.gapMs (60ms → 2 frames @ 30fps).
         { id: 'p1:row', name: 'chip-row', type: 'group',
@@ -80,7 +80,7 @@ const showreel: Fixture = {
   ],
 };
 
-// ── boundaryMismatch: a NEGATIVE fixture — panel 0 says 'ghost' is on screen at the seam, panel 1
+// ── boundaryMismatch: a NEGATIVE fixture - panel 0 says 'ghost' is on screen at the seam, panel 1
 //    disagrees. Assembly must REPORT this (not paper over it). ──
 const boundaryMismatch: Fixture = {
   director: {

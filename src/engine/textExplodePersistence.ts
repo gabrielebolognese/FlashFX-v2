@@ -23,5 +23,5 @@ export function persistExplodeGroup(args: {
       stagger_frames: args.staggerFrames,
       clip_count: args.clipCount,
     })
-    .then(undefined, () => { /* offline / unreachable — ignore */ });
+    .then(undefined, () => { /* offline / unreachable - ignore */ });
 }

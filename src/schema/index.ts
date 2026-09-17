@@ -1,4 +1,4 @@
-// @/schema — the standalone, framework-agnostic contract package for AI animation authoring.
+// @/schema - the standalone, framework-agnostic contract package for AI animation authoring.
 //
 // Zero runtime deps beyond Zod. NO React / WebGPU / IndexedDB / engine imports at runtime, so this
 // runs server-side (validation) as well as in the app. It serves four jobs from one source: runtime

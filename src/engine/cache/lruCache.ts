@@ -8,7 +8,7 @@
 // evicted while still needed.
 //
 // Map iteration order is insertion order, so we approximate recency by deleting
-// and re-inserting an entry on every access — the oldest live entry is always
+// and re-inserting an entry on every access - the oldest live entry is always
 // the first key returned by the iterator, which is what eviction removes.
 
 export interface LruEntry<V> {
@@ -30,7 +30,7 @@ export interface LruCacheOptions<V> {
   maxBytes: number;
   maxEntries: number;
   // Called when an entry is dropped (eviction, delete, or clear) so the owner
-  // can release the underlying resource — e.g. destroy a GPUTexture.
+  // can release the underlying resource - e.g. destroy a GPUTexture.
   onEvict?: (key: string, value: V) => void;
   // Optional predicate; when it returns true the key is treated as in-use and
   // skipped during eviction. Used to protect layers being drawn this frame.

@@ -10,7 +10,7 @@ import { videoAssetStore } from '../video/videoAssetStore';
 
 export interface ImageAssetMetadata {
   assetId: string;
-  width: number;   // usable (GPU-capped) dimensions — what the layer/texture use
+  width: number;   // usable (GPU-capped) dimensions - what the layer/texture use
   height: number;
   format: string;
   fileSize: number;
@@ -88,7 +88,7 @@ class MediaAssetManager {
   private _persistenceAvailable = true;
   private _storageWarnings: string[] = [];
   // Serializes background video-audio decodes. `decodeAudioData` transiently holds the ENTIRE file's
-  // PCM (can be >1GB for a long clip), so importing many videos at once — each firing its own decode —
+  // PCM (can be >1GB for a long clip), so importing many videos at once - each firing its own decode -
   // spiked memory and crashed. Chaining them means at most one full-file decode is in flight.
   private _audioExtractChain: Promise<void> = Promise.resolve();
   // LRU of VIDEO assetIds whose full decoded PCM is currently cached (see ensureAudioBuffer).
@@ -223,7 +223,7 @@ class MediaAssetManager {
 
       frameScheduler.registerAsset(assetId, assetId, workerMeta.frameRate, workerMeta.frameCount);
       videoAudioPlayer.initAudio(assetId, file);
-      // Queue the waveform decode instead of firing it immediately — one full-file decode at a time.
+      // Queue the waveform decode instead of firing it immediately - one full-file decode at a time.
       this._audioExtractChain = this._audioExtractChain.then(() => this.extractVideoAudio(file, assetId)).catch(() => {});
 
       // Await persistence if still in progress
@@ -383,7 +383,7 @@ class MediaAssetManager {
   }
 
   private generateWaveform(buffer: AudioBuffer): WaveformData {
-    // Strided peak reduction (see core/waveform) — keeps a long-clip import from
+    // Strided peak reduction (see core/waveform) - keeps a long-clip import from
     // freezing the main thread while producing a visually identical envelope.
     const { peaks, samplesPerPeak } = computeWaveformPeaks(buffer.getChannelData(0), 2048);
     return { peaks, samplesPerPeak, channels: buffer.numberOfChannels, duration: buffer.duration };
@@ -400,7 +400,7 @@ class MediaAssetManager {
 
       const waveform = this.generateWaveform(audioBuffer);
       // Keep the small waveform + metadata, but do NOT retain the full decoded PCM
-      // for VIDEO assets — playback uses the hidden <video>, so this multi-GB buffer
+      // for VIDEO assets - playback uses the hidden <video>, so this multi-GB buffer
       // was pure retention. Consumers that need the full buffer (export mix, silence,
       // captions, audio processing) re-decode on demand via ensureAudioBuffer().
       asset.waveform = waveform;
@@ -445,7 +445,7 @@ class MediaAssetManager {
       frameScheduler.registerAsset(assetId, assetId, workerMeta.frameRate, workerMeta.frameCount);
       videoAudioPlayer.initAudio(assetId, file);
       // Do NOT decode the whole file's audio here. On project OPEN this ran a multi-GB `decodeAudioData`
-      // for EVERY stored video just to build a waveform — the dominant open-time OOM. The waveform is
+      // for EVERY stored video just to build a waveform - the dominant open-time OOM. The waveform is
       // now computed lazily (ensureWaveform) the first time a clip's strip needs it, serialized so many
       // strips can't launch parallel full-file decodes.
       this.notify();
@@ -523,7 +523,7 @@ class MediaAssetManager {
     };
 
     // Sequential (not Promise.all): each restore decodes the video's audio to build
-    // its waveform — running them in parallel spikes memory by N× the transient
+    // its waveform - running them in parallel spikes memory by N× the transient
     // decode. One at a time keeps the peak bounded when opening a video-heavy project.
     for (const assetId of uniqueIds) {
       await restoreOne(assetId);
@@ -702,10 +702,10 @@ class MediaAssetManager {
     // Restore video assets SEQUENTIALLY. Each one transiently decodes its whole
     // audio track to build the waveform (initVideoAssetFromBlob → the now-awaited
     // extractVideoAudio), so restoring in parallel would spike memory to N× a full
-    // decode — an open-time OOM on video-heavy projects. One at a time bounds the peak.
+    // decode - an open-time OOM on video-heavy projects. One at a time bounds the peak.
     if (videoAssetsToRestore.length > 0) {
       added = true;
-      // Which videos are already in the dedicated store (written at import) — so we
+      // Which videos are already in the dedicated store (written at import) - so we
       // only backfill the legacy/failed-write case instead of re-writing every blob
       // (up to GBs) on every open. Cheap metadata-only query, no blob reads.
       const persisted = new Set(
@@ -766,13 +766,13 @@ class MediaAssetManager {
 
   /**
    * Return the full decoded AudioBuffer, decoding on demand from the source blob
-   * if it isn't resident (video assets don't retain their PCM — see
+   * if it isn't resident (video assets don't retain their PCM - see
    * extractVideoAudio). Caches the result on the asset. Async callers that need
    * the whole buffer (export mix, silence, captions, audio processing) use this;
    * `getAudioBuffer` stays a synchronous cache read.
    */
   // Lazily compute a video/audio asset's waveform the first time a clip strip needs it (waveforms are
-  // no longer decoded eagerly on open/import — that was the OOM). Serialized through _audioExtractChain
+  // no longer decoded eagerly on open/import - that was the OOM). Serialized through _audioExtractChain
   // so many strips mounting at once can't launch parallel full-file decodes; notify() re-renders the
   // strip when the waveform lands.
   private waveformInflight = new Set<string>();
@@ -811,7 +811,7 @@ class MediaAssetManager {
         if (a) {
           a.audioBuffer = buffer;
           // A VIDEO asset's full PCM (can be >1GB) is only needed transiently by export/silence/
-          // captions — video playback uses the hidden <video>. Bound how many we keep resident so a
+          // captions - video playback uses the hidden <video>. Bound how many we keep resident so a
           // session that touches many clips can't accumulate multi-GB of PCM (back-door OOM). The
           // returned buffer stays alive for the caller; we only drop the manager's cache reference.
           if (a.mimeType.startsWith('video/')) {

@@ -15,7 +15,7 @@ interface TimelineState {
   followPlayhead: boolean;
   /** Reported by TrackArea so the fit/jump actions (driven from menus) know the viewport width. */
   containerWidth: number;
-  /** Reported by TrackArea — the track viewport's pixel height (used to page vertical auto-scroll,
+  /** Reported by TrackArea - the track viewport's pixel height (used to page vertical auto-scroll,
    *  e.g. the cinematic build keeping the keyframed layer in view). */
   containerHeight: number;
   /** Timeline view toggle: draw audio/video waveforms on clips. */

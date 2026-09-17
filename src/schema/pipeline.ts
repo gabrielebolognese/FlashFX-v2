@@ -9,10 +9,10 @@ import type { Caps } from './caps';
 // The pipeline's intermediate contracts as first-class schemas. UNIT DISCIPLINE (the corrected
 // invariant): PLANNING contracts carry ms (human-scale planning + audio sync), everything DOCUMENT-
 // facing (jobs, panels, the Coder fragment) carries integer FRAMES. Job-expansion converts ONCE by
-// deriving an integer beat in frames and rebuilding the panel grid from it — the Coder never sees ms.
+// deriving an integer beat in frames and rebuilding the panel grid from it - the Coder never sees ms.
 
 // ── Director ──
-/** The subject inventory is a brief-level count, NOT a layer count — capped at a small fixed 12
+/** The subject inventory is a brief-level count, NOT a layer count - capped at a small fixed 12
  *  (the prompt enforces the same), independent of tier layer budgets. */
 export const MAX_SUBJECTS = 12;
 export function makeBrief() {
@@ -20,25 +20,25 @@ export function makeBrief() {
     .strictObject({
       /** The Director DECIDES rather than asks; committed total duration in ms (planning). */
       durationMs: zMs.refine((v) => v > 0, 'duration must be > 0'),
-      /** MUST mirror the preflight canvas (landscape/portrait/square) — never invented. Enforced in
+      /** MUST mirror the preflight canvas (landscape/portrait/square) - never invented. Enforced in
        *  the prompt and by the semantic validator (validateDirectorPlan, given the canvas). */
       format: z.enum(OUTPUT_FORMATS),
       tone: z.enum(TONES),
-      /** Conceptual inventory — 3 to 12 (matches the prompt), not a layer count. */
+      /** Conceptual inventory - 3 to 12 (matches the prompt), not a layer count. */
       subjects: z.array(z.strictObject({ id: zNamespacedId, name: zSemanticName })).min(3).max(MAX_SUBJECTS),
     })
     .describe('the Director brief (commits duration/format/subjects/tone; ms)');
 }
 
-/** A Director panel (ms plan). Boundary contracts here are coarse — the element ids present at each
- *  boundary — enough to fan out jobs; the assembled frame Panel carries the richer state contract. */
+/** A Director panel (ms plan). Boundary contracts here are coarse - the element ids present at each
+ *  boundary - enough to fan out jobs; the assembled frame Panel carries the richer state contract. */
 export function makeDirectorPanel(caps: Caps) {
   return z.strictObject({
     id: zId,
     order: z.int().min(0),
     startMs: zMs,
     endMs: zMs,
-    /** Required — the prompt says "set it for each panel"; a panel with no focal point has no purpose. */
+    /** Required - the prompt says "set it for each panel"; a panel with no focal point has no purpose. */
     focalPoint: zVec2,
     elements: z
       .array(z.strictObject({ id: zNamespacedId, name: zSemanticName, kind: z.enum(AI_LAYER_TYPES) }))

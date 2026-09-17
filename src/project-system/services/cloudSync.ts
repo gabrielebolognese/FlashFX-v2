@@ -10,7 +10,7 @@ import type { ProjectMetadata } from '../types';
 
 // Client I/O for cloud project sync (Phase 2). Scene JSON + a metadata blob live in the
 // `cloud_projects` table; media assets live in the private `project-assets` Storage bucket
-// (path {user_id}/{projectId}/{assetId}). Everything is best-effort and FAILURE-ISOLATED — a cloud
+// (path {user_id}/{projectId}/{assetId}). Everything is best-effort and FAILURE-ISOLATED - a cloud
 // error is caught and surfaced only as sync status; the local IndexedDB stays the source of truth
 // and a save/delete never fails because of the cloud. Conflict resolution is the tested planSync
 // (last-write-wins). All of this is inert until the migration is applied + the user is signed in.
@@ -53,7 +53,7 @@ function readTombstones(): Tombstones {
   try { return JSON.parse(localStorage.getItem(TOMBSTONE_KEY) || '{}') as Tombstones; } catch { return {}; }
 }
 function writeTombstones(t: Tombstones): void {
-  try { localStorage.setItem(TOMBSTONE_KEY, JSON.stringify(t)); } catch { /* storage full/blocked — ignore */ }
+  try { localStorage.setItem(TOMBSTONE_KEY, JSON.stringify(t)); } catch { /* storage full/blocked - ignore */ }
 }
 export function recordLocalDelete(id: string): void {
   const t = readTombstones();

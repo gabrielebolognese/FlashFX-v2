@@ -1,10 +1,10 @@
 import type { Vec2 } from './types';
 
-// Spatial motion path for position keyframes — the SHAPE a layer travels through space, separate
+// Spatial motion path for position keyframes - the SHAPE a layer travels through space, separate
 // from its temporal easing. A segment between two position keyframes is a cubic bezier whose inner
 // control points are the keyframes' spatial tangents (offsets from each keyframe's position). The
 // path is sampled by ARC LENGTH so the temporal easing maps to constant speed along the curve
-// (matching After Effects) — otherwise a curved segment would speed up and slow down on its own.
+// (matching After Effects) - otherwise a curved segment would speed up and slow down on its own.
 //
 // Pure, leaf module (only the Vec2 type, erased at runtime) so it bundles trivially in a harness.
 
@@ -97,7 +97,7 @@ export function framesFromCumLengths(cum: number[], t0: number, t1: number): num
 
 /**
  * Auto (smooth / "Auto Bezier") spatial tangents for the middle keyframe of prev→cur→next, returned
- * as offsets from `cur`. The handle direction follows (next − prev) — a Catmull-Rom-style smooth —
+ * as offsets from `cur`. The handle direction follows (next − prev) - a Catmull-Rom-style smooth -
  * with each side's length ~1/3 of the distance to that neighbour. A missing neighbour (an endpoint)
  * yields a zero tangent on that side, so the path eases straight out of the ends.
  */

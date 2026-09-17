@@ -3,14 +3,14 @@
 // what a prompt-builder renders as "allowed values"). Adding a value here is the ONLY place it
 // changes. Everything is `as const` so the literal-tuple types flow into `z.enum(...)`.
 //
-// IMPORTANT: this file has NO imports from the engine/core — it is pure data, safe to run
+// IMPORTANT: this file has NO imports from the engine/core - it is pure data, safe to run
 // server-side. The layer-type lists are intentionally a SUBSET of the app's full `TrackType`
 // union (src/core/types.ts): the AI introduces no new layer types, and adding one means editing
 // both render dispatch ladders, so the Coder is constrained to what already draws.
 
 /** Layer types the Coder is allowed to author, and the only `kind`s a Director panel element may
  *  take. A deliberate subset of the app's 18 `type` literals. `camera` and `audio` are FORBIDDEN:
- *  the camera path is minimal (needs 3D layers to matter) and audio needs a registered asset — both
+ *  the camera path is minimal (needs 3D layers to matter) and audio needs a registered asset - both
  *  were flagged unsupported, so the AI never plans or emits them. precomp/particle/procedural/field/
  *  layout/animationItem/lottie are likewise out of the AI vocabulary for v1. */
 export const AI_LAYER_TYPES = ['shape', 'text', 'group', 'image', 'video', 'cloner'] as const;
@@ -25,7 +25,7 @@ export const DOCUMENT_LAYER_TYPES = [
 ] as const;
 export type DocumentLayerType = (typeof DOCUMENT_LAYER_TYPES)[number];
 
-/** Layer types NOT in the AI vocabulary — preserved losslessly (passthrough) but not field-locked. */
+/** Layer types NOT in the AI vocabulary - preserved losslessly (passthrough) but not field-locked. */
 export const EXOTIC_LAYER_TYPES = DOCUMENT_LAYER_TYPES.filter(
   (t) => !(AI_LAYER_TYPES as readonly string[]).includes(t)
 ) as Exclude<DocumentLayerType, AiLayerType>[];
@@ -34,7 +34,7 @@ export const EXOTIC_LAYER_TYPES = DOCUMENT_LAYER_TYPES.filter(
 export const INTERPOLATION_TYPES = ['linear', 'bezier', 'hold', 'spring'] as const;
 export type InterpolationName = (typeof INTERPOLATION_TYPES)[number];
 
-/** Named easing curves — the ONE closed set the Director may choose from and the Coder may name.
+/** Named easing curves - the ONE closed set the Director may choose from and the Coder may name.
  *  Resolved to concrete bezier handles in ./easing.ts (the single source of the handle values). */
 export const EASING_NAMES = ['linear', 'easeIn', 'easeOut', 'easeInOut', 'spring'] as const;
 export type EasingName = (typeof EASING_NAMES)[number];
@@ -93,7 +93,7 @@ export type StaggerMode = (typeof STAGGER_MODES)[number];
 
 /** Semantic palette roles a style contract may name. Layers reference these; assembly resolves a
  *  role to a concrete color where the slot supports role links, else bakes a literal. The list is
- *  intentionally small and named by FUNCTION, not hue — the AI names a role, never a color. */
+ *  intentionally small and named by FUNCTION, not hue - the AI names a role, never a color. */
 export const PALETTE_ROLES = [
   'background', 'surface', 'primary', 'secondary', 'accent',
   'textPrimary', 'textSecondary', 'textInverse', 'success', 'warning', 'danger', 'neutral',
@@ -137,7 +137,7 @@ export type PatchOpKind = (typeof PATCH_OP_KINDS)[number];
 export const PROPERTY_CHANNELS = ['static', 'keyframes', 'preset', 'cloner'] as const;
 
 /** One-line human descriptions per vocabulary, for the prompt-builder to render. Keep in sync with
- *  the arrays above — a value with no description is allowed but reads poorly in the prompt. */
+ *  the arrays above - a value with no description is allowed but reads poorly in the prompt. */
 export const VOCAB_DOC: Record<string, string> = {
   'layerType.shape': 'A vector shape (rectangle, circle, star, or polygon path).',
   'layerType.text': 'A text layer with styled spans and box layout.',

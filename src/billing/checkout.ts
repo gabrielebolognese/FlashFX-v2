@@ -2,13 +2,13 @@ import { usePlanStore } from './plans';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../auth/store';
 
-// Billing seam — the whole Paddle integration lives here and is fully wired. To GO LIVE you only set
+// Billing seam - the whole Paddle integration lives here and is fully wired. To GO LIVE you only set
 // env vars (no code changes):
-//   VITE_PADDLE_CLIENT_TOKEN  — Paddle client-side token (public; safe in the bundle, like a Stripe
+//   VITE_PADDLE_CLIENT_TOKEN  - Paddle client-side token (public; safe in the bundle, like a Stripe
 //                               publishable key). Presence of this + the price id turns billing ON.
-//   VITE_PADDLE_PRICE_ID      — the "FlashFX Pro" recurring price id (pri_…).
-//   VITE_PADDLE_ENV           — 'sandbox' (default) or 'production'.
-//   VITE_PADDLE_PRICE_LABEL   — optional display price, e.g. '$12/mo'.
+//   VITE_PADDLE_PRICE_ID      - the "FlashFX Pro" recurring price id (pri_…).
+//   VITE_PADDLE_ENV           - 'sandbox' (default) or 'production'.
+//   VITE_PADDLE_PRICE_LABEL   - optional display price, e.g. '$12/mo'.
 // The webhook (supabase/functions/paddle-webhook) writes the subscription; refreshPlan() reads it.
 
 const PADDLE_TOKEN = import.meta.env.VITE_PADDLE_CLIENT_TOKEN as string | undefined;
@@ -64,7 +64,7 @@ function loadPaddle(): Promise<PaddleInstance> {
   return paddleReady;
 }
 
-/** After a completed checkout the webhook writes the subscription asynchronously — poll a few times. */
+/** After a completed checkout the webhook writes the subscription asynchronously - poll a few times. */
 function onPaddleEvent(e: { name?: string }): void {
   if (e?.name !== 'checkout.completed') return;
   let tries = 0;

@@ -6,7 +6,7 @@ import { captureError } from '../lib/telemetry';
  * Last-resort boundary around the whole app. PanelErrorBoundary isolates individual
  * panels; this catches a throw in the shell (Toolbar, a modal, the Dashboard,
  * onboarding, App itself) that would otherwise white-screen everything. It reports
- * to telemetry and offers a reload — reassuring the user their work is safe locally.
+ * to telemetry and offers a reload - reassuring the user their work is safe locally.
  */
 interface Props {
   children: ReactNode;
@@ -41,7 +41,7 @@ export class RootErrorBoundary extends Component<Props, State> {
           </div>
 
           <p className="mt-3 text-body text-secondary">
-            FlashFX hit an unexpected error. Your projects and media are saved locally and are safe —
+            FlashFX hit an unexpected error. Your projects and media are saved locally and are safe -
             reloading usually fixes it.
           </p>
 

@@ -3,12 +3,12 @@ import type { AnimationTemplate } from '../types';
 import { group, box, dot, card, label, assemble, setKeys, floatLoop, LINEAR, EASE_OUT, EASE_IN, EASE_IO, SPRING } from '../kit';
 import { makeCursor, moveTo, setIcon, click, park, commit } from '../cursor';
 
-// RECURSIVE demo: FlashFX animating a video editor — its own UI, driven by two believable cursors.
+// RECURSIVE demo: FlashFX animating a video editor - its own UI, driven by two believable cursors.
 // Five regions (toolbar, media bin, preview, inspector, timeline). The cursor motion is baked by the
 // cursor engine (bezier arc + ballistic velocity + overshoot + dwell + sub-pixel noise). This is a
 // bounded foundation covering the opening beats (assemble → bin hover → drag to timeline → scrub →
 // razor cut) plus continuous background life; the same engine + waypoint approach extends to the full
-// 30s sheet. NOTE: baked keyframes — the AE-native pieces (data repeaters, expression cursor, precomp
+// 30s sheet. NOTE: baked keyframes - the AE-native pieces (data repeaters, expression cursor, precomp
 // track mattes, a real nested video) are approximated, not the live features.
 
 const PANEL: Vec4 = [0.11, 0.13, 0.17, 1];
@@ -296,7 +296,7 @@ export const recursiveEditor: AnimationTemplate = {
   id: 'recursive-editor',
   name: 'Recursive Editor',
   category: 'showcase',
-  description: 'FlashFX animating a video editor — two believable cursors assemble, drag, scrub and cut.',
+  description: 'FlashFX animating a video editor - two believable cursors assemble, drag, scrub and cut.',
   tags: ['editor', 'cursor', 'ui', 'meta', 'recursive', 'showcase', 'demo'],
   durationFrames: DUR,
   authorFps: 30,

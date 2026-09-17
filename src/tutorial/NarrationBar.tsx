@@ -16,7 +16,7 @@ export function NarrationBar() {
 
   const handoff = phase === 'handoff';
   const say = handoff
-    ? 'Now it’s yours — drag a layer, scrub the timeline, or hit play. Export is up top when you’re ready.'
+    ? 'Now it’s yours - drag a layer, scrub the timeline, or hit play. Export is up top when you’re ready.'
     : tutorialScript[chapterIndex]?.steps[stepIndex]?.say ?? '';
 
   return (

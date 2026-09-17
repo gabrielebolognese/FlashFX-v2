@@ -5,7 +5,7 @@ import { DEFAULT_PATTERN } from './presets';
 const TYPES: PatternType[] = PATTERN_TYPES;
 const num = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
 
-/** Parse a stored configJSON into a complete, defaulted PatternConfig (lenient — never throws). */
+/** Parse a stored configJSON into a complete, defaulted PatternConfig (lenient - never throws). */
 export function parsePatternConfig(json: string): PatternConfig {
   let raw: Partial<PatternConfig> = {};
   try { const p = JSON.parse(json); if (p && typeof p === 'object') raw = p; } catch { /* defaults */ }

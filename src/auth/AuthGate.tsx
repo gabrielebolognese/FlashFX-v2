@@ -5,7 +5,7 @@ import { Input } from '../ui/primitives/Input';
 import { useAuthStore } from './store';
 
 // Full-screen account gate. Shown by App when accounts are ENABLED (Supabase configured) and the
-// visitor is not signed in — so creating/opening projects requires an account. When accounts are
+// visitor is not signed in - so creating/opening projects requires an account. When accounts are
 // NOT enabled (no Supabase env), App skips this entirely and the app stays local-first, so the
 // editor still runs with zero backend. On a successful sign-in the auth store flips to 'signed-in'
 // and this component unmounts. Email + password only (Google is hidden until an OAuth client exists).
@@ -35,7 +35,7 @@ export function AuthGate({ loading }: { loading?: boolean }) {
     setBusy(false);
     if (!res.ok) { setError(res.error ?? 'Something went wrong.'); return; }
     if (mode === 'signup') setNotice('Account created. Check your email to confirm it, then sign in.');
-    else if (mode === 'reset') setNotice('Password reset link sent — check your email.');
+    else if (mode === 'reset') setNotice('Password reset link sent - check your email.');
     // A successful sign-in flips the store to 'signed-in' and unmounts the gate.
   };
 

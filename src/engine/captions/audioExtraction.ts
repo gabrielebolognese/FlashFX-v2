@@ -19,7 +19,7 @@ async function decodeFromObjectUrl(objectUrl: string): Promise<AudioBuffer> {
 // Float32Array; the source AudioBuffer is not retained by the caller.
 async function resampleToMono16k(buffer: AudioBuffer): Promise<Float32Array> {
   if (buffer.sampleRate === WHISPER_SAMPLE_RATE && buffer.numberOfChannels === 1) {
-    // Already in the target format — copy the channel out directly.
+    // Already in the target format - copy the channel out directly.
     return buffer.getChannelData(0).slice();
   }
 
@@ -35,7 +35,7 @@ async function resampleToMono16k(buffer: AudioBuffer): Promise<Float32Array> {
 
 // Resolve a 16 kHz mono Float32Array for a video or audio asset. Prefers an
 // already-decoded AudioBuffer when the asset manager has one; otherwise decodes
-// from the asset's object URL (works for video containers too — the browser
+// from the asset's object URL (works for video containers too - the browser
 // extracts the audio track). Temporary buffers are not retained.
 export async function extractAudioForCaptions(assetId: string): Promise<Float32Array> {
   const existing = mediaAssetManager.getAudioBuffer(assetId);

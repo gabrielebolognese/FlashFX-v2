@@ -1,11 +1,11 @@
-// The AI PRESET CATALOG — the engine-side half. The SCHEMA half (closed per-preset params) lives in
+// The AI PRESET CATALOG - the engine-side half. The SCHEMA half (closed per-preset params) lives in
 // @/schema/presetParams, keyed by the SAME names (verify-compiler asserts they agree). Here each
-// preset knows: what it does to which properties, when a designer reaches for it, and — the point —
+// preset knows: what it does to which properties, when a designer reaches for it, and - the point -
 // how to EXPAND into real keyframe tracks by building an `AnimationPreset` and running it through the
 // EXISTING engine generator `generatePresetKeyframes` (curves/easing handles come from there; we
 // never author a parallel keyframe producer).
 //
-// staggerReveal is special: it is a GROUP preset with no tracks of its own — the assembler applies
+// staggerReveal is special: it is a GROUP preset with no tracks of its own - the assembler applies
 // its `childPreset` to each child with an increasing start offset (see assemble.ts).
 
 import type { PresetContext, AnimationPreset, GeneratedTrack } from '../core/animationPresets';
@@ -126,7 +126,7 @@ export const PRESET_CATALOG: Record<MotionPresetName, PresetCatalogEntry> = {
   },
   staggerExit: {
     name: 'staggerExit', category: 'group', targets: ['(children)'],
-    intent: 'Clear the children of a group one after another. The exit mirror of staggerReveal — lists/grids leaving.',
+    intent: 'Clear the children of a group one after another. The exit mirror of staggerReveal - lists/grids leaving.',
     groupStagger: { childParamKey: 'childPreset' },
     expand: () => [],
   },

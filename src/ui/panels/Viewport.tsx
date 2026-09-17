@@ -47,7 +47,7 @@ export function Viewport() {
   const addImageFromAsset = useEditorStore((s) => s.addImageFromAsset);
   const addVideoFromAsset = useEditorStore((s) => s.addVideoFromAsset);
   const addAudioFromAsset = useEditorStore((s) => s.addAudioFromAsset);
-  // NB: currentFrame is intentionally NOT subscribed here — it changes every played
+  // NB: currentFrame is intentionally NOT subscribed here - it changes every played
   // frame and would re-render the whole viewport + all overlays. The <FrameCounter>
   // leaf below owns that subscription so only it updates per frame.
   const addGuideline = useGridStore((s) => s.addGuideline);
@@ -172,7 +172,7 @@ export function Viewport() {
     // Precomp layers resolve their referenced sub-compositions from the registry.
     timelineEngine.setResolveContext({
       getComposition: (id) => useEditorStore.getState().getComposition(id),
-      getStyle: (id) => useEditorStore.getState().styles[id], // M21 — linked styles read-through
+      getStyle: (id) => useEditorStore.getState().styles[id], // M21 - linked styles read-through
     });
     playbackController.setFrameRate(composition.settings.frameRate);
     playbackController.setDuration(composition.settings.durationFrames);
@@ -229,7 +229,7 @@ export function Viewport() {
       return;
     }
     // Left-click on the empty viewport area OUTSIDE the canvas (the letterbox) deselects
-    // everything — canvas + timeline — matching clicking empty canvas and pressing Esc. The
+    // everything - canvas + timeline - matching clicking empty canvas and pressing Esc. The
     // target is the container itself only when no layer/overlay/control was hit.
     if (e.button === 0 && e.target === containerRef.current) {
       useEditorStore.getState().deselectAll();
@@ -301,7 +301,7 @@ export function Viewport() {
         } else if (data.type === 'video') {
           addVideoFromAsset(data.id, compX, compY);
         } else if (data.type === 'audio') {
-          // Audio has no canvas placement — drop anywhere adds it to the timeline.
+          // Audio has no canvas placement - drop anywhere adds it to the timeline.
           addAudioFromAsset(data.id);
         }
       } catch {}
@@ -328,7 +328,7 @@ export function Viewport() {
 
   const zoomPercent = Math.round(zoom * 100);
 
-  // Only surface the "disable camera" toggle when the comp actually has a camera — otherwise
+  // Only surface the "disable camera" toggle when the comp actually has a camera - otherwise
   // the screen is already flat 2D and the control would be meaningless.
   const hasCamera = composition.layers.some((l) => l.type === 'camera');
   // Cameras are point objects with no on-canvas box; give each a selection icon on the right border
@@ -393,13 +393,13 @@ export function Viewport() {
 
       <ImageSizePrompt />
 
-      {/* Disable-camera toggle (top-right) — flattens the 3D/2.5D camera view to 2D so a
+      {/* Disable-camera toggle (top-right) - flattens the 3D/2.5D camera view to 2D so a
           camera-driven comp can be edited "as if the camera isn't there". Preview-only. */}
       {hasCamera && (
         <button
           onClick={toggleCameraDisabled}
           title={cameraDisabled
-            ? 'Camera view is off — editing flat 2D. Click to re-enable the camera.'
+            ? 'Camera view is off - editing flat 2D. Click to re-enable the camera.'
             : 'Disable the camera view and edit in flat 2D (does not affect export).'}
           className={`absolute top-2 right-2 z-20 flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-medium border shadow-sm transition-colors pointer-events-auto ${
             cameraDisabled
@@ -411,7 +411,7 @@ export function Viewport() {
           {cameraDisabled ? 'Camera Off' : 'Disable Camera'}
         </button>
       )}
-      {/* Camera selection strip — right border, outside the canvas. One icon per camera (≤10). */}
+      {/* Camera selection strip - right border, outside the canvas. One icon per camera (≤10). */}
       {cameras.length > 0 && (
         <div className="absolute top-1/2 right-1 -translate-y-1/2 z-20 flex flex-col gap-1 pointer-events-auto">
           {cameras.map((cam, i) => {
@@ -449,7 +449,7 @@ export function Viewport() {
         </div>
       )}
 
-      {/* Top ruler — ticks + labels; double-click still adds a vertical guide (M20). */}
+      {/* Top ruler - ticks + labels; double-click still adds a vertical guide (M20). */}
       <div
         className="absolute cursor-crosshair bg-[#0a1628]/85 overflow-hidden"
         style={{ left: canvasStyle.left, top: canvasStyle.top - 17, width: canvasStyle.width, height: 15 }}

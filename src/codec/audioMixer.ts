@@ -18,7 +18,7 @@ export interface EncodedAudio {
 
 /**
  * A single audible clip resolved to Web Audio scheduling parameters. This is the
- * pure, testable core of the mixer — it mirrors the preview scheduling math in
+ * pure, testable core of the mixer - it mirrors the preview scheduling math in
  * engine/media/audioPlayback.ts so exported audio matches what you hear.
  */
 interface AudibleSource {
@@ -30,7 +30,7 @@ interface AudibleSource {
   // Gain is either a constant (video) or sampled from keyframes (audio).
   constantGain?: number;
   volumeProp?: AnimatableProperty;
-  inPoint: number;      // frames — for keyframe sampling
+  inPoint: number;      // frames - for keyframe sampling
   outPoint: number;     // frames
 }
 
@@ -199,7 +199,7 @@ export async function exportCompositionAudio(
     gain.connect(master);
 
     // start()/stop() in context time bound the clip exactly, independent of
-    // playbackRate — no reliance on the ambiguous start() duration argument.
+    // playbackRate - no reliance on the ambiguous start() duration argument.
     node.start(src.when, src.bufferOffset);
     node.stop(src.when + src.clipDuration);
   }

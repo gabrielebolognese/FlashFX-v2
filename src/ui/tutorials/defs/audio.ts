@@ -14,7 +14,7 @@ export const tutorial: TutorialDef = {
     'You can set volume from 0 to 2x, and keyframe it to fade audio in or out.',
     'You can shift pitch up or down by semitones (-24 to +24), with keyframes for pitch sweeps.',
     'You can strip silence to automatically trim quiet gaps out of the clip.',
-    'You can auto-caption a clip — transcribed on-device — to add subtitles to the timeline.',
+    'You can auto-caption a clip - transcribed on-device - to add subtitles to the timeline.',
   ],
   exampleLabel: 'Add a note',
   seeExample: () => {

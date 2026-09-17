@@ -2,16 +2,16 @@ import type { DirectorOutput } from './pipeline';
 
 // The seed of the SEMANTIC validator: cross-panel / cross-field rules that Zod deliberately does not
 // express (they are referential or span multiple objects). These run AFTER structural parse, on the
-// Director output, and REPORT problems — the caller decides what to do (auto-fix is a later stage).
+// Director output, and REPORT problems - the caller decides what to do (auto-fix is a later stage).
 // The same rules are hard prompt rules; this is their machine enforcement.
 //
 // Rules covered here:
-//   1. Beat alignment — every plan timestamp is an integer multiple of the style-contract beat.
-//   2. Contiguity — panels are ordered 0..n-1, start at 0, and are gapless & non-overlapping.
-//   3. Duration — the last panel ends exactly at brief.durationMs (the plan sums to the whole).
-//   4. Element ownership — an element id is DECLARED once (in the panel where it first appears);
+//   1. Beat alignment - every plan timestamp is an integer multiple of the style-contract beat.
+//   2. Contiguity - panels are ordered 0..n-1, start at 0, and are gapless & non-overlapping.
+//   3. Duration - the last panel ends exactly at brief.durationMs (the plan sums to the whole).
+//   4. Element ownership - an element id is DECLARED once (in the panel where it first appears);
 //      carried elements appear only in inbound/outbound present-lists, never re-declared.
-//   5. Format mirrors the canvas — brief.format matches the preflight canvas, never invented.
+//   5. Format mirrors the canvas - brief.format matches the preflight canvas, never invented.
 
 export interface SemanticIssue {
   severity: 'error' | 'warn';
@@ -113,7 +113,7 @@ export function validateDirectorPlan(director: DirectorOutput, opts: { canvas?: 
     const onlyOut = [...out].filter((x) => !inn.has(x));
     const onlyIn = [...inn].filter((x) => !out.has(x));
     if (onlyOut.length || onlyIn.length) {
-      err('boundary-mismatch', `seam '${panels[i].id}'→'${panels[i + 1].id}': outbound-only [${onlyOut.join(',')}], inbound-only [${onlyIn.join(',')}] — the two lists must be the same set`, { panelId: panels[i].id });
+      err('boundary-mismatch', `seam '${panels[i].id}'→'${panels[i + 1].id}': outbound-only [${onlyOut.join(',')}], inbound-only [${onlyIn.join(',')}] - the two lists must be the same set`, { panelId: panels[i].id });
     }
   }
 

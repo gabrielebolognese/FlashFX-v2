@@ -1,4 +1,4 @@
-// FlashFX brand lockup for the app header — inline SVG mark (amber rounded square + lightning
+// FlashFX brand lockup for the app header - inline SVG mark (amber rounded square + lightning
 // bolt) next to the wordmark. Inline (not an <img>) so it stays crisp at any DPI and never
 // flashes on load. Mirrors public/flashfx-mark.svg (favicon) and public/og-image.svg.
 

@@ -1,8 +1,8 @@
 // Local, account-free persistence for the media-pool library (Brands + Saved
 // assets). Stored in its OWN IndexedDB (`flashfx-library`, separate from the
 // projects DB) so it persists across reloads without touching the projects
-// schema. Image/audio bytes are kept as real Blobs — object URLs are derived at
-// runtime — so nothing depends on ephemeral blob: URLs surviving a refresh.
+// schema. Image/audio bytes are kept as real Blobs - object URLs are derived at
+// runtime - so nothing depends on ephemeral blob: URLs surviving a refresh.
 
 const DB_NAME = 'flashfx-library';
 const DB_VERSION = 1;

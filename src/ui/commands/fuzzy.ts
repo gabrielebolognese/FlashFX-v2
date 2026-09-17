@@ -2,7 +2,7 @@
 // + deterministic (scripts/verify-fuzzy.mjs). A query matches a target if its chars
 // appear in order (subsequence); the score rewards matches at the start, after a
 // separator/CamelCase boundary, and in consecutive runs, and lightly penalizes gaps
-// and long targets — so "al" ranks "Align Left" above "Duplicate".
+// and long targets - so "al" ranks "Align Left" above "Duplicate".
 
 const SEP = /[\s\-_/.]/;
 const isUpper = (c: string) => c >= 'A' && c <= 'Z';

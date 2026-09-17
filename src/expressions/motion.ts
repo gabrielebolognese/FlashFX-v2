@@ -1,5 +1,5 @@
 // Pure procedural-motion helpers for the expression language (B7). These are the maths behind the
-// AE-style motion vocabulary — offset loops, inertial bounce/spring, posterize-time, and
+// AE-style motion vocabulary - offset loops, inertial bounce/spring, posterize-time, and
 // valueAtTime-based lag/delay/follow (secondary motion). Kept in a LEAF module that imports only
 // TYPES (no worker globals, no DOM, no `self`) so it bundles in a plain node verify harness
 // (`verify:expressions-motion`). The worker (`worker.ts`) imports these and exposes them in the
@@ -26,7 +26,7 @@ function asVec(v: Val): Vec2 {
 /**
  * Linear interpolation of a keyframe list at an arbitrary (possibly fractional) frame, clamping to the
  * first/last value outside the keyed range. Single source of truth for every time-sampling helper here
- * (loops, lag, posterize) AND for the worker's loopIn/loopOut cycle/pingpong paths — byte-identical to
+ * (loops, lag, posterize) AND for the worker's loopIn/loopOut cycle/pingpong paths - byte-identical to
  * the logic it replaces. Returns a scalar when both bracketing keys are scalar, else a Vec2.
  */
 export function interpolateKeyframesAt(keyframes: KeyframeData[], frame: number): Val {
@@ -94,7 +94,7 @@ export function loopOffset(keyframes: KeyframeData[], frame: number): Val {
  *
  * @param fps    comp frame rate (velocity is measured per-second so freq/decay read in Hz / per-second)
  * @param freq   oscillations per second (default 2)
- * @param decay  exponential decay rate per second (default 4 — higher settles faster)
+ * @param decay  exponential decay rate per second (default 4 - higher settles faster)
  * @param amp    overshoot amplitude as a fraction of the incoming per-second velocity (default 0.1)
  */
 export function inertialBounce(

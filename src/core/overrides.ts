@@ -1,4 +1,4 @@
-// Instance-override mechanism — a sparse per-instance property-override applicator.
+// Instance-override mechanism - a sparse per-instance property-override applicator.
 //
 // This is the primitive Prompt 4's data-bound cloner needed and that a precomp
 // instance-override system would reuse: given a layer (or any plain-data domain
@@ -9,11 +9,11 @@
 // - Dot paths address nested fields and array indices, e.g. "content.text",
 //   "content.spans.0.text", "transform.opacity".
 // - When a path lands on an AnimatableProperty, its `defaultValue` (the static base
-//   read when there are no keyframes) is set — the property object is NOT replaced,
+//   read when there are no keyframes) is set - the property object is NOT replaced,
 //   so keyframes/id/name survive.
 // - Type-aware + lenient: numeric AnimatableProperty targets coerce the value to a
 //   number (skipping non-coercible values); unknown paths are skipped. It never
-//   throws — a bad binding degrades to "that property unchanged", not a crash.
+//   throws - a bad binding degrades to "that property unchanged", not a crash.
 
 import type { AnimatableProperty } from './types';
 

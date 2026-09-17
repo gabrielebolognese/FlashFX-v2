@@ -12,7 +12,7 @@ export function TutorialLaunch({ onDismiss }: { onDismiss: () => void }) {
         </div>
         <h1 className="text-xl font-semibold text-slate-100">Welcome to FlashFX</h1>
         <p className="mt-2 text-[13px] leading-relaxed text-slate-400">
-          It’s a big app. Let’s not throw you in the deep end — watch FlashFX build a motion piece
+          It’s a big app. Let’s not throw you in the deep end - watch FlashFX build a motion piece
           for you, then take the wheel.
         </p>
         <button

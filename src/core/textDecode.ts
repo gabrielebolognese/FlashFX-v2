@@ -1,7 +1,7 @@
-// Text Decode / scramble (B9) — the "code decrypt" / matrix-decode effect: unrevealed glyphs flicker
+// Text Decode / scramble (B9) - the "code decrypt" / matrix-decode effect: unrevealed glyphs flicker
 // through random characters and lock to the real letter as a reveal sweeps left→right. Pure and
 // FRAME-DETERMINISTIC (seeded hash of index+time-bucket, no Math.random/Date), so scrubbing is
-// byte-stable. Leaf module — imports nothing — so it bundles in a node harness (`verify:text-kinetic`).
+// byte-stable. Leaf module - imports nothing - so it bundles in a node harness (`verify:text-kinetic`).
 // The renderer needs no change: `expandTextGlyphs` already stamps one glyph per character, so decode
 // just chooses which character each stamp shows.
 

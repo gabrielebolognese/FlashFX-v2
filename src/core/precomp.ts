@@ -1,4 +1,4 @@
-// Precomposition core — pure helpers for the multi-composition document.
+// Precomposition core - pure helpers for the multi-composition document.
 //
 // A precomp layer references another Composition by id; the resolve pipeline
 // recursively resolves that sub-composition at a time-remapped local frame. This
@@ -10,7 +10,7 @@
 import type { Composition, PrecompLayer } from './types';
 import type { SharedStyle } from './styles';
 
-/** Hard recursion cap — guarantees termination even if resolve-time cycle
+/** Hard recursion cap - guarantees termination even if resolve-time cycle
  *  validation is bypassed. Nesting deeper than this renders nothing. */
 export const MAX_PRECOMP_DEPTH = 16;
 
@@ -23,7 +23,7 @@ export const MAX_PRECOMP_DEPTH = 16;
 export interface ResolveContext {
   /** Resolve a composition by id from the document registry. */
   getComposition?: (id: string) => Composition | undefined;
-  /** M21 — resolve a shared/linked style by id from the document registry. */
+  /** M21 - resolve a shared/linked style by id from the document registry. */
   getStyle?: (id: string) => SharedStyle | undefined;
   /** Current recursion depth (0 at the root). */
   depth?: number;
@@ -56,7 +56,7 @@ export function precompLocalFrame(
 }
 
 /** Composition ids a composition references (precomp layers + cloner composition
- *  sources) — the out-edges of a comp in the document graph. */
+ *  sources) - the out-edges of a comp in the document graph. */
 export function referencedCompositionIds(comp: Composition): string[] {
   const ids: string[] = [];
   for (const layer of comp.layers) {
@@ -89,7 +89,7 @@ const BLACK = 2; // fully explored
 /**
  * Detect reference cycles (a comp reaching itself through nested precomps and/or
  * cloner composition-sources) and dangling references (a ref to a comp not in the
- * registry). Pure — mutates nothing. Returns all issues (empty = valid).
+ * registry). Pure - mutates nothing. Returns all issues (empty = valid).
  */
 export function validateCompositionGraph(
   getComposition: (id: string) => Composition | undefined,

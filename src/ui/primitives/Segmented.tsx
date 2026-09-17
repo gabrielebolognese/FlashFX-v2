@@ -3,7 +3,7 @@ import { cx } from './cx';
 
 /**
  * Segmented control / preset picker. The active cell is a NEUTRAL surface step
- * (not gold) — selection colour is reserved for real selection. Replaces the
+ * (not gold) - selection colour is reserved for real selection. Replaces the
  * ad-hoc "row of toggle buttons" every modal hand-rolls.
  */
 export interface SegmentedOption<T extends string> {

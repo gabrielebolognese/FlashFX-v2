@@ -69,7 +69,7 @@ export function makeAiNumberProp(caps: Caps) {
   ]);
 }
 
-/** Factory: a compact number property bounded to [0,1] — for opacity, so the decoder cannot emit an
+/** Factory: a compact number property bounded to [0,1] - for opacity, so the decoder cannot emit an
  *  out-of-range value (structural, unlike the earlier assembly-side clamp). */
 export function makeAiUnitProp(caps: Caps) {
   const kf = z.strictObject({ frame: zFrame, value: zUnit, easing: zEasingName.optional() });

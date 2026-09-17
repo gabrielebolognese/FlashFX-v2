@@ -3,7 +3,7 @@
 //
 // Playback shows "the latest decoded frame at or before the clock time" and drops
 // the rest, never blocking. Selection is PER LAYER (a source frame the renderer
-// already resolved for that layer via resolveVideoLayer), NOT per asset — two
+// already resolved for that layer via resolveVideoLayer), NOT per asset - two
 // layers on the same asset (a split clip, slow-mo over its own footage) need
 // different source indices in the same displayed frame.
 
@@ -13,7 +13,7 @@
  *
  * Precedence (see critique #4/#14):
  *   1. the greatest buffered index ≤ target, if within `maxDistance` frames of it;
- *   2. else HOLD the layer's `lastPresented` (if still buffered) — never jump to a
+ *   2. else HOLD the layer's `lastPresented` (if still buffered) - never jump to a
  *      future or far-behind frame, which would flash a wrong picture after a seek;
  *   3. else null → renderer holds its last texture / black.
  *
@@ -39,7 +39,7 @@ export function selectPresentFrame(
 /**
  * The per-asset DROP FLOOR: buffered frames with index < this are safe to close
  * (already played by every layer using the asset). It's the MINIMUM presented index
- * across all of the asset's active layer requirements — so a second layer that is
+ * across all of the asset's active layer requirements - so a second layer that is
  * behind (e.g. the other half of a split clip) keeps its still-needed frames.
  * Returns null when nothing is presented yet (evict nothing).
  */

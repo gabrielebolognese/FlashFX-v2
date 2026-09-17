@@ -1,6 +1,6 @@
 import type { Vec2, PathVertex } from './types';
 
-// M18 — Pencil / freehand tool. Pure stroke fitting: raw pointer samples → editable cubic
+// M18 - Pencil / freehand tool. Pure stroke fitting: raw pointer samples → editable cubic
 // PathVertex[] via RDP pre-decimation + Schneider least-squares curve fitting ("An Algorithm for
 // Automatically Fitting Digitized Curves", Graphics Gems I). Smooth joints get vertexType
 // 'smooth' + handleMode 'angle' (G1, independent handle lengths) so M8's vector-edit keeps the
@@ -27,7 +27,7 @@ function bezierAt(pts: Vec2[], t: number): Vec2 {
   return tmp[0];
 }
 
-// ── RDP over raw Vec2 (own impl — pathOps' RDP works on PathVertex and pulls heavy imports) ──
+// ── RDP over raw Vec2 (own impl - pathOps' RDP works on PathVertex and pulls heavy imports) ──
 function perpDistSq(p: Vec2, a: Vec2, b: Vec2): number {
   const dx = b[0] - a[0], dy = b[1] - a[1];
   const len2 = dx * dx + dy * dy;
@@ -135,7 +135,7 @@ function corner(p: Vec2): PathVertex {
   return { position: z(p), handleIn: [0, 0], handleOut: [0, 0], vertexType: 'corner' };
 }
 
-/** A cubic whose controls sit on the P0→P3 line is a straight segment — emit corner handles so
+/** A cubic whose controls sit on the P0→P3 line is a straight segment - emit corner handles so
  *  it reads/edits as a line, not a bezier. */
 function isStraightCubic(p0: Vec2, c1: Vec2, c2: Vec2, p3: Vec2): boolean {
   const eps = 1e-4 * (dist(p0, p3) + 1);

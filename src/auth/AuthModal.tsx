@@ -10,7 +10,7 @@ type Mode = 'signin' | 'signup' | 'reset';
 
 // Google sign-in is hidden until a Google Cloud OAuth client is configured (the prior Google
 // account was abandoned). Email + password is the live method. Flip this on once OAuth is set up in
-// the Supabase dashboard — the wiring (store.signInWithOAuth) is already in place.
+// the Supabase dashboard - the wiring (store.signInWithOAuth) is already in place.
 const GOOGLE_AUTH_ENABLED = false;
 
 export function AuthModal({ onClose }: { onClose: () => void }) {
@@ -40,7 +40,7 @@ export function AuthModal({ onClose }: { onClose: () => void }) {
     setBusy(false);
     if (!res.ok) { setError(res.error ?? 'Something went wrong.'); return; }
     if (mode === 'signup') setNotice('Check your email to confirm your account.');
-    else if (mode === 'reset') setNotice('Password reset link sent — check your email.');
+    else if (mode === 'reset') setNotice('Password reset link sent - check your email.');
     else onClose();
   };
 
@@ -48,7 +48,7 @@ export function AuthModal({ onClose }: { onClose: () => void }) {
     <Modal onClose={onClose} size="sm" icon={<LogIn size={16} />} title={title}>
       {!enabled ? (
         <p className="text-body leading-relaxed text-secondary">
-          Accounts aren&apos;t enabled yet. FlashFX works fully offline — your projects are saved
+          Accounts aren&apos;t enabled yet. FlashFX works fully offline - your projects are saved
           locally on this device. Cloud sign-in is coming soon.
         </p>
       ) : (

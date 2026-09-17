@@ -1,4 +1,4 @@
-// Cloner — default-constructor helpers (mirrors core/factory.ts's role of building
+// Cloner - default-constructor helpers (mirrors core/factory.ts's role of building
 // well-formed domain objects). Kept out of the pure engine so distribution.ts has
 // no construction concerns.
 

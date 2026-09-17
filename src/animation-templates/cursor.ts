@@ -2,15 +2,15 @@ import { createPolygonLayer, createGroupLayer } from '../core/factory';
 import type { GroupLayer, Layer, PathVertex, ShapeLayer, Vec2, Vec4 } from '../core/types';
 import { setKeys, LINEAR, EASE_OUT, type KeyStep } from './kit';
 
-// Cursor engine — the crux of the recursive-editor demo. A fake cursor fails in five specific ways;
+// Cursor engine - the crux of the recursive-editor demo. A fake cursor fails in five specific ways;
 // this bakes fixes for all five into position/scale keyframes so the motion reads as a real hand:
-//   1. Path shape   — quadratic bezier, control point offset perpendicular ~8–12% of distance,
+//   1. Path shape   - quadratic bezier, control point offset perpendicular ~8–12% of distance,
 //                     arc direction alternates each move.
-//   2. Velocity     — ballistic (fast start, long decel): ~70% of distance in the first ~38% of time.
-//   3. Overshoot    — longer moves pass the target 4–8px then correct back over ~120ms (≈60% of moves).
-//   4. Dwell        — sits 100–180ms after arriving before the click; click = scale pop to 0.92; the UI
+//   2. Velocity     - ballistic (fast start, long decel): ~70% of distance in the first ~38% of time.
+//   3. Overshoot    - longer moves pass the target 4–8px then correct back over ~120ms (≈60% of moves).
+//   4. Dwell        - sits 100–180ms after arriving before the click; click = scale pop to 0.92; the UI
 //                     response is emitted 2–3 frames LATER (the caller uses the returned click frame).
-//   5. Never still  — sub-pixel (~0.4px) low-frequency noise even while parked.
+//   5. Never still  - sub-pixel (~0.4px) low-frequency noise even while parked.
 // Authored as a waypoint sequence you drive imperatively, so retiming is editing numbers.
 
 const FPS = 30;

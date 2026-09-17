@@ -10,7 +10,7 @@ interface Props {
   card: ProjectCard;
   /** Multi-select support (dashboard marquee/bulk delete). */
   selected?: boolean;
-  /** True when any card is selected — a plain click then adjusts the selection instead of opening. */
+  /** True when any card is selected - a plain click then adjusts the selection instead of opening. */
   selectionActive?: boolean;
   /** Toggle this card's membership in the selection. `additive` = keep the rest (modifier-click). */
   onSelectToggle?: (id: string, additive: boolean) => void;
@@ -21,7 +21,7 @@ interface MenuItem { icon: React.ReactNode; label: string; onClick: () => void; 
 const MENU_W = 168;
 
 // The card menu renders in a PORTAL (fixed position, clamped to the viewport) so the card's
-// `overflow-hidden` — needed to clip the rounded preview — never clips or hides the menu. Used by
+// `overflow-hidden` - needed to clip the rounded preview - never clips or hides the menu. Used by
 // both the ⋯ button (anchored below it) and right-click (at the cursor).
 function CardMenu({ x, y, items, onClose }: { x: number; y: number; items: MenuItem[]; onClose: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -169,7 +169,7 @@ export function ProjectCardComponent({ card, selected = false, selectionActive =
       }`}
       onContextMenu={openMenuAtCursor}
     >
-      {/* Selection check — visible when selected or on hover once a selection is active. */}
+      {/* Selection check - visible when selected or on hover once a selection is active. */}
       {(selected || selectionActive) && (
         <button
           onClick={(e) => { e.stopPropagation(); onSelectToggle?.(metadata.id, true); }}
@@ -201,7 +201,7 @@ export function ProjectCardComponent({ card, selected = false, selectionActive =
           <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-150 bg-gradient-to-t from-black/30 via-transparent to-transparent" />
         )}
 
-        {/* Format badge — shifts right to clear the selection checkbox while selecting. */}
+        {/* Format badge - shifts right to clear the selection checkbox while selecting. */}
         <div className={`absolute top-1.5 ${selected || selectionActive ? 'left-8' : 'left-1.5'} flex items-center gap-1 px-1.5 py-0.5 rounded bg-black/60 backdrop-blur-sm transition-all`}>
           {metadata.videoFormat === 'short' ? <Smartphone size={9} className="text-slate-300" /> : <Film size={9} className="text-slate-300" />}
           <span className="text-[8px] text-slate-300 font-medium uppercase tracking-wide">{metadata.videoFormat === 'short' ? 'Short' : 'Long'}</span>

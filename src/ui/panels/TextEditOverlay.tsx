@@ -23,7 +23,7 @@ function rgba(c: Vec4): string {
  * On-canvas text editor. When a text layer is being edited (`useTextEditStore`), a live
  * textarea is positioned over it, styled to approximate the rendered text, and the
  * renderer hides the layer so the two don't overlap. Typing updates the layer live;
- * Escape / blur commits (Enter inserts a newline — text can be multi-line).
+ * Escape / blur commits (Enter inserts a newline - text can be multi-line).
  */
 export function TextEditOverlay({ style, compW, compH }: TextEditOverlayProps) {
   const editingLayerId = useTextEditStore((s) => s.editingLayerId);
@@ -86,7 +86,7 @@ export function TextEditOverlay({ style, compW, compH }: TextEditOverlayProps) {
     boxWComp = bb.width * Math.abs(sx);
     boxHComp = Math.max(fontComp * 1.6, fontComp);
   } else {
-    // Auto / point text — grow a comfortable default around the caret.
+    // Auto / point text - grow a comfortable default around the caret.
     boxWComp = Math.max(fontComp * 8, 60);
     boxHComp = Math.max(fontComp * 1.6, fontComp);
   }

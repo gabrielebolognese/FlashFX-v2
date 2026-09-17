@@ -5,7 +5,7 @@ import { zHexColor, zMs } from './primitives';
 // The STYLE CONTRACT the Director commits to. This is a PLANNING artifact (its beat is in ms) and
 // it is persisted on the document as a required input for the edit path. It is the bridge for the
 // colors invariant: the palette assigns a concrete color to each named ROLE, and everything the
-// Coder emits references roles — so "the AI names a role, never a color" holds, and assembly
+// Coder emits references roles - so "the AI names a role, never a color" holds, and assembly
 // resolves a role to a literal wherever a slot has no role link.
 
 export const zPaletteEntry = z
@@ -20,14 +20,14 @@ export const zStaggerDoctrine = z.strictObject({
 });
 
 // Palette and easing counts are FIXED design ranges (not tier caps), so makeStyleContract takes no
-// caps — the prompt says "bind 4 to 7 roles" and "choose 4 to 6 easings", and the schema enforces
+// caps - the prompt says "bind 4 to 7 roles" and "choose 4 to 6 easings", and the schema enforces
 // exactly that (both bounds, matching the prompt).
 export function makeStyleContract() {
   return z
     .strictObject({
       /** Named roles → colors. The AI references roles by name; it never picks a color. 4–7 roles. */
       palette: z.array(zPaletteEntry).min(4).max(7),
-      /** The closed set of easings the whole piece is allowed to use — 4 to 6. */
+      /** The closed set of easings the whole piece is allowed to use - 4 to 6. */
       easings: z.array(z.enum(EASING_NAMES)).min(4).max(6),
       /** Base timing beat, ms. All durations in the plan are integer multiples of this. */
       beatMs: zMs.refine((v) => v > 0, 'beat must be > 0'),

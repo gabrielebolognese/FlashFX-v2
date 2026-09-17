@@ -1,7 +1,7 @@
 import type { Vec2 } from './types';
 
-// M14 — multi-format reframe constraints. Per-layer pin/scale rules so resizing the
-// composition frame (16:9 ↔ 9:16 ↔ 1:1) reflows every top-level layer at once — the most
+// M14 - multi-format reframe constraints. Per-layer pin/scale rules so resizing the
+// composition frame (16:9 ↔ 9:16 ↔ 1:1) reflows every top-level layer at once - the most
 // transferable auto-layout idea for a short-form tool. Figma/Sketch semantics, one-shot bake
 // on resize (not a live expression). Pure (imports only `type Vec2`), proven by
 // scripts/verify-reframe.mjs.
@@ -15,7 +15,7 @@ export type ReframeAxisMode = 'min' | 'max' | 'center' | 'stretch' | 'scale';
 
 export interface LayerConstraints { h: ReframeAxisMode; v: ReframeAxisMode }
 
-/** Centre/centre — re-centres content on resize (best default for centred hero content). */
+/** Centre/centre - re-centres content on resize (best default for centred hero content). */
 export const DEFAULT_CONSTRAINTS: LayerConstraints = { h: 'center', v: 'center' };
 
 export interface ReframeBox { x: number; y: number; w: number; h: number }
@@ -51,10 +51,10 @@ function axisOp(mode: ReframeAxisMode, oldD: number, newD: number, center: numbe
   let scaleMul = 1;
   let newCenter = center;
   switch (mode) {
-    case 'min': newCenter = center; break;                 // Left/Top — edge fixed, centre stays
-    case 'max': newCenter = center + d; break;             // Right/Bottom — trailing edge fixed
+    case 'min': newCenter = center; break;                 // Left/Top - edge fixed, centre stays
+    case 'max': newCenter = center + d; break;             // Right/Bottom - trailing edge fixed
     case 'center': newCenter = center + d / 2; break;      // fixed absolute offset from parent centre
-    case 'stretch': {                                      // Left&Right / Top&Bottom — both margins fixed
+    case 'stretch': {                                      // Left&Right / Top&Bottom - both margins fixed
       newCenter = center + d / 2;
       const ns = Math.max(1e-3, size + d);
       scaleMul = size > 1e-3 ? ns / size : 1;

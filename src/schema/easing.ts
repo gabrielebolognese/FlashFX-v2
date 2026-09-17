@@ -28,5 +28,5 @@ export function resolveEasing(name: EasingName): EasingHandles {
   return EASING_TABLE[name];
 }
 
-/** The Zod enum of allowed easing names — the closed set the Director picks from and the Coder names. */
+/** The Zod enum of allowed easing names - the closed set the Director picks from and the Coder names. */
 export const zEasingName = z.enum(EASING_NAMES).describe('named easing; resolves to concrete handles');

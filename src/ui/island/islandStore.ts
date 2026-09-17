@@ -2,7 +2,7 @@ import { create } from 'zustand';
 
 /**
  * The Dynamic Island: the single top-center hub for transient progress + toasts
- * + errors. UI-only store (setTimeout is fine here — this never touches the
+ * + errors. UI-only store (setTimeout is fine here - this never touches the
  * frame-pure engine). See docs/PREMIUM-UI-SYSTEM.md.
  */
 export type IslandTone = 'accent' | 'success' | 'danger' | 'info';

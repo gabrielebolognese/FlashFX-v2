@@ -98,16 +98,16 @@ type UiMode = 'starter' | 'pro';
 const MODE_INFO: Record<UiMode, { label: string; blurb: string }> = {
   starter: {
     label: 'Starter editor',
-    blurb: 'A minimal workspace — just the canvas and the inspector. No timeline, media pool, or toolbars. Best for quick edits and getting started.',
+    blurb: 'A minimal workspace - just the canvas and the inspector. No timeline, media pool, or toolbars. Best for quick edits and getting started.',
   },
   pro: {
     label: 'Full editor',
-    blurb: 'The complete workspace — timeline, media pool, toolbars, scenes, and every panel. Full control for detailed motion-graphics work.',
+    blurb: 'The complete workspace - timeline, media pool, toolbars, scenes, and every panel. Full control for detailed motion-graphics work.',
   },
 };
 
 /**
- * Starter ⇄ Full editor mode switch — the canonical place to change UI density (the top-bar toggle
+ * Starter ⇄ Full editor mode switch - the canonical place to change UI density (the top-bar toggle
  * was removed). Two buttons: the current mode reads "You're on … editor" in the gold accent; the
  * other reads "Switch to … editor". Clicking the switch opens a confirmation that briefs the user on
  * both modes before committing (the layout change is drastic, so it shouldn't happen by accident).
@@ -151,7 +151,7 @@ function EditorModeSwitch() {
   );
 }
 
-/** Confirmation modal for an editor-mode switch — briefs the user on what each mode is before the
+/** Confirmation modal for an editor-mode switch - briefs the user on what each mode is before the
  *  (drastic) layout change, highlighting the mode they're about to switch to. */
 function ModeSwitchConfirm({ current, target, onCancel, onConfirm }: {
   current: UiMode; target: UiMode; onCancel: () => void; onConfirm: () => void;
@@ -161,7 +161,7 @@ function ModeSwitchConfirm({ current, target, onCancel, onConfirm }: {
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onCancel} />
       <div className="relative bg-[#0e1c32] border border-[#1a2a42] rounded-xl shadow-2xl p-5 w-[380px] max-w-[90vw]">
         <h3 className="text-[13px] font-semibold text-slate-100">Switch to the {MODE_INFO[target].label}?</h3>
-        <p className="text-[10px] text-slate-500 mt-1">Here's what changes — you can switch back any time from these settings.</p>
+        <p className="text-[10px] text-slate-500 mt-1">Here's what changes - you can switch back any time from these settings.</p>
 
         <div className="mt-3 space-y-2">
           {(['starter', 'pro'] as UiMode[]).map((m) => {

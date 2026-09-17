@@ -34,7 +34,7 @@ export function extractAnimatableProperties(layer: Layer): PropertyGroup[] {
     ],
   };
   // When position dimensions are separated, its keyframes live on per-axis sub-curves; hide the
-  // combined Position track (per-axis timeline/graph editing is a follow-up — edit X/Y in the Inspector).
+  // combined Position track (per-axis timeline/graph editing is a follow-up - edit X/Y in the Inspector).
   if (layer.transform.position.separated) transformGroup.tracks = transformGroup.tracks.filter((t) => t.id !== 'pos');
   groups.push(transformGroup);
 

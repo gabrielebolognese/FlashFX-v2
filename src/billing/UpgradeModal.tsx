@@ -32,7 +32,7 @@ export function UpgradeModal({ onClose }: { onClose: () => void }) {
     setBusy(false);
     if (!res.ok) {
       setMsg(
-        res.error === 'not-configured' ? 'Checkout is coming soon — we’re finishing payment setup.'
+        res.error === 'not-configured' ? 'Checkout is coming soon - we’re finishing payment setup.'
         : res.error === 'not-signed-in' ? 'Please sign in first.'
         : 'Could not start checkout. Please try again.',
       );
@@ -43,7 +43,7 @@ export function UpgradeModal({ onClose }: { onClose: () => void }) {
     <Modal onClose={onClose} size="md" icon={<Sparkles size={16} />} title="Upgrade to Pro">
       <div className="space-y-4">
         <p className="text-[12px] leading-relaxed text-slate-400">
-          Your work follows you everywhere — full media sync, bigger files, 4K exports, and AI included.
+          Your work follows you everywhere - full media sync, bigger files, 4K exports, and AI included.
         </p>
 
         <div className="overflow-hidden rounded-lg border border-hairline">
@@ -68,7 +68,7 @@ export function UpgradeModal({ onClose }: { onClose: () => void }) {
           disabled={busy}
           className="flex w-full items-center justify-center gap-2 rounded-md bg-[#f7b500] py-2.5 text-[13px] font-semibold text-[#0a0f16] transition-colors hover:bg-[#ffc83d] disabled:opacity-60"
         >
-          <Sparkles size={14} /> {busy ? 'Starting…' : `Upgrade to Pro — ${PRO_PRICE_LABEL}`}
+          <Sparkles size={14} /> {busy ? 'Starting…' : `Upgrade to Pro - ${PRO_PRICE_LABEL}`}
         </button>
         <p className="text-center text-[10px] text-slate-600">Secure checkout · cancel anytime</p>
       </div>

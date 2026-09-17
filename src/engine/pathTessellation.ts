@@ -4,7 +4,7 @@ import { dashPath } from '../core/shapeModifiers';
 import { sampleResolvedFill } from '../core/fillSampler';
 import { LruCache } from './cache/lruCache';
 
-/** Per-vertex color function for stroke geometry — flat (constant) or a baked gradient (B8e). */
+/** Per-vertex color function for stroke geometry - flat (constant) or a baked gradient (B8e). */
 type ColorAt = (p: Vec2) => Vec4;
 
 // Tessellated geometry is stored as interleaved [x, y, r, g, b, a] floats, ready
@@ -26,7 +26,7 @@ export interface TessellateOptions {
   strokeWidth: number;
   lineCap: LineCap;
   lineJoin: LineJoin;
-  /** Inner sub-contours (glyph counters) — filled as holes (even-odd) and stroked. */
+  /** Inner sub-contours (glyph counters) - filled as holes (even-odd) and stroked. */
   holes?: PathVertex[][];
   /** Dash pattern [on, off, …] in px (B8c). When present, the STROKE is split into these dashes
    *  (fill is untouched); `dashOffset` shifts the pattern along the path (animate it for marching ants). */
@@ -162,7 +162,7 @@ function earClip(polygon: Vec2[]): Vec2[] {
   return tris;
 }
 
-// Fill a contour with holes (glyph counters) via earcut — the standard robust triangulator,
+// Fill a contour with holes (glyph counters) via earcut - the standard robust triangulator,
 // which carves any number of holes correctly (our hand-rolled keyhole ear-clip only survived a
 // single hole). Returns a flat triangle-vertex list, matching earClip's shape.
 function earcutFill(outer: Vec2[], holes: Vec2[][]): Vec2[] {
@@ -438,7 +438,7 @@ function signature(opts: TessellateOptions): string {
   let s = `${opts.closed ? 1 : 0}|${opts.strokeWidth}|${opts.lineCap}|${opts.lineJoin}`;
   s += `|f${opts.fillColor.join(',')}|k${opts.strokeColor.join(',')}|`;
   if (opts.dashArray && opts.dashArray.length > 0) s += `d${opts.dashArray.join(',')}@${opts.dashOffset ?? 0}|`;
-  // B8e — a gradient stroke bakes color per-vertex, so its descriptor must key the geometry.
+  // B8e - a gradient stroke bakes color per-vertex, so its descriptor must key the geometry.
   if (opts.strokeFill && opts.strokeFill.kind === 1) {
     s += 'sg';
     for (const ly of opts.strokeFill.layers) {

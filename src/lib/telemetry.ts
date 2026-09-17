@@ -1,6 +1,6 @@
 // Vendor-agnostic observability seam (Phase 0). Today it routes to the console;
 // when a Sentry/PostHog (or any) provider is added, call setTelemetrySink() ONCE
-// at boot and every captureError/trackEvent in the app forwards to it — no other
+// at boot and every captureError/trackEvent in the app forwards to it - no other
 // file needs to change. No SDK, no keys, no dependency required to ship this.
 //
 // Later, e.g.:
@@ -26,12 +26,12 @@ export function setTelemetrySink(next: TelemetrySink): void {
   sink = next;
 }
 
-/** Report an error/exception. Never throws — telemetry must not become a failure mode. */
+/** Report an error/exception. Never throws - telemetry must not become a failure mode. */
 export function captureError(error: unknown, context?: TelemetryContext): void {
   try {
     sink.captureError?.(error, context);
   } catch {
-    /* swallow — a broken sink must never break the app */
+    /* swallow - a broken sink must never break the app */
   }
   // Always keep a local breadcrumb so nothing is lost before a provider is wired.
   console.error('[telemetry] error', error, context ?? '');
@@ -39,7 +39,7 @@ export function captureError(error: unknown, context?: TelemetryContext): void {
 
 /**
  * Record a product event (activation funnel, feature usage). Never throws. Only forwarded
- * to the provider once the user has granted analytics consent — before that it's a no-op
+ * to the provider once the user has granted analytics consent - before that it's a no-op
  * (dev console only), so no analytics leave the device without opt-in.
  */
 export function trackEvent(name: string, props?: TelemetryContext): void {

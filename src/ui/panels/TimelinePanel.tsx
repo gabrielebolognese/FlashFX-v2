@@ -104,7 +104,7 @@ export function TimelinePanel() {
     void e;
   };
 
-  // --- Drag-and-drop: OS files import into the media pool (never auto-place — that crashed on big
+  // --- Drag-and-drop: OS files import into the media pool (never auto-place - that crashed on big
   //     batches); a media-pool asset dragged in gets placed on the timeline. ---
   const addImageFromAsset = useEditorStore((s) => s.addImageFromAsset);
   const addVideoFromAsset = useEditorStore((s) => s.addVideoFromAsset);
@@ -141,7 +141,7 @@ export function TimelinePanel() {
         if (a.type === 'video') addVideoFromAsset(a.id, cx, cy);
         else if (a.type === 'image') addImageFromAsset(a.id, cx, cy);
         else if (a.type === 'audio') addAudioFromAsset(a.id);
-      } catch { /* malformed payload — ignore */ }
+      } catch { /* malformed payload - ignore */ }
       return;
     }
 
@@ -173,7 +173,7 @@ export function TimelinePanel() {
               </svg>
             </div>
             <span className="text-base font-semibold text-sky-400">{dragKind === 'asset' ? 'Drop to place on timeline' : 'Import to Media Pool'}</span>
-            <span className="text-xs text-slate-400">{dragKind === 'asset' ? 'Release to add this clip to the timeline' : 'Files are added to your media pool — drag them onto the timeline when ready'}</span>
+            <span className="text-xs text-slate-400">{dragKind === 'asset' ? 'Release to add this clip to the timeline' : 'Files are added to your media pool - drag them onto the timeline when ready'}</span>
           </div>
         </div>
       )}

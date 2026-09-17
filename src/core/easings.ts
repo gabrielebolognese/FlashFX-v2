@@ -1,7 +1,7 @@
-// Named easing functions — the "premium" temporal eases (After Effects / Robert Penner vocabulary).
+// Named easing functions - the "premium" temporal eases (After Effects / Robert Penner vocabulary).
 //
-// These are the shapes a single cubic-bezier CANNOT represent — true elastic wobble, decaying
-// bounce, and back/overshoot — plus the full smooth Penner family. Each is a PURE `(t) => value`
+// These are the shapes a single cubic-bezier CANNOT represent - true elastic wobble, decaying
+// bounce, and back/overshoot - plus the full smooth Penner family. Each is a PURE `(t) => value`
 // mapping on the normalized segment domain t∈[0,1]. Non-overshoot eases stay in [0,1]; `back` and
 // `elastic` deliberately go slightly past 0/1 (that is the overshoot), but every ease still starts
 // at exactly 0 (t=0) and ends at exactly 1 (t=1) so segments join cleanly.
@@ -31,7 +31,7 @@ const powOut = (t: number, p: number) => 1 - Math.pow(1 - t, p);
 const powInOut = (t: number, p: number) =>
   t < 0.5 ? Math.pow(2, p - 1) * Math.pow(t, p) : 1 - Math.pow(-2 * t + 2, p) / 2;
 
-// Back (overshoot) constants — the classic Penner values.
+// Back (overshoot) constants - the classic Penner values.
 const BACK_C1 = 1.70158;
 const BACK_C2 = BACK_C1 * 1.525;
 const BACK_C3 = BACK_C1 + 1;
@@ -112,7 +112,7 @@ export const EASINGS: Record<EasingName, (t: number) => number> = {
     t < 0.5 ? (1 - bounceOut(1 - 2 * t)) / 2 : (1 + bounceOut(2 * t - 1)) / 2,
 };
 
-/** Apply a named ease at t (t is clamped to [0,1]). Unknown names fall back to linear — never throws. */
+/** Apply a named ease at t (t is clamped to [0,1]). Unknown names fall back to linear - never throws. */
 export function applyEasing(name: EasingName | string | undefined, t: number): number {
   const tt = t < 0 ? 0 : t > 1 ? 1 : t;
   const fn = name ? (EASINGS as Record<string, (t: number) => number>)[name] : undefined;

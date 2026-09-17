@@ -11,7 +11,7 @@ import { useShapeToolStore } from '../store/shapeTool';
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 // The director. Mounted once in the editor; renders nothing when idle. On `active`, runs the script
-// against the REAL editor store — genuine edits, paced, skippable — then hands off. Control state is
+// against the REAL editor store - genuine edits, paced, skippable - then hands off. Control state is
 // mirrored into a ref so the async loop reads live paused/speed/jump without re-subscribing.
 export function TutorialRunner() {
   const active = useTutorialStore((s) => s.active);

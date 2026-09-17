@@ -2,7 +2,7 @@ import { create } from 'zustand';
 
 // Opt-in analytics consent (GDPR/ePrivacy): analytics stay OFF until the user grants.
 // Persisted so the banner shows once. Error monitoring is treated as essential/legitimate
-// interest and is not gated here — only product analytics (trackEvent) is.
+// interest and is not gated here - only product analytics (trackEvent) is.
 export type ConsentStatus = 'unknown' | 'granted' | 'denied';
 
 const KEY = 'ffx-analytics-consent';
@@ -21,7 +21,7 @@ function persist(status: ConsentStatus): void {
     if (status === 'unknown') localStorage.removeItem(KEY);
     else localStorage.setItem(KEY, status);
   } catch {
-    /* storage unavailable — keep it in memory only */
+    /* storage unavailable - keep it in memory only */
   }
 }
 

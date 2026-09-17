@@ -1,10 +1,10 @@
-// Cached Render Tree — node model and invalidation engine.
+// Cached Render Tree - node model and invalidation engine.
 //
 // Every renderable layer is represented as a node. A node holds a *content
 // signature* describing only its local geometry / appearance (path, fill,
 // stroke, corner radius, text content, font, mask) and explicitly EXCLUDING its
 // world transform (position, rotation, scale, anchor, opacity). When a node's
-// content signature changes — or a new node appears — the node is marked dirty,
+// content signature changes - or a new node appears - the node is marked dirty,
 // meaning its cached GPU artifact must be regenerated. World-transform changes
 // never alter the signature, so they never dirty the node: the renderer reuses
 // the cached texture/geometry and simply applies a different transform matrix.
@@ -14,7 +14,7 @@
 //
 // The tree itself owns no GPU resources. It is the bookkeeping layer that tells
 // the renderer and the LruCache which nodes are clean (reuse cache), which are
-// dirty (regenerate), and which are culled (offscreen / hidden — skip drawing).
+// dirty (regenerate), and which are culled (offscreen / hidden - skip drawing).
 
 import type { ResolvedLayer, Vec4 } from '../../core/types';
 
@@ -25,7 +25,7 @@ export interface RenderNodeInput {
   kind: RenderNodeKind;
   parentId: string | null;
   visible: boolean;
-  // Local geometry / appearance signature — MUST exclude world transform.
+  // Local geometry / appearance signature - MUST exclude world transform.
   contentSig: string;
 }
 
@@ -110,7 +110,7 @@ function kindFor(layer: ResolvedLayer): RenderNodeKind {
 export class RenderTree {
   private nodes = new Map<string, RenderNode>();
   private culled = new Set<string>();
-  // Number of nodes that changed content (incl. propagation) in the last sync —
+  // Number of nodes that changed content (incl. propagation) in the last sync -
   // surfaced as the "dirty nodes" debug counter for the current frame.
   private lastDirtyCount = 0;
 
@@ -182,7 +182,7 @@ export class RenderTree {
     return dirty;
   }
 
-  // Convenience: sync directly from resolved layers (flat hierarchy — resolved
+  // Convenience: sync directly from resolved layers (flat hierarchy - resolved
   // frames are already flattened, so parentId is null for each).
   syncFromLayers(layers: ResolvedLayer[]): Set<string> {
     return this.sync(

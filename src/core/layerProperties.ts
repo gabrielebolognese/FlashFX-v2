@@ -1,6 +1,6 @@
 import type { Layer, Vec4, LayerShadow, LayerGlow, LayerBlur, TextSpanStyle, BlendMode, AnimatableProperty } from './types';
 
-// M11 — Copy/paste properties. Pure appearance-bundle extract/apply, Figma-style:
+// M11 - Copy/paste properties. Pure appearance-bundle extract/apply, Figma-style:
 // copy a layer's look, paste only the props the TARGET type supports (skip the rest).
 //
 // Why not core/overrides.ts applyOverrides? That applicator is scalar-only (it sets a
@@ -9,7 +9,7 @@ import type { Layer, Vec4, LayerShadow, LayerGlow, LayerBlur, TextSpanStyle, Ble
 // extract/apply. Pure: never mutates the input; returns a deep clone. Proven by
 // scripts/verify-layerprops.mjs.
 
-/** The portable "look" of a layer. Every field is optional — a bundle carries only what
+/** The portable "look" of a layer. Every field is optional - a bundle carries only what
  *  its source had, and apply only sets what the target supports. */
 export interface LayerPropertyBundle {
   opacity?: number;
@@ -43,7 +43,7 @@ function clone<T>(v: T): T {
   return structuredClone(v);
 }
 
-/** The appearance the paste would touch, as a list of human labels — drives the UI
+/** The appearance the paste would touch, as a list of human labels - drives the UI
  *  (menu enable-state / a "pasted N properties" hint) without re-deriving elsewhere. */
 export function bundleLabels(b: LayerPropertyBundle): string[] {
   const out: string[] = [];

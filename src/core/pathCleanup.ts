@@ -30,7 +30,7 @@ function clone(v: PathVertex): PathVertex {
  * Remove vertex `index`, healing the gap (Figma's algorithm). Fixes the endpoints A, C
  * and the outgoing/incoming TANGENT DIRECTIONS at them, then least-squares-solves the
  * two neighbour handle LENGTHS (Schneider 1990) so the single A→C cubic best fits the
- * original A→B→C curve — no kink at A/C. Corner triples just drop the point (straight
+ * original A→B→C curve - no kink at A/C. Corner triples just drop the point (straight
  * A→C). Open-path endpoints are trimmed. Null if the path would get too short.
  */
 export function healDeleteVertex(verts: PathVertex[], index: number, closed: boolean): PathVertex[] | null {
@@ -107,7 +107,7 @@ export function shouldClosePath(verts: PathVertex[], closed: boolean, selected: 
 
 /**
  * Concatenate two OPEN paths (already in the same coordinate space) into one, joining
- * their NEAREST endpoints — reversing either list as needed so `a` flows into `b` — and
+ * their NEAREST endpoints - reversing either list as needed so `a` flows into `b` - and
  * merging the junction anchors when coincident (within `mergeDist`).
  */
 export function concatPaths(a: PathVertex[], b: PathVertex[], mergeDist = 0.01): PathVertex[] {

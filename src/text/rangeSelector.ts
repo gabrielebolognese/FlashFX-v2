@@ -1,9 +1,9 @@
-// The per-unit RANGE SELECTOR — the frame-pure weight primitive the text system was missing.
+// The per-unit RANGE SELECTOR - the frame-pure weight primitive the text system was missing.
 //
 // This is the unifying abstraction from After Effects (animator range selector) and Cavalry
 // (stagger falloff): given a unit index in a range, produce a weight that a driven property
 // blends by (`value = base + delta * weight`). It intentionally has NO dependency on text,
-// clones or particles — any per-unit animation composes on it. Pure and deterministic (a seeded
+// clones or particles - any per-unit animation composes on it. Pure and deterministic (a seeded
 // house RNG for randomize-order), so it can be evaluated non-sequentially and stays byte-stable.
 
 export type SelectorShape = 'square' | 'rampUp' | 'rampDown' | 'triangle' | 'round' | 'smooth';
@@ -40,7 +40,7 @@ export function defaultRangeSelector(): RangeSelectorConfig {
   };
 }
 
-// House mulberry32 (same algorithm as the copies in cloner/particles/procedural) — frame-pure.
+// House mulberry32 (same algorithm as the copies in cloner/particles/procedural) - frame-pure.
 function mulberry32(seed: number): () => number {
   let a = seed >>> 0;
   return () => {
@@ -106,7 +106,7 @@ function weightAtPosition(p: number, cfg: RangeSelectorConfig): number {
  */
 export function selectorWeights(count: number, cfg: RangeSelectorConfig): number[] {
   if (count <= 0) return [];
-  // Position order — a seeded Fisher-Yates permutation when scattering.
+  // Position order - a seeded Fisher-Yates permutation when scattering.
   const order = Array.from({ length: count }, (_, i) => i);
   if (cfg.randomizeOrder && count > 1) {
     const rng = mulberry32(cfg.seed >>> 0);

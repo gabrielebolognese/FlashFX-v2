@@ -1,7 +1,7 @@
 import type { Layer } from './types';
 import { applyOverrides, type OverrideMap } from './overrides';
 
-// M13 — Replace Source (AE alt-drag-replace / Illustrator relink): swap a layer's media
+// M13 - Replace Source (AE alt-drag-replace / Illustrator relink): swap a layer's media
 // handle while preserving EVERYTHING else (transform, keyframes, effects, masks, timing,
 // blend mode, parenting). v1 is SAME-KIND only (image←image, video←video, precomp←precomp);
 // cross-kind footage swap would need a layer-type rebuild + re-tracking (future).

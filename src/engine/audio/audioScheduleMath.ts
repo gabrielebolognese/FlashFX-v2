@@ -4,9 +4,9 @@
 // Dependency-free + deterministic (scripts/verify-audioschedule).
 //
 // A clip is scheduled relative to an ANCHOR (a known composition time bound to a
-// known clock time). Export anchors at (comp 0, clock 0, rate 1) — so a clip at
+// known clock time). Export anchors at (comp 0, clock 0, rate 1) - so a clip at
 // inPoint schedules at when = inPoint/fps, offset = startOffset. Preview anchors at
-// (current playhead, ctx.currentTime, playbackRate) — so a clip already playing at
+// (current playhead, ctx.currentTime, playbackRate) - so a clip already playing at
 // the anchor starts NOW at an offset advanced into its buffer. Web Audio's
 // start(when, offset, duration) uses buffer-seconds for offset/duration, so the
 // per-clip playbackRate scales how fast the buffer is consumed.

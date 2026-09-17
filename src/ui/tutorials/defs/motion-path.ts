@@ -11,7 +11,7 @@ export const tutorial: TutorialDef = {
   bullets: [
     'You can create a motion path on the selected layer and drop points on the canvas in Edit mode.',
     'You can auto-smooth every node at once so the whole path becomes a flowing curve.',
-    'You can choose which anchor of the layer follows the path — Center or any of the four corners.',
+    'You can choose which anchor of the layer follows the path - Center or any of the four corners.',
     'You can orient the layer to the path so it rotates to face its direction of travel.',
     'You can loop the motion continuously or ping-pong it back and forth, or leave it playing once.',
     'You can close the path into a loop, or keep it open, and see the live node count.',

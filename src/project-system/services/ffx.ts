@@ -189,7 +189,7 @@ export async function importProjectFromFile(file: File): Promise<ProjectMetadata
   }
 
   // Handles both current bundles (a SceneDocument) and legacy ones holding a
-  // bare Composition — deserializeDocument migrates those into a one-entry doc.
+  // bare Composition - deserializeDocument migrates those into a one-entry doc.
   const sceneDoc = deserializeDocument(bundle.scene);
   const rootComposition = sceneDoc.compositions[sceneDoc.rootCompositionId];
   if (!rootComposition) throw new Error('This .ffx project contains no composition data');

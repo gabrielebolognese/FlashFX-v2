@@ -30,7 +30,7 @@ function readSnapFlags() {
     grid: enabled && (getSettingValue<boolean>('editor.snapToGrid') ?? true),
     guides: enabled && (getSettingValue<boolean>('editor.snapToGuides') ?? true),
     layers: enabled && (getSettingValue<boolean>('editor.snapToLayers') ?? true),
-    // Independent of `enabled` — you want crisp pixels even with element-snapping off (M20).
+    // Independent of `enabled` - you want crisp pixels even with element-snapping off (M20).
     pixel: getSettingValue<boolean>('editor.snapToPixel') ?? false,
   };
 }
@@ -107,7 +107,7 @@ function useElementSize(ref: React.RefObject<HTMLDivElement | null>) {
 }
 
 // Field-sampled layers store their on-canvas size (the "sample" size) inside the serialized field
-// config, not as layer fields. Parse it defensively — a broken/legacy config falls back to the
+// config, not as layer fields. Parse it defensively - a broken/legacy config falls back to the
 // factory default (600×800) so the gizmo box never collapses to zero.
 function fieldSampledSize(layer: FieldSampledLayer): { w: number; h: number } {
   try {
@@ -117,7 +117,7 @@ function fieldSampledSize(layer: FieldSampledLayer): { w: number; h: number } {
   } catch { return { w: 600, h: 800 }; }
 }
 
-// A cloner has no intrinsic size — its extent is emergent from the distribution. Compute the local
+// A cloner has no intrinsic size - its extent is emergent from the distribution. Compute the local
 // AABB of the actual instance positions so the selection box wraps the clones (and can be grabbed to
 // move/scale the whole set). Pure grid/radial resolve without a ctx; path/field distributions need
 // runtime context we don't have here and fall back to a nominal box. Padded so the box clears the
@@ -141,7 +141,7 @@ function clonerLocalBounds(layer: ClonerLayer, frame: number): { w: number; h: n
 function getLayerWorldBounds(layer: Layer, layers: Layer[], currentFrame: number, compW?: number, compH?: number): { x: number; y: number; w: number; h: number } | null {
   if (layer.type === 'group' || layer.type === 'audio') return null;
   if (currentFrame < layer.inPoint || currentFrame >= layer.outPoint) return null;
-  // Parent-composed WORLD position — a parented layer (e.g. every template child, which
+  // Parent-composed WORLD position - a parented layer (e.g. every template child, which
   // `assemble` parents to its group) renders at its world position, NOT its local one. Using the
   // local position drew the selection outline shifted toward the group's origin (up-left).
   let pos = getWorldPosition(layer, layers, currentFrame);
@@ -151,7 +151,7 @@ function getLayerWorldBounds(layer: Layer, layers: Layer[], currentFrame: number
   }
   let w: number, h: number;
   if (layer.type === 'video') {
-    // Include scale — image/video resize by scale, so the hover/selection outline must track it too.
+    // Include scale - image/video resize by scale, so the hover/selection outline must track it too.
     const s = evaluateProperty(layer.transform.scale, currentFrame) as Vec2;
     const vl = layer as VideoLayer;
     w = vl.video.sourceWidth * s[0];
@@ -263,7 +263,7 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
   const marqueeRef = useRef<{ startCX: number; startCY: number; active: boolean; lastIds: string } | null>(null);
   const dragStart = useRef({ mx: 0, my: 0, state: null as TransformState | null, groupPos: null as Vec2 | null, initFontSize: 0, initScale: [1, 1] as Vec2, multiPositions: [] as { id: string; pos: Vec2 }[], startRadius: 0, altDup: false, netMove: [0, 0] as Vec2, netRot: 0 });
   const snapDataRef = useRef<{ initialRect: Rect; targets: SnapTarget[]; otherRects: Rect[] } | null>(null);
-  const snapPixelRef = useRef(false); // M20 — snap-to-pixel captured at drag start
+  const snapPixelRef = useRef(false); // M20 - snap-to-pixel captured at drag start
 
   const activeLayer = composition.layers.find((l) => l.id === selection.activeId) || null;
   const isGroupActive = activeLayer?.type === 'group';
@@ -352,7 +352,7 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
       w = measured.width;
       h = measured.height;
     } else if (activeLayer.type === 'fieldSampled') {
-      // Size to the field's own sample size (from its config) × transform.scale — NOT the whole comp.
+      // Size to the field's own sample size (from its config) × transform.scale - NOT the whole comp.
       const s = evaluateProperty(activeLayer.transform.scale, currentFrame) as Vec2;
       const sz = fieldSampledSize(activeLayer as FieldSampledLayer);
       w = sz.w * s[0];
@@ -434,7 +434,7 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
     if (e.button !== 0) return;
     if (e.target !== overlayRef.current) return;
     const [cx, cy] = toComp(e.clientX, e.clientY);
-    // M12 — on the canvas, Shift is the sole additive modifier; Ctrl/Cmd is now DEEP-SELECT
+    // M12 - on the canvas, Shift is the sole additive modifier; Ctrl/Cmd is now DEEP-SELECT
     // (pick the deepest leaf, skipping groups). Plain click selects the enclosing group.
     const additive = e.shiftKey;
     const deepSelect = e.ctrlKey || e.metaKey;
@@ -506,14 +506,14 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
       return;
     }
 
-    // Empty space — clear selection and exit any isolation, then start a marquee.
+    // Empty space - clear selection and exit any isolation, then start a marquee.
     if (!additive) selectLayer(null, false, 'canvas');
     if (activeGroupId) setActiveGroup(null);
     marqueeRef.current = { startCX: cx, startCY: cy, active: false, lastIds: '' };
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
   }, [toComp, hitTestLayers, hitTestGroup, selectLayer, selection, composition, currentFrame, compW, compH, gridSettings, guideSettings, activeGroupId, setActiveGroup]);
 
-  // M12 — double-click descends exactly one nesting level (Figma), entering group isolation.
+  // M12 - double-click descends exactly one nesting level (Figma), entering group isolation.
   const handleDoubleClick = useCallback((e: React.MouseEvent) => {
     if (e.button !== 0) return;
     if (e.target !== overlayRef.current) return;
@@ -686,7 +686,7 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
       snapDataRef.current = null;
     }
 
-    snapPixelRef.current = readSnapFlags().pixel; // M20 — round the committed result to whole pixels
+    snapPixelRef.current = readSnapFlags().pixel; // M20 - round the committed result to whole pixels
     useHistoryStore.getState().setBatching(true);
     setDragging(handle);
     setSnapLines([]);
@@ -724,7 +724,7 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
           snapDx = result.dx;
           snapDy = result.dy;
           setSnapLines(result.lines);
-          // Equal-gap distribution snapping — a separate producer that fills each
+          // Equal-gap distribution snapping - a separate producer that fills each
           // axis where edge/centre alignment didn't snap (alignment's tighter 8px
           // tolerance wins ties; distance uses a wider 20px band).
           const egTol = 20 / Math.max(screenScale, 0.01);
@@ -826,7 +826,7 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
         // Corner-radius handle: drag inward from the top-left corner rounds the
         // rectangle live. Average the two axes so a diagonal (or pure-x/pure-y)
         // drag both feel natural; clamp to [0, min(w,h)/2]. Screen-space deltas
-        // (like resize) — rotation-agnostic, matching the resize handles.
+        // (like resize) - rotation-agnostic, matching the resize handles.
         const maxR = Math.min(state.w, state.h) / 2;
         const newR = Math.max(0, Math.min(maxR, dragStart.current.startRadius + (dx + dy) / 2));
         updateAnimatable('shape.borderRadius', newR);
@@ -883,7 +883,7 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
         }
 
         // Aspect constraint on corner handles. Images/videos LOCK aspect by default (their pixels
-        // shouldn't stretch) — Shift temporarily frees it; the properties "Lock aspect" toggle can turn
+        // shouldn't stretch) - Shift temporarily frees it; the properties "Lock aspect" toggle can turn
         // the default off. Everything else is free by default and Shift constrains (Figma-standard).
         const isMedia = activeLayer.type === 'image' || activeLayer.type === 'video';
         const mediaLocked = isMedia && (activeLayer as ImageLayer | VideoLayer).lockAspect !== false;
@@ -897,7 +897,7 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
           }
         }
 
-        // M20 — snap-to-pixel: round size + position AFTER the aspect solve so every downstream
+        // M20 - snap-to-pixel: round size + position AFTER the aspect solve so every downstream
         // commit (width/height, or scale = newW/state.w) yields crisp integer dimensions.
         if (snapPixelRef.current) {
           newW = Math.round(newW); newH = Math.round(newH);
@@ -1115,7 +1115,7 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
         scaleY={sY}
       />
 
-      {/* Live measurement HUD — a cursor-following pill (portaled to <body> so a
+      {/* Live measurement HUD - a cursor-following pill (portaled to <body> so a
           transformed viewport ancestor can't offset its fixed positioning). */}
       {hud && createPortal((() => {
         const text = hudLabel(hud.kind, hud.a, hud.b);
@@ -1144,7 +1144,7 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
       })(), document.body)}
 
 
-      {/* Single-layer transform gizmo (box + handles). Hidden for a multi-selection — those show
+      {/* Single-layer transform gizmo (box + handles). Hidden for a multi-selection - those show
           as world-correct outlines above; a multi-move is started by dragging any selected object.
           (The gizmo's position uses the active layer's LOCAL transform, which the drag math needs;
           drawing it for a parented multi-selection is what looked shifted.) */}

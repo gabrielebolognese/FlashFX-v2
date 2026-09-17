@@ -4,7 +4,7 @@
 // A hardware VideoDecoder stalls once too many decoded output frames are held
 // open (~16-24), so the scheduler must cap how many it retains per asset. When
 // over the cap, evict already-PLAYED frames first (behind the earliest playhead
-// anchor, oldest first), then the frames farthest AHEAD of any anchor — keeping a
+// anchor, oldest first), then the frames farthest AHEAD of any anchor - keeping a
 // tight ring around what's on screen so the picture never freezes.
 
 /**

@@ -2,12 +2,12 @@ import { useEffect, useState } from 'react';
 
 // Dim-with-cutout spotlight. Finds the DOM node tagged data-tutorial-id={target} (or the canvas for
 // 'canvas'), reads its live rect, and dims everything around it with four surrounding panels plus a
-// highlight ring — so the eye lands on the tool/panel the current step is using. Pointer-events are
+// highlight ring - so the eye lands on the tool/panel the current step is using. Pointer-events are
 // off throughout (the runner's own soft-lock handles click-blocking); this is purely visual.
 //
 // The rect is re-read on a light interval + on resize/scroll, because the editor relayouts as the
 // build adds layers (the timeline grows, panels shift). When the target can't be found we render
-// nothing — the step degrades to narration-only, never a broken dim.
+// nothing - the step degrades to narration-only, never a broken dim.
 
 interface Rect { x: number; y: number; w: number; h: number }
 
@@ -32,7 +32,7 @@ export function SpotlightOverlay({ target }: { target: string | undefined }) {
     let raf = 0;
     const update = () => setRect(findRect(target));
     update();
-    // Poll on an interval rather than every frame — cheap, and the target only moves on relayout.
+    // Poll on an interval rather than every frame - cheap, and the target only moves on relayout.
     const id = window.setInterval(update, 200);
     const onChange = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(update); };
     window.addEventListener('resize', onChange);

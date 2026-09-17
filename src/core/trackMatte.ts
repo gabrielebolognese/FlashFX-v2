@@ -1,9 +1,9 @@
-// Track mattes (B10b) — one layer mattes the layer directly BELOW it (AE model): the matte layer's
+// Track mattes (B10b) - one layer mattes the layer directly BELOW it (AE model): the matte layer's
 // alpha (or luminance), optionally inverted, cuts out the layer under it, and the matte layer itself
 // is consumed (not drawn on its own). This module is the PURE pairing logic: given the render-ordered
 // layers, work out which layer mattes which and which are consumed. The actual pixel composite (sample
 // the matte's alpha/luma and multiply) is a WebGPU pass wired in the renderer (browser-gated). Leaf
-// module — no imports — so it bundles in a node harness (`verify:mattes`).
+// module - no imports - so it bundles in a node harness (`verify:mattes`).
 
 export type TrackMatteMode = 'alpha' | 'alphaInv' | 'luma' | 'lumaInv';
 
@@ -25,7 +25,7 @@ export interface TrackMattePairing {
  * matte source), and mark that source consumed. `ordered` is BOTTOM→TOP render order (index 0 draws
  * first / is lowest); the matte for `ordered[i]` is `ordered[i+1]`. A track matte on the topmost layer
  * (no layer above) is ignored. A layer already consumed as someone's matte can't also be a matte
- * target's source twice — first assignment wins (deterministic by stack position).
+ * target's source twice - first assignment wins (deterministic by stack position).
  */
 export function pairTrackMattes(ordered: { id: string; trackMatte?: TrackMatteMode | null }[]): TrackMattePairing {
   const matted: Record<string, MatteRef> = {};
@@ -42,7 +42,7 @@ export function pairTrackMattes(ordered: { id: string; trackMatte?: TrackMatteMo
   return { matted, consumed };
 }
 
-/** Whether a matte mode uses luminance (else alpha), and whether it is inverted — for the shader. */
+/** Whether a matte mode uses luminance (else alpha), and whether it is inverted - for the shader. */
 export function matteFlags(mode: TrackMatteMode): { luma: boolean; invert: boolean } {
   return {
     luma: mode === 'luma' || mode === 'lumaInv',

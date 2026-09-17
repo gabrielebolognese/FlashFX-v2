@@ -3,7 +3,7 @@ import {
 } from '../core/factory';
 import type { Layer, ShapeLayer, TextLayer, GroupLayer, Vec2, Vec4, FontWeight, AnimatableProperty } from '../core/types';
 
-// Motion kit — the small vocabulary every template is written in, so authoring one is ~15–40 lines of
+// Motion kit - the small vocabulary every template is written in, so authoring one is ~15–40 lines of
 // choreography instead of raw keyframe plumbing. All frames are 0-based (rebased to the playhead on
 // insert). Layers are authored in GROUP-LOCAL space around (0,0); the builder sets the group's
 // position to ctx.center, so a child at local (dx,dy) renders at centre+(dx,dy) (matches the editor's
@@ -66,7 +66,7 @@ export function group(name: string, center: Vec2): GroupLayer {
   return createGroupLayer(name, center[0], center[1], DUR);
 }
 
-/** Parent top-level children to the group (children with an explicit parentId — e.g. nested pivots —
+/** Parent top-level children to the group (children with an explicit parentId - e.g. nested pivots -
  *  are left alone) and stamp the whole set with the template's clip length. */
 export function assemble(g: GroupLayer, children: Layer[], durationFrames: number): Layer[] {
   g.outPoint = durationFrames;
@@ -132,7 +132,7 @@ export function growUp(bar: ShapeLayer, bottomY: number, h: number, at: number, 
 
 // ---- Ambient loops (for looping scene motion: waves, clouds, sway, twinkle) -----------------------
 
-/** Smooth elliptical drift around the resting position — dx horizontal, dy vertical, `cycles` loops. */
+/** Smooth elliptical drift around the resting position - dx horizontal, dy vertical, `cycles` loops. */
 export function floatLoop(l: Layer, dx: number, dy: number, period: number, cycles: number, at = 0, phase = 0): void {
   const base = l.transform.position.defaultValue as Vec2;
   const keys: KeyStep[] = [];
@@ -145,7 +145,7 @@ export function floatLoop(l: Layer, dx: number, dy: number, period: number, cycl
   setKeys(l.transform.position, keys);
 }
 
-/** Rock back and forth around 0° by ±deg — a gentle sway (trees, boats). */
+/** Rock back and forth around 0° by ±deg - a gentle sway (trees, boats). */
 export function swayLoop(l: Layer, deg: number, period: number, cycles: number, at = 0): void {
   const keys: KeyStep[] = [{ f: at, v: 0, ease: EASE_IO }];
   for (let i = 0; i < cycles; i++) {
@@ -169,7 +169,7 @@ export function spinLoop(l: Layer, period: number, cycles: number, at = 0): void
 export function orbit(l: Layer, radius: number, radiusY: number, period: number, cycles: number, phase = 0): void {
   const base = l.transform.position.defaultValue as Vec2;
   const keys: KeyStep[] = [];
-  const per = 16; // samples per revolution — smooth circle, linear between for constant speed
+  const per = 16; // samples per revolution - smooth circle, linear between for constant speed
   const total = Math.max(1, Math.round(cycles * per));
   for (let i = 0; i <= total; i++) {
     const f = (i / per) * period;
@@ -199,7 +199,7 @@ export function fallLoop(l: Layer, dist: number, period: number, cycles: number,
   setKeys(l.transform.opacity, op);
 }
 
-/** Fly a particle outward from its position along an angle, growing faint + small — firework sparks. */
+/** Fly a particle outward from its position along an angle, growing faint + small - firework sparks. */
 export function burstOut(l: Layer, at: number, angleDeg: number, dist: number, dur = 18): void {
   const base = l.transform.position.defaultValue as Vec2;
   const a = (angleDeg * Math.PI) / 180;
@@ -209,7 +209,7 @@ export function burstOut(l: Layer, at: number, angleDeg: number, dist: number, d
   setKeys(l.transform.scale, [{ f: at, v: [1, 1] }, { f: at + dur, v: [0.3, 0.3], ease: EASE_OUT }]);
 }
 
-/** Opacity flicker between 1 and `min` — twinkling stars. */
+/** Opacity flicker between 1 and `min` - twinkling stars. */
 export function twinkle(l: Layer, period: number, cycles: number, at = 0, min = 0.3): void {
   const keys: KeyStep[] = [];
   for (let i = 0; i <= cycles * 2; i++) keys.push({ f: at + (i / 2) * period, v: i % 2 === 0 ? 1 : min, ease: EASE_IO });

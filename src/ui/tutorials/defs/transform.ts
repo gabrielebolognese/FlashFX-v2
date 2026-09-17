@@ -7,7 +7,7 @@ export const tutorial: TutorialDef = {
   title: 'Position, Scale & Rotate',
   videoCaption: 'transform.mp4',
   intro:
-    'The Transform panel holds every layer’s core spatial properties — where it sits, how big it is, how it’s turned, and how visible it is. Each value can be dragged live and keyframed to animate over time.',
+    'The Transform panel holds every layer’s core spatial properties - where it sits, how big it is, how it’s turned, and how visible it is. Each value can be dragged live and keyframed to animate over time.',
   bullets: [
     'You can set a layer’s X/Y position and drag it anywhere on the canvas.',
     'You can rotate a layer in degrees with the Rotation control.',

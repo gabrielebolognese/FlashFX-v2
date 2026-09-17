@@ -164,7 +164,7 @@ export function ShapeCreationOverlay({ style, compW, compH }: ShapeCreationOverl
     setDrag(null);
 
     if (box.w < MIN_DRAG_PX || box.h < MIN_DRAG_PX) {
-      // Below minimum: treat as accidental click — no shape created.
+      // Below minimum: treat as accidental click - no shape created.
       return;
     }
     if (overlayWidth <= 0 || overlayHeight <= 0) return;

@@ -24,7 +24,7 @@ export async function launchTutorial(): Promise<void> {
     height: 1080,
     videoFormat: 'long',
   });
-  // Open in the Animate workspace so the timeline + keyframe panel are visible — the animate/play
+  // Open in the Animate workspace so the timeline + keyframe panel are visible - the animate/play
   // beats and the timeline/transport spotlights need them on screen.
   usePanelStore.getState().setEditorWorkspace('animate');
   useTutorialStore.getState().start();

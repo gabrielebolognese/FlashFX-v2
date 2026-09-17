@@ -15,7 +15,7 @@ import type { TrackMatteMode } from '../../core/trackMatte';
 import type { ShapeLayer, TextLayer, VideoLayer, ImageLayer, AudioLayer, ParticleLayer, GenerativePatternLayer, CameraLayer, AnimationItemLayer, LottieIconLayer, AnimatableProperty, Vec2, Vec4, RectangleShape, CircleShape, StarShape, PolygonShape, MotionPathAnchor, MotionPathLoop, Mask, MaskType, Layer, LayerShadow, LayerGlow, LayerBlur, BlurType, GlowMode, LayoutObjectLayer, LayoutContainerLayer, TextSpanStyle, TextLayoutConfig, TextGradientFill, ShapeModifierType } from '../../core/types';
 
 // Safe fallbacks so the Text inspector renders even for a text layer with missing/empty content or
-// layoutConfig (defensive — factory layers set these, but selection must never crash).
+// layoutConfig (defensive - factory layers set these, but selection must never crash).
 const FALLBACK_SPAN_STYLE: TextSpanStyle = {
   fontFamily: 'Inter, system-ui, sans-serif', fontWeight: 400, fontStyle: 'normal', fontSize: 48,
   color: [1, 1, 1, 1], letterSpacing: 0, lineHeight: 1.2, strokeColor: [0, 0, 0, 1], strokeWidth: 0,
@@ -275,7 +275,7 @@ export function Inspector() {
       <div tabIndex={0} className="flex-1 overflow-y-auto min-h-0 outline-none focus:outline-none">
         <InspectorTabContent tab={activeTab} layer={layer} />
       </div>
-      {/* A camera has no standard tabs — hide the sidebar so the 3D View gets the full width. */}
+      {/* A camera has no standard tabs - hide the sidebar so the 3D View gets the full width. */}
       {layer.type !== 'camera' && (
         <nav className="flex-shrink-0 w-[116px] flex flex-col py-1 border-l border-hairline bg-[#0b0e15] overflow-y-auto">
           {visibleTabs.map((t) => (
@@ -419,7 +419,7 @@ function InspectorTabContent({ tab, layer }: { tab: InspectorTab; layer: Layer }
     return null;
   }
 
-  // Camera: a custom object — no standard transform/effect properties. The inspector shows a live
+  // Camera: a custom object - no standard transform/effect properties. The inspector shows a live
   // 3D View (alongside the normal canvas) for placing it; double-click the camera opens Settings.
   if (layer.type === 'camera') {
     return (
@@ -435,10 +435,10 @@ function InspectorTabContent({ tab, layer }: { tab: InspectorTab; layer: Layer }
   // Default: Properties (basic).
   return (
     <>
-      {/* Audio layers have no spatial transform or constraints — skip both sections. */}
+      {/* Audio layers have no spatial transform or constraints - skip both sections. */}
       {!isAudio && (
       <Section title="Transform">
-        {/* 2.5D — 3D layer switch. Off for groups (cameras render their own panel above). */}
+        {/* 2.5D - 3D layer switch. Off for groups (cameras render their own panel above). */}
         {layer.type !== 'group' && (
           <button
             onClick={() => toggleLayer3D(layer.id)}
@@ -868,11 +868,11 @@ function ShapeProperties({
 
       <ColorStyleRow label="Fill" layerId={layer.id} slot="fill" rawColor={shape.fillColor} onRawChange={(v) => updateLayerProperty(layer.id, 'shape.fillColor', v)} />
       {layer.materialConfig && (
-        <p className="text-caption text-amber-400/80 leading-snug pl-14">Fill uses an advanced material (Advanced ▸ Material) — this flat fill color is overridden.</p>
+        <p className="text-caption text-amber-400/80 leading-snug pl-14">Fill uses an advanced material (Advanced ▸ Material) - this flat fill color is overridden.</p>
       )}
       <ColorStyleRow label="Stroke" layerId={layer.id} slot="stroke" rawColor={shape.strokeColor} onRawChange={(v) => updateLayerProperty(layer.id, 'shape.strokeColor', v)} />
       {layer.strokeMaterialConfig && (
-        <p className="text-caption text-amber-400/80 leading-snug pl-14">Stroke uses an advanced material (Advanced ▸ Material) — this flat stroke color is overridden.</p>
+        <p className="text-caption text-amber-400/80 leading-snug pl-14">Stroke uses an advanced material (Advanced ▸ Material) - this flat stroke color is overridden.</p>
       )}
       <NumberDragInput
         label="Stroke W"
@@ -950,7 +950,7 @@ function ShapeProperties({
 const MODIFIER_LABELS: Record<ShapeModifierType, string> = { trim: 'Trim Paths', offset: 'Offset Paths', roughen: 'Roughen', puckerBloat: 'Pucker & Bloat' };
 const MODIFIER_ADD: Record<ShapeModifierType, string> = { trim: 'Trim', offset: 'Offset', roughen: 'Roughen', puckerBloat: 'Pucker' };
 
-// Path Modifier stack (B8a) — trim (draw-on), offset (inset/outset), roughen (jagged edge). Params
+// Path Modifier stack (B8a) - trim (draw-on), offset (inset/outset), roughen (jagged edge). Params
 // are AnimatableProperty and edit through the generic updateLayerProperty/addKeyframe on
 // `modifiers.<i>.<param>` dot-paths, so they keyframe like any other property.
 function PathModifiers({
@@ -1064,7 +1064,7 @@ function PathModifiers({
   );
 }
 
-// In-shape Repeater (B8d) — N accumulated copies of the shape (radial arrays, spirals, ladders).
+// In-shape Repeater (B8d) - N accumulated copies of the shape (radial arrays, spirals, ladders).
 // Works for every shape type; each param keyframes via the generic `repeater.<param>` dot-paths.
 function ShapeRepeaterControls({
   layer, currentFrame, updateLayerProperty, addKeyframe, hasKeyframeAt,
@@ -1116,7 +1116,7 @@ function ShapeRepeaterControls({
 }
 
 // Dashed stroke (B8c). Presets set the polygon's dash pattern; the Dash Offset drag keyframes for
-// marching-ants animation. Fill is untouched — dashing only affects the stroke.
+// marching-ants animation. Fill is untouched - dashing only affects the stroke.
 const DASH_PRESETS: [string, number[]][] = [
   ['Solid', []],
   ['Dashed', [12, 8]],
@@ -1169,7 +1169,7 @@ function StrokeDash({
 
 // Shape morph / keyframable outline (B8b). Snapshots the polygon's current vertices as a pose at the
 // playhead; ≥2 poses animate the path (arc-length morph between them). Editing the path edits the base
-// vertices — re-Add at a pose's frame to update it.
+// vertices - re-Add at a pose's frame to update it.
 function PathAnimation({ layer }: { layer: ShapeLayer }) {
   const addPathPose = useEditorStore((s) => s.addPathPose);
   const removePathPose = useEditorStore((s) => s.removePathPose);
@@ -1272,7 +1272,7 @@ const BLUR_TYPES: { value: BlurType; label: string }[] = [
 
 // Generalized, extensible Effects section. Motion Blur is the first effect in a
 // per-layer effects pipeline (future: Glow, Shadow, Directional Blur). The UI
-// only configures parameters — all blur math runs on the GPU in the renderer.
+// only configures parameters - all blur math runs on the GPU in the renderer.
 function EffectsSection({ layer }: { layer: Layer }) {
   const updateLayerProperty = useEditorStore((s) => s.updateLayerProperty);
   const enabled = getMotionBlur(layer);
@@ -1643,13 +1643,13 @@ function VideoProperties({
             className="flex-1"
           />
         </div>
-        {/* Time Remap — animate source time: ease the curve for speed ramps, flatten to freeze,
+        {/* Time Remap - animate source time: ease the curve for speed ramps, flatten to freeze,
             descend to reverse. Supersedes Speed/Freeze/Reverse while on. */}
         <div className="flex items-center gap-1">
           <label className="text-caption text-slate-500 w-14 flex-shrink-0">Remap</label>
           <button
             onClick={() => setVideoTimeRemap(layer.id, !video.timeRemap)}
-            title="Animate source time — ease for speed ramps, flatten to freeze, descend to reverse"
+            title="Animate source time - ease for speed ramps, flatten to freeze, descend to reverse"
             className={`px-1.5 py-0.5 text-[9px] rounded ${video.timeRemap ? 'bg-accent-wash text-accent' : 'bg-surface-3 text-slate-500 hover:text-slate-300'}`}
           >
             {video.timeRemap ? 'On' : 'Off'}
@@ -1668,7 +1668,7 @@ function VideoProperties({
             precision={2}
           />
         )}
-        {/* Frame Mix — cross-dissolve adjacent source frames so retimed/slowed clips don't stutter. */}
+        {/* Frame Mix - cross-dissolve adjacent source frames so retimed/slowed clips don't stutter. */}
         <div className="flex items-center gap-1">
           <label className="text-caption text-slate-500 w-14 flex-shrink-0">Frame Mix</label>
           <button
@@ -2088,7 +2088,7 @@ function TextProperties({
   hasKeyframeAt: (prop: AnimatableProperty) => boolean;
 }) {
   // Guard against a text layer with missing/empty content (some layers arrive without a full
-  // content/spans shape) — reading it unguarded is what crashed the panel on selection. `style`
+  // content/spans shape) - reading it unguarded is what crashed the panel on selection. `style`
   // falls back to a full default so every downstream `style.*` read is safe.
   const spans = layer.content?.spans ?? [];
   const span = spans[0];
@@ -2431,7 +2431,7 @@ function LottieIconSection({ layer }: { layer: LottieIconLayer }) {
   );
 }
 
-// M14 — per-axis reframe constraints. A 5-way segmented control per axis fully expresses
+// M14 - per-axis reframe constraints. A 5-way segmented control per axis fully expresses
 // Left/Center/Right + Stretch + Scale (a 3×3 pin grid can't represent stretch/scale). Only
 // meaningful for top-level layers; children ride their parent.
 const H_CONSTRAINT_OPTS: { mode: ReframeAxisMode; label: string }[] = [
@@ -2467,7 +2467,7 @@ function ConstraintsSection({ layer }: { layer: Layer }) {
   if (layer.parentId !== null) {
     return (
       <Section title="Constraints">
-        <div className="text-caption text-slate-500">Pinned to parent — reframe constraints apply to top-level layers only.</div>
+        <div className="text-caption text-slate-500">Pinned to parent - reframe constraints apply to top-level layers only.</div>
       </Section>
     );
   }
@@ -2483,7 +2483,7 @@ function ConstraintsSection({ layer }: { layer: Layer }) {
   );
 }
 
-// M21 — a fill/stroke color row that can LINK to a shared style. When linked, the swatch shows
+// M21 - a fill/stroke color row that can LINK to a shared style. When linked, the swatch shows
 // the style's color and editing updates the style (→ all referents); a chain menu links to an
 // existing style, creates one from the current color, or detaches (bakes the value locally).
 function ColorStyleRow({ label, layerId, slot, rawColor, onRawChange }: {
@@ -2577,11 +2577,11 @@ function NumberDragInput({
   step?: number;
   precision?: number;
   suffix?: string;
-  /** Value-proportional (exponential) drag — see DragInput. */
+  /** Value-proportional (exponential) drag - see DragInput. */
   exponential?: boolean;
   /** When provided, shows a revert-to-default button (active only when the value differs). */
   defaultValue?: number;
-  /** Dotted property path (e.g. "transform.opacity") — powers `data-prop` targeting and the
+  /** Dotted property path (e.g. "transform.opacity") - powers `data-prop` targeting and the
    *  agent-build highlight ring. */
   propPath?: string;
 }) {
@@ -2654,7 +2654,7 @@ function Vec2DragInput({
   labels?: [string, string];
   /** When provided, shows a revert-to-default button (active only when the value differs). */
   defaultValue?: Vec2;
-  /** Dotted property path (e.g. "transform.position") — powers `data-prop` targeting and the
+  /** Dotted property path (e.g. "transform.position") - powers `data-prop` targeting and the
    *  agent-build highlight ring. */
   propPath?: string;
 }) {

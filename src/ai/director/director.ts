@@ -5,7 +5,7 @@ import { type DirectorClient, type Usage, ZERO_USAGE, addUsage } from './client'
 // The Director stage: description + canvas + caps → a validated DirectorOutput, with usage. The
 // network call is behind `client`; everything here is deterministic given a client. Structured
 // output is FORCED (tool_choice), not requested. On a validation failure (structural OR semantic) we
-// retry ONCE with the errors fed back, then fail loudly — two attempts, never a silent bad plan.
+// retry ONCE with the errors fed back, then fail loudly - two attempts, never a silent bad plan.
 
 export const DIRECTOR_MODEL = 'claude-opus-5';
 export const DIRECTOR_MAX_TOKENS = 8192; // fits a full multi-panel plan with headroom (a truncated tool call is unrecoverable)
@@ -55,7 +55,7 @@ export async function runDirector(o: RunDirectorOpts): Promise<DirectorResult> {
       retry = { previousOutput: res.toolInput, errors: parsed.error.issues.map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`) };
       continue;
     }
-    // Structural OK — also enforce the semantic rules Zod cannot (they would fail generation later).
+    // Structural OK - also enforce the semantic rules Zod cannot (they would fail generation later).
     const semErrors = validateDirectorPlan(parsed.data, { canvas: o.canvas }).filter((i) => i.severity === 'error');
     if (semErrors.length === 0) {
       return { output: parsed.data, usage, latencyMs: now() - t0, attempts: attempt };

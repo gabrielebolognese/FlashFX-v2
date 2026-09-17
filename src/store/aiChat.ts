@@ -5,7 +5,7 @@ import type { Step } from '../ui/panels/aiChatDemo';
 // AI chat conversation state, lifted out of the panel component so it survives the panel being
 // closed/reopened (the panel unmounts on close) AND survives a project reopen / page reload via
 // localStorage. Conversations are keyed by project id so each project keeps its own thread.
-// Only durable conversation data lives here — the in-flight generation state (generating/elapsed/
+// Only durable conversation data lives here - the in-flight generation state (generating/elapsed/
 // timers) stays local to the component, since a half-finished stream can't survive an unmount.
 
 export type AttachKind = 'file' | 'drive' | 'image';

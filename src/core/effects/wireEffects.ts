@@ -1,6 +1,6 @@
 // "Wire" filters: catalog blur/glow entries that route to the layer's existing
 // LayerBlur / LayerGlow properties (and thus the renderer's real multi-pass RTT
-// passes) rather than to the effect-stack WGSL switch. No new shader code — this
+// passes) rather than to the effect-stack WGSL switch. No new shader code - this
 // is pure data + builders so the React panel stays free of blur/glow knowledge.
 //
 // Many catalog ids collapse onto the single layer.blur / layer.glow slot (a layer
@@ -98,7 +98,7 @@ export function buildWire(
   return { path: 'glow', value: buildWireGlow(id, value) };
 }
 
-/** Read a wire filter's slider back — only if it is the active variant on the layer. */
+/** Read a wire filter's slider back - only if it is the active variant on the layer. */
 export function readWireValue(id: string, layer: { blur?: LayerBlur; glow?: LayerGlow }): number {
   const spec = WIRE[id];
   if (!spec) return 0;

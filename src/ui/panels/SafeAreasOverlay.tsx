@@ -3,8 +3,8 @@ import { useViewportNavStore } from '../../store/viewportNav';
 
 // Broadcast-style guides: action-safe (outer) and title-safe (inner), as
 // centered percentage insets of the frame. Purely a composition aid.
-const ACTION_SAFE = 0.93; // 93% — keep important action inside this
-const TITLE_SAFE = 0.9; //  90% — keep text/titles inside this
+const ACTION_SAFE = 0.93; // 93% - keep important action inside this
+const TITLE_SAFE = 0.9; //  90% - keep text/titles inside this
 
 /**
  * Canvas "Show Safe Areas" toggle: draws action-safe and title-safe rectangles

@@ -2,7 +2,7 @@ import { mediaAssetManager } from './assetManager';
 
 // Canva-style import: bring footage into the MEDIA POOL (as assets) WITHOUT placing anything on the
 // timeline. Placing many videos at once used to auto-create a clip per file, and each import fired an
-// un-throttled full-file audio decode + decoder-worker spawn + blob writes — importing a batch of
+// un-throttled full-file audio decode + decoder-worker spawn + blob writes - importing a batch of
 // videos crashed the app. Here we (a) never touch the composition, and (b) cap how many files decode
 // at once so a big drag doesn't launch N heavy imports in parallel. The user drags assets from the
 // pool onto the timeline/canvas when they actually want them (addVideoFromAsset / addImageFromAsset).

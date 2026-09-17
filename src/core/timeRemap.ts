@@ -32,7 +32,7 @@ export function sourceFrameFromSeconds(seconds: number, sourceFps: number, total
 /**
  * Frame-mix split: the two adjacent source frames straddling `seconds` and the cross-dissolve `mix`
  * (0..1) between them. `mix` is 0 on an exact frame or when clamped at the last frame (no next frame
- * to blend toward), so a blend never invents content past the source. Pure — the renderer expands a
+ * to blend toward), so a blend never invents content past the source. Pure - the renderer expands a
  * frame-blended clip into frameA (opaque) + frameB (opacity = mix) using this.
  */
 export function frameBlendSplit(seconds: number, sourceFps: number, totalSourceFrames: number): { frameA: number; frameB: number; mix: number } {
@@ -48,7 +48,7 @@ export function frameBlendSplit(seconds: number, sourceFps: number, totalSourceF
 
 /**
  * The two identity seed values (source seconds at the clip's in/out points) used when Time Remap is
- * first enabled — a straight line reproducing the current constant-rate playback, so enabling it
+ * first enabled - a straight line reproducing the current constant-rate playback, so enabling it
  * changes nothing until the user shapes the curve (speed ramp / freeze / reverse).
  */
 export function identityRemapSeconds(

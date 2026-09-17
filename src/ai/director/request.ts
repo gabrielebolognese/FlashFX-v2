@@ -1,7 +1,7 @@
 // Anthropic Messages request assembly with EXPLICIT cache-block ordering. The cached prefix is
 // tools → system, both byte-identical on every call; only the user turn (description + canvas) and
 // the optional retry note vary. The cache breakpoint is a `cache_control` on the LAST system block,
-// so everything before and including it — the huge tool JSON schema and the system prompt — is cached,
+// so everything before and including it - the huge tool JSON schema and the system prompt - is cached,
 // and the user turn falls after the boundary. Getting this wrong is silent and expensive, so
 // buildDirectorRequest is unit-tested (see scripts/verify-director.mjs).
 
@@ -64,7 +64,7 @@ export function buildDirectorRequest(o: BuildRequestOpts): AnthropicRequest {
   return {
     model: o.model,
     max_tokens: o.maxTokens,
-    // tools first in the canonical cache order (most stable — the frozen decode schema).
+    // tools first in the canonical cache order (most stable - the frozen decode schema).
     tools: [{
       name: DIRECTOR_TOOL_NAME,
       description: 'Emit the complete DirectorOutput plan (brief + style contract + panel plan). Milliseconds.',
@@ -77,7 +77,7 @@ export function buildDirectorRequest(o: BuildRequestOpts): AnthropicRequest {
   };
 }
 
-/** The stable, cacheable prefix of a request (tools + system) — everything up to the cache boundary.
+/** The stable, cacheable prefix of a request (tools + system) - everything up to the cache boundary.
  *  Two requests that differ only in description/canvas MUST have an identical prefix. */
 export function directorCachedPrefix(req: AnthropicRequest): { tools: AnthropicTool[]; system: AnthropicTextBlock[] } {
   return { tools: req.tools, system: req.system };

@@ -69,7 +69,7 @@ export function DragInput({
   const getMultiplier = useCallback((e: MouseEvent | PointerEvent) => {
     // Range-aware base sensitivity: for a clamped property, one full drag (~DRAG_PIXELS_FOR_FULL_RANGE
     // px) covers its whole min..max, so a +/-24 or 0..1 property moves several times slower than a
-    // wide/unbounded one. Unbounded props (position, rotation) fall back to `step` per pixel — the
+    // wide/unbounded one. Unbounded props (position, rotation) fall back to `step` per pixel - the
     // existing feel the user is happy with. Alt = coarser, Shift = finer, as before.
     let base = step;
     if (min !== undefined && max !== undefined && Number.isFinite(min) && Number.isFinite(max) && max > min) {

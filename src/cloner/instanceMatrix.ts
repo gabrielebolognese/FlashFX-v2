@@ -1,16 +1,16 @@
-// Cloner — GPU-prep (Prompt 3, Deliverable 1, CPU side).
+// Cloner - GPU-prep (Prompt 3, Deliverable 1, CPU side).
 //
 // Turns Prompt 2's pure InstanceTransform[] into the per-instance data a future
 // instanced draw call consumes. This is the one piece of the GPU path that is pure
 // and verifiable without a GPU, so it lives here (tested by scripts/verify-cloner.mjs)
 // and the pipeline/shaders/scene-graph wiring build on top of it.
 //
-// IMPORTANT — matrix convention. This 2D renderer has NO existing mat4 model-matrix
+// IMPORTANT - matrix convention. This 2D renderer has NO existing mat4 model-matrix
 // convention: every vertex shader composes the transform inline as
 //     rotated = (rel.x·cos − rel.y·sin, rel.x·sin + rel.y·cos)   // Y-down CCW
 //     worldPos = rotated + position
 // so this module matches THAT sign/order (rotate∘scale then translate) rather than
-// inventing a different one — an instanced draw using these matrices reproduces the
+// inventing a different one - an instanced draw using these matrices reproduces the
 // non-instanced path pixel-for-pixel. Matrices are column-major (WGSL mat4x4<f32>).
 
 import type { InstanceTransform } from './types';
@@ -48,7 +48,7 @@ export const INSTANCE_STRIDE_BYTES = INSTANCE_FLOAT_COUNT * 4; // 80
  * vertex buffer, matching WGSL `struct InstanceData { modelMatrix: mat4x4<f32>,
  * colorTint: vec4<f32> }`: [ 16 matrix floats | r, g, b, opacity ] per instance.
  *
- * Sized strictly from the (already renderCount-capped) array length — a second line
+ * Sized strictly from the (already renderCount-capped) array length - a second line
  * of defense on the cap at the GPU-resource level (Deliverable 5): even a caller
  * that bypassed Prompt 1's truncation cannot make this allocate more than it is fed.
  */

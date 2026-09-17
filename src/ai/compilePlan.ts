@@ -6,8 +6,8 @@ import type { DirectorOutput, Panel, Job, StyleContractT as StyleContract } from
 // timestamp independently would accumulate rounding drift and could land a deliberately-chosen beat
 // off the frame grid. After this stage NOTHING downstream sees milliseconds.
 //
-// Boundary contracts are UNIFIED present-lists (`inboundPresent`/`outboundPresent`) — the same shape
-// the Director emits — so nothing has to invent per-layer opacity/position defaults here.
+// Boundary contracts are UNIFIED present-lists (`inboundPresent`/`outboundPresent`) - the same shape
+// the Director emits - so nothing has to invent per-layer opacity/position defaults here.
 
 export interface PlanResult {
   beatFrames: number;

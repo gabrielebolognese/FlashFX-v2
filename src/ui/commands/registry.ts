@@ -1,6 +1,6 @@
 // Central command registry for the Ctrl/Cmd+K palette. Each command is a plain
 // {id, label, category, run} record whose run() dispatches the SAME store actions
-// the keyboard shortcuts and menus use — the palette is a parallel discovery/
+// the keyboard shortcuts and menus use - the palette is a parallel discovery/
 // invocation surface, not a re-implementation. Kept UI-store-free so the list can be
 // built once and ranked by the pure fuzzy matcher.
 
