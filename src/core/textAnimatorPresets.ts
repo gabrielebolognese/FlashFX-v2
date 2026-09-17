@@ -104,6 +104,17 @@ export function riseByLine(startFrame = 0, durationFrames = 30): TextAnimator {
   };
 }
 
+/** Characters resolve from a blur (blur in), left to right. */
+export function blurInByCharacter(startFrame = 0, durationFrames = 30): TextAnimator {
+  return {
+    enabled: true,
+    splitMode: 'character',
+    selector: { ...defaultRangeSelector(), shape: 'smooth', start: 0, end: 0.25 },
+    offset: revealOffset(startFrame, durationFrames),
+    delta: { opacity: -1, blur: 16 },
+  };
+}
+
 /** Characters spin + scale into place (tumble in), left to right. */
 export function tumbleInByCharacter(startFrame = 0, durationFrames = 30): TextAnimator {
   return {
@@ -122,5 +133,6 @@ export const TEXT_ANIMATOR_PRESETS: { id: string; label: string; build: (start?:
   { id: 'cascade-word', label: 'Cascade up by word', build: cascadeUpByWord },
   { id: 'slide-in', label: 'Slide in by character', build: slideInByCharacter },
   { id: 'rise-line', label: 'Rise by line', build: riseByLine },
+  { id: 'blur-in', label: 'Blur in by character', build: blurInByCharacter },
   { id: 'tumble-in', label: 'Tumble in by character', build: tumbleInByCharacter },
 ];

@@ -16,6 +16,11 @@ export interface GlyphDelta {
   sy: number;
   rotation: number;
   opacity: number;
+  /** Per-character 3D out-of-plane rotation in degrees (B9c). Only used when the text layer is 3D. */
+  rx: number;
+  ry: number;
+  /** Per-character gaussian blur radius in px (B9d), added to the layer's base blur on each stamp. */
+  blur: number;
 }
 
 /** A frame-resolved animator: selector.offset already evaluated for the current frame. */
@@ -25,7 +30,7 @@ export interface ResolvedTextAnimator {
   delta: TextAnimatorDelta;
 }
 
-const identity = (): GlyphDelta => ({ tx: 0, ty: 0, sx: 1, sy: 1, rotation: 0, opacity: 1 });
+const identity = (): GlyphDelta => ({ tx: 0, ty: 0, sx: 1, sy: 1, rotation: 0, opacity: 1, rx: 0, ry: 0, blur: 0 });
 const isWhitespace = (c: string): boolean => c === ' ' || c === '\t' || c === '\n' || c === '\r';
 const clamp01 = (x: number): number => (x < 0 ? 0 : x > 1 ? 1 : x);
 
@@ -79,8 +84,11 @@ export function accumulateGlyphDeltas(content: string, animators: ResolvedTextAn
       const g = out[i];
       if (d.position) { g.tx += d.position[0] * w; g.ty += d.position[1] * w; }
       if (d.rotation) g.rotation += d.rotation * w;
+      if (d.rotationX) g.rx += d.rotationX * w;
+      if (d.rotationY) g.ry += d.rotationY * w;
       if (d.scale) { g.sx *= 1 + d.scale[0] * w; g.sy *= 1 + d.scale[1] * w; }
       if (d.opacity) g.opacity = clamp01(g.opacity * (1 + d.opacity * w));
+      if (d.blur) g.blur = Math.max(0, g.blur + d.blur * w);
     }
   }
   return out;

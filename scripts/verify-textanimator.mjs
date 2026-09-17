@@ -64,6 +64,17 @@ try {
     const g = accumulateGlyphDeltas('abc', [{ splitMode: 'character', selector: sel(), delta: { rotation: 90 } }]);
     assert.ok(approx(g[0].rotation, 0) && approx(g[1].rotation, 45) && approx(g[2].rotation, 90));
   });
+  check('per-character 3D rotation X/Y scales by weight (B9c)', () => {
+    const g = accumulateGlyphDeltas('abc', [{ splitMode: 'character', selector: sel(), delta: { rotationX: 90, rotationY: -30 } }]);
+    assert.ok(approx(g[0].rx, 0) && approx(g[1].rx, 45) && approx(g[2].rx, 90));
+    assert.ok(approx(g[0].ry, 0) && approx(g[1].ry, -15) && approx(g[2].ry, -30));
+  });
+  check('per-character blur scales by weight and never goes negative (B9d)', () => {
+    const g = accumulateGlyphDeltas('abc', [{ splitMode: 'character', selector: sel(), delta: { blur: 16 } }]);
+    assert.ok(approx(g[0].blur, 0) && approx(g[1].blur, 8) && approx(g[2].blur, 16));
+    const gneg = accumulateGlyphDeltas('abc', [{ splitMode: 'character', selector: sel(), delta: { blur: -100 } }]);
+    assert.ok(gneg.every((x) => x.blur >= 0), 'blur clamps at 0');
+  });
   check('multiple animators stack (position adds)', () => {
     const g = accumulateGlyphDeltas('abc', [
       { splitMode: 'character', selector: sel(), delta: { position: [10, 0] } },
@@ -73,7 +84,7 @@ try {
   });
   check('zero weight leaves the identity delta untouched', () => {
     const g = accumulateGlyphDeltas('abc', [{ splitMode: 'character', selector: sel(), delta: { position: [10, 5], rotation: 90, scale: [1, 1], opacity: -1 } }]);
-    assert.deepEqual(g[0], { tx: 0, ty: 0, sx: 1, sy: 1, rotation: 0, opacity: 1 });
+    assert.deepEqual(g[0], { tx: 0, ty: 0, sx: 1, sy: 1, rotation: 0, opacity: 1, rx: 0, ry: 0, blur: 0 });
   });
   check('word split shares one weight across a whole word', () => {
     // "ab cd": 2 words → weights [0, 1]; both chars of word 1 get weight 1.

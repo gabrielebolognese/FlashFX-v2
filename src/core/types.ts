@@ -520,8 +520,13 @@ export interface TextAnimatorDelta {
   position?: Vec2;
   /** Fractional scale delta per axis: scale *= (1 + this·weight). */
   scale?: Vec2;
-  /** Rotation in degrees at full weight. */
+  /** Rotation in degrees at full weight (Z / in-plane). */
   rotation?: number;
+  /** Per-character 3D out-of-plane rotation in degrees at full weight (B9c). Needs a 3D text layer. */
+  rotationX?: number;
+  rotationY?: number;
+  /** Per-character gaussian blur radius in px at full weight (B9d) — e.g. blur-in reveals. */
+  blur?: number;
 }
 
 /**

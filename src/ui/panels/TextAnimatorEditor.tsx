@@ -230,6 +230,9 @@ function Editor({ animator, onChange }: { animator: TextAnimator; onChange: (a: 
         <Field label="Position"><Num value={pos[0]} onChange={(v) => setDelta({ position: [v, pos[1]] })} suffix="x" /><Num value={pos[1]} onChange={(v) => setDelta({ position: [pos[0], v] })} suffix="y" /></Field>
         <Field label="Scale %"><Num value={scl[0] * 100} onChange={(v) => setDelta({ scale: [v / 100, scl[1]] })} suffix="x" /><Num value={scl[1] * 100} onChange={(v) => setDelta({ scale: [scl[0], v / 100] })} suffix="y" /></Field>
         <Field label="Rotation °"><Num value={d.rotation ?? 0} onChange={(v) => setDelta({ rotation: v })} /></Field>
+        <Field label="3D Rot X °"><Num value={d.rotationX ?? 0} onChange={(v) => setDelta({ rotationX: v })} /></Field>
+        <Field label="3D Rot Y °"><Num value={d.rotationY ?? 0} onChange={(v) => setDelta({ rotationY: v })} /></Field>
+        <Field label="Blur px"><Num value={d.blur ?? 0} min={0} onChange={(v) => setDelta({ blur: v })} /></Field>
         <Field label="Opacity %"><Num value={(d.opacity ?? 0) * 100} min={-100} max={100} onChange={(v) => setDelta({ opacity: v / 100 })} /></Field>
       </Group>
 

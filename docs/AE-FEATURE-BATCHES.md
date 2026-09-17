@@ -40,9 +40,9 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | B8e | Gradient strokes on pen paths (CPU-bake per-vertex, no shader) | ✅ | medium |
 | B9a | Kinetic typography — motion presets (type-on, cascades) + Decode/scramble (pure) | ✅ | light |
 | B9b | Text on a path (glyph placement + tangent orient; browser-eyeball placement) | ✅ | medium |
-| B9c | Per-character 3D rotation (delta + stamp 3D wiring; camera-gated) | ▶ **next** | medium |
-| B9d | Per-glyph blur-in (new per-glyph blur render; browser-gated) | ⬜ | medium |
-| B10 | Masks / track mattes / roto completion | ⬜ | medium |
+| B9c | Per-character 3D rotation (delta + stamp 3D wiring; camera-gated) | ✅ | medium |
+| B9d | Per-glyph blur-in (per-stamp blur via existing pipeline) | ✅ | medium |
+| B10 | Masks / track mattes / roto completion | ▶ **next** | medium |
 | B11 | ★ Effect-stack framework + adjustment layers + blend-mode audit | ⬜ | medium (foundation) |
 | B12 | Glow & light finishing (bloom, deep-glow, light wrap, glints) | ⬜ | medium |
 | B13 | Stylise & cinematic finish (chromatic ab., lens distort, grain, halftone) | ⬜ | medium |
@@ -127,7 +127,7 @@ Audit (subagent) verdict: shape **paths are not keyframable** and there is **no 
 
 **B8 is now COMPLETE (a–e): trim/offset/roughen modifiers, shape morph + keyframable path + pucker/bloat, dashed strokes, in-shape Repeater, gradient strokes.**
 
-## B9 — Kinetic typography completion (SPLIT)
+## B9 — Kinetic typography completion ✅ COMPLETE (a–d) (SPLIT)
 Audit: a strong range-selector + text-animator core already exists, with per-glyph animation done via **stamp expansion** (`expandTextGlyphs` splits a text layer into one 1-char `ResolvedLayer` per glyph — like the cloner, ZERO renderer changes; single visual line only, glyph x/y from canvas measurement = browser-gated placement). So type-on/cascades are new PRESETS, decode is a pure content-swap through the existing stamps, and the remaining pieces (path/3D/blur) are render-gated. Split accordingly.
 
 ### B9a — Motion presets + Decode/scramble ✅ DONE
@@ -136,11 +136,13 @@ Audit: a strong range-selector + text-animator core already exists, with per-gly
 ### B9b — Text on a path ✅ DONE
 **Delivered:** glyphs flow along a referenced MotionPath with optional tangent orientation. New pure `core/textPath.ts` (`totalPathLength`, `pointAndAngleAt`, `glyphPathFraction`) — a self-contained cubic sampler with **TRUE arc-length reparameterization** (a dense LUT), so glyphs are **evenly spaced** (a straight 2-node path doesn't bunch them, unlike motionPath.ts's parameter-space walk). It imports no interpolation engine → node-harnessable. `TextPathBinding` + `TextLayer.textPath?` (pathId → a `composition.motionPaths` entry, interpreted in the layer's LOCAL space; align + margin). Wired into `expandTextGlyphs`: each glyph's along-text center distance → arc fraction → path point + tangent, replacing the linear x/y; the pivot offset + `composeTransforms(world, …)` apply the layer transform identically (no renderer change). Picker UI in `TextAnimatorEditor` (path dropdown labeled by owning layer, margin, align toggle); persisted via `ensureTextPath`. **Perf:** medium; the placement maths is unit-tested, exact on-canvas placement is browser-eyeballed (glyph advances come from canvas measurement — same class as the existing cascades). **Verify:** `verify:text-kinetic` +5 path checks (arc length, horizontal/vertical position+tangent, fraction mapping+clamp, glyph-maps-onto-path) → **14 checks**. tsc 0, lint 125, build ok, 66 harnesses.
 
-### B9c — Per-character 3D rotation
-**Delivers:** per-glyph out-of-plane spin (X/Y). **NO new shader** — the 3D card MVP path already exists; extend `TextAnimatorDelta`/`GlyphDelta` with rx/ry (pure, harnessable) and wire `is3D` + a per-glyph `worldMatrix` + non-zero 3D fields onto each stamp. **Perf:** medium; delta math pure, stamp 3D wiring camera-gated (browser-verified).
+### B9c — Per-character 3D rotation ✅ DONE
+**Delivered:** per-glyph out-of-plane spin (X/Y) on a 3D text layer. **No new shader, and — it turned out — no `worldMatrix` needed**: `writeCard3D` builds the card MVP directly from `layer.transform` (rotationX/Y/positionZ) + `layer.is3D`. Extended `TextAnimatorDelta` (`rotationX?`/`rotationY?`) + `GlyphDelta` (`rx`/`ry`, accumulated) — pure; the stamp now sets `rotationX = rx`, `rotationY = ry` (was hardcoded 0), `composeTransforms` adds the layer's own 3D rotation, and stamps get `is3D` from the text layer so `writeCard3D` fires under the active camera. Editor gains 3D Rot X/Y fields; delta persists via the existing wholesale cast. **Perf:** medium; delta math node-verified (`verify:textanimator` +1 → 12), the 3D visual browser-eyeballed (reuses the proven 3D card path).
 
-### B9d — Per-glyph blur-in
-**Delivers:** blur-in cascade (glyphs resolve from blurry). **The one genuinely new render:** blur is currently a LAYER effect, not per-glyph / not in `ResolvedText` — needs a per-glyph blur delta + render support. **Perf:** medium-heavy; browser-gated.
+### B9d — Per-glyph blur-in ✅ DONE
+**Delivered:** blur-in cascade (glyphs resolve from blurry). Turned out to need **no new render**: every expanded layer already carries its `blur` into the draw (`blurFx = expandedLayers[i].blur`) and the existing per-layer blur pipeline renders each text stamp. Added `TextAnimatorDelta.blur?` + `GlyphDelta.blur` (accumulated, clamped ≥0); `expandTextGlyphs` builds a per-stamp gaussian `ResolvedBlur` = base blur + the glyph's accumulated blur (absent → the shared base is untouched). New `blur-in` preset + a Blur field in the editor. **Perf:** medium (one blur pass per blurry glyph via the existing pipeline). **Verify:** `verify:textanimator` +1 (13 checks). tsc 0, lint 125, build ok, 66 harnesses.
+
+**B9 COMPLETE (a–d): type-on + cascade presets, Decode/scramble, text-on-path, per-char 3D rotation, per-glyph blur-in.**
 
 ## B10 — Masks / track mattes / roto completion
 **Delivers:** variable-width mask feather, complete track-matte modes (alpha/luma/inverted), mask-reveal wipes, animated mask shapes, a basic roto/refine-edge cut-out. **Categories:** 5. **Perf:** matte compositing pass; reuse existing mask overlay. **Verify:** `verify:mattes`.

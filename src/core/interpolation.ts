@@ -595,10 +595,18 @@ function expandTextGlyphs(
         anchorY: padding + halfFont,
         opacity: d.opacity,
         positionZ: 0,
-        rotationX: 0,
-        rotationY: 0,
+        // Per-character 3D (B9c): out-of-plane spin per glyph. composeTransforms adds the layer's own
+        // 3D rotation; writeCard3D renders the card MVP when the stamp is3D + a camera is active.
+        rotationX: d.rx,
+        rotationY: d.ry,
       };
-      stamps.push({ ...common, id: `${layer.id}#g${j}`, transform: composeTransforms(world, child), text: stampText });
+      // Per-character blur (B9d): a gaussian blur per stamp = the layer's base blur + the glyph's
+      // accumulated blur delta. Each stamp is a text draw that carries `blur` through the existing
+      // per-layer blur pipeline (no new render). Absent (blur 0) → the shared base blur is untouched.
+      const glyphBlur: ResolvedBlur | undefined = d.blur > 0
+        ? { type: 'gaussian', radius: d.blur + (common.blur?.radius ?? 0), angle: 0, centerX: 0.5, centerY: 0.5, strength: 0, passes: common.blur?.passes ?? 2 }
+        : common.blur;
+      stamps.push({ ...common, id: `${layer.id}#g${j}`, transform: composeTransforms(world, child), text: stampText, blur: glyphBlur, ...(layer.is3D ? { is3D: true } : {}) });
     }
     advPrev = advNext;
   }
