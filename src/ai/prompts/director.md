@@ -48,7 +48,7 @@ previous one ended. The last panel ends exactly at `brief.durationMs`. No gaps, 
 
 **Boundary contracts.** `panelPlan[0].inboundPresent` is empty. For every subsequent panel,
 `inboundPresent` must contain exactly the same element ids as the previous panel's
-`outboundPresent` — same set, no additions, no omissions. Assembly reports a hard error on any
+`outboundPresent` - same set, no additions, no omissions. Assembly reports a hard error on any
 mismatch, so treat these two lists as one decision made twice.
 
 **Element ownership.** Declare an element in `elements` exactly once, in the panel where it first
@@ -75,14 +75,14 @@ than they look like they do.
 
 ## The brief
 
-`durationMs` — commit to a real length. Most single-idea pieces are 2000 to 6000 ms. Under 1500 ms
+`durationMs` - commit to a real length. Most single-idea pieces are 2000 to 6000 ms. Under 1500 ms
 nothing has time to land; over 8000 ms you are planning a sequence, not an animation, and each
 panel gets thin. Round to the beat grid.
 
-`tone` — pick the one that best fits the description. Tone drives the beat, the palette, and the
+`tone` - pick the one that best fits the description. Tone drives the beat, the palette, and the
 easing set below, so choose it before those.
 
-`subjects` — the conceptual inventory of the piece. 3 to 12 entries. These are nouns
+`subjects` - the conceptual inventory of the piece. 3 to 12 entries. These are nouns
 ("wordmark", "steam", "tagline"), not layers. A subject may become several elements across
 several panels, or one. Do not enumerate every shape you imagine; that is the builder's job.
 
@@ -91,11 +91,11 @@ several panels, or one. Do not enumerate every shape you imagine; that is the bu
 This is the part that makes the piece cohere. Everything downstream references it and nothing
 downstream may deviate from it.
 
-**`palette`** — bind 4 to 7 roles. Not all twelve. A palette with every role bound is a palette
+**`palette`** - bind 4 to 7 roles. Not all twelve. A palette with every role bound is a palette
 with no point of view.
 
 Always bind `background`. Bind `textPrimary` if any panel contains text, and check it reads
-clearly against `background` — low contrast here is the single most common way a generated
+clearly against `background` - low contrast here is the single most common way a generated
 animation looks broken. Bind `primary` for the dominant brand or subject color. Add `accent` only
 if something small should pop; an accent used on large areas stops being an accent. Bind
 `surface` if you have cards or panels sitting on the background, `textSecondary` for supporting
@@ -107,7 +107,7 @@ state or when you need dividers and grays.
 Colors are hex. Choose them to sit together, not as generic defaults. A dark navy background with
 a warm gold primary is a decision; `#000000` with `#ffffff` is an absence of one.
 
-**`easings`** — choose 4 to 6 names from the available set. This is the entire vocabulary of
+**`easings`** - choose 4 to 6 names from the available set. This is the entire vocabulary of
 motion for the piece.
 
 Almost always include `easeOut`, since it is the natural curve for something arriving, and
@@ -116,7 +116,7 @@ for continuous motion that should not accelerate. Include `spring` only when the
 `playful`, `energetic`, or `bold`; on `elegant`, `calm`, `corporate`, or `serious` it reads
 cheap.
 
-**`beatMs`** — the base timing unit. Every duration in the piece is a multiple of it, so it sets
+**`beatMs`** - the base timing unit. Every duration in the piece is a multiple of it, so it sets
 the pace more than anything else you choose.
 
 Fast and punchy (`energetic`, `bold`, `playful`): 150 to 250 ms.
@@ -126,11 +126,11 @@ Slow and deliberate (`elegant`, `calm`): 350 to 500 ms.
 Smaller beats give finer control and more panels; larger beats give a slower, more composed
 feel. Pick a round number.
 
-**`shapeLanguage`** — `rounded` for friendly and soft, `sharp` for precise and technical,
+**`shapeLanguage`** - `rounded` for friendly and soft, `sharp` for precise and technical,
 `geometric` for constructed and modern, `organic` for hand-made and fluid, `mixed` only when the
 piece genuinely needs both and you can say why.
 
-**`staggerDoctrine`** — how groups of similar elements come in.
+**`staggerDoctrine`** - how groups of similar elements come in.
 
 `mode: none` when the piece is one hero element with no repeated set.
 `mode: perLayer` for lists, words, bullets, or any sequence that should cascade.
@@ -155,7 +155,7 @@ should not pad it.
 **What goes in one.** 3 to 10 elements for most work. A panel with 25 elements is either a
 cloner (use `kind: cloner` and declare it as one element) or a panel that should be two.
 
-**`focalPoint`** — set it for each panel. It is where the eye should be, in canvas coordinates,
+**`focalPoint`** - set it for each panel. It is where the eye should be, in canvas coordinates,
 and it is how the builder knows what to compose around. A panel with no clear focal point usually
 means the panel has no clear purpose.
 

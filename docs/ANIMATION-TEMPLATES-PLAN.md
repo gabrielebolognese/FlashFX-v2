@@ -1,8 +1,8 @@
-# FlashFX — Animation Templates ("use this" → inserts a fully-keyframed animation)
+# FlashFX - Animation Templates ("use this" → inserts a fully-keyframed animation)
 
 ## 0. Goal
 
-A browsable library of **pre-built animations** — not just graphics, but the **layers + keyframes +
+A browsable library of **pre-built animations** - not just graphics, but the **layers + keyframes +
 interpolation** together. The user opens a gallery (animated calendar, number counters, lower-thirds,
 animated lists, chart draw-ons, logo stings…), clicks **"Use this"** (or drags to the canvas), and a
 complete, ready-made animation drops onto the timeline **at the playhead**, as a group they can then
@@ -19,19 +19,19 @@ This is distinct from two things already in the repo:
 
 ---
 
-## 1. Grounding — verified facts that shape the design
+## 1. Grounding - verified facts that shape the design
 
 From a three-part read of the code (insertion primitives, UI surfaces, data model):
 
 - **Layers are flat.** `Composition.layers: Layer[]`; parenting is by `parentId` (a group is just a
-  flat `GroupLayer` with `collapsed`, **no `children` array** — `core/types.ts:401`). Children carry
+  flat `GroupLayer` with `collapsed`, **no `children` array** - `core/types.ts:401`). Children carry
   `parentId = group.id`.
 - **Keyframes have no id** (`core/types.ts:16`): `{frame, value, interpolation, handleIn, handleOut,
   tangentMode?}`. Identity is the frame. `InterpolationType = 'linear'|'bezier'|'hold'|'spring'`
   (`:14`). `AnimatableProperty` (`:26`) is the id-bearing unit (`{id,name,valueType,defaultValue,
   keyframes}`).
 - **Transform** = five `AnimatableProperty`s: `position`(vec2), `rotation`(deg), `scale`(vec2, 1=100%),
-  `anchorPoint`(vec2), `opacity`(number, 1=100%) — field is `anchorPoint`, not `anchor`.
+  `anchorPoint`(vec2), `opacity`(number, 1=100%) - field is `anchorPoint`, not `anchor`.
 - **Text keyframes live in `animOverrides`** (`fontSize/lineHeight/letterSpacing/strokeWidth`), NOT in
   the span style (`core/types.ts:127`). Content is `content.spans[].{text,style}`; align is
   `layoutConfig.horizontalAlign`.
@@ -45,11 +45,11 @@ From a three-part read of the code (insertion primitives, UI surfaces, data mode
   `ensureLayerHasTrack` (`:638`), `settleComposition` (`:762`), `sel()` (`:121`), the `exec({label,
   execute,undo})` undo wrapper (`:881`). Playhead = `useTimelineStore.getState().currentFrame`.
 - **Gotcha:** the existing paste path (`instantiatePastedLayer`, `:962`) hard-nulls `parentId` and only
-  remaps ids for physics bindings — so it flattens groups. We avoid this entirely by **building
+  remaps ids for physics bindings - so it flattens groups. We avoid this entirely by **building
   presets with the factories at insert time** (ids are already fresh and parent-linked), rather than
   cloning a JSON blob.
 - **Inserted layers are standard shape/text/group** and already pass the `validation.ts` whitelist and
-  serialize/deserialize round-trip — **no persistence changes needed** (contrast cloner/precomp, which
+  serialize/deserialize round-trip - **no persistence changes needed** (contrast cloner/precomp, which
   were silently stripped until whitelisted). Presets must only use whitelisted layer types + genuine
   `AnimatableProperty` objects (else keyframes get stripped).
 - **UI home:** `MediaPool` (`ui/panels/MediaPool.tsx`) is a tabbed left panel mounted in every non-review
@@ -57,7 +57,7 @@ From a three-part read of the code (insertion primitives, UI surfaces, data mode
   union (`:22`), one branch in the content switch (`:288`). It already has the sub-tab pattern
   (Icons Static/Animated), lazy-loading (`AnimatedIconsTabLazy`), a virtualized grid, and a
   drag-to-canvas dataTransfer convention (`handleDragStart`, `:158`).
-- **Catalog pattern to mirror:** `ANIMATION_ITEM_PRESETS` (`animation-items/presets.ts:17` — named
+- **Catalog pattern to mirror:** `ANIMATION_ITEM_PRESETS` (`animation-items/presets.ts:17` - named
   config + a store action that takes a name) for the data+insert shape, plus `animation-builder`'s
   `PRESETS` taxonomy (`{id,name,category:'intro'|'idle'|'outro'|'effect',description}`) for gallery
   filtering.
@@ -67,13 +67,13 @@ From a three-part read of the code (insertion primitives, UI surfaces, data mode
 ## 2. Architecture
 
 New module **`src/animation-templates/`** (distinct from `src/templates/`), pure and harness-testable,
-with a thin store action wiring it into the editor — mirroring the cloner engine convention.
+with a thin store action wiring it into the editor - mirroring the cloner engine convention.
 
 ```
 src/animation-templates/
   kit.ts          # authoring helpers: easing constants + keyframe/track/motion builders
   types.ts        # AnimationTemplate, BuildCtx
-  catalog.ts      # AnimationTemplate[] — the whole library (imports per-category files)
+  catalog.ts      # AnimationTemplate[] - the whole library (imports per-category files)
   categories/     # calendar.ts, titles.ts, counters.ts, lists.ts, charts.ts, ... (the builders)
   instantiate.ts  # PURE: template + playhead + fps + center → ready Layer[] (rebased, parent-linked)
   preview.ts      # PURE: evaluate a template's layers at time t → draw primitives (for Canvas2D preview)
@@ -106,10 +106,10 @@ export interface AnimationTemplate {
 
 `build` returns layers with **fresh ids** (from factories), **`parentId` already linked** to the group
 it creates, keyframes authored **0-based** (frame 0 = animation start), positions relative to
-`ctx.center`. Because everything is freshly minted, there is **no clone / id-regen / idMap step** — we
+`ctx.center`. Because everything is freshly minted, there is **no clone / id-regen / idMap step** - we
 sidestep the paste-path gotchas.
 
-### 2b. The motion kit (`kit.ts`) — where the "a lot of them, cheaply" comes from
+### 2b. The motion kit (`kit.ts`) - where the "a lot of them, cheaply" comes from
 
 A tiny library so every template reads like choreography, not plumbing:
 
@@ -123,7 +123,7 @@ A tiny library so every template reads like choreography, not plumbing:
   at, period)` (loop), `float`, `wiggle`, `countUp(textLayer, at, dur, from, to, fmt)` (emits per-frame
   text values → keyframed via a numeric proxy + a text builder), `stagger(layers, at, step, fn)`.
 - **Builder shorthands:** `circle(center, r, color)`, `label(text, pos, {font,size,weight,color,align})`,
-  `roundedCard(pos, w, h, r, color)` — thin wrappers over the factories that also set fill/stroke.
+  `roundedCard(pos, w, h, r, color)` - thin wrappers over the factories that also set fill/stroke.
 
 Adding a template becomes ~15–40 lines of readable choreography.
 
@@ -150,7 +150,7 @@ exec({ label: `Insert “${tpl.name}”`, execute: () => set({composition:newCom
 Gotchas handled: settle called once at the end (direct `set` bypasses auto-settle); group inserted
 first so children stack under it; `ensureLayerHasTrack` packs non-overlapping same-type clips (fine).
 
-### 2d. UI — the gallery (a MediaPool tab)
+### 2d. UI - the gallery (a MediaPool tab)
 
 - Add `{ id:'animations', label:'Animations', icon:<Clapperboard/> }` to `MediaPool.TABS`; extend
   `PoolTab`; render `<AnimationTemplatesTab/>` in the switch.
@@ -162,11 +162,11 @@ first so children stack under it; `ensureLayerHasTrack` packs non-overlapping sa
   Viewport drop handler calls `insertAnimationTemplate(id, dropPointInCompSpace)` so the animation lands
   where dropped. (Click = comp center.)
 
-### 2e. Live previews (`preview.ts` + a Canvas2D card) — no WebGPU needed
+### 2e. Live previews (`preview.ts` + a Canvas2D card) - no WebGPU needed
 
 Our templates use a constrained primitive set (shapes + text + group transforms/opacity), so we can
 draw an animated thumbnail with **Canvas2D**, driven by the existing **pure** evaluators
-(`core/interpolation.ts` `evaluateNumber`/`evaluateVec2`) — no renderer, no worker:
+(`core/interpolation.ts` `evaluateNumber`/`evaluateVec2`) - no renderer, no worker:
 - `preview.ts` walks a built template's layers, evaluates each layer's transform + shape/text at time
   `t`, and emits draw ops; a `<TemplatePreview>` component runs a `requestAnimationFrame` loop into a
   small `<canvas>`, scaled to fit, looping the `durationFrames`.
@@ -177,7 +177,7 @@ draw an animated thumbnail with **Canvas2D**, driven by the existing **pure** ev
 
 ---
 
-## 3. The catalog (what we can build — aim for a lot)
+## 3. The catalog (what we can build - aim for a lot)
 
 Authored as `categories/*.ts`. First-wave targets in **bold**; the rest are the easy follow-on backlog
 (each is ~15–40 lines with the kit). ~50 to start, open-ended.
@@ -189,11 +189,11 @@ Authored as `categories/*.ts`. First-wave targets in **bold**; the rest are the 
   `year`, `highlightDay`, `firstWeekday`, colors. Demonstrates graphics + keyframes + stagger + loop in
   one. (A `calendar-week` mini variant for tighter layouts.)
 - **`countdown-days`** ("3 days left" flip), **`date-reveal`** (DD·MM·YYYY odometer),
-  **`analog-clock`** (hands sweep — hour/minute rotation keyframes), `digital-clock`.
+  **`analog-clock`** (hands sweep - hour/minute rotation keyframes), `digital-clock`.
 
 **Titles & lower-thirds**
 - **`title-rise`** (headline + underline draw-on), **`lower-third-slide`** (name + role bar slides in,
-  holds, slides out — intro+outro), `kicker-title`, `split-title` (two lines counter-slide),
+  holds, slides out - intro+outro), `kicker-title`, `split-title` (two lines counter-slide),
   `mask-wipe-title`, `type-on-title` (per-word stagger).
 
 **Counters & numbers**
@@ -205,26 +205,26 @@ Authored as `categories/*.ts`. First-wave targets in **bold**; the rest are the 
 - **`bullet-list`** (staggered dot+text reveal), **`checklist`** (items reveal then checkmarks
   draw-on), `numbered-steps`, `pros-cons` (two columns), `feature-grid` (staggered cards).
 
-**Charts & data (keyframed, editable — vs the parametric gauges)**
+**Charts & data (keyframed, editable - vs the parametric gauges)**
 - **`bar-chart-grow`** (bars scaleY from 0, staggered), **`donut-sweep`** (arc draw-on + center
   counter), `line-draw` (polyline draw-on), `progress-ring`, `rating-stars` (stars pop + fill).
 
-**Showcase** (marquee demos — BUILT: `chain-reaction`, `split-flap-board`, `bar-chart-race`,
+**Showcase** (marquee demos - BUILT: `chain-reaction`, `split-flap-board`, `bar-chart-race`,
 `recursive-editor`)
 - **`chain-reaction`** (Rube Goldberg → **200 balls** funnel), **`split-flap-board`** (departure board
   flip wave + parallax planes + rain), **`bar-chart-race`** (rank reordering with spring settle + axis
-  rescale + odometer counters — baked, see note), and **`recursive-editor`** (FlashFX animating a video
-  editor: 5-region UI, cold-open assemble, two believable cursors — driven by the **cursor engine**
+  rescale + odometer counters - baked, see note), and **`recursive-editor`** (FlashFX animating a video
+  editor: 5-region UI, cold-open assemble, two believable cursors - driven by the **cursor engine**
   `cursor.ts`, which bakes bezier-arc paths + ballistic velocity + overshoot-correct + dwell +
   sub-pixel noise + icon swaps from a waypoint list).
 - **Baked vs live note:** these bake the data/logic in the builder. The truly-live versions
   (`bar-chart-race` reordering off editable data; `recursive-editor`'s repeater clips + expression
   cursor + precomp track mattes + a real nested video) need the data-bound **Cloner to render** (not
-  wired) or dedicated live layers — real features, not templates. Backlog: `valley-day-cycle`
-  (real particles + expression shadows — a scene-seed); the full 30s editor beat sheet (the engine
+  wired) or dedicated live layers - real features, not templates. Backlog: `valley-day-cycle`
+  (real particles + expression shadows - a scene-seed); the full 30s editor beat sheet (the engine
   + waypoint approach extends the current opening-beats foundation).
 
-**Scenes** (looping illustrated backdrops — BUILT: `beach-waves`, `forest`, `night-sky`, `galaxy`,
+**Scenes** (looping illustrated backdrops - BUILT: `beach-waves`, `forest`, `night-sky`, `galaxy`,
 `sunset`, `rain`, `city-skyline`, `snow`)
 - Nature/weather scenes from shape layers + ambient loops. `rain`/`snow` use the `fallLoop` helper
   (repeat-travel with invisible wrap); `city-skyline` has twinkling window grids; `sunset` sinks a
@@ -232,11 +232,11 @@ Authored as `categories/*.ts`. First-wave targets in **bold**; the rest are the 
   Built on kit loop helpers (`floatLoop`/`swayLoop`/`spinLoop`/`twinkle`/`glow`/`orbit`/`fallLoop`),
   authored back-to-front so track-stacking gives correct z-order.
 
-**UI** (device/app mockups — BUILT: `phone-messages`, `loading-spinner`)
+**UI** (device/app mockups - BUILT: `phone-messages`, `loading-spinner`)
 - **`phone-messages`** (chat bubbles + typing indicator), **`loading-spinner`** (chasing-dot loader).
   Backlog: `notification-stack`, `app-onboarding`, `progress-checkout`, `like-counter`.
 
-**Fun** (delightful one-offs — BUILT: `pen-writing`, `clock`, `fireworks`, `rocket-launch`,
+**Fun** (delightful one-offs - BUILT: `pen-writing`, `clock`, `fireworks`, `rocket-launch`,
 `coffee-steam`, `confetti-pop`)
 - Handwriting draw-on, a ticking clock (nested pivot hands), fireworks + confetti (`burstOut`), a
   rocket lifting off with a flickering flame (nested rocket group), a steaming coffee cup
@@ -263,11 +263,11 @@ Authored as `categories/*.ts`. First-wave targets in **bold**; the rest are the 
 **Logo / brand stings**
 - **`logo-pop`** (scale+glow reveal), `badge-spin`, `emblem-assemble` (parts fly together), `shine-reveal`.
 
-> Each entry is independent data — reordering/adding is a one-file change, so the catalog grows
+> Each entry is independent data - reordering/adding is a one-file change, so the catalog grows
 > incrementally without touching the engine or UI.
 
 **Where users get them (roadmap):** v1 = the built-in curated catalog (code/data, ships in the app).
-Later: **user-saved templates** ("select layers → Save as animation template" — snapshot the selected
+Later: **user-saved templates** ("select layers → Save as animation template" - snapshot the selected
 subtree via the same instantiate format, store in IndexedDB/Supabase), then **cloud template packs**
 (Supabase-hosted, seasonal/brand packs) and community sharing. The deep-link system can also carry a
 `?insert=<templateId>` to drop one straight into a new project.
@@ -285,7 +285,7 @@ convention). Assert, for **every** template:
 - `instantiateTemplate` rebases correctly: with `playhead=P`, the earliest keyframe lands at `P`;
   fps-rescale is applied; `inPoint>=P`.
 - **Round-trip:** each built layer survives `validateComposition` → `serialize`/`deserialize`
-  unchanged in the fields that matter (this catches any accidental use of a non-whitelisted field —
+  unchanged in the fields that matter (this catches any accidental use of a non-whitelisted field -
   the exact class of bug that bit cloner/precomp).
 - The calendar flagship: correct cell count for a given month, highlighted cell recolored, header row
   present.
@@ -317,17 +317,17 @@ Files touched: new `src/animation-templates/**`; `store/editor.ts` (+`insertAnim
 ## 6. Risks / open questions
 
 - **Preview fidelity:** the Canvas2D previewer approximates the WebGPU look (fills, text, opacity,
-  transforms) — good enough for a gallery, but glow/shadow/gradients won't match exactly. Static
+  transforms) - good enough for a gallery, but glow/shadow/gradients won't match exactly. Static
   posters are the fallback for templates that rely on effects. (Phase 2, degradable.)
 - **Layer count:** the full calendar is ~70–80 layers. Fine for the renderer, one undo entry, and it
-  round-trips — but offer a `calendar-week` mini variant for tighter comps. Nothing else approaches
+  round-trips - but offer a `calendar-week` mini variant for tighter comps. Nothing else approaches
   that count.
 - **`countUp` text:** per-frame changing text isn't a normal keyframable field. Options: (a) a numeric
   proxy property + a resolve-time text formatter (needs a small hook), or (b) bake N text keyframes as
   discrete `hold` steps. Phase 1 uses (b) (simple, editable, round-trips); revisit (a) if we want
   smooth arbitrary-precision counters. (Note: `animation-items` already has parametric counters if the
   user wants the non-editable version.)
-- **Determinism:** `build` may use randomness for authoring variety (e.g. confetti) — seed it so
+- **Determinism:** `build` may use randomness for authoring variety (e.g. confetti) - seed it so
   inserts are reproducible; keyframe evaluation itself is already pure.
 - **Params UX:** how much to expose before insert (month/text/colors) vs. edit-after. Plan: insert with
   sensible defaults; a lightweight pre-insert "customize" popover in Phase 3.

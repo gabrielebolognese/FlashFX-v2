@@ -6,7 +6,7 @@ input for the edit path. It is the bridge for the colors invariant: the palette 
 color to each named role, and everything the Coder emits references roles.
 
 Palette and easing counts are **fixed design ranges** (not tier caps), so `makeStyleContract` takes
-no `caps` — the schema enforces exactly the ranges the prompt states.
+no `caps` - the schema enforces exactly the ranges the prompt states.
 
 ## Fields
 
@@ -15,17 +15,17 @@ no `caps` — the schema enforces exactly the ranges the prompt states.
 | `palette` | array of `{ role, color }` | **4 to 7** entries |
 | `palette[].role` | enum `PALETTE_ROLES` | see [palette roles](./03-palette-roles.md) |
 | `palette[].color` | hex string | `#rgb` \| `#rrggbb` \| `#rrggbbaa` |
-| `easings` | array of easing names | **4 to 6** — the closed set the whole piece may use |
-| `beatMs` | int ms | `> 0` — base timing beat; plan durations are integer multiples of it |
+| `easings` | array of easing names | **4 to 6** - the closed set the whole piece may use |
+| `beatMs` | int ms | `> 0` - base timing beat; plan durations are integer multiples of it |
 | `shapeLanguage` | enum `SHAPE_LANGUAGES` | `rounded` \| `sharp` \| `geometric` \| `organic` \| `mixed` |
-| `staggerDoctrine` | object (below) | — |
+| `staggerDoctrine` | object (below) | - |
 
 ### `staggerDoctrine`
 
 | field | type | constraints |
 |---|---|---|
 | `mode` | enum `STAGGER_MODES` | `none` \| `perLayer` \| `perGroup` \| `spatial` |
-| `gapMs` | int ms | ≥ 0 — base inter-element gap (wired through to `staggerReveal`/`staggerExit` at assembly) |
+| `gapMs` | int ms | ≥ 0 - base inter-element gap (wired through to `staggerReveal`/`staggerExit` at assembly) |
 | `curve` | easing name | optional |
 
 Every object is **strict** (closed to unknown keys).
@@ -55,7 +55,7 @@ export function makeStyleContract() {
 }
 ```
 
-## Example (valid — five roles, four easings)
+## Example (valid - five roles, four easings)
 
 ```json
 {

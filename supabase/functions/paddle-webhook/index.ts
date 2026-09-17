@@ -9,7 +9,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 //   https://<project-ref>.supabase.co/functions/v1/paddle-webhook
 //
 // TODO(paddle): the field paths below (data.custom_data.userId, data.status, data.customer_id,
-// data.id) follow Paddle Billing v2 subscription events — confirm against a real event in the
+// data.id) follow Paddle Billing v2 subscription events - confirm against a real event in the
 // Paddle dashboard's webhook simulator before going live.
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";

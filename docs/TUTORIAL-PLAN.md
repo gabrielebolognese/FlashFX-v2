@@ -1,11 +1,11 @@
-# FlashFX — Guided Tutorial ("self-driving demo") Plan
+# FlashFX - Guided Tutorial ("self-driving demo") Plan
 
 ## 0. Goal
 
 FlashFX is now huge (M1–M22 + video/particles/physics/cloner/expressions/captions…). A brand-new
 user opening it to an empty canvas is lost. Fix: on first open, a big **"Start the Tutorial"** CTA
-spins up a fresh 16:9 project and then **FlashFX edits itself** — building one polished motion piece
-step-by-step, narrated, with the exact tool/panel spotlighted each step — so the user *watches* what
+spins up a fresh 16:9 project and then **FlashFX edits itself** - building one polished motion piece
+step-by-step, narrated, with the exact tool/panel spotlighted each step - so the user *watches* what
 the app can do. It finishes by **playing the result and handing the scene over** ("Now it's yours").
 
 Decisions locked (from planning):
@@ -19,7 +19,7 @@ Non-goals (v1): interactive "you-try-it" coach steps; audio voiceover; localizat
 
 ---
 
-## 1. Grounding — how the app actually boots (verified)
+## 1. Grounding - how the app actually boots (verified)
 
 - **Project shell:** `useProjectStore` (`src/project-system/hooks/useProjectStore.ts`) holds
   `view: 'dashboard' | 'editor'`, `activeProjectId`, and `createAndOpenProject(options)` /
@@ -28,13 +28,13 @@ Non-goals (v1): interactive "you-try-it" coach steps; audio voiceover; localizat
   renders `<Dashboard>` when `view==='dashboard'`, else the editor; on entering the editor it
   `loadDocument`s the scene and calls `playbackController.renderCurrentFrame()`.
 - **Editor state is one live Zustand store** (`useEditorStore`, `src/store/editor.ts`) whose actions
-  are the mutation API — so the tutorial drives *genuine* edits: `addRectangle/addCircle/addStar`,
+  are the mutation API - so the tutorial drives *genuine* edits: `addRectangle/addCircle/addStar`,
   `addText`, `addKeyframe`, `updateLayerProperty`, `booleanSelectedShapes` /
   `compoundBooleanSelectedShapes`, `createColorStyle` / `linkLayerColorStyle` / `updateStyleColor`,
   `addCloner`, `addParticleLayer`, `outlineTextLayer`, `tidyUpSelection`, `selectLayer`,
   `setCurrentFrame`, plus tools via `useShapeToolStore.setActiveTool` and playback via
   `useTimelineStore` (`play`/`pause`/`seek`). Background via the background layer / `BackgroundPanel`.
-- **No existing demo/sample-scene generator** — this is new.
+- **No existing demo/sample-scene generator** - this is new.
 - **Onboarding module already exists** (`src/onboarding/`, hidden-by-default with a bottom-left
   corner button). We reuse that entry point to make the tutorial re-launchable, and keep the
   welcome flow separate.
@@ -48,7 +48,7 @@ Non-goals (v1): interactive "you-try-it" coach steps; audio voiceover; localizat
 
 - **Flag:** `localStorage['ffx-tutorial-seen']`. Show the CTA when the flag is absent **and**
   `useProjectStore.projects` is empty (true first run). Otherwise the dashboard behaves normally.
-- **CTA:** a centered hero over the Dashboard — **▶ Start the Tutorial** (primary) + a quiet
+- **CTA:** a centered hero over the Dashboard - **▶ Start the Tutorial** (primary) + a quiet
   "Skip to dashboard" link. (Component: `TutorialLaunch`, rendered by `Dashboard` when the flag is
   unset, or as an overlay.)
 - **Launch:** `createAndOpenProject({ name: 'Tutorial', videoFormat: 'long' })` → editor mounts and
@@ -60,7 +60,7 @@ Non-goals (v1): interactive "you-try-it" coach steps; audio voiceover; localizat
 
 ---
 
-## 3. Architecture — the "director" engine (`src/tutorial/`)
+## 3. Architecture - the "director" engine (`src/tutorial/`)
 
 A tiny, data-driven step runner that drives the real editor store. No new deps.
 
@@ -88,11 +88,11 @@ interface TutorialChapter { id: string; title: string; steps: TutorialStep[] }
 - **`useTutorialStore`** (Zustand): `{ active, chapterIndex, stepIndex, paused, speed(1/2/4x),
   start(), stop(), pause(), resume(), skipToChapter(i), next() }`. Also `phase: 'idle'|'running'|'handoff'`.
 - **`<TutorialRunner>`** (mounted once in the editor, renders nothing when idle): owns the async
-  loop — for each step: set the active spotlight target, type/show `say` in the narration bar, run
+  loop - for each step: set the active spotlight target, type/show `say` in the narration bar, run
   `step.run(api)` (real edits), `await wait(hold × 1/speed)`, advance. Fully **cancellable**
   (`stop()` breaks the loop and leaves the built scene). Respects `paused` (loop yields until
   resumed) so the user can freeze and take over.
-- **`tutorialScript.ts`** — the storyboard as `TutorialChapter[]` data (§5). Pure data + closures;
+- **`tutorialScript.ts`** - the storyboard as `TutorialChapter[]` data (§5). Pure data + closures;
   editable without touching the runner.
 - **Input soft-lock:** while `phase==='running'` and not paused, a transparent capture layer over
   the editor swallows stray clicks (so the user watches, and their clicks don't fight the script).
@@ -106,7 +106,7 @@ interface TutorialChapter { id: string; title: string; steps: TutorialStep[] }
   `getBoundingClientRect()`, and renders a full-screen dim (`bg-black/55`) with a **cutout** (an SVG
   mask or four surrounding rects) + a small arrow/label pointing at it. `target: 'canvas'` spotlights
   the canvas rect; `'none'` = narration only (no dim). Recomputes on window resize + when the target
-  changes. This is the one genuinely fiddly bit — build it as a self-contained component (Phase 4).
+  changes. This is the one genuinely fiddly bit - build it as a self-contained component (Phase 4).
 
 ---
 
@@ -128,35 +128,35 @@ interface TutorialChapter { id: string; title: string; steps: TutorialStep[] }
 
 ---
 
-## 5. Storyboard — the cohesive build (chapters)
+## 5. Storyboard - the cohesive build (chapters)
 
 One ~10s 16:9 title/promo card, assembled live. ~9 chapters, ~75s at 1×. Each beat: **spotlight →
 narration → real edit**. (Copy is placeholder; tighten at build time.)
 
-1. **Meet the canvas** — spotlight `canvas`. *"This 16:9 stage is where it all happens."* Set a
+1. **Meet the canvas** - spotlight `canvas`. *"This 16:9 stage is where it all happens."* Set a
    dark gradient background.
-2. **Shapes** — spotlight shape-tool group. *"Rectangles, ellipses, stars — with live rounded
+2. **Shapes** - spotlight shape-tool group. *"Rectangles, ellipses, stars - with live rounded
    corners."* `addRectangle()` → round its corners (drag-handle / `borderRadius`), `addCircle()`,
    `addStar()`; place them.
-3. **Boolean with real holes** — spotlight canvas. *"Combine shapes — even punch clean cutouts."*
+3. **Boolean with real holes** - spotlight canvas. *"Combine shapes - even punch clean cutouts."*
    Select circle + rectangle → `compoundBooleanSelectedShapes('difference')` → a ring/badge with a
    genuine hole (M22).
-4. **Color & shared styles** — spotlight Inspector ▸ Fill. *"Style once, reuse everywhere."* Set a
+4. **Color & shared styles** - spotlight Inspector ▸ Fill. *"Style once, reuse everywhere."* Set a
    brand fill → `createColorStyle` → `linkLayerColorStyle` on two shapes → `updateStyleColor` and
    watch both update.
-5. **Text** — spotlight text tool / Inspector. *"Add a headline, pick a font, align it."* `addText()`
+5. **Text** - spotlight text tool / Inspector. *"Add a headline, pick a font, align it."* `addText()`
    → set content + font + size → align center (M5).
-6. **Animate** — spotlight Timeline. *"Keyframes bring it to life — with easing."* `addKeyframe` on
+6. **Animate** - spotlight Timeline. *"Keyframes bring it to life - with easing."* `addKeyframe` on
    position + scale + opacity at f0→fN so the title flies in; set an ease.
-7. **Effects** — spotlight Inspector ▸ Effects. *"Depth in a click — glow, shadow, blur."* Enable
+7. **Effects** - spotlight Inspector ▸ Effects. *"Depth in a click - glow, shadow, blur."* Enable
    glow + shadow on the title.
-8. **Cloner + particles** — spotlight Cloner tool. *"Repeat anything into grids or radials, and add
+8. **Cloner + particles** - spotlight Cloner tool. *"Repeat anything into grids or radials, and add
    motion."* `addCloner()` → radial array of a small shape; `addParticleLayer()` → a burst.
-9. **Outline & tidy** — spotlight canvas. *"Text → editable vector paths; auto-tidy your layout."*
+9. **Outline & tidy** - spotlight canvas. *"Text → editable vector paths; auto-tidy your layout."*
    `outlineTextLayer` (async) on a sub-label; `tidyUpSelection()` on a group (M15/M17).
-10. **Play & handoff** — spotlight Transport. *"Here's your piece —"* `setFrame(0)` → `timeline.play()`;
+10. **Play & handoff** - spotlight Transport. *"Here's your piece -"* `setFrame(0)` → `timeline.play()`;
     after it loops once, `pause()`, lift the input lock, and show the **handoff** card: *"Now it's
-    yours — drag a layer, scrub the timeline, or ▶ play. Export is up top when you're ready."*
+    yours - drag a layer, scrub the timeline, or ▶ play. Export is up top when you're ready."*
 
 > Trim/merge to hit ~75s; chapters 8–9 can be split if the "everything" feel needs more. Each
 > chapter is independent data, so reordering/adding is cheap.
@@ -189,19 +189,19 @@ SpotlightOverlay.tsx, NarrationBar.tsx}`, `TutorialLaunch.tsx` (dashboard CTA). 
 
 Verification: this is UI/interaction + real store calls, so it's **browser-verified** (like the
 milestone UI work). The one unit-testable seam is any pure pacing/geometry helper (e.g. the
-spotlight rect math) — harness if it grows non-trivial. Keep TypeScript strict-clean and lint at the
+spotlight rect math) - harness if it grows non-trivial. Keep TypeScript strict-clean and lint at the
 127 baseline.
 
 ---
 
 ## 8. Risks / open questions
 
-- **Spotlight alignment** across panel layouts/resizes is the main polish risk — isolate it, drive
+- **Spotlight alignment** across panel layouts/resizes is the main polish risk - isolate it, drive
   it off `data-tutorial-id` + live `getBoundingClientRect`, recompute on resize.
-- **Action arg/frame details** — confirm each store action's real signature when scripting; some
+- **Action arg/frame details** - confirm each store action's real signature when scripting; some
   need explicit frames or selection state.
-- **"Everything" vs watchable** — curated to ~9 chapters; if it feels thin, chapters are data and
+- **"Everything" vs watchable** - curated to ~9 chapters; if it feels thin, chapters are data and
   easy to extend (video/physics/expressions beats can be added later, gated on bundling sample media
   for the video one).
-- **Replay hygiene** — always replay from a *fresh* Tutorial project so a half-built prior run
+- **Replay hygiene** - always replay from a *fresh* Tutorial project so a half-built prior run
   doesn't leak in.

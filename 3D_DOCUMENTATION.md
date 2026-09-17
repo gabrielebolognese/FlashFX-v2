@@ -1,4 +1,4 @@
-# FlashFX 3D Feature System — Technical Documentation
+# FlashFX 3D Feature System - Technical Documentation
 
 ---
 
@@ -32,7 +32,7 @@
 
 ## 1. Overview
 
-The 3D feature system enables users to embed live, interactive Three.js viewports directly into the 2D design canvas. Each 3D shape behaves like any other canvas element — it can be repositioned, resized, layered, have its opacity adjusted, and participate in the animation timeline — but internally it contains a fully independent Three.js scene where users can place, transform, and material-paint 3D primitives or imported models.
+The 3D feature system enables users to embed live, interactive Three.js viewports directly into the 2D design canvas. Each 3D shape behaves like any other canvas element - it can be repositioned, resized, layered, have its opacity adjusted, and participate in the animation timeline - but internally it contains a fully independent Three.js scene where users can place, transform, and material-paint 3D primitives or imported models.
 
 ### Snapshot-Bridge Architecture
 
@@ -40,8 +40,8 @@ The core architectural idea is called the **snapshot-bridge**. Every 3D shape on
 
 This approach was chosen over two alternatives:
 
-1. **Single shared Three.js scene** — rejected because it creates stacking and z-order conflicts between shapes, and because deletion of one shape would require surgical extraction from a shared scene graph. A bug where shapes would disappear when another was deselected drove the switch to isolation.
-2. **Offline render-to-texture** — rejected because it cannot provide real-time orbit interaction. The user needs to orbit, zoom, and pan inside each shape independently while editing.
+1. **Single shared Three.js scene** - rejected because it creates stacking and z-order conflicts between shapes, and because deletion of one shape would require surgical extraction from a shared scene graph. A bug where shapes would disappear when another was deselected drove the switch to isolation.
+2. **Offline render-to-texture** - rejected because it cannot provide real-time orbit interaction. The user needs to orbit, zoom, and pan inside each shape independently while editing.
 
 ```
 ┌─────────────────────────────────────────────────┐
@@ -199,7 +199,7 @@ The Three.js renderer canvas is mounted by **`ThreeDShapeRenderer.tsx`**. The co
 The host `<div>` is positioned inside the 2D artboard by **`Canvas.tsx`** using absolute positioning:
 
 ```typescript
-// Canvas.tsx — positioning the 3D host div
+// Canvas.tsx - positioning the 3D host div
 <div
   style={{
     position: 'absolute',
@@ -218,7 +218,7 @@ The host `<div>` is positioned inside the 2D artboard by **`Canvas.tsx`** using 
 </div>
 ```
 
-The CSS `transform` on the artboard container handles zoom and pan automatically — the 3D `<div>` is a child of the artboard so it inherits the transform.
+The CSS `transform` on the artboard container handles zoom and pan automatically - the 3D `<div>` is a child of the artboard so it inherits the transform.
 
 Resize synchronization happens via a `useEffect` in `ThreeDShapeRenderer.tsx` (lines 50-54) that calls `instance.resize(element.width, element.height)` whenever the element dimensions change:
 
@@ -302,7 +302,7 @@ Scene state is serialized to a JSON-safe object by `SceneSerializer.ts`. The ser
 - Environment configuration (light intensities, colors, background color)
 
 ```typescript
-// SceneSerializer.ts — serializeScene()
+// SceneSerializer.ts - serializeScene()
 export function serializeScene(engine: ThreeDEngine, environment: EnvironmentConfig): SceneStateSnapshot {
   const objects: SerializedObject[] = engine.getAllObjects().map((obj) => ({
     id: obj.id,
@@ -325,7 +325,7 @@ export function serializeScene(engine: ThreeDEngine, environment: EnvironmentCon
 }
 ```
 
-**Restoration** is handled by `restoreScene()`. It clears the engine's scene, iterates over the serialized objects, and calls `sceneManager.restoreFromConfig()` for each one. Imported models (`geometryType === 'imported'`) are **skipped** during restoration because their binary mesh data is not stored in the snapshot — only primitive shapes can be fully reconstructed.
+**Restoration** is handled by `restoreScene()`. It clears the engine's scene, iterates over the serialized objects, and calls `sceneManager.restoreFromConfig()` for each one. Imported models (`geometryType === 'imported'`) are **skipped** during restoration because their binary mesh data is not stored in the snapshot - only primitive shapes can be fully reconstructed.
 
 After restoring objects, the camera position and environment are applied, and `markDirty()` is called.
 
@@ -468,7 +468,7 @@ this.grid = new THREE.GridHelper(20, 40, 0x444444, 0x2a2a2a);
 this.grid.visible = false;
 ```
 
-A 20-unit grid with 40 divisions is created but **hidden by default**. The grid is never added to the scene — it exists as a reference that can be retrieved via `getGridHelper()` and toggled externally if needed.
+A 20-unit grid with 40 divisions is created but **hidden by default**. The grid is never added to the scene - it exists as a reference that can be retrieved via `getGridHelper()` and toggled externally if needed.
 
 #### 7. Lighting Setup (lines 78-95)
 
@@ -577,7 +577,7 @@ function generateId(): string {
 | **`addPrimitive()`** | `(type, materialConfig, geometryConfig): Object3DConfig` | Creates a mesh via `GeometryFactory.createPrimitiveMesh()`, positions it at `(0, 0.5, 0)`, registers it in the map, and returns the config |
 | **`extrudeFromSvgShapes()`** | `(shapes, name, geometryConfig, materialConfig): Object3DConfig` | Creates an extruded mesh from `THREE.Shape[]` arrays (for SVG icon shapes), registers and returns the config |
 | **`importModel()`** | `(object, name): Object3DConfig` | Registers an externally-loaded `Object3D` (from `ModelLoader`). The mesh data comes from the loader; the config captures its current transform |
-| **`selectObject()`** | `(id: string \| null): void` | Sets the `selectedId`. Does not attach any gizmo — that is the engine's responsibility |
+| **`selectObject()`** | `(id: string \| null): void` | Sets the `selectedId`. Does not attach any gizmo - that is the engine's responsibility |
 | **`getSelectedId()`** | `(): string \| null` | Returns the currently selected ID or `null` |
 | **`getMesh()`** | `(id: string): THREE.Object3D \| null` | Returns the live mesh for an ID |
 | **`getConfig()`** | `(id: string): Object3DConfig \| null` | Returns the config for an ID |
@@ -746,7 +746,7 @@ export function extrudeFromShapes(shapes, config, materialConfig): THREE.Mesh {
 | Parameter | Type | Default | Range | Description |
 |-----------|------|---------|-------|-------------|
 | `extrudeDepth` | `number` | `0.5` | `0.01-5` | How far the shape is extruded along Z |
-| `bevelEnabled` | `boolean` | `true` | — | Whether to add beveled edges |
+| `bevelEnabled` | `boolean` | `true` | - | Whether to add beveled edges |
 | `bevelThickness` | `number` | `0.05` | `0-0.5` | How deep the bevel cuts into the shape |
 | `bevelSize` | `number` | `0.03` | `0-0.5` | How far the bevel extends outward |
 | `bevelSegments` | `number` | `3` | `1-8` | Smoothness of the bevel curve |
@@ -777,7 +777,7 @@ The default PBR material. Supports roughness/metalness workflow, emission, and a
 | emissive | `string` | hex | `'#000000'` | `material.emissive` |
 | emissiveIntensity | `number` | `0-3` | `0` | `material.emissiveIntensity` |
 | opacity | `number` | `0-1` | `1` | `material.opacity` |
-| flatShading | `boolean` | — | `false` | `material.flatShading` |
+| flatShading | `boolean` | - | `false` | `material.flatShading` |
 | envMapIntensity | `number` | `0-3` | `1` | `material.envMapIntensity` |
 
 #### Physical (`MeshPhysicalMaterial`)
@@ -796,8 +796,8 @@ Extends Standard with glass/transmission, clearcoat, sheen, and iridescence.
 | sheenRoughness | `number` | `0-1` | `0.5` | `material.sheenRoughness` |
 | iridescence | `number` | `0-1` | `0` | `material.iridescence` |
 | iridescenceIOR | `number` | `1-2.5` | `1.5` | `material.iridescenceIOR` |
-| iridescenceThicknessMin | `number` | — | `100` | `material.iridescenceThicknessRange[0]` |
-| iridescenceThicknessMax | `number` | — | `400` | `material.iridescenceThicknessRange[1]` |
+| iridescenceThicknessMin | `number` | - | `100` | `material.iridescenceThicknessRange[0]` |
+| iridescenceThicknessMax | `number` | - | `400` | `material.iridescenceThicknessRange[1]` |
 | specularIntensity | `number` | `0-1` | `1` | `material.specularIntensity` |
 | specularColor | `string` | hex | `'#ffffff'` | `material.specularColor` |
 
@@ -915,13 +915,13 @@ A `<select>` dropdown with options:
 
 | Label | Control | Range | Default | Three.js Property |
 |-------|---------|-------|---------|-------------------|
-| Color | Color picker | — | `#3B82F6` | `material.color` |
+| Color | Color picker | - | `#3B82F6` | `material.color` |
 | Opacity | Slider | 0-1 (step 0.01) | 1 | `material.opacity` (auto-sets `transparent` if < 1) |
-| Transparent | Toggle | — | `false` | `material.transparent` |
-| Side | Segmented (Front/Back/Double) | — | Double | `material.side` |
-| Wireframe | Toggle | — | `false` | `material.wireframe` |
-| Flat Shade | Toggle (hidden for Lambert/Toon/Wireframe) | — | `false` | `material.flatShading` |
-| Depth Write | Toggle | — | `true` | `material.depthWrite` |
+| Transparent | Toggle | - | `false` | `material.transparent` |
+| Side | Segmented (Front/Back/Double) | - | Double | `material.side` |
+| Wireframe | Toggle | - | `false` | `material.wireframe` |
+| Flat Shade | Toggle (hidden for Lambert/Toon/Wireframe) | - | `false` | `material.flatShading` |
+| Depth Write | Toggle | - | `true` | `material.depthWrite` |
 
 ### PBR Properties (Standard and Physical only)
 
@@ -929,7 +929,7 @@ A `<select>` dropdown with options:
 |-------|---------|-------|-------------------|
 | Roughness | Slider | 0-1 (step 0.01) | `material.roughness` |
 | Metalness | Slider | 0-1 (step 0.01) | `material.metalness` |
-| Emissive | Color picker | — | `material.emissive` |
+| Emissive | Color picker | - | `material.emissive` |
 | Emiss Int | Slider | 0-3 (step 0.01) | `material.emissiveIntensity` |
 | Env Map | Slider | 0-3 (step 0.01) | `material.envMapIntensity` |
 
@@ -943,13 +943,13 @@ A `<select>` dropdown with options:
 | Clearcoat | Slider | 0-1 (step 0.01) | `material.clearcoat` |
 | CC Rough | Slider (shown when clearcoat > 0) | 0-1 (step 0.01) | `material.clearcoatRoughness` |
 | Sheen | Slider | 0-1 (step 0.01) | `material.sheen` |
-| Sheen Color | Color picker (shown when sheen > 0) | — | `material.sheenColor` |
+| Sheen Color | Color picker (shown when sheen > 0) | - | `material.sheenColor` |
 | Sheen Rough | Slider (shown when sheen > 0) | 0-1 (step 0.01) | `material.sheenRoughness` |
 | Iridescence | Slider | 0-1 (step 0.01) | `material.iridescence` |
 | Irid IOR | Slider (shown when iridescence > 0) | 1-2.5 (step 0.01) | `material.iridescenceIOR` |
 | Irid Min/Max | Numeric inputs (shown when iridescence > 0) | step 10 | `material.iridescenceThicknessRange` |
 | Specular Int | Slider | 0-1 (step 0.01) | `material.specularIntensity` |
-| Specular Col | Color picker | — | `material.specularColor` |
+| Specular Col | Color picker | - | `material.specularColor` |
 
 IOR preset buttons: Water (1.33), Glass (1.5), Diamond (2.4).
 
@@ -957,16 +957,16 @@ IOR preset buttons: Water (1.33), Glass (1.5), Diamond (2.4).
 
 | Label | Control | Range | Three.js Property |
 |-------|---------|-------|-------------------|
-| Specular | Color picker | — | `material.specular` |
+| Specular | Color picker | - | `material.specular` |
 | Shininess | Slider | 0-1000 (step 1) | `material.shininess` |
-| Emissive | Color picker | — | `material.emissive` |
+| Emissive | Color picker | - | `material.emissive` |
 | Emiss Int | Slider | 0-3 (step 0.01) | `material.emissiveIntensity` |
 
 ### Lambert Properties (Lambert only)
 
 | Label | Control | Range | Three.js Property |
 |-------|---------|-------|-------------------|
-| Emissive | Color picker | — | `material.emissive` |
+| Emissive | Color picker | - | `material.emissive` |
 | Emiss Int | Slider | 0-3 (step 0.01) | `material.emissiveIntensity` |
 
 ### Toon Properties (Toon only)
@@ -994,12 +994,12 @@ Each texture slot shows an Upload button when empty, and the filename with expan
 
 | Label | Control | Range | Three.js Property |
 |-------|---------|-------|-------------------|
-| RepX | Numeric input (step 0.1) | — | `texture.repeat.x` |
-| RepY | Numeric input (step 0.1) | — | `texture.repeat.y` |
+| RepX | Numeric input (step 0.1) | - | `texture.repeat.x` |
+| RepY | Numeric input (step 0.1) | - | `texture.repeat.y` |
 | Offset X | Slider | -1 to 1 (step 0.01) | `texture.offset.x` |
 | Offset Y | Slider | -1 to 1 (step 0.01) | `texture.offset.y` |
 | Rotation | Slider + numeric | 0-360 (step 1, degrees) | `texture.rotation` (converted to radians) |
-| Wrap | Dropdown (Clamp/Repeat/Mirrored) | — | `texture.wrapS`, `texture.wrapT` |
+| Wrap | Dropdown (Clamp/Repeat/Mirrored) | - | `texture.wrapS`, `texture.wrapT` |
 | Anisotropy | Slider | 1-16 (step 1) | `texture.anisotropy` |
 
 ---
@@ -1023,7 +1023,7 @@ Each texture slot shows an Upload button when empty, and the filename with expan
 | Map Type | Color Space | Constant | Why |
 |----------|-------------|----------|-----|
 | Color (Albedo) | sRGB | `THREE.SRGBColorSpace` | Color data is authored in sRGB. Three.js needs to know this to correctly linearize it before lighting calculations. |
-| Emissive Map | sRGB | `THREE.SRGBColorSpace` | Same reason as color maps — emissive colors are authored in sRGB. |
+| Emissive Map | sRGB | `THREE.SRGBColorSpace` | Same reason as color maps - emissive colors are authored in sRGB. |
 | All other maps | Linear | `THREE.LinearSRGBColorSpace` | Roughness, metalness, normal, bump, AO, and alpha maps store non-color data (physical parameters or vectors). If loaded as sRGB, the gamma curve would distort the values, making roughness 0.5 appear as ~0.73. |
 
 If a color map is incorrectly loaded as Linear, colors will appear washed out and desaturated. If a normal map is loaded as sRGB, surface details will be exaggerated and incorrect.
@@ -1230,7 +1230,7 @@ Browsers enforce a hard limit on the number of simultaneous WebGL contexts (typi
 **Mitigation strategies:**
 
 - Always call `dispose()` when deleting a 3D shape. This releases the WebGL context.
-- Use `pause()` and `resume()` for shapes that go off-screen or are hidden. `pauseLoop()` sets `disposed = true` which stops the render loop, but note that it does **not** release the WebGL context — it only stops rendering. For true context release, `dispose()` must be called.
+- Use `pause()` and `resume()` for shapes that go off-screen or are hidden. `pauseLoop()` sets `disposed = true` which stops the render loop, but note that it does **not** release the WebGL context - it only stops rendering. For true context release, `dispose()` must be called.
 - Keep the total number of simultaneous 3D shapes manageable (under 8 is safe for all browsers).
 
 ### Dirty Flag Pattern
@@ -1238,14 +1238,14 @@ Browsers enforce a hard limit on the number of simultaneous WebGL contexts (typi
 When adding new interactive features:
 
 1. After any operation that changes the visual state of the scene, call `engine.markDirty()`.
-2. Never call `renderer.render()` directly — let the render loop handle it.
+2. Never call `renderer.render()` directly - let the render loop handle it.
 3. The render loop runs `requestAnimationFrame` continuously but only calls `renderer.render()` when dirty is true, so marking dirty is cheap.
 
 ### Polygon Count Guidelines
 
 - Simple primitives (box, sphere with 32 segments): ~1K-2K triangles. No concern.
 - Imported models: Watch for models exceeding 100K triangles. Performance will degrade especially with multiple shapes on canvas.
-- `ThreeDShapePreview` creates temporary engines — ensure they are disposed when the picker closes.
+- `ThreeDShapePreview` creates temporary engines - ensure they are disposed when the picker closes.
 
 ### Texture Memory
 
@@ -1304,7 +1304,7 @@ Note: The W/E/R shortcuts are not implemented in the core 3D files. They are han
 
 ### Textures missing on imported GLB
 
-**Cause:** GLB files are self-contained and should include textures. If textures appear missing, the model's materials may use features not supported by the import pipeline (e.g., KHR extensions). The current system does not modify imported model materials — it uses whatever the loader produces.
+**Cause:** GLB files are self-contained and should include textures. If textures appear missing, the model's materials may use features not supported by the import pipeline (e.g., KHR extensions). The current system does not modify imported model materials - it uses whatever the loader produces.
 
 **Solution:** Open the model in a tool like [gltf.report](https://gltf.report/) to verify textures are embedded. Re-export from Blender with "Pack Resources" enabled.
 
@@ -1389,7 +1389,7 @@ Create the corresponding SVG icon component in the same file.
 
 **Step 5:** Add geometry controls to the properties panel in `src/3d/ThreeDPropertiesPanel.tsx`. Inside the geometry section conditional block, add a new `geomType === 'octahedron'` branch with the appropriate controls.
 
-**Step 6:** Update `SceneManager.updateGeometry()` in `src/3d/SceneManager.ts` — no changes needed unless the type needs special handling (it uses `createPrimitiveGeometry` which you already updated).
+**Step 6:** Update `SceneManager.updateGeometry()` in `src/3d/SceneManager.ts` - no changes needed unless the type needs special handling (it uses `createPrimitiveGeometry` which you already updated).
 
 ### Adding a New Material Property
 

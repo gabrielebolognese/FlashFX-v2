@@ -67,7 +67,7 @@ const [topRowHeight, setTopRowHeight] = useState(60);          // Top band heigh
 ### Animation Timeline (Bottom-Right, Green)
 - **Currently a placeholder** - no animation features implemented
 - Displays property tracks when a clip is selected
-- Shows disabled state with message: "Animation features disabled — timeline reserved"
+- Shows disabled state with message: "Animation features disabled - timeline reserved"
 - Property rows: Position, Scale, Rotation, Opacity, Fill Color, Stroke
 - Add Keyframe button is disabled
 

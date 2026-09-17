@@ -1,6 +1,6 @@
 # Motion presets
 
-`MOTION_PRESET_NAMES` (`src/schema/enums.ts`) — the closed set of motion presets the Coder may
+`MOTION_PRESET_NAMES` (`src/schema/enums.ts`) - the closed set of motion presets the Coder may
 attach at layer level. Params are **closed per preset name** (`src/schema/presetParams.ts`): an
 unknown parameter is a parse error, not something the expander tolerates. The expander that turns an
 attachment into real keyframe tracks lives in `src/ai/presetCatalog.ts`, keyed by the same names, and
@@ -15,7 +15,7 @@ MOTION_PRESET_NAMES = [
 ]
 ```
 
-`staggerReveal` and `staggerExit` are GROUP presets: they write nothing on the group itself — the
+`staggerReveal` and `staggerExit` are GROUP presets: they write nothing on the group itself - the
 assembler applies their `childPreset` to each child of the group with a growing offset.
 
 ## Attachment shape (common to every preset)
@@ -36,10 +36,10 @@ The attachment is a `z.discriminatedUnion('preset', …)` of nine strict objects
 
 ### Entrances
 
-**`fadeIn`** — entrance. *Bring an element on by fading from transparent. The safe default entrance.*
+**`fadeIn`** - entrance. *Bring an element on by fading from transparent. The safe default entrance.*
 - Params: _none_. Writes: `transform.opacity` (0 → 1, easeOut).
 
-**`slideIn`** — entrance. *Enter from an edge with a gentle settle.*
+**`slideIn`** - entrance. *Enter from an edge with a gentle settle.*
 - Params:
   | param | type | range | default |
   |---|---|---|---|
@@ -47,26 +47,26 @@ The attachment is a `z.discriminatedUnion('preset', …)` of nine strict objects
   | `distance` | number (px) | `> 0`, ≤ `10000`, optional | derived from comp size |
   - Writes: `transform.position` and `transform.opacity`.
 
-**`popIn`** — entrance. *Scale up from nothing with a slight overshoot.*
-- Params: `overshoot` — number `1`–`2` (1 = none), default `1.15`. Writes: `transform.scale`, `transform.opacity`.
+**`popIn`** - entrance. *Scale up from nothing with a slight overshoot.*
+- Params: `overshoot` - number `1`–`2` (1 = none), default `1.15`. Writes: `transform.scale`, `transform.opacity`.
 
 ### Exits
 
-**`fadeOut`** — exit. *Fade out. The safe default exit.* Params: _none_. Writes: `transform.opacity`.
+**`fadeOut`** - exit. *Fade out. The safe default exit.* Params: _none_. Writes: `transform.opacity`.
 
-**`slideOut`** — exit. *Exit toward an edge while fading.*
+**`slideOut`** - exit. *Exit toward an edge while fading.*
 - Params: `direction` (default `right`), `distance` (`> 0`, ≤ `10000`, optional). Writes: `transform.position`, `transform.opacity`.
 
-**`scaleOut`** — exit. *Shrink away.* Params: `to` — number `0`–`1`, default `0`. Writes: `transform.scale`, `transform.opacity`.
+**`scaleOut`** - exit. *Shrink away.* Params: `to` - number `0`–`1`, default `0`. Writes: `transform.scale`, `transform.opacity`.
 
 ### Emphasis
 
-**`emphasisPulse`** — emphasis. *A scale pulse in place.*
+**`emphasisPulse`** - emphasis. *A scale pulse in place.*
 - Params: `peak` (number `1`–`2`, default `1.15`), `cycles` (int `1`–`4`, default `1`). Writes: `transform.scale`.
 
 ### Staggered group presets
 
-**`staggerReveal`** — group. *Reveal the children of a group one after another (lists, grids, word-by-word titles).*
+**`staggerReveal`** - group. *Reveal the children of a group one after another (lists, grids, word-by-word titles).*
 - Params:
   | param | type | range | default |
   |---|---|---|---|
@@ -75,7 +75,7 @@ The attachment is a `z.discriminatedUnion('preset', …)` of nine strict objects
   | `order` | enum | `forward` \| `reverse` | `forward` |
 - Writes: whatever `childPreset` writes, per child, at `start + i·step`.
 
-**`staggerExit`** — group. *Clear the children of a group one after another (the exit mirror).*
+**`staggerExit`** - group. *Clear the children of a group one after another (the exit mirror).*
 - Params:
   | param | type | range | default |
   |---|---|---|---|
@@ -87,7 +87,7 @@ The attachment is a `z.discriminatedUnion('preset', …)` of nine strict objects
 ## Overlap rule
 
 Two presets on the same layer whose written-property sets intersect are a hard error
-(`preset-property-overlap`, checked from each preset's `targets` in the catalog) — silent
+(`preset-property-overlap`, checked from each preset's `targets` in the catalog) - silent
 last-write-wins would erase an animation.
 
 ## Verbatim schema source (`src/schema/presetParams.ts`)

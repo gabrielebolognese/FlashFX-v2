@@ -20,11 +20,11 @@ use a tiny `0.001` to preserve the intended curve shape.)
 
 | name | interpolation | handleOut | handleIn |
 |---|---|---|---|
-| `linear` | `linear` | — | — |
+| `linear` | `linear` | - | - |
 | `easeIn` | `bezier` | `[0.42, 0.001]` | `[1, 1]` |
 | `easeOut` | `bezier` | `[0.001, 0.001]` | `[0.58, 1]` |
 | `easeInOut` | `bezier` | `[0.42, 0.001]` | `[0.58, 1]` |
-| `spring` | `spring` | — | — |
+| `spring` | `spring` | - | - |
 
 `linear` and `spring` carry no handles (their interpolation mode is self-describing to the evaluator).
 

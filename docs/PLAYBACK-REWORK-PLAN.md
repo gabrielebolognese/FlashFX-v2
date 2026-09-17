@@ -1,4 +1,4 @@
-# Video Playback Rework — Audio-Master Clock (CapCut/Canva model)
+# Video Playback Rework - Audio-Master Clock (CapCut/Canva model)
 
 Design of record for reworking FlashFX preview playback to the production browser-editor
 model: **audio is the single master clock; video is a passive follower that shows the latest
@@ -16,15 +16,15 @@ unstuck the decoder stall; this rework fixes the *architecture* so sync is corre
 presentation never stale-flashes.
 
 ## Target architecture
-1. **`MasterClock`** — sole source of "current time." One always-running shared `AudioContext`
+1. **`MasterClock`** - sole source of "current time." One always-running shared `AudioContext`
    (a muted `ConstantSourceNode` keeps `currentTime` advancing even with no audible layers);
    `performance.now()` only as an emergency fallback when the context is `suspended`/`closed`.
    - **Two readings** (critique #1): `nowForPicture = ctx.currentTime − anchorCtx − outputLatency`
-     (what the speakers emit *now* — drives frame selection) and `nowForScheduling =
-     ctx.currentTime − anchorCtx` (raw — for scheduling future audio nodes). `outputLatency`
+     (what the speakers emit *now* - drives frame selection) and `nowForScheduling =
+     ctx.currentTime − anchorCtx` (raw - for scheduling future audio nodes). `outputLatency`
      falls back to `baseLatency`/small const; re-read on `statechange` (Bluetooth mid-play).
    - `anchor(frame)` captures `(anchorFrame, anchorCtxTime)`; **re-anchor on** play, seek, loop
-     wrap, and any `playbackRate` change (piecewise integration — critique #8).
+     wrap, and any `playbackRate` change (piecewise integration - critique #8).
 2. **Time model** (critique #3): `_currentFrame` stays **integer** = `floor(masterClock.nowFrameFloat(fps))`
    and remains the ONLY value `engine.evaluate`/`resolveFrame`/store/`notify` see (composition +
    export stay integer-quantized; React `notify` stays integer/de-duped). A **separate continuous
@@ -32,24 +32,24 @@ presentation never stale-flashes.
 3. **Frame presentation** (`framePresentation.ts`, pure): per **layer** target source-frame
    (`resolveVideoLayer`'s existing mapping) → `selectPresentFrame` = greatest buffered index
    **≤ target** within `maxDistance`; else **hold the layer's last-presented** (never jump to a
-   far/future frame — no wrong-frame flash after a seek); else black. **Drop floor per asset =
-   `min` presented index across ALL that asset's layer requirements** (critique #2) — a split
+   far/future frame - no wrong-frame flash after a seek); else black. **Drop floor per asset =
+   `min` presented index across ALL that asset's layer requirements** (critique #2) - a split
    clip's two layers keep their distinct frames. rAF is the present pump only.
-4. **Unified audio graph** — one `masterGain → analyser → splitter → destination`. **Wire the
+4. **Unified audio graph** - one `masterGain → analyser → splitter → destination`. **Wire the
    dead `videoAudioPlayer.setAudioContext(ctx, masterGain)` seam** (highest-leverage, ~10 lines)
    so video-clip audio joins master gain + VU meters (fixes the silent-on-load / dead-meter bug).
-5. **Audio-layer scheduling** — absolute times off the anchor via a **single pure
+5. **Audio-layer scheduling** - absolute times off the anchor via a **single pure
    `{when, offset, duration, rate}` function shared by preview AND `audioMixer` export**
-   (critique #10 — preview/export must not diverge). Declick: ramp gain →0 over ~8ms before every
+   (critique #10 - preview/export must not diverge). Declick: ramp gain →0 over ~8ms before every
    `stop()` (pause/loop/seek/clip-end); ramp up on start (critique #5).
-6. **Transport** — seek/scrub re-anchor + reschedule + flush stale ring near old playhead
+6. **Transport** - seek/scrub re-anchor + reschedule + flush stale ring near old playhead
    (critique #4); pause freezes the anchor; loop **pre-schedules** iteration N+1 audio *ahead*
    of the wrap (critique #9). AudioContext resumed on the **first global user gesture**, with an
    optimistic `performance.now()` start swapped to the audio clock once `running` (critique #6).
 
 ## Sequencing (build order)
 - **Foundation (provable here, harness-gated):** `masterClockMath` · `framePresentation` ·
-  `audioScheduleMath` — the pure timing/selection/scheduling cores. **← this pass.**
+  `audioScheduleMath` - the pure timing/selection/scheduling cores. **← this pass.**
 - **Wiring (behind the toggle, browser-verified):** MasterClock class + `tickRealtime` reads it;
   unified graph (`setAudioContext`); renderer uses `selectPresentFrame`; audio-layer absolute
   scheduling + declick; resume-on-gesture; seek/loop.
@@ -60,13 +60,13 @@ presentation never stale-flashes.
   Web-Audio audio-layer scheduling shared with export, drop-pass video presentation, transport.
 - **Deferred (scoped follow-up):** replacing the hidden `<video>` video-clip audio with decoded
   `AudioBuffer` scheduling. It needs a **streaming `AudioDecoder`** (whole-file decode is
-  ~230MB/10-min clip — worse than `<video>`), so v1 keeps `<video>` chase-sync but under the
+  ~230MB/10-min clip - worse than `<video>`), so v1 keeps `<video>` chase-sync but under the
   master clock + master gain. Documented as the one remaining "not-fully-CapCut" piece.
 - **Out of scope v1:** reverse playback audio (`AudioBufferSourceNode.playbackRate` can't be
-  negative — mute audio during reverse; make selection direction-aware).
+  negative - mute audio during reverse; make selection direction-aware).
 
 ## Implementation status (what has landed)
-Behind the toggle unless noted **[un-gated]**. Every runtime piece needs in-browser A/B — none is
+Behind the toggle unless noted **[un-gated]**. Every runtime piece needs in-browser A/B - none is
 runtime-testable here.
 - **Provable cores (harness-gated, green):** `masterClockMath` (7) · `framePresentation` (7) ·
   `audioScheduleMath` (10). Full suite: 11 harnesses / 125 checks.
@@ -80,19 +80,19 @@ runtime-testable here.
 - **[un-gated] Preview audio scheduling** now uses the shared `computeSourceSchedule`. Identical to
   the old inline math when pitch == 0; **fixes a real bug when pitch ≠ 0** (old code advanced the
   resume buffer-offset UNSCALED by the clip's playback rate → wrong sample when you press play with
-  the playhead parked mid-clip). **Export mixer left as-is** — it already bounds each clip with
+  the playhead parked mid-clip). **Export mixer left as-is** - it already bounds each clip with
   `stop(when + clipDuration)` (more precise than the duration arg), and the harness proves
   `computeSourceSchedule`'s export anchor reproduces its exact `when`/`offset`, so parity is proven
   without swapping export onto weaker scheduling.
-- **[un-gated] Declick**: `stopSource`/`stopAllSources` funnel through `fadeAndStop` — an ~8ms gain
+- **[un-gated] Declick**: `stopSource`/`stopAllSources` funnel through `fadeAndStop` - an ~8ms gain
   ramp to 0, then `stop()`, with node teardown deferred to `onended` so the fade is actually heard.
   Each scheduled source ALSO gets a schedule-time `onended` that disconnects it at natural end
-  (a source with a finite duration ends on its own — e.g. a 3s SFX on a 10s layer) so it can't leak
+  (a source with a finite duration ends on its own - e.g. a 3s SFX on a 10s layer) so it can't leak
   on the master graph. *(This schedule-time handler was added after an adversarial review caught
-  exactly that leak — `fadeAndStop` alone only tears down still-playing sources.)*
+  exactly that leak - `fadeAndStop` alone only tears down still-playing sources.)*
 - **Presentation drop-pass** (toggle-gated): `frameScheduler.getPresentableFrame` wraps the proven
   `selectPresentFrame`; the renderer's video branch, when `presentLatest` is set (audio-master
-  playback only — scrub/seek/export keep exact-frame), displays the newest decoded frame ≤ target
+  playback only - scrub/seek/export keep exact-frame), displays the newest decoded frame ≤ target
   and drops the rest. `presentLatest` is a per-`renderFrame()`-call scoped flag threaded from
   `playback.tickRealtime`; the renderer stays store-free.
 
@@ -102,13 +102,13 @@ runtime-testable here.
   ahead of the loop wrap is a refinement, not landed. Preview clips still schedule at entry (with the
   now-correct rate-scaled offset).
 - **Seek ring-flush** (critique #4): large-seek stale-ring flush not yet wired.
-- **`<video>` → decoded `AudioBuffer`** migration (needs streaming `AudioDecoder`) — as in v1 scope.
+- **`<video>` → decoded `AudioBuffer`** migration (needs streaming `AudioDecoder`) - as in v1 scope.
 
 ## Browser A/B test guide (the only place this is verifiable)
 The toggle is the **`AudioLines` button** in the PreviewControls bar (emerald when ON). Nothing here
-runs in this environment — it must be exercised in a WebGPU Chromium session.
+runs in this environment - it must be exercised in a WebGPU Chromium session.
 
-**First, the un-gated changes (must hold with the toggle OFF — the default — so they can ship regardless):**
+**First, the un-gated changes (must hold with the toggle OFF - the default - so they can ship regardless):**
 1. *Video audio + meters:* load a project with a video clip that has sound → audio is audible on
    first play (was silent-on-load) and the VU meters move (were dead). This is the `audioTransport`
    unification.

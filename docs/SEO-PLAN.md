@@ -1,4 +1,4 @@
-# FlashFX — SEO Plan
+# FlashFX - SEO Plan
 
 Status: **v1 implemented for the editor app** (this repo, `editor.flashfx.app`). Marketing-site
 (`flashfx.app`) recommendations are listed for the separate landing-page project.
@@ -11,8 +11,8 @@ FlashFX lives on two domains that must be treated as **one brand, two SEO roles*
 
 | Domain | What it is | SEO role |
 |---|---|---|
-| **flashfx.app** | Marketing / landing site (a **separate** codebase) | The **content hub** — ranks for feature/use-case/keyword queries. Owns the blog, feature pages, pricing, docs. Rich sitemap. |
-| **editor.flashfx.app** | The app in **this** repo (a client-rendered WebGPU SPA) | The **product surface** — one indexable page. Self-canonical, brand-consistent, links back to flashfx.app, and declares (via structured data) that it's part of the same site/organization. |
+| **flashfx.app** | Marketing / landing site (a **separate** codebase) | The **content hub** - ranks for feature/use-case/keyword queries. Owns the blog, feature pages, pricing, docs. Rich sitemap. |
+| **editor.flashfx.app** | The app in **this** repo (a client-rendered WebGPU SPA) | The **product surface** - one indexable page. Self-canonical, brand-consistent, links back to flashfx.app, and declares (via structured data) that it's part of the same site/organization. |
 
 "Same as flashfx.app" is expressed structurally, not by copying content:
 - `Organization` + `WebSite` JSON-LD point at `https://flashfx.app` (`url`, `sameAs`, `publisher`).
@@ -20,7 +20,7 @@ FlashFX lives on two domains that must be treated as **one brand, two SEO roles*
 - The header logo links to `https://flashfx.app`.
 - Shared brand: name **FlashFX**, wordmark, amber `#f7b500`, dark `#0a0f16`.
 
-The editor is a **single-page app** — there is no SSR, so all meta is **static in `index.html`**.
+The editor is a **single-page app** - there is no SSR, so all meta is **static in `index.html`**.
 Deep-link states (`/?template=particles`, …) render the same document and canonicalize to `/`, so
 they are deliberately not separate indexable URLs.
 
@@ -33,7 +33,7 @@ they are deliberately not separate indexable URLs.
 - `og:image` / `twitter:image` still pointed at **`bolt.new/static/og_default.png`** (leftover scaffold).
 - Favicon `<link>` pointed at `/vite.svg`, which **doesn't exist** (only `favicon.ico` did).
 - **No** `robots.txt`, `sitemap.xml`, or web manifest.
-- **No logo anywhere** — not in `index.html`, not in either app header.
+- **No logo anywhere** - not in `index.html`, not in either app header.
 
 ## 2. What v1 ships (this repo)
 
@@ -47,25 +47,25 @@ they are deliberately not separate indexable URLs.
 - Icons: `flashfx-mark.svg` (svg favicon + apple-touch) with `favicon.ico` fallback; `site.webmanifest`.
 
 **New brand assets (`public/`):**
-- `flashfx-mark.svg` — amber rounded square + lightning bolt (favicon / mark).
-- `flashfx-logo.svg` — horizontal lockup (mark + "FlashFX" wordmark).
-- `og-image.svg` — 1200×630 branded social card.
+- `flashfx-mark.svg` - amber rounded square + lightning bolt (favicon / mark).
+- `flashfx-logo.svg` - horizontal lockup (mark + "FlashFX" wordmark).
+- `og-image.svg` - 1200×630 branded social card.
 
 **New site files (`public/`):** `robots.txt`, `sitemap.xml`, `site.webmanifest`.
 
 **Logo in the headers:**
-- `src/ui/components/FlashFXLogo.tsx` — inline SVG lockup (crisp, no request, no flash).
-- Editor top bar (`App.tsx`) — brand at the far left, links to flashfx.app.
-- Project dashboard (`DashboardHeader.tsx`) — brand before the "Recents" title.
+- `src/ui/components/FlashFXLogo.tsx` - inline SVG lockup (crisp, no request, no flash).
+- Editor top bar (`App.tsx`) - brand at the far left, links to flashfx.app.
+- Project dashboard (`DashboardHeader.tsx`) - brand before the "Recents" title.
 
-## 3. Raster OG image — ✅ done
+## 3. Raster OG image - ✅ done
 
 Twitter/X, Facebook and LinkedIn don't render SVG Open Graph images, so the SVGs were
 rasterized with `sharp` (installed locally):
 
-- **`public/og-image.png`** (1200×630) — `og:image` / `twitter:image` / JSON-LD `image` now
+- **`public/og-image.png`** (1200×630) - `og:image` / `twitter:image` / JSON-LD `image` now
   point at it; `og:image:type` is `image/png`.
-- **`public/apple-touch-icon.png`** (180×180, dark background) — `apple-touch-icon` link.
+- **`public/apple-touch-icon.png`** (180×180, dark background) - `apple-touch-icon` link.
 
 To regenerate after editing the SVGs (needs `sharp`):
 
@@ -79,19 +79,19 @@ await sharp(readFileSync('public/flashfx-mark.svg'), { density: 400 })
   .png({ compressionLevel: 9 }).toFile('public/apple-touch-icon.png');
 ```
 
-Note: `sharp`/librsvg is strict XML — escape `&` as `&amp;` in the SVGs (the browser is lenient,
+Note: `sharp`/librsvg is strict XML - escape `&` as `&amp;` in the SVGs (the browser is lenient,
 the rasterizer is not).
 
 ## 4. Verification checklist (after deploy)
 
 - **Google Search Console**: add `editor.flashfx.app`, submit `sitemap.xml`, request indexing.
 - **Rich Results Test** (search.google.com/test/rich-results): validate the JSON-LD.
-- **Social debuggers**: X Card Validator, Facebook Sharing Debugger, LinkedIn Post Inspector —
+- **Social debuggers**: X Card Validator, Facebook Sharing Debugger, LinkedIn Post Inspector -
   confirm the card image (after the PNG swap) and title/description.
 - Confirm `https://editor.flashfx.app/robots.txt` and `/sitemap.xml` return 200.
 - Lighthouse SEO audit → expect 95–100 once the PNG OG lands.
 
-## 5. Recommendations for flashfx.app (the marketing site — separate project)
+## 5. Recommendations for flashfx.app (the marketing site - separate project)
 
 The **content SEO** (what actually ranks) belongs on flashfx.app. Hand these to that codebase:
 

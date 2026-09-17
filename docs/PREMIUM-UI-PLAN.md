@@ -1,4 +1,4 @@
-# FlashFX Premium UI — Renovation Plan (Systems)
+# FlashFX Premium UI - Renovation Plan (Systems)
 
 Execution plan for the premium-UI renovation. The tokens/rules live in
 [`PREMIUM-UI-SYSTEM.md`](./PREMIUM-UI-SYSTEM.md); this doc is the ordered set of **systems** we
@@ -6,7 +6,7 @@ renovate (self-contained units, not milestones), their dependencies, and the per
 
 ## Context
 
-FlashFX has no design system — 181 hex colors, 13 font sizes, ~3,182 one-off classes — and that
+FlashFX has no design system - 181 hex colors, 13 font sizes, ~3,182 one-off classes - and that
 inconsistency is what reads as "raw" instead of premium. A correct token layer already exists in
 `index.css`/`tailwind.config.js` but is **dead** (zero component uses). The plan: refine + wire that
 token layer, then migrate the app onto it, system by system, in dependency order, **never touching the
@@ -16,12 +16,12 @@ neutrals stay subtle-blue; a top-center dynamic island owns progress + toasts.
 ## Guardrails (apply to every system)
 
 - **Gates:** `tsc` 0 · `lint` at the 127 baseline · `build` green after every system.
-- **Perf watch:** eyeball **timeline scrub + playback** after each system — these are the crash-risk
+- **Perf watch:** eyeball **timeline scrub + playback** after each system - these are the crash-risk
   paths. No new per-frame DOM cost, no new re-renders; respect existing memoization/virtualization.
 - **No heavy deps** (no MUI/Chakra/framer-motion). Primitives = Tailwind + a tiny variant helper.
-- **The two perf traps** — `backdrop-blur` (only the 4 allowed floating surfaces) and `box-shadow`
+- **The two perf traps** - `backdrop-blur` (only the 4 allowed floating surfaces) and `box-shadow`
   (only the 2 floating tiers). Both **banned in playback hot paths** (clips, playhead, ruler, waveforms).
-- **Mechanical where possible** — most of this is token find/replace with zero structural change, so it
+- **Mechanical where possible** - most of this is token find/replace with zero structural change, so it
   can't regress render or timeline perf.
 
 ## The systems (dependency order)
@@ -58,10 +58,10 @@ This is what the copy-pasted modals collapse onto.
 Find/replace the amber family (`#f7b500` ×507, `#ffc83d`, `#ffcc00`, `yellow-400`, and the
 **cyan-400-as-accent** in the modals) onto `--ffx-accent`/`-hover`/`-wash`. **Enforce sparingness:**
 gold only on selection border, the one primary action per view, active tab, focus ring, playhead,
-progress ring — toolbar toggle-state becomes a **neutral `surface-4` pill, not gold**.
+progress ring - toolbar toggle-state becomes a **neutral `surface-4` pill, not gold**.
 - Files: `App.tsx`, `ui/layout/PanelContainer.tsx`, `SilenceStripperModal.tsx`,
   `CaptionGenerationModal.tsx`, `ExportModal.tsx`, `agent-build/AgentBuildOverlay.tsx`
-- Perf: pure token substitution, no layout change — cannot regress render/timeline perf.
+- Perf: pure token substitution, no layout change - cannot regress render/timeline perf.
 
 ### 5. Surface & Hairline Migration  ·  deps: Token Foundation
 Collapse the 181 raw hexes + charcoal outliers (`#1c2433`/`#1a2233`/`#1e1c1b`/`#1e1e1e`) into the blue
@@ -69,7 +69,7 @@ surface ladder; convert the **487 solid `#1a2a42` borders → white-alpha `--ffx
 box-shadows from inline panels/cards/inputs/rows in favor of surface-step + top-highlight + hairline;
 recess wells (`bg-sunken`) below panels (`surface-1`).
 - Files: `App.tsx`, `ui/layout/PanelContainer.tsx`, `ui/panels/*`, `ui/layout/*`
-- Perf: high-count elements (list rows, cards, clips) lose box-shadows — each removed shadow is one
+- Perf: high-count elements (list rows, cards, clips) lose box-shadows - each removed shadow is one
   fewer compositor layer easing the compositor the WebGPU timeline shares.
 
 ### 6. Elevation & Material Rules  ·  deps: Surface & Hairline Migration
@@ -81,7 +81,7 @@ with semi-opaque fallbacks.
 - Files: `src/index.css`, `ui/primitives/*` (Menu/Modal), `ui/panels/*` (pinned chrome → solid),
   timeline components
 - Perf: **THE core app-specific perf system.** `backdrop-blur` over the live viewport/timeline re-blurs
-  every frame (area × playback-FPS) — removing it from pinned/hot-path chrome is the biggest single
+  every frame (area × playback-FPS) - removing it from pinned/hot-path chrome is the biggest single
   reclaim.
 
 ### 7. Motion System  ·  deps: Token Foundation
@@ -99,7 +99,7 @@ title=violet, audio=green, caption=gold), never candy-bright; selection = ~2px g
 handles as the only saturated element; hover = ~6–8% white overlay; waveforms as desaturated
 semi-transparent texture; white playhead + pink `--ffx-live` skimmer as thin lines.
 - Files: `ui/panels/timeline/TrackArea.tsx`, `TrackRow.tsx`, clip render, ruler/playhead
-- Perf: clips are the highest-count elements — surface tint + top-highlight, **zero shadow/blur** (banned
+- Perf: clips are the highest-count elements - surface tint + top-highlight, **zero shadow/blur** (banned
   in this hot path); role-tint is a static class (no per-frame cost); playhead/ruler carry zero CSS
   transitions.
 
@@ -141,16 +141,16 @@ and retire their one-off shells; give the panels that stay separate (`SubtitleRe
                                                                       ├─ 8 Timeline Skin
                             2,7,6 ─────────────── 10 Dynamic Island ──┴─ 11 Notification Consolidation
 ```
-**Recommended first system: #1 Token Foundation** — everything depends on it, it's mechanical, and it's
+**Recommended first system: #1 Token Foundation** - everything depends on it, it's mechanical, and it's
 zero-runtime-cost. #4 (Accent) and #5 (Surface/Hairline) can follow immediately as pure find/replace.
 
 ## Cheap-surface hit-list (which systems fix the worst offenders)
 
 | Surface | File | Fixed by |
 |---|---|---|
-| **SilenceStripperModal** (headline offender — cyan-as-accent, 5 ad-hoc sizes, raw hexes) | `ui/panels/SilenceStripperModal.tsx` | #3 Primitives, #4 Accent, #2 Type |
+| **SilenceStripperModal** (headline offender - cyan-as-accent, 5 ad-hoc sizes, raw hexes) | `ui/panels/SilenceStripperModal.tsx` | #3 Primitives, #4 Accent, #2 Type |
 | **CaptionGenerationModal** (same cyan problem, copy-pasted chrome) | `ui/panels/CaptionGenerationModal.tsx` | #3, #4, #2 |
-| **ExportModal** (a third progress accent — yellow-400) | `ui/panels/ExportModal.tsx` | #4, #10 Island |
+| **ExportModal** (a third progress accent - yellow-400) | `ui/panels/ExportModal.tsx` | #4, #10 Island |
 | TasksPanel (fractional sizes, bespoke surfaces) | `ui/panels/TasksPanel.tsx` | #2, #5 |
 | Floating chips (AutoCaption/Subtitle/QuickText, one-off shells) | `ui/panels/AutoCaptionProgress.tsx` + siblings | #3, #10, #11 |
 | Inspector density (141 arbitrary sizes) | `ui/panels/Inspector.tsx` | #9 |
@@ -159,7 +159,7 @@ zero-runtime-cost. #4 (Accent) and #5 (Surface/Hairline) can follow immediately 
 
 ## Verification per system
 - `tsc` 0 · `lint` 127 · `build` green.
-- Visual eyeball of the changed surfaces (browser-gated — WebGPU isn't runnable in the harness env).
+- Visual eyeball of the changed surfaces (browser-gated - WebGPU isn't runnable in the harness env).
 - **Perf: scrub + play a busy multi-clip timeline** after #5/#6/#7/#8 especially; confirm no new
   compositor layers over the viewport (DevTools Layers/Rendering) and no playhead lag.
 

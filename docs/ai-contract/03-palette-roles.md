@@ -34,11 +34,11 @@ The only color the AI emits is a role reference (`zColorRole`, `src/schema/primi
 
 ```ts
 export const zColorRole = z.strictObject({ role: z.enum(PALETTE_ROLES) });
-export const zAiColor = zColorRole; // AI color slots accept ONLY a role reference — never a literal
+export const zAiColor = zColorRole; // AI color slots accept ONLY a role reference - never a literal
 ```
 
 ## Bounds
 
-A style contract's palette binds **4 to 7** roles (a fixed design range, enforced structurally —
+A style contract's palette binds **4 to 7** roles (a fixed design range, enforced structurally -
 `z.array(zPaletteEntry).min(4).max(7)`). Not all twelve: a palette with every role bound has no
 point of view. A palette need not bind every role, only those it uses.

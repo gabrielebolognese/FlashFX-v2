@@ -10,20 +10,20 @@ frames exactly once (at the beat); nothing downstream of that sees milliseconds.
 |---|---|
 | `brief` | `Brief` (below) |
 | `styleContract` | see [StyleContract](./04-style-contract.md) |
-| `panelPlan` | array of `DirectorPanel` — ≥ 1, ≤ `caps.maxPanels` (frozen 32) |
+| `panelPlan` | array of `DirectorPanel` - ≥ 1, ≤ `caps.maxPanels` (frozen 32) |
 
 ## `Brief`
 
 | field | type | constraints |
 |---|---|---|
-| `durationMs` | int ms | `> 0` — committed total duration (the Director decides, doesn't ask) |
-| `format` | enum | `landscape` \| `portrait` \| `square` — **mirrors the canvas, never invented** |
+| `durationMs` | int ms | `> 0` - committed total duration (the Director decides, doesn't ask) |
+| `format` | enum | `landscape` \| `portrait` \| `square` - **mirrors the canvas, never invented** |
 | `tone` | enum | `playful` \| `serious` \| `elegant` \| `energetic` \| `calm` \| `bold` \| `minimal` \| `corporate` |
 | `subjects` | array of `{ id, name }` | **3 to 12** (a conceptual inventory, not a layer count) |
 | `subjects[].id` | namespaced id | `/^[A-Za-z0-9][A-Za-z0-9:_-]*$/` |
 | `subjects[].name` | semantic name | 1–120 chars |
 
-## `DirectorPanel` (the PanelPlan element — ms)
+## `DirectorPanel` (the PanelPlan element - ms)
 
 | field | type | constraints |
 |---|---|---|
@@ -31,16 +31,16 @@ frames exactly once (at the beat); nothing downstream of that sees milliseconds.
 | `order` | int | ≥ 0 |
 | `startMs` | int ms | ≥ 0 |
 | `endMs` | int ms | ≥ 0 |
-| `focalPoint` | `[x, y]` | **required** — every panel has one |
+| `focalPoint` | `[x, y]` | **required** - every panel has one |
 | `elements` | array of `{ id, name, kind }` | ≤ `caps.maxLayersPerPanel` (frozen 120) |
-| `elements[].id` | namespaced id | — |
-| `elements[].name` | semantic name | — |
+| `elements[].id` | namespaced id | - |
+| `elements[].name` | semantic name | - |
 | `elements[].kind` | enum `AI_LAYER_TYPES` | `shape` \| `text` \| `group` \| `image` \| `video` \| `cloner` (no `camera`/`audio`) |
-| `transitionIn` | `Transition` (below) | optional — transition INTO this panel; **panel 0 must have none** |
+| `transitionIn` | `Transition` (below) | optional - transition INTO this panel; **panel 0 must have none** |
 | `inboundPresent` | array of id | element ids on screen at the in-point (the unified boundary contract) |
 | `outboundPresent` | array of id | element ids on screen at the out-point |
 
-`inboundPresent`/`outboundPresent` are the **unified** boundary contract — the same present-list shape
+`inboundPresent`/`outboundPresent` are the **unified** boundary contract - the same present-list shape
 the compiled frame `Panel` uses (no second representation). Adjacent panels' outbound/inbound
 present-sets must reconcile exactly or assembly (and `validateDirectorPlan`) reports a
 `boundary-mismatch`.
@@ -56,21 +56,21 @@ present-sets must reconcile exactly or assembly (and `validateDirectorPlan`) rep
 
 Every object is **strict** (closed to unknown keys).
 
-## Rules the SEMANTIC validator enforces (Zod cannot — cross-panel/field)
+## Rules the SEMANTIC validator enforces (Zod cannot - cross-panel/field)
 
 `validateDirectorPlan` (`src/schema/semantic.ts`) checks, in addition to the structural bounds above:
 
-- **Beat alignment** — every `startMs`/`endMs`, `durationMs`, and transition duration is an integer
+- **Beat alignment** - every `startMs`/`endMs`, `durationMs`, and transition duration is an integer
   multiple of `styleContract.beatMs`.
-- **Contiguity** — panels are ordered `0..n-1`, `panelPlan[0].startMs === 0`, gapless & non-overlapping.
-- **Duration** — the last panel ends exactly at `brief.durationMs`.
-- **Element ownership** — each element id is declared once (its first panel); carried elements appear
+- **Contiguity** - panels are ordered `0..n-1`, `panelPlan[0].startMs === 0`, gapless & non-overlapping.
+- **Duration** - the last panel ends exactly at `brief.durationMs`.
+- **Element ownership** - each element id is declared once (its first panel); carried elements appear
   only in present-lists.
-- **Id namespace** — a declared element's id is namespaced to its owning panel (`p<order>:…`).
-- **Boundary reconciliation** — panel 0's `inboundPresent` is empty; each panel's `outboundPresent`
+- **Id namespace** - a declared element's id is namespaced to its owning panel (`p<order>:…`).
+- **Boundary reconciliation** - panel 0's `inboundPresent` is empty; each panel's `outboundPresent`
   equals the next panel's `inboundPresent`.
-- **Format** — `brief.format` matches the preflight canvas (given the canvas).
-- **Transitions** — panel 0 has no `transitionIn`; a transition's `duration` ≤ half the shorter of the
+- **Format** - `brief.format` matches the preflight canvas (given the canvas).
+- **Transitions** - panel 0 has no `transitionIn`; a transition's `duration` ≤ half the shorter of the
   two panels it joins.
 
 ## Verbatim source (`src/schema/pipeline.ts`)

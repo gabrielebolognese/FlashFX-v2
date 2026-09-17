@@ -4,14 +4,14 @@
 
 A pivot day: the premium-UI renovation finished the day before, so this was planning plus the first
 productization work. Two commits, 7 files, +431/−15. typecheck 0, lint at the 127 baseline, build
-green. No backend, no new dependencies, no keys — deliberately the part that needs nobody else.
+green. No backend, no new dependencies, no keys - deliberately the part that needs nobody else.
 
 - internal: a grounded MVP→product roadmap, written after auditing what's actually built vs. what
   only looks built.
   - Number: 2 parallel audit passes (commercial plumbing; reliability/UX) feeding a 197-line
     `docs/PRODUCT-ROADMAP.md`.
   - Hard part: the reframe, not the writing. The starting assumption was "add auth + billing." The
-    audit showed the opposite shape — the editor engine is the strong part (export actually works,
+    audit showed the opposite shape - the editor engine is the strong part (export actually works,
     crash recovery is real, ~40 templates exist) and the product SHELL is what's missing entirely (no
     auth, billing, cloud sync, analytics, legal, landing), plus a few sharp reliability edges (no root
     error boundary, zero analytics so you'd launch blind, no unsupported-browser gate). So the plan
@@ -22,14 +22,14 @@ green. No backend, no new dependencies, no keys — deliberately the part that n
   infinite "reset" loop.
   - Number: one synchronous `'gpu' in navigator` check before the app renders; 1 new screen.
   - Hard part: recognizing the existing recovery overlay was the wrong message for this case. It
-    offers a "reset and rebuild" that loops forever on a browser that can never run the renderer —
+    offers a "reset and rebuild" that loops forever on a browser that can never run the renderer -
     which is correct for a driver/adapter failure on a capable browser, but a dead-end for a browser
     that lacks WebGPU entirely. A cheap pre-flight splits the two.
 
 - A crash in the app shell (the toolbar, a modal, the dashboard, onboarding) no longer white-screens
   the whole editor. It shows a reload screen that says the work is saved locally.
   - Number: 1 root error boundary around `<App/>`; the per-panel boundaries already existed.
-  - Hard part: nothing structural — the gap was that panel-level boundaries by definition don't catch
+  - Hard part: nothing structural - the gap was that panel-level boundaries by definition don't catch
     throws OUTSIDE the panels, and there were no `window.onerror` / `unhandledrejection` handlers at
     all, so uncaught async errors and rejected promises were completely invisible.
 
@@ -45,8 +45,8 @@ green. No backend, no new dependencies, no keys — deliberately the part that n
   activation-funnel events (export started / completed / failed).
   - Number: 1 file; a single future `setTelemetrySink()` call routes everything to Sentry/PostHog with
     no other change to the codebase.
-  - Hard part: none technically. The point was to add the seam NOW — routing to the console and
-    installing the global error handlers — so the app stops being blind, without committing to an SDK
+  - Hard part: none technically. The point was to add the seam NOW - routing to the console and
+    installing the global error handlers - so the app stops being blind, without committing to an SDK
     or keys before the founder has set those accounts up.
 
 ## 2026-08-13
@@ -54,26 +54,26 @@ green. No backend, no new dependencies, no keys — deliberately the part that n
 A short day: one audio fix, then three AI-pipeline milestones (M1 orchestrator, M2 auto-fix, M3
 metadata persistence). 4 commits (plus the previous day's devlog), net +486/−26 across 11 files.
 typecheck 0 and lint at the 127 baseline throughout. The AI work is all proven with Node harnesses
-and a fake model client — no API key touched yet; that's the next milestone (M4, a key-holding
+and a fake model client - no API key touched yet; that's the next milestone (M4, a key-holding
 Supabase edge function), which is the first one that needs the founder.
 
 - The audio waveform now stretches and compacts as you zoom and scroll, instead of only being
   accurate when the whole clip fits on screen.
   - Number: 1 file, +23/−8.
   - Hard part: the clip element is clamped to the viewport (`clipLeft = max(0, inX)`,
-    `clipRight = min(containerWidth, outX)`), so its width is only the VISIBLE slice — but the
+    `clipRight = min(containerWidth, outX)`), so its width is only the VISIBLE slice - but the
     waveform strips were mapping the WHOLE clip's peak window across that slice, squeezing the entire
     waveform into the visible part once a clip ran past the viewport. Fix derives the visible frame
     sub-window from the clamp (`hiddenLeftFrames = (clipLeft − inX)/frameWidth`,
     `visibleFrames = barWidth/frameWidth`) and maps only that source sub-range (× playbackRate for
-    video). Canvas size is unchanged — still bounded by the viewport.
+    video). Canvas size is unchanged - still bounded by the viewport.
 
 - internal: the AI pipeline is now one call. `generate(description, canvas, …, client)` runs
   Director → compilePlan → Coder(per panel) → compile() into a committed-ready composition. Before,
   the stages only ran in isolation (a dev fixture, or a Node runner that printed fragments).
   - Number: `verify:generate`, 1 check (a fake client returns a Director plan, then a valid fragment
     per panel parsed out of each request).
-  - Hard part: nothing structural — it's the glue the earlier stages were built to slot into. The
+  - Hard part: nothing structural - it's the glue the earlier stages were built to slot into. The
     interesting part was making it deterministic and fully testable with a fake client so the whole
     thing can be proven without a key.
 
@@ -82,7 +82,7 @@ Supabase edge function), which is the first one that needs the founder.
   from) and re-runs that panel's Coder with the errors fed back, bounded to 2 rounds; anything left
   stays in the report.
   - Number: `verify:generate` +2 checks (auto-fixed in one round; a stubborn error stops at the cap).
-  - Hard part: constructing a test error that PASSES the Coder's own validation but FAILS assembly —
+  - Hard part: constructing a test error that PASSES the Coder's own validation but FAILS assembly -
     a fragment layer whose `parentId` points at a missing sibling. `validateCoderFragment` never
     checks parentId, but assembly flags `dangling-parent`, so it's exactly the cross-stage case the
     loop exists for. The Coder gained a `feedback` field that seeds the repair note into its first
@@ -121,10 +121,10 @@ harnesses + guards and needs a real run to confirm.
   with a small panel to write the text, pick a font, pick an entrance (fade/slide/pop), pick
   granularity (whole / per-word / per-char), and place.
   - Number: reuses `explodeTextLayer` + `applyAnimationPresetBatch`.
-  - Hard part: confirming the explode shifts each piece's `inPoint` — it does, so `atStart` preset
+  - Hard part: confirming the explode shifts each piece's `inPoint` - it does, so `atStart` preset
     timing fans the entrance out per word/char with no extra machinery.
 
-- internal: a frame-pure range-selector primitive — `weight(unitIndex, count, cfg) → [0,1]`, the
+- internal: a frame-pure range-selector primitive - `weight(unitIndex, count, cfg) → [0,1]`, the
   AE-range-selector / Cavalry-falloff abstraction the text animation lacked.
   - Number: `verify:rangeselector`, 12 checks, provable in Node.
   - Hard part: the "one-sided clamp-hold" model. square = a held typewriter step, and bands are made
@@ -146,7 +146,7 @@ harnesses + guards and needs a real run to confirm.
 
 - Audio clips are double height and the waveform actually reads as the clip's audio.
   - Number: `AUDIO_ROW_HEIGHT` 44 (2× the 22 default), updated in both `getTrackHeight` copies.
-  - Hard part: "barely visible" was not a size problem, it was no normalization — raw PCM peaks from
+  - Hard part: "barely visible" was not a size problem, it was no normalization - raw PCM peaks from
     a quiet recording barely leave the centre line. Now normalized per-clip to its loudest column
     (dynamics preserved, scale filled), and drawn symmetric/mirrored in a dark amber.
 
@@ -156,12 +156,12 @@ harnesses + guards and needs a real run to confirm.
   context menu, and the multi-select "Add Subtitles" (which replaces the 3D button for audio).
   - Number: ~670 lines across four commits; `verify:caption-window` 9 checks (window math + global
     placement + de-overlap, in Node).
-  - Hard part: (1) the existing caption flow transcribed the WHOLE source asset ignoring trim — a
+  - Hard part: (1) the existing caption flow transcribed the WHOLE source asset ignoring trim - a
     new per-clip slice does trim + downmix + 16 kHz resample in one `OfflineAudioContext`
     (`start(0, startSec, spanSec)`). (2) It's a browser app, so there is no whisper.cpp/WhisperKit;
     transformers.js on WebGPU was already the runtime. (3) Determinism pinned (temperature 0,
-    greedy) and self-host via `env.remoteHost`. (4) None of the transcription runs here — WebGPU
-    isn't available — so only the pure timing/placement math is proven.
+    greedy) and self-host via `env.remoteHost`. (4) None of the transcription runs here - WebGPU
+    isn't available - so only the pure timing/placement math is proven.
 
 - A "Tasks" side panel (same shape as the AI panel, no chat) shows a live log of background work:
   model-download %, "Transcribing clip N of M", "Captions added", etc. Clicking the floating
@@ -170,14 +170,14 @@ harnesses + guards and needs a real run to confirm.
   - Hard part: nothing structural; the flow logs one line per event and updates the download line in
     place.
 
-- internal: the AI Coder stage — the missing model stage. `runCoder(job) → CoderFragment` mirrors
+- internal: the AI Coder stage - the missing model stage. `runCoder(job) → CoderFragment` mirrors
   `runDirector` (forced tool, retry-once-with-errors, fail-loudly) plus a Coder-local validator
   (id-namespace ownership, panelId match, budget, boundary present-lists).
   - Number: `verify:coder` 9 checks with a fake client (no network); `scripts/coder-run.mjs` runs
     the real Director → compilePlan → Coder end to end. Deleted 2 stale AI docs, added
     `docs/AI_PLAN.md` as the canonical one.
   - Hard part: the coder-local semantic checks are the cross-fragment rules Zod can't express. The
-    prompt (`coder.md`) is a first draft — it can only be tuned against the real model, which needs
+    prompt (`coder.md`) is a first draft - it can only be tuned against the real model, which needs
     the API key (kept out of the browser; env var for Node, a Supabase edge function later).
 
 - Text clips in the timeline show a preview of their actual text, ellipsized when it doesn't fit.
@@ -188,8 +188,8 @@ harnesses + guards and needs a real run to confirm.
   undo step: opacity/blend for anything visual, fill/border for shapes+text, font+size for text,
   volume for audio, and a one-click entrance for all.
   - Number: it is now the default multi-select tab; each edit is one command over the selection.
-  - Hard part: routing each control to the right per-type path — `shape.fillColor` vs the text
-    spans' `style.color`, `animOverrides.fontSize` for text size, `audio.volume` for audio — and
+  - Hard part: routing each control to the right per-type path - `shape.fillColor` vs the text
+    spans' `style.color`, `animOverrides.fontSize` for text size, `audio.volume` for audio - and
     only rendering a control when the selection actually contains a layer it applies to.
 
 ## 2026-08-11
@@ -199,26 +199,26 @@ a near-total rewrite of the video pipeline (ending in adopting a real library). 
 +1546/−158 across 31 files (the net is small because a mis-diagnosed fix and its revert cancel out,
 and a lot of the video work was replacing code, not adding). typecheck stayed at 0 and lint at the
 127 baseline through every commit. Anything touching WebGPU/WebCodecs is browser-unverifiable here,
-so it ships behind harnesses + guards and needs a real run to feel — several of today's fixes were
+so it ships behind harnesses + guards and needs a real run to feel - several of today's fixes were
 found only after the user tested and reported the actual symptom.
 
 ### The cinematic agent build (self-building templates)
 
-- Inserting a template — from the gallery OR the AI chat — now animates the editor assembling the
+- Inserting a template - from the gallery OR the AI chat - now animates the editor assembling the
   scene: the whole editor border pulses amber, a big custom cursor flies around, layers appear one at
   a time on a rising-speed (Rush-E) curve, then keyframes get placed while the timeline auto-scrolls
   to follow and inspector property rows light up.
   - Hard parts, in order of how they were found: (1) the timeline auto-scroll was paging by the
-    *ruler's* height (~21px) because both TrackArea instances published `containerHeight` — so the
+    *ruler's* height (~21px) because both TrackArea instances published `containerHeight` - so the
     active row landed just off the top edge and nothing looked like it moved. (2) Showing all ~170
     tracks up front made every step re-render the whole timeline, so the rAF steps batched and the
-    reveal collapsed into one jump — fixed by growing the timeline (only revealed layers' tracks) and
+    reveal collapsed into one jump - fixed by growing the timeline (only revealed layers' tracks) and
     capping steps/frame. (3) The keyframe sweep only iterated *animated* layers, so if they cluster
-    at the top the view barely scrolled — now it sweeps every row. (4) The cursor clicked at random;
+    at the top the view barely scrolled - now it sweeps every row. (4) The cursor clicked at random;
     now it flies to each shape's real mathematical center (world position → canvas rect) and clicks
     there. Cursor is a bigger on-brand amber Figma-style arrow.
 - Multi-select gained a "Convert all to 3D" button (under Align) that flips every selected layer to
-  3D in one undo step — prepping a scene for a camera used to be one-layer-at-a-time.
+  3D in one undo step - prepping a scene for a camera used to be one-layer-at-a-time.
 
 - Space (and other shortcuts) stopped working while the AI panel was open: the composer `<textarea>`
   kept focus, so the app's global keydown gate swallowed every key. Now `send()` blurs it → focus
@@ -249,7 +249,7 @@ found only after the user tested and reported the actual symptom.
   mp4box+WebCodecs pump was a perpetual liability, **adopted mediabunny** (the lib OpenCut uses) behind
   the existing `videoDecoderPool` API, feature-flagged with an instant `localStorage` rollback.
   - Hard part: the first mediabunny cut used `getSample(t)` per frame, and mediabunny's source shows
-    that spins up a fresh decoder and re-walks the whole GOP on *every* call — so playback still
+    that spins up a fresh decoder and re-walks the whole GOP on *every* call - so playback still
     froze-then-jumped. Fixed with the OpenCut `VideoCache` pattern: a per-asset pool of long-lived
     forward `samples()` iterators that advance one `next()` per sequential frame (one decode) and only
     reseek on a real jump, with a per-cursor seek-generation to cancel superseded scrubs. Bumped
@@ -270,8 +270,8 @@ found only after the user tested and reported the actual symptom.
 ## 2026-08-10
 
 An AI-authoring day bookended by bug-fixing. 12 commits, net +4808/−97 across 58 files. The bulk
-was plumbing for prompt→animation — a Zod contract package, a deterministic compiler, and a real
-Director stage that turns a prompt into a validated plan — none of it wired into the browser UI
+was plumbing for prompt→animation - a Zod contract package, a deterministic compiler, and a real
+Director stage that turns a prompt into a validated plan - none of it wired into the browser UI
 yet. On top of that: a scripted AI-chat mockup that actually builds two scenes on the canvas
 (Blackjack, Galaxy), two rounds of crash-fixing around selecting template layers, and dashboard +
 timeline polish. typecheck stayed at 0 and lint at the 127 baseline through every commit. The
@@ -279,22 +279,22 @@ Director talks to a real API but only from Node; nothing calls it from the UI.
 
 ### AI animation-authoring pipeline (schema → compiler → Director)
 
-- internal: a strict Zod "contract" package (`@/schema`) describing a whole animation document —
-  layers, properties, easings, cloner, panels, style contract — that exports JSON Schema for a
+- internal: a strict Zod "contract" package (`@/schema`) describing a whole animation document -
+  layers, properties, easings, cloner, panels, style contract - that exports JSON Schema for a
   model to target.
   - Number: verify:schema, 18 checks.
   - Hard part: Zod v4 is only reachable through the `zod/v4` subpath of the installed v3 build, and
-    `.refine`/`.superRefine` silently drop out of the JSON Schema export (runtime-only) — so every
+    `.refine`/`.superRefine` silently drop out of the JSON Schema export (runtime-only) - so every
     constraint the model must *see* had to be structural (min/max, enums, discriminated unions),
     leaving only cross-field checks to a separate semantic validator. `.prefault({})` (not
     `.default({})`) is what makes a defaulted object optional on the input side.
 
-- internal: a deterministic compiler — validated plan → jobs, returned fragments → a committed
+- internal: a deterministic compiler - validated plan → jobs, returned fragments → a committed
   Composition.
   - Number: verify:compiler, 23 checks; 9 preset attachments.
   - Hard part: it must be deterministic (same plan → byte-identical composition), so nothing in it
     can read a clock or a seed. Defaulted preset params fought the type system (the `.default({})`
-    overload, and generic indexed-access reported "not callable") — resolved by building the
+    overload, and generic indexed-access reported "not callable") - resolved by building the
     attachments explicitly instead of generically.
 
 - internal: a Director stage that sends a prompt + the JSON Schema to a real model and returns a
@@ -309,13 +309,13 @@ Director talks to a real API but only from Node; nothing calls it from the UI.
 
 ### AI chat mockup + two buildable scenes
 
-- The first message in the AI panel runs a scripted "generation" — streamed intro, a live checklist
-  (Director → Coders with a rising layer count → Assembly → …) — then actually builds a Blackjack
+- The first message in the AI panel runs a scripted "generation" - streamed intro, a live checklist
+  (Director → Coders with a rising layer count → Assembly → …) - then actually builds a Blackjack
   Deal scene on the canvas. A second message ("can you create a galaxy too?") builds a Galaxy.
   - Number: Blackjack is a ~13s top-down 2.5D scene (dealt hands, camera push-in, per-glyph
     commentary); verify:anim-templates, 142 checks (5 for blackjack).
-  - Hard part: both scenes build *animated* — layers reveal one at a time, then the keyframes apply
-    — instead of dumping in at once. That needed a store action (`insertAnimationTemplateAnimated`)
+  - Hard part: both scenes build *animated* - layers reveal one at a time, then the keyframes apply
+    - instead of dumping in at once. That needed a store action (`insertAnimationTemplateAnimated`)
     that stages the static layers one per tick (keyframes stripped) via non-undoable sets, then
     commits the keyframed layers as a *single* undo step, driven by the mockup's checklist
     callbacks.
@@ -327,10 +327,10 @@ Director talks to a real API but only from Node; nothing calls it from the UI.
   TransformOverlay, and made the fields readable in the inspector.
 - Round 2 (the one actually firing): a template *group* crashed the same way the moment it was
   selected. `getLeafWorldSize`'s catch-all `else` cast *any* non-video/image/shape/group layer to a
-  text layer — and Blackjack parents its **camera** into the scene group, so computing the group's
+  text layer - and Blackjack parents its **camera** into the scene group, so computing the group's
   bounds dereferenced `camera.content.spans`.
   - Number: verify:groupbounds, 3 checks (camera-in-group → no throw, shape-derived bounds).
-  - Hard part: round 1 was the right spirit in the wrong file — the live path was
+  - Hard part: round 1 was the right spirit in the wrong file - the live path was
     `computeGroupBounds → getLeafWorldSize`, not the inspector/overlay. Fixed by handling text
     explicitly (guarded) and returning null for camera/audio/cloner/precomp/particle/layout: types
     that don't contribute a leaf rectangle to a group's bounds.
@@ -357,14 +357,14 @@ Director talks to a real API but only from Node; nothing calls it from the UI.
 A launch-polish day, then a deep dive into the 2.5D camera. 24 commits (+ one empty one I
 pushed by accident), 52 files changed, +2777/−323. Roughly two halves: the morning cleared
 launch blockers (a crash, SEO, the dashboard, the AE camera dialog); the afternoon built the
-camera into something you can actually *fly* — a world-space 3D view, a keyframe editor, and
+camera into something you can actually *fly* - a world-space 3D view, a keyframe editor, and
 a true smooth spatial-bezier path. typecheck stayed at 0 and lint at the 127 baseline through
 every commit. Everything that touches WebGPU or pointer behaviour is Node-harness-verified
 only, so it still needs a browser to *feel*.
 
 ### Launch blockers (morning)
 
-- The Cloner no longer crashes the editor — and now actually draws its instances.
+- The Cloner no longer crashes the editor - and now actually draws its instances.
   - Number: verify:cloner-render, 8 checks.
   - Hard part: it wasn't skipping the cloner, it was mis-bucketing it. A resolved cloner has
     no drawable payload of its own, and the renderer's catch-all `else` filed it as a *shape*,
@@ -380,20 +380,20 @@ only, so it still needs a browser to *feel*.
 
 - Multi-select outlines now sit on parented objects instead of up-and-left of them.
   - Internal: `getLayerWorldBounds` was reading the layer's *local* `transform.position`
-    rather than its world position through the parent chain — swapped to `getWorldPosition`.
+    rather than its world position through the parent chain - swapped to `getWorldPosition`.
 
 - Full SEO pass + the FlashFX mark now appears in the site/app headers.
   - Number: rewrote `index.html` head, added robots.txt, sitemap.xml, web manifest, an inline
     brand logo, and a rasterised OG image + apple-touch icon (PNG).
   - Hard part: a raw `&` inside the OG SVG's aria-label broke librsvg (strict XML) and produced
-    a blank PNG — had to escape it to `&amp;`. Sitemap lives at `editor.flashfx.app/sitemap.xml`.
+    a blank PNG - had to escape it to `&amp;`. Sitemap lives at `editor.flashfx.app/sitemap.xml`.
 
 - The dashboard tabs work: Recents / All / Starred / Trash / Templates, plus starring and a
   real trash lifecycle (7-day purge, 30 if starred, and a permanent-delete that asks you to
   type the project name GitHub-style).
   - Number: verify:trash, 5 checks (retention math). Four scene deep-links added to a new
     Templates tab (galaxy, city skyline, rocket launch, forest).
-  - Hard part: keeping the retention math pure so it could be proven in Node — purge time is
+  - Hard part: keeping the retention math pure so it could be proven in Node - purge time is
     derived (`trashedAt + retentionDays`), and "starred gets longer" had to survive the
     round-trip without a background job to lean on.
 
@@ -404,7 +404,7 @@ only, so it still needs a browser to *feel*.
   tutorial-video placeholder.
   - Number: verify:camera3d, 24 checks. Researched AE's actual behaviour with a multi-agent
     workflow first, then implemented the algebra exactly.
-  - Hard part: the four lens fields are *one* identity — `Z = f·C/F` — so storing all of them
+  - Hard part: the four lens fields are *one* identity - `Z = f·C/F` - so storing all of them
     would desync the moment you keyframe. Only Zoom (px) is stored and render-affecting; Focal
     Length / AOV / F-Stop are derived for display, so they can never drift. DOF is a per-3D-layer
     circle-of-confusion routed through the existing blur pipeline, honouring AE's "lock to zoom".
@@ -414,23 +414,23 @@ only, so it still needs a browser to *feel*.
 - Dropped the FlashFX brand button from the editor top bar (just "Projects" now), removed the
   em-dash separator from the dashboard header, collapsed "Render" + a small "Export" into one
   prominent **Export** button, and fully hid the Animation Builder (kept the code, not the button).
-- A "2.5D Camera Parallax" template that uses the camera meaningfully — cards at varying depth
-  with a keyframed truck + push — reachable by deep link.
+- A "2.5D Camera Parallax" template that uses the camera meaningfully - cards at varying depth
+  with a keyframed truck + push - reachable by deep link.
 
 ### The camera you can fly (afternoon)
 
 - A 3D View in the inspector: an orthographic, AE-style schematic of the world where the camera
   and 3D layers live, shown *alongside* the live canvas when a camera is selected (the tab
   sidebar hides for space). Drag the camera and its point-of-interest to place them; the main
-  canvas updates live. Plus crash mitigation — a WebGPU validation-error scope that captures and
+  canvas updates live. Plus crash mitigation - a WebGPU validation-error scope that captures and
   logs instead of letting a validation error escalate to a lost device.
   - Hard part: the Side view wouldn't drag. The SVG used a fixed square viewBox with the default
-    `preserveAspectRatio`, which letterboxes, but the pointer math assumed a linear stretch — so
+    `preserveAspectRatio`, which letterboxes, but the pointer math assumed a linear stretch - so
     clicks skewed on the letterboxed axis. Fixed by tracking the element's real pixel size as the
     viewBox with `preserveAspectRatio="none"`, giving a 1:1 pointer mapping on both views.
 
 - A "Disable Camera" toggle in the canvas top-right: renders the screen flat 2D, as if no camera
-  existed, so a 2.5D comp can be edited without fighting the perspective. Screen-only — export
+  existed, so a 2.5D comp can be edited without fighting the perspective. Screen-only - export
   always keeps the camera.
   - Internal: the entire M2 3D/MVP path is already gated on `frame.camera` existing, so dropping
     the camera for the screen render yields the exact 2D result with no other change.
@@ -442,7 +442,7 @@ only, so it still needs a browser to *feel*.
 - A camera-path keyframe editor in the 3D view: a rhombus that follows the camera to key its
   position, world-anchored keyframe markers (click to seek, right-click to delete), a dotted
   "possible path" that becomes a solid line at 2+ keys, and a right-click menu per segment.
-  - Hard part: the drawn path is *sampled from the real evaluated eye*, not a guess — so what you
+  - Hard part: the drawn path is *sampled from the real evaluated eye*, not a guess - so what you
     see is exactly what renders, for any interpolation.
 
 - Smooth spatial-bezier camera path with draggable tangent handles.
@@ -461,8 +461,8 @@ only, so it still needs a browser to *feel*.
   projects stay distinguishable.
   - Hard part: the old capture did `canvas.toBlob()` on the WebGPU canvas at teardown, which
     hands back a blank or stale frame. The new one renders a random frame to an *offscreen*
-    target on the live device — reusing the warmed-up texture caches, never touching the visible
-    canvas (no flash) — then downscales to a small WebP and overwrites the old blob in place.
+    target on the live device - reusing the warmed-up texture caches, never touching the visible
+    canvas (no flash) - then downscales to a small WebP and overwrites the old blob in place.
 
 - A loading splash covers the editor on open until the scene, assets, and first frame are ready.
   - Hard part: opening a project janks the main thread for a couple seconds (deserialize +
@@ -470,12 +470,12 @@ only, so it still needs a browser to *feel*.
     and progress bar are pure CSS transform animations, so they run on the compositor thread and
     keep moving *through* the freeze.
 
-- A revert-to-default (↺) button on every Transform property row — Position → comp centre,
-  Scale → 1, rotations/Z → 0, Opacity → 1 — keyframe-aware, and dimmed when already at default.
+- A revert-to-default (↺) button on every Transform property row - Position → comp centre,
+  Scale → 1, rotations/Z → 0, Opacity → 1 - keyframe-aware, and dimmed when already at default.
 
 ## 2026-08-08
 
-The biggest day so far: 40 commits, +9917/−362, ~253 file-changes. Six arcs — the last
+The biggest day so far: 40 commits, +9917/−362, ~253 file-changes. Six arcs - the last
 Figma "time-saver" milestones (M17–M22), a self-driving tutorial, landing-page deep-links,
 a 24-template animation library, a toggleable AI-chat mockup, a GPU procedural-pattern
 engine, and the start of a 2.5D system (camera + 3D layers). typecheck stayed at 0 and lint
@@ -488,7 +488,7 @@ structurally verified only (Node harnesses + guards), so it needs a browser to f
 - Batch-rename a multi-selection with tokens + numbering + regex (M19, Ctrl+R).
 - Freehand pencil/draw tool (M18, Shift+P).
 - Rulers with ticks/labels + live snap-to-pixel (M20).
-- Shared linked color styles — edit once, everything linked updates (M21). Shape/text
+- Shared linked color styles - edit once, everything linked updates (M21). Shape/text
   fill+stroke read through the style before the material overlay.
 - Outline stroke + holes-preserving compound booleans (M22).
   - Hard part: preserving holes through a boolean means tracking even-odd winding, not just
@@ -499,7 +499,7 @@ structurally verified only (Node harnesses + guards), so it needs a browser to f
 - A tutorial that builds a full title-card scene by driving the *real* editor store
   (chapters 1–10), with a UI spotlight overlay and a first-open CTA.
   - Hard part: it runs the actual store actions rather than a scripted fake, so each step
-    has to tolerate real state and undo — a canned animation would drift from the editor.
+    has to tolerate real state and undo - a canned animation would drift from the editor.
 
 ### Landing-page deep-links (3 commits)
 
@@ -512,17 +512,17 @@ structurally verified only (Node harnesses + guards), so it needs a browser to f
 
 ### Animation-template library (9 commits)
 
-- "Use this" inserts a real animation — graphics *plus* keyframes and interpolation — at the
+- "Use this" inserts a real animation - graphics *plus* keyframes and interpolation - at the
   playhead, not just static shapes. 24+ templates: scenes (beach/forest/night), weather
   (sunset/rain/city/snow), creative (galaxy/phone-chat/pen/clock/fireworks/rocket/coffee/
-  confetti/spinner), and four showcases — Chain Reaction (Rube Goldberg, 200 balls),
+  confetti/spinner), and four showcases - Chain Reaction (Rube Goldberg, 200 balls),
   Departure Board (split-flap flip-wave + parallax planes + rain matte), Bar Chart Race
   (baked reordering), Recursive Editor (FlashFX animating a video editor). Plus an "All"
   button that inserts every template back-to-back.
   - Number: verify:anim-templates, 132 checks.
   - Hard parts: templates are authored 0-based and rebased to the playhead (rescaled if the
     comp fps differs from the authoring fps). The Recursive Editor lives or dies on cursor
-    believability — the cursor engine is a bezier arc + ballistic velocity + overshoot +
+    believability - the cursor engine is a bezier arc + ballistic velocity + overshoot +
     dwell + sub-pixel noise + icon swaps. The bar-race reorder is *baked* because a live
     reorder needs a per-frame sort the keyframe model can't express.
 
@@ -549,20 +549,20 @@ structurally verified only (Node harnesses + guards), so it needs a browser to f
 
 ### Timeline layer-name column (2 commits)
 
-- The layer-name column doubles in Edit mode, then sizes dynamically — grows to fit the
+- The layer-name column doubles in Edit mode, then sizes dynamically - grows to fit the
   busiest track up to a cap.
   - Number: clip counts computed O(N) via a Map, not per-track-per-render.
 
-### 2.5D system — camera + 3D layers (M0–M3 + M6 + M2, 8 commits)
+### 2.5D system - camera + 3D layers (M0–M3 + M6 + M2, 8 commits)
 
 The start of After-Effects-style cards-in-space. Built so that a 2D comp stays byte-identical
 at every step (the depth fields default to 0; the GPU path is gated on an `is3D` flag).
 
 - M0: a pure column-major mat4 core + `Transform` gains optional positionZ/rotationX/rotationY.
 - M1: a first-class camera layer resolving to View/Projection each frame; the default camera
-  frames the comp 1:1 for *any* zoom (AE parity — a lone layer toggled 3D doesn't jump).
+  frames the comp 1:1 for *any* zoom (AE parity - a lone layer toggled 3D doesn't jump).
 - M3: the 3D-layer toggle + inspector X/Y/Z position/rotation rows.
-- M2: the renderer — per-3D-layer MVP projection in WGSL (appended to the image/shape/text/
+- M2: the renderer - per-3D-layer MVP projection in WGSL (appended to the image/shape/text/
   pattern uniforms) + painter's z-sort (3D layers far→near, 2D layers pin the order).
   - Numbers: verify:mat4 9, verify:camera3d 17, verify:scene3d 5.
   - Hard part: the y-down handedness trap. The default camera was flipping *both* screen axes
@@ -570,7 +570,7 @@ at every step (the depth fields default to 0; the GPU path is gated on an `is3D`
     it passed anyway. Fixed with a −Y comp-up vector and pinned with signed-parity assertions
     (top-left → (−1,+1), etc.). The GPU projection itself is browser-unverifiable, so it's
     additive + guarded (zero-init `is3D` flag → 2D layers can't be affected) and all the hard
-    math — parity, foreshortening, painter order — is proven in Node.
+    math - parity, foreshortening, painter order - is proven in Node.
 
 ## 2026-08-07
 
@@ -578,7 +578,7 @@ Nine Figma "time-saver" milestones in one day (M2–M10, 8 commits), plus M1 whi
 landed late the night before. All vector/editing UX. 8 new Node verify harnesses
 (transform HUD, measurement, equal-gap, nudge, fuzzy search, tangent, bend, path
 cleanup); typecheck stayed at 0 and lint at its 127 baseline through every commit.
-Everything with pointer/WebGPU behaviour is structurally verified only — it needs a
+Everything with pointer/WebGPU behaviour is structurally verified only - it needs a
 browser to feel, so each commit carries its own manual-check list.
 
 - Drag a corner to round it, per-corner (M1, shipped late 2026-08-06).
@@ -602,7 +602,7 @@ browser to feel, so each commit carries its own manual-check list.
 
 - Alt-hover shows pixel distances to neighbours; dragging snaps to equal gaps.
   - Number: verify:measure (9) + verify:equalgap (7).
-  - Hard part: equal-gap detection is a fuzzy match over the gaps between bounding boxes —
+  - Hard part: equal-gap detection is a fuzzy match over the gaps between bounding boxes -
     finding the run of objects that are (nearly) evenly spaced and snapping to complete it,
     without the snap fighting the pointer.
 
@@ -615,21 +615,21 @@ browser to feel, so each commit carries its own manual-check list.
 
 - Command palette on Ctrl+/ or Ctrl+K, backed by a command registry.
   - Number: verify:fuzzy, 10 assertions (the palette's fuzzy matcher).
-  - Hard part: the value is the registry, not the popup — commands had to be described as
+  - Hard part: the value is the registry, not the popup - commands had to be described as
     data (id, label, when-enabled, run) so the palette, and later menus/shortcuts, all read
     one source instead of re-deriving state.
 
 - Alt-drag to duplicate; Ctrl+D duplicates and then repeats the last transform.
   - Number: +offset carries; a second Ctrl+D re-applies the same delta (array building).
   - Hard part: "power duplicate" means remembering the last move/rotate as a delta and
-    re-applying it on each Ctrl+D, and leaving a copy at the origin when you Alt-drag — two
+    re-applying it on each Ctrl+D, and leaving a copy at the origin when you Alt-drag - two
     different notions of "the thing that just happened" that had to be tracked separately.
 
 - Enter turns any shape into an editable path; full tangent-handle control while editing.
   - Number: verify:tangent, 6 assertions; handle modes mirrored / angle-only / independent,
     Alt to break a tangent for one drag.
   - Hard part: `normalizeAngle(-360)` returned `-0`, which fails `deepEqual` against `0`
-    (Object.is) and broke the harness — fixed with `+0` normalization. And the handle-mode
+    (Object.is) and broke the harness - fixed with `+0` normalization. And the handle-mode
     UI had to go in `ShapeProperties`, not `InspectorTabContent`; the polygon inspector
     section lives in a different component than it looked.
 
@@ -654,11 +654,11 @@ Two commits: a dependency-security pass and a feature-planning doc. No user-faci
 
 - internal: cut npm audit vulnerabilities from 23 to 2.
   - Number: 8 advisories fixed via package.json `overrides`; 6 of them were "high".
-  - Hard part: `npm audit fix` said "no fix available" for the high ones, but that was wrong in the way that matters. Four were in the `@huggingface/transformers` Node backend (sharp, onnxruntime-node, adm-zip) — code this browser app never bundles or runs (the AI workers use the webgpu/wasm backend; grep of `dist/` confirms none of it ships). Patched versions existed; npm just couldn't cross transformers' `^0.34.5` pin, so an override forces them at zero runtime risk. The esbuild override needed proof it wouldn't break vite 5.4 — verified with the build, all 11 harnesses, and `vite optimize`. Also had to prove the 107 lint errors were pre-existing (they are at HEAD), not caused by the dep changes. The remaining 2 are vite's own dev-server advisories, fixed only by a vite 8 major upgrade.
+  - Hard part: `npm audit fix` said "no fix available" for the high ones, but that was wrong in the way that matters. Four were in the `@huggingface/transformers` Node backend (sharp, onnxruntime-node, adm-zip) - code this browser app never bundles or runs (the AI workers use the webgpu/wasm backend; grep of `dist/` confirms none of it ships). Patched versions existed; npm just couldn't cross transformers' `^0.34.5` pin, so an override forces them at zero runtime risk. The esbuild override needed proof it wouldn't break vite 5.4 - verified with the build, all 11 harnesses, and `vite optimize`. Also had to prove the 107 lint errors were pre-existing (they are at HEAD), not caused by the dep changes. The remaining 2 are vite's own dev-server advisories, fixed only by a vite 8 major upgrade.
 
 - internal: wrote a 22-milestone plan for porting Figma's editing time-savers into FlashFX.
   - Number: 33-feature gap matrix, produced by an 11-agent research+audit workflow (5 web-research + 5 codebase-audit + 1 synthesis).
-  - Hard part: the value was in the audit, not the research — cross-referencing each Figma feature against the actual code found that a lot of it is already half-built and just unwired. The Cloner (a full MoGraph repeater) has no UI at all; the four boolean ops exist but only Union has a keybinding; `borderRadius` is already an animatable property. So several "features" are exposure work, not new engines.
+  - Hard part: the value was in the audit, not the research - cross-referencing each Figma feature against the actual code found that a lot of it is already half-built and just unwired. The Cloner (a full MoGraph repeater) has no UI at all; the four boolean ops exist but only Union has a keybinding; `borderRadius` is already an animatable property. So several "features" are exposure work, not new engines.
 
 ## 2026-08-05
 
@@ -670,7 +670,7 @@ Video/playback + audio-sync work. Not yet committed at time of writing; this ent
 
 - New toggle for audio-synced playback (AudioLines button in the preview bar, default off).
   - Number: 392 lines of new engine code; 3 pure-logic harnesses, 24 assertions. Old path unchanged when off.
-  - Hard part: none of it runs in the dev environment — no WebAudio/WebCodecs/WebGPU. So the clock, the frame-selection, and the audio-scheduling math were pulled out into pure functions and proven in Node instead. Also the picture has to be shown at the clock reading minus output latency, not the raw reading, or it leads the sound by 20–200ms.
+  - Hard part: none of it runs in the dev environment - no WebAudio/WebCodecs/WebGPU. So the clock, the frame-selection, and the audio-scheduling math were pulled out into pure functions and proven in Node instead. Also the picture has to be shown at the clock reading minus output latency, not the raw reading, or it leads the sound by 20–200ms.
 
 - Video clips with sound play audio on load, and the VU meters move.
   - Number: collapsed onto 1 shared AudioContext (was a second, private one).
@@ -682,7 +682,7 @@ Video/playback + audio-sync work. Not yet committed at time of writing; this ent
 
 - Deleting one half of a split clip no longer freezes or mutes the other half.
   - Number: +17/−2 in the delete action.
-  - Hard part: the texture is per-layer so it's always safe to drop, but the decoder registration and audio element are per-asset — they must only be torn down when no surviving layer still points at that asset, and the release has to be deduped so deleting both halves at once doesn't over-release the audio refcount.
+  - Hard part: the texture is per-layer so it's always safe to drop, but the decoder registration and audio element are per-asset - they must only be torn down when no surviving layer still points at that asset, and the release has to be deduped so deleting both halves at once doesn't over-release the audio refcount.
 
 - Pressing play with the playhead parked mid-clip on a pitch-shifted audio clip starts at the right sample.
   - Number: one shared scheduling function now used by preview; export left alone (its bounding is already exact, and a harness proves the two agree).

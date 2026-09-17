@@ -1,4 +1,4 @@
-# FlashFX AI — implementation plan & status
+# FlashFX AI - implementation plan & status
 
 **This is the canonical AI plan.** The real system is `src/ai/` + `src/schema/` + the contract in
 [`docs/ai-contract/`](./ai-contract/). (The old `AI_IMPLEMENTATION_ANALYSIS.md` /
@@ -48,30 +48,30 @@ the regeneration inputs don't persist, and there's no browser path (the key can'
 
 ### Milestones to a working in-app AI (definitive order)
 
-- **M1 — Pipeline orchestrator** `generate(description, canvas, …, client) → { composition, styles,
+- **M1 - Pipeline orchestrator** `generate(description, canvas, …, client) → { composition, styles,
   report, aiMeta, usage }`. Runs Director → `compilePlan` → Coder per panel → `compile()`. The single
   entry point the app, the node runner, and tests all use. Provable here (fake client) + live via the
   node runner. **Needs nothing from you.** ← NEXT
-- **M2 — Auto-fix loop** (inside the orchestrator). `runDirector`/`runCoder` already self-retry on
+- **M2 - Auto-fix loop** (inside the orchestrator). `runDirector`/`runCoder` already self-retry on
   their OWN validation; M2 catches the cross-stage errors only `compile()` sees (assembly seams,
   ownership) and re-runs the offending stage with the errors fed back (bounded, e.g. 2 repairs).
   Provable here. **Needs nothing from you.**
-- **M3 — `aiMeta` persistence** — whitelist brief/styleContract/panelPlan/seed/digest/tier through
+- **M3 - `aiMeta` persistence** - whitelist brief/styleContract/panelPlan/seed/digest/tier through
   `src/project-system/services/validation.ts` (it's on the core type but stripped on save/load).
   Round-trip harness. **Needs nothing from you.**
-- **M4 — Key-holding proxy** — a Supabase edge function (Deno, the `drive-assets` pattern) holding
+- **M4 - Key-holding proxy** - a Supabase edge function (Deno, the `drive-assets` pattern) holding
   `ANTHROPIC_API_KEY` as a secret, proxying Director+Coder calls to Anthropic. **I write it; you set
   the secret + deploy** (two commands, below). The ONLY milestone that needs you.
-- **M5 — Browser wiring (the feature)** — a browser client hitting the proxy; replace the AiChatPanel
+- **M5 - Browser wiring (the feature)** - a browser client hitting the proxy; replace the AiChatPanel
   mockup with prompt → orchestrator → commit onto the canvas, progress in the Tasks panel. Needs M4.
-- **M6 — Edit & assets (polish)** — regenerate/tweak via `aiMeta`; bind real image/video assets;
+- **M6 - Edit & assets (polish)** - regenerate/tweak via `aiMeta`; bind real image/video assets;
   usage/cost + tier UI.
 
 M1–M3 are all buildable and provable here now, with no key. M4 is your two commands. M5 lights it up.
 
 ## What I need from you (and when)
 
-Nothing is needed to **build and prove the Coder stage** — it's pure code + a fake-client harness.
+Nothing is needed to **build and prove the Coder stage** - it's pure code + a fake-client harness.
 
 The key/infra is only needed to run against the **real model**:
 
@@ -79,7 +79,7 @@ The key/infra is only needed to run against the **real model**:
   environment variable. Set it in your shell or a **gitignored `.env` you manage yourself**:
   `export ANTHROPIC_API_KEY=sk-ant-...`. I never handle, store, or print the key. This already works
   for `scripts/director-run.mjs`; the Coder gets a `scripts/coder-run.mjs` the same way.
-  ⚠️ **Never** put it in a `VITE_` variable — those get bundled into the browser and would leak the key.
+  ⚠️ **Never** put it in a `VITE_` variable - those get bundled into the browser and would leak the key.
 - **Browser wiring (later):** the key must stay server-side. The plan is a **Supabase edge function**
   (the "worker", same pattern as the existing `supabase/functions/drive-assets`) that holds
   `ANTHROPIC_API_KEY` as a **Supabase secret** (`supabase secrets set ANTHROPIC_API_KEY=...`) and
