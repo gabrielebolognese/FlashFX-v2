@@ -26,6 +26,8 @@
     "verify:fill-sampler": "node scripts/verify-fill-sampler.mjs",
     "verify:text-kinetic": "node scripts/verify-text-kinetic.mjs",
     "verify:mask-reveal": "node scripts/verify-mask-reveal.mjs",
+    "verify:mattes": "node scripts/verify-mattes.mjs",
+    "verify:mask-path": "node scripts/verify-mask-path.mjs",
     "verify:ai-client": "node scripts/verify-ai-client.mjs",
     "verify:cloud-sync": "node scripts/verify-cloudsync.mjs",
     "verify:plans": "node scripts/verify-plans.mjs",

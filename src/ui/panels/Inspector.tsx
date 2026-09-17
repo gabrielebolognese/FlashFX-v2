@@ -11,6 +11,7 @@ import { BrandColorPicker } from '../components/BrandColorPicker';
 import { PanelTutorialButton } from '../tutorials/PanelTutorialButton';
 import { tutorialForSectionTitle } from '../tutorials/registry';
 import { MASK_REVEAL_KINDS, type MaskRevealKind } from '../../core/maskReveal';
+import type { TrackMatteMode } from '../../core/trackMatte';
 import type { ShapeLayer, TextLayer, VideoLayer, ImageLayer, AudioLayer, ParticleLayer, GenerativePatternLayer, CameraLayer, AnimationItemLayer, LottieIconLayer, AnimatableProperty, Vec2, Vec4, RectangleShape, CircleShape, StarShape, PolygonShape, MotionPathAnchor, MotionPathLoop, Mask, MaskType, Layer, LayerShadow, LayerGlow, LayerBlur, BlurType, GlowMode, LayoutObjectLayer, LayoutContainerLayer, TextSpanStyle, TextLayoutConfig, TextGradientFill, ShapeModifierType } from '../../core/types';
 
 // Safe fallbacks so the Text inspector renders even for a text layer with missing/empty content or
@@ -327,6 +328,7 @@ function NavItem({
 function InspectorTabContent({ tab, layer }: { tab: InspectorTab; layer: Layer }) {
   const currentFrame = useTimelineStore((s) => s.currentFrame);
   const updateLayerProperty = useEditorStore((s) => s.updateLayerProperty);
+  const setTrackMatte = useEditorStore((s) => s.setTrackMatte);
   const addKeyframe = useEditorStore((s) => s.addKeyframe);
   const toggleLayer3D = useEditorStore((s) => s.toggleLayer3D);
   const toggleSeparateDimensions = useEditorStore((s) => s.toggleSeparateDimensions);
@@ -664,6 +666,24 @@ function InspectorTabContent({ tab, layer }: { tab: InspectorTab; layer: Layer }
           <label className="text-caption text-slate-500 w-14 flex-shrink-0">Type</label>
           <span className="text-caption text-slate-400 capitalize">{layer.type}</span>
         </div>
+        {/* Track matte (B10b): matte this layer by the layer directly above it. Composite pass is
+            browser-gated; the setting is authored + persisted now. */}
+        {['shape', 'text', 'video', 'image', 'lottieIcon'].includes(layer.type) && (
+          <div className="flex items-center gap-2 mt-1">
+            <label className="text-caption text-slate-500 w-14 flex-shrink-0">Matte</label>
+            <select
+              value={(layer as { trackMatte?: TrackMatteMode }).trackMatte ?? ''}
+              onChange={(e) => setTrackMatte(layer.id, (e.target.value || undefined) as TrackMatteMode | undefined)}
+              className="flex-1 rounded border border-hairline bg-[#0e1726] px-1.5 py-0.5 text-caption text-slate-200 focus:border-accent focus:outline-none"
+            >
+              <option value="">No track matte</option>
+              <option value="alpha">Alpha matte (layer above)</option>
+              <option value="alphaInv">Alpha inverted</option>
+              <option value="luma">Luma matte (layer above)</option>
+              <option value="lumaInv">Luma inverted</option>
+            </select>
+          </div>
+        )}
       </Section>
 
       {/* Show child override panel if this layer is inside a layout */}

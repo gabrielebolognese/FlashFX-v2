@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { Composition, SceneDocument, Layer, AnimatableProperty, Keyframe, Vec2, Vec4, InterpolationType, BackgroundLayer, Track, TrackType, VideoPlaybackMode, PathVertex, VertexType, Mask, MaskType, AnchorEdge, PhysicsBindingDef, PhysicsWorldDef, StaggerBindingDef, LayoutObjectLayer, LayoutContainerLayer, ContainerShapeType, Marker, ShapeLayer, PolygonShape, TextLayer, ShapeModifierType } from '../core/types';
 import type { EasingName } from '../core/easings';
 import { buildMaskReveal, type MaskRevealKind } from '../core/maskReveal';
+import type { TrackMatteMode } from '../core/trackMatte';
 import { autoSpatialTangents, segmentArcLength, framesFromCumLengths } from '../core/positionPath';
 import { splitDimensions, mergeDimensions } from '../core/separateDimensions';
 import { createComposition, createRectangleLayer, createCircleLayer, createStarLayer, createPolygonLayer, createDefaultPolygonVertices, createTextLayer, createDefaultTextContent, createVideoLayer, createImageLayer, createAudioLayer, createGroupLayer, createKeyframe, createBackgroundLayer, createMask, createParticleLayer, createAnimationItemLayer, createFieldSampledLayer, createGenerativePatternLayer, createCameraLayer, createLottieIconLayer, createLayoutObjectLayer, createLayoutContainerLayer, createDefaultChildOverride, createProperty, createShapeModifier, createShapeRepeater, uid } from '../core/factory';
@@ -422,6 +423,8 @@ interface EditorState {
   removeLayer: (id: string) => void;
   removeLayers: (ids: string[]) => void;
   updateLayerProperty: (layerId: string, path: string, value: unknown) => void;
+  /** Track matte (B10b): set/clear how this layer is matted by the layer directly above it. */
+  setTrackMatte: (layerId: string, mode: TrackMatteMode | undefined) => void;
   /** Path modifier stack (B8a) — trim/offset/roughen on a shape layer's outline. Params are edited
    *  through the generic updateLayerProperty/addKeyframe on `modifiers.<i>.<param>` dot-paths. */
   addShapeModifier: (layerId: string, type: ShapeModifierType) => void;
@@ -6017,6 +6020,16 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       execute: () => { set({ composition: newComp }); },
       undo: () => { set({ composition: oldComp }); },
     });
+  },
+
+  setTrackMatte: (layerId, mode) => {
+    const { composition } = get();
+    const layer = composition.layers.find((l) => l.id === layerId);
+    if (!layer) return;
+    const oldComp = composition;
+    const newLayers = composition.layers.map((l) => (l.id === layerId ? ({ ...l, trackMatte: mode } as Layer) : l));
+    const comp: Composition = { ...composition, layers: newLayers };
+    exec({ label: mode ? 'Set Track Matte' : 'Clear Track Matte', execute: () => set({ composition: comp }), undo: () => set({ composition: oldComp }) });
   },
 
   applyMaskReveal: (layerId, maskId, kind, startFrame, durationFrames) => {

@@ -19,6 +19,8 @@ import type { RangeSelectorConfig } from '../text/rangeSelector';
 import type { EasingName } from './easings';
 // Retime interpolation mode ('mix' | 'flow') — type-only; opticalFlow.ts imports nothing back.
 import type { RetimeInterp } from './opticalFlow';
+// Track-matte mode (B10b) — type-only; trackMatte.ts imports nothing back.
+import type { TrackMatteMode } from './trackMatte';
 
 export type Vec2 = [number, number];
 export type Vec4 = [number, number, number, number];
@@ -361,6 +363,13 @@ export interface Mask {
   opacity: AnimatableProperty;
   points: number;
   innerRadius: AnimatableProperty;
+  // ── Freeform path mask (B10c, foundation) ── Optional bezier outline + optional per-vertex feather.
+  // When present the mask is a freeform path (animated via `pathKeyframes`, reusing B8b's morph). The
+  // resolver evaluates these into ResolvedMask; the freeform coverage SHADER is the remaining browser
+  // step, so nothing authors these yet — existing parametric masks are unaffected.
+  vertices?: PathVertex[];
+  pathKeyframes?: PathKeyframe[];
+  feathers?: number[]; // per-vertex feather in px; absent → the single `feather` applies uniformly
 }
 
 export interface ResolvedMask {
@@ -375,6 +384,10 @@ export interface ResolvedMask {
   opacity: number;
   points: number;
   innerRadius: number;
+  // Freeform path mask (B10c): the evaluated bezier outline + per-vertex feather for this frame.
+  // Present only for path masks; the coverage shader that consumes them is browser-gated.
+  vertices?: PathVertex[];
+  feathers?: number[];
 }
 
 // A keyframeable 2.5D projected shadow. The shadow is rendered as a separate
@@ -495,6 +508,8 @@ export interface ShapeLayer {
   blendMode: BlendMode;
   transform: Transform;
   masks?: Mask[];
+  /** Track matte (B10b): this layer is matted by the layer directly above (its alpha/luma). */
+  trackMatte?: TrackMatteMode;
   shape: ShapeGeometry;
   /** Ordered non-destructive path operators (trim / offset / roughen). See ShapeModifier. */
   modifiers?: ShapeModifier[];
@@ -583,6 +598,8 @@ export interface TextLayer {
   blendMode: BlendMode;
   transform: Transform;
   masks?: Mask[];
+  /** Track matte (B10b): this layer is matted by the layer directly above (its alpha/luma). */
+  trackMatte?: TrackMatteMode;
   content: TextContent;
   layoutConfig: TextLayoutConfig;
   animOverrides: TextAnimatableOverrides;
@@ -639,6 +656,8 @@ export interface VideoLayer {
   blendMode: BlendMode;
   transform: Transform;
   masks?: Mask[];
+  /** Track matte (B10b): this layer is matted by the layer directly above (its alpha/luma). */
+  trackMatte?: TrackMatteMode;
   video: {
     assetId: string;
     sourceWidth: number;
@@ -745,6 +764,8 @@ export interface ImageLayer {
   blendMode: BlendMode;
   transform: Transform;
   masks?: Mask[];
+  /** Track matte (B10b): this layer is matted by the layer directly above (its alpha/luma). */
+  trackMatte?: TrackMatteMode;
   image: {
     assetId: string;
     sourceWidth: number;
@@ -882,6 +903,8 @@ export interface GenerativePatternLayer {
   width: AnimatableProperty;
   height: AnimatableProperty;
   masks?: Mask[];
+  /** Track matte (B10b): this layer is matted by the layer directly above (its alpha/luma). */
+  trackMatte?: TrackMatteMode;
   // Keyframeable pattern knobs — override the static config values when animated (frequency, rotation,
   // domain-warp, contrast). Seeded from the config; the render reads these, not the config copies.
   patternAnim: {
@@ -915,6 +938,8 @@ export interface LottieIconLayer {
   blendMode: BlendMode;
   transform: Transform;
   masks?: Mask[];
+  /** Track matte (B10b): this layer is matted by the layer directly above (its alpha/luma). */
+  trackMatte?: TrackMatteMode;
   lottieIcon: {
     jsonPath: string;
     jsonData: string;
@@ -1145,6 +1170,8 @@ export interface CameraLayer {
   glow?: LayerGlow;
   blur?: LayerBlur;
   masks?: Mask[];
+  /** Track matte (B10b): this layer is matted by the layer directly above (its alpha/luma). */
+  trackMatte?: TrackMatteMode;
   camera: CameraSettings;
 }
 
@@ -1169,6 +1196,8 @@ export interface PrecompLayer {
   blur?: LayerBlur;
   is3D?: boolean;
   masks?: Mask[];
+  /** Track matte (B10b): this layer is matted by the layer directly above (its alpha/luma). */
+  trackMatte?: TrackMatteMode;
   /** Registry key of the referenced sub-composition. */
   compositionId: string;
   timeRemap?: PrecompTimeRemap;
@@ -1780,6 +1809,12 @@ export interface ResolvedLayer {
   // 2.5D (M2): true when the source layer's 3D switch is on — the renderer projects it through
   // the frame camera (MVP) and depth-sorts it. Absent/false → the untouched 2D path.
   is3D?: boolean;
+  // Track matte (B10b): this layer is matted by `matte.sourceId` (its alpha/luma). Set at resolve
+  // time from the pairing; the renderer's matte composite pass (browser-gated) consumes it.
+  matte?: import('./trackMatte').MatteRef;
+  // True when this layer is consumed AS a matte source (drawn into the matte, not composited on its
+  // own). Resolve marks it not visible so the standalone draw is skipped until the composite lands.
+  consumedAsMatte?: boolean;
   layerType: 'shape' | 'text' | 'video' | 'image' | 'audio' | 'particle' | 'fieldSampled' | 'generativePattern' | 'lottieIcon' | 'cloner' | 'precomp';
 }
 

@@ -43,9 +43,10 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | B9c | Per-character 3D rotation (delta + stamp 3D wiring; camera-gated) | ✅ | medium |
 | B9d | Per-glyph blur-in (per-stamp blur via existing pipeline) | ✅ | medium |
 | B10a | Mask reveal wipes (iris + directional, pure — existing mask render) | ✅ | light |
-| B10b | Track mattes (alpha/luma ± inverted; resolver pure + GPU composite, browser-gated) | ▶ **next** | medium |
-| B10c | Freeform mask paths + per-vertex feather (model + new mask primitive shader) | ⬜ | **heavy** |
-| B10d | Basic roto / refine-edge (keying/edge pass) | ⬜ | **heavy** |
+| B10b | Track mattes — model + pure resolver pairing + UI + persist (composite pass browser-gated) | ✅ | medium |
+| B10c | Freeform mask paths + per-vertex feather — model + pure resolver (coverage shader browser-gated) | ✅ | medium |
+| B10d | Track-matte composite pass + freeform mask coverage shader (the browser-gated GPU) | ▶ **next** | **heavy** |
+| B10e | Basic roto / refine-edge (keying/edge pass) | ⬜ | **heavy** |
 | B11 | ★ Effect-stack framework + adjustment layers + blend-mode audit | ⬜ | medium (foundation) |
 | B12 | Glow & light finishing (bloom, deep-glow, light wrap, glints) | ⬜ | medium |
 | B13 | Stylise & cinematic finish (chromatic ab., lens distort, grain, halftone) | ⬜ | medium |
@@ -153,13 +154,16 @@ Audit: FlashFX masks are **analytic/parametric SDF primitives** (rectangle/ellip
 ### B10a — Mask reveal wipes ✅ DONE
 **Delivered:** one-click **iris + directional wipe** reveals that keyframe an EXISTING mask's position+size so the masked content wipes on over ~1s from the playhead (the mask's current size is the fully-revealed end state). Pure `core/maskReveal.ts` (`buildMaskReveal`, `MASK_REVEAL_KINDS`: iris-in, wipe →/←/↓/↑) — each collapses the mask to a sliver/point anchored to the right edge and grows it back, so the reveal uses the **shipping SDF+feather mask shader with no engine change**. Store `applyMaskReveal` (undoable; sets position/size keyframes + clears invert); a "Reveal" dropdown in the Inspector Masks section. **Verify:** new `verify:mask-reveal` (8 checks: end==current, per-kind edge anchoring, growth/monotonicity, 1-frame guard). tsc 0, lint 125, build ok, **67 harnesses**. Fully node-verifiable (drives the proven mask render).
 
-### B10b — Track mattes ▶ NEXT
-**Delivers:** one layer mattes the layer below — **alpha / alpha-inverted / luma / luma-inverted**. Real gap (grep-confirmed absent). **PURE/harnessable:** `Layer.trackMatte` field + resolver pairing (the matte is the layer directly above; mark the source consumed) → `ResolvedLayer` + `verify:mattes`. **Browser-gated:** the composite pass — render the matte source to an isolated texture (the `layerTex`/per-draw isolated-pass plumbing at renderer.ts ~4224/4500 is the reuse surface) and multiply the matted layer's alpha by the matte's alpha/luma. **Perf:** medium; new pipeline binding the matte texture.
+### B10b — Track mattes ✅ DONE (foundation; composite pass browser-gated)
+**Delivered:** the track-matte **data model + pure resolver + authoring UI + persistence** — a layer is matted by the layer directly above it, modes **alpha / alpha-inverted / luma / luma-inverted**. Pure `core/trackMatte.ts` (`pairTrackMattes` — pairs each matted layer with the layer above, marks the source consumed, deterministic; `matteFlags` → luma/invert for the shader). `Layer.trackMatte?: TrackMatteMode` on the masked layer types; resolveFrame records `matte`/`consumedAsMatte` on the paired `ResolvedLayer`s (**metadata only — rendering byte-identical**, a no-op when no layer uses a matte). Store `setTrackMatte` (undoable); a Track-Matte dropdown in the Inspector Layer section; persisted in `baseFields`. **Verify:** `verify:mattes` (7 checks: pairing = layer above, consumed source, topmost-ignored, per-mode, dedupe guard, matteFlags). **Browser-gated remainder (B10d):** the composite pass — render the matte source to an isolated texture (renderer.ts ~4224/4500 `layerTex` plumbing) and multiply the matted layer's alpha by the matte's alpha/luma; skip `consumedAsMatte` draws. tsc 0, lint 125, build ok, 68 harnesses.
 
-### B10c — Freeform mask paths + per-vertex feather
-**Delivers:** bezier mask outlines that keyframe (animated mask shapes, reusing B8b `evalPathKeyframes`) + per-vertex feather. **Blocked at the data model:** Mask needs `vertices: PathVertex[]` + `pathKeyframes?` (a new `'path'` MaskType), AND a new freeform-polygon **coverage shader** (the current analytic SDFs can't draw an arbitrary outline). **Perf:** heavy; the resolver reuse is pure, the GPU primitive is the real cost.
+### B10c — Freeform mask paths + per-vertex feather ✅ DONE (foundation; coverage shader browser-gated)
+**Delivered:** the **data model + pure resolver** for freeform (bezier-outline) masks with animated shapes and per-vertex feather. `Mask` gains optional `vertices?: PathVertex[]` / `pathKeyframes?: PathKeyframe[]` / `feathers?: number[]` (additive — **no `MaskType` change, so no cascade**; existing parametric masks untouched). Pure `core/maskPath.ts` (`resolveMaskVertices` — animated outline via **B8b `evalPathKeyframes`** reuse, static fallback; `resolveMaskFeathers` — per-vertex feather padded/clamped to the fallback). `resolveMask`/`resolveMasks` attach the evaluated `vertices`/`feathers` to `ResolvedMask` when present; persisted in `ensureMasks`. **Verify:** `verify:mask-path` (7 checks: static/empty, at-pose/between morph, feather fallback/per-vertex/clamp). **Browser-gated remainder (B10d):** a freeform-polygon **coverage shader** (the shipping mask primitives are analytic SDFs and can't draw an arbitrary outline) + the authoring UI to draw path masks. tsc 0, lint 125, build ok, 69 harnesses.
 
-### B10d — Basic roto / refine-edge
+### B10d — Track-matte composite + freeform mask coverage shader (GPU)
+**Delivers:** the browser-gated GPU for B10b + B10c — the track-matte composite pass (alpha/luma multiply from the matte's isolated texture) and the freeform-polygon mask coverage shader + path-mask authoring UI. **Perf:** heavy; needs a WebGPU browser to build + verify.
+
+### B10e — Basic roto / refine-edge
 **Delivers:** a simple rotoscope / edge-refine cut-out. **Largest scope, browser-gated** — a pixel-classification/keying pass or the B10c freeform-path work. A minimal "refine = feather + choke over the existing mask alpha" could reuse the C2 `matteExpansion`/`featherAlpha` effects. Deferred.
 
 ## B11 — ★ Effect-stack framework + adjustment layers + blend-mode audit

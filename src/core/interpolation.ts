@@ -20,6 +20,7 @@ import type {
   ImageLayer,
   LottieIconLayer,
   Mask,
+  PathVertex,
   MotionPath,
   LayoutObjectLayer,
   LayoutContainerLayer,
@@ -30,6 +31,8 @@ import { measureText, getTextLayout, measureAdvance } from '../engine/textAtlas'
 import { accumulateGlyphDeltas, type ResolvedTextAnimator } from './textAnimator';
 import { decodeCharAt } from './textDecode';
 import { totalPathLength, pointAndAngleAt, glyphPathFraction, type TextPathNode } from './textPath';
+import { pairTrackMattes, type TrackMatteMode } from './trackMatte';
+import { resolveMaskVertices, resolveMaskFeathers } from './maskPath';
 import { evaluateMotionPathAtFrame } from './motionPath';
 import { computeInstanceTransforms, selectClonerRenderPath, buildDataBoundSources } from '../cloner';
 import type { ClonerLayer } from '../cloner/types';
@@ -752,7 +755,17 @@ function resolveMask(masks: Mask[] | undefined, frame: number): ResolvedMask | u
     opacity: clamp(evaluateNumber(mask.opacity, frame), 0, 1),
     points: Math.max(3, Math.round(mask.points)),
     innerRadius: Math.max(0, evaluateNumber(mask.innerRadius, frame)),
+    ...maskPathFields(mask, frame),
   };
+}
+
+// Freeform path mask (B10c foundation): evaluate the optional outline + per-vertex feather for the
+// frame. Empty ({}) for ordinary parametric masks, so ResolvedMask is unchanged for them.
+function maskPathFields(mask: Mask, frame: number): { vertices?: PathVertex[]; feathers?: number[] } {
+  if (!mask.vertices && !(mask.pathKeyframes && mask.pathKeyframes.length > 0)) return {};
+  const vertices = resolveMaskVertices(mask.vertices, mask.pathKeyframes, frame);
+  const feathers = resolveMaskFeathers(mask.feathers, vertices.length, Math.max(0, evaluateNumber(mask.feather, frame)));
+  return { vertices, feathers };
 }
 
 function resolveMasks(masks: Mask[] | undefined, frame: number): ResolvedMask[] {
@@ -774,6 +787,7 @@ function resolveMasks(masks: Mask[] | undefined, frame: number): ResolvedMask[] 
       opacity: clamp(evaluateNumber(mask.opacity, frame), 0, 1),
       points: Math.max(3, Math.round(mask.points)),
       innerRadius: Math.max(0, evaluateNumber(mask.innerRadius, frame)),
+      ...maskPathFields(mask, frame),
     });
   }
   return result;
@@ -1743,6 +1757,19 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
     for (const rl of resolvedLayers) {
       const src = _layerById.get(rl.id);
       if (src?.is3D) { rl.worldMatrix = worldMatrixFor(rl.id, frame); rl.is3D = true; }
+    }
+  }
+
+  // Track mattes (B10b): pair each matted source layer with the layer directly above (pure), then
+  // record `matte` / `consumedAsMatte` on the resolved layers by source id. This is metadata ONLY —
+  // rendering stays byte-identical until the renderer's matte composite pass (browser-gated) consumes
+  // it; a no-op when no layer has a trackMatte, so all existing comps are unaffected.
+  const mattePairing = pairTrackMattes(sortedLayers.map((l) => ({ id: l.id, trackMatte: (l as { trackMatte?: TrackMatteMode }).trackMatte })));
+  if (Object.keys(mattePairing.matted).length > 0) {
+    for (const rl of resolvedLayers) {
+      const ref = mattePairing.matted[rl.id];
+      if (ref) rl.matte = ref;
+      if (mattePairing.consumed.has(rl.id)) rl.consumedAsMatte = true;
     }
   }
 

@@ -403,6 +403,10 @@ function ensureMasks(val: unknown): Mask[] | undefined {
       opacity: ensureAnimatableProperty(m.opacity, 'Mask Opacity', 'number', 1),
       points: typeof m.points === 'number' ? m.points : 5,
       innerRadius: ensureAnimatableProperty(m.innerRadius, 'Inner Radius', 'number', 40),
+      // B10c foundation — preserve an optional freeform outline + per-vertex feather.
+      ...(Array.isArray(m.vertices) ? { vertices: m.vertices as Mask['vertices'] } : {}),
+      ...(Array.isArray(m.pathKeyframes) ? { pathKeyframes: m.pathKeyframes as Mask['pathKeyframes'] } : {}),
+      ...(Array.isArray(m.feathers) ? { feathers: (m.feathers as unknown[]).filter((f): f is number => typeof f === 'number') } : {}),
     });
   }
   return masks.length > 0 ? masks : undefined;
@@ -428,6 +432,8 @@ function validateLayer(raw: unknown): Layer | null {
     masks: ensureMasks(r.masks),
     inPoint: typeof r.inPoint === 'number' ? r.inPoint : 0,
     outPoint: typeof r.outPoint === 'number' ? r.outPoint : 150,
+    // B10b — preserve the track-matte mode (else stripped on save/load).
+    ...(r.trackMatte === 'alpha' || r.trackMatte === 'alphaInv' || r.trackMatte === 'luma' || r.trackMatte === 'lumaInv' ? { trackMatte: r.trackMatte } : {}),
     ...(typeof r.labelColor === 'string' ? { labelColor: r.labelColor } : {}),
     // M14 reframe constraints — preserve through the round-trip (else stripped on save/load,
     // the same data-loss class that bit cloner/precomp).
