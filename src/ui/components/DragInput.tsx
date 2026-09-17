@@ -27,6 +27,10 @@ interface DragInputProps {
   className?: string;
   /** Undo-history label for the single entry a drag commits on release. */
   commitLabel?: string;
+  /** Exponential drag: the per-pixel step scales with the current value (fine below ~100, faster the
+   *  higher you go). For wide-range props (e.g. stroke width up to 5000) where fine control near 0-100
+   *  matters but you occasionally need to go very high. Ignores the range-aware base sensitivity. */
+  exponential?: boolean;
 }
 
 export function DragInput({
@@ -40,6 +44,7 @@ export function DragInput({
   suffix,
   className = '',
   commitLabel = 'Update Property',
+  exponential = false,
 }: DragInputProps) {
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
@@ -109,8 +114,18 @@ export function DragInput({
           target.requestPointerLock();
         } catch { /* pointer lock may not be available */ }
       }
-      const mult = getMultiplier(moveEvt);
-      dragState.current.accumulated += moveEvt.movementX * mult;
+      let perPixel: number;
+      if (exponential) {
+        // Value-proportional: step grows with the current magnitude, so dv/dx ∝ v (exponential in
+        // drag distance). Below the pivot it stays at the fine base; above it accelerates. Alt/Shift
+        // still coarsen/refine the base.
+        const cur = dragState.current.startValue + dragState.current.accumulated;
+        const fine = moveEvt.altKey ? step * 10 : moveEvt.shiftKey ? step * 0.1 : step;
+        perPixel = fine * Math.max(1, Math.abs(cur) / 100);
+      } else {
+        perPixel = getMultiplier(moveEvt);
+      }
+      dragState.current.accumulated += moveEvt.movementX * perPixel;
       const newValue = clampValue(dragState.current.startValue + dragState.current.accumulated);
       onChange(newValue);
     };
@@ -143,7 +158,7 @@ export function DragInput({
 
     document.addEventListener('pointermove', handlePointerMove);
     document.addEventListener('pointerup', handlePointerUp);
-  }, [editing, value, onChange, clampValue, getMultiplier, precision, commitLabel]);
+  }, [editing, value, onChange, clampValue, getMultiplier, precision, commitLabel, exponential, step]);
 
   const handleDoubleClick = useCallback((e: React.MouseEvent) => {
     e.preventDefault();

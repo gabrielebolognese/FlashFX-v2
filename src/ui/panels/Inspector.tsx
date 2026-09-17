@@ -867,7 +867,13 @@ function ShapeProperties({
       )}
 
       <ColorStyleRow label="Fill" layerId={layer.id} slot="fill" rawColor={shape.fillColor} onRawChange={(v) => updateLayerProperty(layer.id, 'shape.fillColor', v)} />
+      {layer.materialConfig && (
+        <p className="text-caption text-amber-400/80 leading-snug pl-14">Fill uses an advanced material (Advanced ▸ Material) — this flat fill color is overridden.</p>
+      )}
       <ColorStyleRow label="Stroke" layerId={layer.id} slot="stroke" rawColor={shape.strokeColor} onRawChange={(v) => updateLayerProperty(layer.id, 'shape.strokeColor', v)} />
+      {layer.strokeMaterialConfig && (
+        <p className="text-caption text-amber-400/80 leading-snug pl-14">Stroke uses an advanced material (Advanced ▸ Material) — this flat stroke color is overridden.</p>
+      )}
       <NumberDragInput
         label="Stroke W"
         prop={shape.strokeWidth}
@@ -876,8 +882,9 @@ function ShapeProperties({
         onKeyframe={(v) => addKeyframe(layer.id, 'shape.strokeWidth', currentFrame, v)}
         hasKeyframe={hasKeyframeAt(shape.strokeWidth)}
         min={0}
-        max={50}
+        max={5000}
         step={0.5}
+        exponential
       />
 
       {shape.type === 'polygon' && (
@@ -2260,8 +2267,9 @@ function TextProperties({
               onKeyframe={(v) => addKeyframe(layer.id, 'animOverrides.strokeWidth', currentFrame, v)}
               hasKeyframe={hasKeyframeAt(overrides.strokeWidth)}
               min={0}
-              max={20}
+              max={5000}
               step={0.5}
+              exponential
             />
           </Section>
 
@@ -2556,7 +2564,7 @@ function StringInput({ label, value, onChange }: { label: string; value: string;
 }
 
 function NumberDragInput({
-  label, prop, frame, onChange, onKeyframe, hasKeyframe, min, max, step, precision, suffix, defaultValue, propPath,
+  label, prop, frame, onChange, onKeyframe, hasKeyframe, min, max, step, precision, suffix, defaultValue, propPath, exponential,
 }: {
   label: string;
   prop: AnimatableProperty;
@@ -2569,6 +2577,8 @@ function NumberDragInput({
   step?: number;
   precision?: number;
   suffix?: string;
+  /** Value-proportional (exponential) drag — see DragInput. */
+  exponential?: boolean;
   /** When provided, shows a revert-to-default button (active only when the value differs). */
   defaultValue?: number;
   /** Dotted property path (e.g. "transform.opacity") — powers `data-prop` targeting and the
@@ -2599,6 +2609,7 @@ function NumberDragInput({
         step={step}
         precision={precision}
         suffix={suffix}
+        exponential={exponential}
         className="flex-1"
       />
       {defaultValue !== undefined && (
