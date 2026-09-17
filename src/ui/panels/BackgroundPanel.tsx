@@ -7,6 +7,7 @@ import { useGridStore } from '../../store/grid';
 import { sampleBakedFrame } from '../../physics/bake';
 import type { BackgroundLayer, BackgroundBlendMode, BackgroundLayerType, GradientStop, PhysicsBindingDef } from '../../core/types';
 import { DragInput } from '../components/DragInput';
+import { PanelTutorialButton } from '../tutorials/PanelTutorialButton';
 
 type CanvasTab = 'background' | 'grid' | 'physics';
 
@@ -59,6 +60,11 @@ export function BackgroundPanel() {
           {tab === 'background' && <BackgroundFillTab />}
           {tab === 'grid' && <GridTab />}
           {tab === 'physics' && <PhysicsWorldTab />}
+          {(tab === 'background' || tab === 'physics') && (
+            <div className="px-3 pb-3">
+              <PanelTutorialButton id={tab === 'physics' ? 'physics' : 'background'} />
+            </div>
+          )}
         </div>
         <nav className="flex-shrink-0 w-[96px] flex flex-col py-1 border-l border-hairline bg-[#0b0e15] overflow-y-auto">
           {tabs.map((t) => (

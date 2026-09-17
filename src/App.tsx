@@ -31,6 +31,7 @@ import { useSettingsStore, getSettingValue } from './settings/store';
 import { nudgeDelta } from './core/nudge';
 import { computeAlignment, computeDistribution, type AlignAxis, type DistributeMode } from './core/align';
 import { CommandPalette } from './ui/panels/CommandPalette';
+import { TutorialPanel as PanelHelpTutorial } from './ui/tutorials/TutorialPanel';
 import { useCommandPaletteStore } from './ui/commands/store';
 import { useShapeToolStore, isVectorTool } from './store/shapeTool';
 import { usePathEditStore } from './store/pathEdit';
@@ -548,6 +549,7 @@ function Editor() {
       <SettingsPanel />
       <SettingsCssInjector />
       <CommandPalette />
+      <PanelHelpTutorial />
       <TutorialRunner />
       <TutorialIntro />
       <ConsentBanner />

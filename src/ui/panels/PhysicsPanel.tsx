@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useEditorStore } from '../../store/editor';
 import type { PhysicsBindingDef, PhysicsRoleDef, PhysicsColliderModeDef, PhysicsVelocitySourceDef } from '../../core/types';
 import { Atom, Trash2, ChevronDown, ChevronRight, Zap } from 'lucide-react';
+import { PanelTutorialButton } from '../tutorials/PanelTutorialButton';
 
 const EMPTY_BINDINGS: PhysicsBindingDef[] = [];
 
@@ -296,6 +297,7 @@ export function PhysicsPanel() {
           ))}
         </div>
       )}
+      <PanelTutorialButton id="physics" />
     </div>
   );
 }

@@ -8,6 +8,8 @@ import { useMotionPathStore } from '../../store/motionPath';
 import { useMaskStore } from '../../store/mask';
 import { usePathEditStore } from '../../store/pathEdit';
 import { BrandColorPicker } from '../components/BrandColorPicker';
+import { PanelTutorialButton } from '../tutorials/PanelTutorialButton';
+import { tutorialForSectionTitle } from '../tutorials/registry';
 import type { ShapeLayer, TextLayer, VideoLayer, ImageLayer, AudioLayer, ParticleLayer, GenerativePatternLayer, CameraLayer, AnimationItemLayer, LottieIconLayer, AnimatableProperty, Vec2, Vec4, RectangleShape, CircleShape, StarShape, PolygonShape, MotionPathAnchor, MotionPathLoop, Mask, MaskType, Layer, LayerShadow, LayerGlow, LayerBlur, BlurType, GlowMode, LayoutObjectLayer, LayoutContainerLayer, TextSpanStyle, TextLayoutConfig, TextGradientFill, ShapeModifierType } from '../../core/types';
 
 // Safe fallbacks so the Text inspector renders even for a text layer with missing/empty content or
@@ -2501,13 +2503,19 @@ function ColorStyleRow({ label, layerId, slot, rawColor, onRawChange }: {
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, children, tutorial }: { title: string; children: React.ReactNode; tutorial?: string }) {
+  // A "Tutorial: How to use X" button auto-appears at the bottom when a tutorial is registered for this
+  // section (by explicit `tutorial` id, else by the normalized title). Renders nothing otherwise.
+  const tutId = tutorial ?? tutorialForSectionTitle(title)?.id;
   return (
     <div className="border-b border-hairline">
       <div className="px-3 py-1.5 bg-surface-sunken">
         <span className="text-overline uppercase tracking-wider text-slate-500 font-medium">{title}</span>
       </div>
-      <div className="px-3 py-2 space-y-1">{children}</div>
+      <div className="px-3 py-2 space-y-1">
+        {children}
+        {tutId && <PanelTutorialButton id={tutId} />}
+      </div>
     </div>
   );
 }
