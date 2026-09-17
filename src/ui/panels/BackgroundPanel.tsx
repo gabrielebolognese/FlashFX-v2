@@ -132,6 +132,7 @@ function EditorModeSwitch() {
           {isStarter ? "You're on starter editor" : 'Switch to starter editor'}
         </button>
         <button
+          data-tutorial-id="editor-mode-switch"
           onClick={() => { if (isStarter) setPending('pro'); }}
           className={`px-2 py-1.5 rounded text-[10px] font-semibold text-center leading-tight transition-colors ${isStarter ? otherCls : currentCls}`}
         >
