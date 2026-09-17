@@ -37,6 +37,7 @@ import type {
   ShapeRepeater,
   PathVertex,
   TextDecode,
+  TextPathBinding,
 } from '../../core/types';
 import { DEFAULT_DECODE_CHARSET } from '../../core/textDecode';
 import type { LayerConstraints } from '../../core/reframe';
@@ -73,6 +74,17 @@ function ensureTextDecode(val: unknown): TextDecode | undefined {
     charset: typeof val.charset === 'string' && val.charset.length > 0 ? val.charset : DEFAULT_DECODE_CHARSET,
     seed: typeof val.seed === 'number' ? val.seed : 1,
     scrambleHold: typeof val.scrambleHold === 'number' && val.scrambleHold >= 1 ? Math.floor(val.scrambleHold) : 2,
+  };
+}
+
+// Preserve the Text-on-path binding (B9b).
+function ensureTextPath(val: unknown): TextPathBinding | undefined {
+  if (!isObject(val) || typeof val.pathId !== 'string') return undefined;
+  return {
+    enabled: val.enabled !== false,
+    pathId: val.pathId,
+    align: val.align !== false,
+    margin: typeof val.margin === 'number' ? val.margin : 0,
   };
 }
 
@@ -490,6 +502,7 @@ function validateLayer(raw: unknown): Layer | null {
 
       const animators = ensureTextAnimators(r.animators);
       const decode = ensureTextDecode(r.decode);
+      const textPath = ensureTextPath(r.textPath);
       return {
         ...baseFields,
         type: 'text',
@@ -501,6 +514,7 @@ function validateLayer(raw: unknown): Layer | null {
         ...(typeof r.strokeStyleId === 'string' ? { strokeStyleId: r.strokeStyleId } : {}),
         ...(animators ? { animators } : {}),
         ...(decode ? { decode } : {}),
+        ...(textPath ? { textPath } : {}),
       } as TextLayer;
     }
     case 'group': {

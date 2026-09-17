@@ -552,6 +552,14 @@ export interface TextDecode {
   scrambleHold: number;         // frames each random char holds (flicker speed), >= 1
 }
 
+/** Text-on-a-path binding (B9b): which MotionPath to flow glyphs along + orientation/margin. */
+export interface TextPathBinding {
+  enabled: boolean;
+  pathId: string;   // references a MotionPath in composition.motionPaths
+  align: boolean;   // rotate each glyph to the path tangent
+  margin: number;   // px offset along the path where the text starts
+}
+
 export interface TextLayer {
   id: string;
   type: 'text';
@@ -577,6 +585,9 @@ export interface TextLayer {
   animators?: TextAnimator[];
   /** Text Decode / scramble reveal (B9). Absent/disabled → unchanged path. */
   decode?: TextDecode;
+  /** Text on a path (B9b): flow glyphs along a referenced MotionPath (interpreted in layer space).
+   *  Absent/disabled → normal linear layout. */
+  textPath?: TextPathBinding;
   /** M21 — linked color styles for text fill/stroke. */
   fillStyleId?: string;
   strokeStyleId?: string;

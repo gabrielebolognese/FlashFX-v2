@@ -91,6 +91,44 @@ try {
     assert.equal(decodeCharAt('A', 0, 5, 0, 0, 7, '', 2), ' ');
   });
 
+  // ── Text on a path (B9b) ──
+  const P = await bundle('src/core/textPath.ts', 'textPath.mjs');
+  const { totalPathLength, pointAndAngleAt, glyphPathFraction } = P;
+  const node = (x, y) => ({ position: [x, y], handleIn: [0, 0], handleOut: [0, 0] });
+  const hLine = [node(0, 0), node(100, 0)];   // straight, horizontal
+  const vLine = [node(0, 0), node(0, 100)];   // straight, vertical
+
+  check('totalPathLength: straight segment length', () => {
+    assert.ok(Math.abs(totalPathLength(hLine, false) - 100) < 1e-6);
+    assert.equal(totalPathLength([node(5, 5)], false), 0); // <2 nodes
+  });
+  check('pointAndAngleAt: horizontal path → walks x, angle ~0', () => {
+    const mid = pointAndAngleAt(hLine, false, 0.5);
+    assert.ok(Math.abs(mid.position[0] - 50) < 1e-6 && Math.abs(mid.position[1]) < 1e-6);
+    assert.ok(Math.abs(mid.angle) < 1e-6);
+    assert.ok(Math.abs(pointAndAngleAt(hLine, false, 0).position[0]) < 1e-6);
+    assert.ok(Math.abs(pointAndAngleAt(hLine, false, 1).position[0] - 100) < 1e-6);
+  });
+  check('pointAndAngleAt: vertical path → angle ~90°, clamps fraction', () => {
+    const mid = pointAndAngleAt(vLine, false, 0.5);
+    assert.ok(Math.abs(mid.position[1] - 50) < 1e-6);
+    assert.ok(Math.abs(mid.angle - 90) < 1e-6);
+    // out-of-range fractions clamp
+    assert.ok(Math.abs(pointAndAngleAt(vLine, false, 5).position[1] - 100) < 1e-6);
+  });
+  check('glyphPathFraction: (centerDist + margin) / pathLength, clamped', () => {
+    assert.ok(Math.abs(glyphPathFraction(50, 100, 0) - 0.5) < 1e-9);
+    assert.ok(Math.abs(glyphPathFraction(50, 100, 25) - 0.75) < 1e-9);
+    assert.equal(glyphPathFraction(200, 100, 0), 1); // clamps
+    assert.equal(glyphPathFraction(10, 0, 0), 0);    // zero-length guard
+  });
+  check('glyph placement composes: a glyph at centerDist maps onto the path point', () => {
+    // glyph centered 30px along a 100px horizontal path → (30, 0)
+    const f = glyphPathFraction(30, totalPathLength(hLine, false), 0);
+    const p = pointAndAngleAt(hLine, false, f);
+    assert.ok(Math.abs(p.position[0] - 30) < 1e-4 && Math.abs(p.position[1]) < 1e-4);
+  });
+
   console.log(`\n✓ all ${passed} checks passed`);
 } catch (err) {
   console.error('\n✖ text-kinetic harness failed:', err && err.stack ? err.stack : err);

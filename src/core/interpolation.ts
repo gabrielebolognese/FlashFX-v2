@@ -29,6 +29,7 @@ import type { ResolvedMotionBlur, ResolvedShadow, ResolvedBlur, LayerShadow, Lay
 import { measureText, getTextLayout, measureAdvance } from '../engine/textAtlas';
 import { accumulateGlyphDeltas, type ResolvedTextAnimator } from './textAnimator';
 import { decodeCharAt } from './textDecode';
+import { totalPathLength, pointAndAngleAt, glyphPathFraction, type TextPathNode } from './textPath';
 import { evaluateMotionPathAtFrame } from './motionPath';
 import { computeInstanceTransforms, selectClonerRenderPath, buildDataBoundSources } from '../cloner';
 import type { ClonerLayer } from '../cloner/types';
@@ -521,11 +522,13 @@ function expandTextGlyphs(
   world: ResolvedTransform,
   frame: number,
   common: Pick<ResolvedLayer, 'visible' | 'blendMode' | 'motionBlur' | 'shadow' | 'glow' | 'blur' | 'layerType'>,
+  textPathData: { nodes: TextPathNode[]; closed: boolean; align: boolean; margin: number } | null,
 ): ResolvedLayer[] | null {
   const active = (layer.animators ?? []).filter((a) => a.enabled);
   const content = baseText.content;
   const decode = layer.decode?.enabled ? layer.decode : null;
-  if ((active.length === 0 && !decode) || !content) return null;
+  const onPath = textPathData && textPathData.nodes.length >= 2 ? textPathData : null;
+  if ((active.length === 0 && !decode && !onPath) || !content) return null;
 
   const layout = getTextLayout(baseText);
   // Only the clean single-line case: bail (normal render) on hard breaks or word-wrap.
@@ -533,6 +536,8 @@ function expandTextGlyphs(
 
   // Decode (B9): the reveal fraction for this frame; each unrevealed glyph shows a seeded scramble char.
   const decProgress = decode ? evaluateNumber(decode.progress, frame) : 1;
+  // Text-on-path (B9b): total arc length, computed once (glyph fractions map into it below).
+  const pathLen = onPath ? totalPathLength(onPath.nodes, onPath.closed) : 0;
 
   const resolvedAnims: ResolvedTextAnimator[] = active.map((a) => ({
     splitMode: a.splitMode,
@@ -564,13 +569,26 @@ function expandTextGlyphs(
       const m = measureText(stampText);
       stampText.measuredWidth = m.width;
       stampText.measuredHeight = m.height;
-      const centerX = lineStartX + advPrev + (advNext - advPrev) / 2;
+      const centerDist = advPrev + (advNext - advPrev) / 2;
+      const centerX = lineStartX + centerDist;
+      // Text-on-path (B9b): map the glyph's along-text distance to an arc-length point + tangent on
+      // the path (layer-local space); else the normal linear layout. The pivot-offset (−anchor) and
+      // composeTransforms(world, …) below apply the layer transform identically either way.
+      let posX = centerX - world.anchorX + d.tx;
+      let posY = padding + halfFont - world.anchorY + d.ty;
+      let rot = d.rotation;
+      if (onPath) {
+        const { position, angle } = pointAndAngleAt(onPath.nodes, onPath.closed, glyphPathFraction(centerDist, pathLen, onPath.margin));
+        posX = position[0] - world.anchorX + d.tx;
+        posY = position[1] - world.anchorY + d.ty;
+        rot = (onPath.align ? angle : 0) + d.rotation;
+      }
       // Offset from the layer's pivot (anchor value cancels: the whole-text and stamp renders share
-      // the same pivot). Scale/rotate pivot at the glyph centre. y-centre ≈ line top + fontSize/2.
+      // the same pivot). Scale/rotate pivot at the glyph centre.
       const child: ResolvedTransform = {
-        positionX: centerX - world.anchorX + d.tx,
-        positionY: padding + halfFont - world.anchorY + d.ty,
-        rotation: d.rotation,
+        positionX: posX,
+        positionY: posY,
+        rotation: rot,
         scaleX: d.sx,
         scaleY: d.sy,
         anchorX: m.width / 2,
@@ -1195,8 +1213,14 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
       if (layer.type === 'text') {
         const resolvedText = resolveTextLayer(layer, frame, getStyle);
         const common = { visible: true as const, blendMode: layer.blendMode, motionBlur, shadow, glow, blur, layerType: 'text' as const };
+        // Text-on-path (B9b): resolve the referenced MotionPath's nodes (layer-local) for placement.
+        const tpBind = layer.textPath?.enabled ? layer.textPath : null;
+        const tpPath = tpBind ? motionPaths.find((p) => p.id === tpBind.pathId) : undefined;
+        const textPathData = tpBind && tpPath && tpPath.nodes.length >= 2
+          ? { nodes: tpPath.nodes as TextPathNode[], closed: tpPath.closed, align: tpBind.align, margin: tpBind.margin }
+          : null;
         // Per-character animators expand into per-glyph stamps (single-line); plain text is untouched.
-        const glyphStamps = expandTextGlyphs(layer, resolvedText, worldTransform, frame, common);
+        const glyphStamps = expandTextGlyphs(layer, resolvedText, worldTransform, frame, common, textPathData);
         if (glyphStamps) {
           resolvedLayers.push(...glyphStamps);
         } else {

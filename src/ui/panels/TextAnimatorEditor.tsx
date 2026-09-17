@@ -1,9 +1,10 @@
 import { useState, type ReactNode } from 'react';
 import { ChevronDown, ChevronRight, Plus, RotateCcw } from 'lucide-react';
-import type { TextLayer, TextAnimator, TextAnimatorDelta, TextSplitMode, TextDecode, Vec2 } from '../../core/types';
+import type { TextLayer, TextAnimator, TextAnimatorDelta, TextSplitMode, TextDecode, TextPathBinding, Vec2 } from '../../core/types';
 import type { SelectorShape } from '../../text/rangeSelector';
 import { createProperty, createKeyframe } from '../../core/factory';
 import { TEXT_ANIMATOR_PRESETS, createTextDecode } from '../../core/textAnimatorPresets';
+import { useEditorStore } from '../../store/editor';
 
 // Full per-character text-animator editor: split mode, the transform deltas each unit animates by,
 // the range selector (shape/window/ease/amount/randomize), and reveal timing (which keyframes the
@@ -76,6 +77,66 @@ export function TextAnimatorsSection({ layer, updateLayerProperty }: {
       </div>
 
       <DecodeSection layer={layer} updateLayerProperty={updateLayerProperty} />
+      <TextPathSection layer={layer} updateLayerProperty={updateLayerProperty} />
+    </div>
+  );
+}
+
+// Text on a path (B9b) — flow glyphs along a MotionPath (interpreted in the layer's local space).
+// Single-line text; exact placement is browser-eyeballed like all text stamps.
+function TextPathSection({ layer, updateLayerProperty }: {
+  layer: TextLayer;
+  updateLayerProperty: (layerId: string, path: string, value: unknown) => void;
+}) {
+  const composition = useEditorStore((s) => s.composition);
+  const paths = composition.motionPaths ?? [];
+  const bind = layer.textPath;
+  const on = !!bind?.enabled;
+  const set = (next: TextPathBinding) => updateLayerProperty(layer.id, 'textPath', next);
+  const labelFor = (pid: string, layerId: string) => {
+    const owner = composition.layers.find((l) => l.id === layerId);
+    return owner ? `${owner.name} path` : `Path ${pid.slice(0, 4)}`;
+  };
+  const toggle = () => {
+    if (bind) { set({ ...bind, enabled: !bind.enabled }); return; }
+    set({ enabled: true, pathId: paths[0]?.id ?? '', align: true, margin: 0 });
+  };
+
+  return (
+    <div className="mt-2 border-t border-hairline pt-2">
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          title="Enable / disable text on a path"
+          onClick={toggle}
+          className={`h-3 w-3 flex-shrink-0 rounded-sm border ${on ? 'border-accent bg-accent' : 'border-hairline'}`}
+        />
+        <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Text on path</span>
+      </div>
+      {on && bind && (
+        <div className="mt-1.5 space-y-0.5">
+          {paths.length === 0 ? (
+            <p className="text-[9.5px] leading-snug text-slate-600">No motion paths yet — draw one with the motion-path tool, then pick it here.</p>
+          ) : (
+            <>
+              <Field label="Path">
+                <select
+                  value={bind.pathId}
+                  onChange={(e) => set({ ...bind, pathId: e.target.value })}
+                  className="rounded border border-hairline bg-[#0e1726] px-1.5 py-0.5 text-[11px] text-slate-200 focus:outline-none"
+                >
+                  {paths.map((p) => <option key={p.id} value={p.id}>{labelFor(p.id, p.layerId)}</option>)}
+                </select>
+              </Field>
+              <Field label="Margin (px)"><Num value={bind.margin} onChange={(v) => set({ ...bind, margin: v })} /></Field>
+              <Field label="Align to path">
+                <button type="button" onClick={() => set({ ...bind, align: !bind.align })} className={`h-3 w-3 rounded-sm border ${bind.align ? 'border-accent bg-accent' : 'border-hairline'}`} />
+              </Field>
+              <p className="text-[9.5px] leading-snug text-slate-600">Glyphs flow along the path (layer-local); align rotates each to the tangent.</p>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }
