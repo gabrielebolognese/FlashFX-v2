@@ -28,6 +28,7 @@ import type {
 import type { ResolvedMotionBlur, ResolvedShadow, ResolvedBlur, LayerShadow, LayerGlow, LayerBlur, ResolvedGlow } from './types';
 import { measureText, getTextLayout, measureAdvance } from '../engine/textAtlas';
 import { accumulateGlyphDeltas, type ResolvedTextAnimator } from './textAnimator';
+import { decodeCharAt } from './textDecode';
 import { evaluateMotionPathAtFrame } from './motionPath';
 import { computeInstanceTransforms, selectClonerRenderPath, buildDataBoundSources } from '../cloner';
 import type { ClonerLayer } from '../cloner/types';
@@ -523,11 +524,15 @@ function expandTextGlyphs(
 ): ResolvedLayer[] | null {
   const active = (layer.animators ?? []).filter((a) => a.enabled);
   const content = baseText.content;
-  if (active.length === 0 || !content) return null;
+  const decode = layer.decode?.enabled ? layer.decode : null;
+  if ((active.length === 0 && !decode) || !content) return null;
 
   const layout = getTextLayout(baseText);
   // Only the clean single-line case: bail (normal render) on hard breaks or word-wrap.
   if (layout.lines.length !== 1 || content.includes('\n') || layout.lines[0] !== content) return null;
+
+  // Decode (B9): the reveal fraction for this frame; each unrevealed glyph shows a seeded scramble char.
+  const decProgress = decode ? evaluateNumber(decode.progress, frame) : 1;
 
   const resolvedAnims: ResolvedTextAnimator[] = active.map((a) => ({
     splitMode: a.splitMode,
@@ -552,7 +557,10 @@ function expandTextGlyphs(
     const d = deltas[j];
     // Skip whitespace (no glyph) and fully-transparent glyphs (cheap — a reveal hides many).
     if (ch.trim() !== '' && d.opacity > 0.001) {
-      const stampText: ResolvedText = { ...baseText, content: ch, measuredWidth: 0, measuredHeight: 0 };
+      // Decode swaps the SHOWN character (position/advance still use the real char, so glyphs flicker
+      // in place). Absent → the real char.
+      const showCh = decode ? decodeCharAt(ch, j, content.length, decProgress, frame, decode.seed, decode.charset, decode.scrambleHold) : ch;
+      const stampText: ResolvedText = { ...baseText, content: showCh, measuredWidth: 0, measuredHeight: 0 };
       const m = measureText(stampText);
       stampText.measuredWidth = m.width;
       stampText.measuredHeight = m.height;

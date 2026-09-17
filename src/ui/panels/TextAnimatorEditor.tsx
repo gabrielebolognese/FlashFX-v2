@@ -1,9 +1,9 @@
 import { useState, type ReactNode } from 'react';
-import { ChevronDown, ChevronRight, Plus } from 'lucide-react';
-import type { TextLayer, TextAnimator, TextAnimatorDelta, TextSplitMode, Vec2 } from '../../core/types';
+import { ChevronDown, ChevronRight, Plus, RotateCcw } from 'lucide-react';
+import type { TextLayer, TextAnimator, TextAnimatorDelta, TextSplitMode, TextDecode, Vec2 } from '../../core/types';
 import type { SelectorShape } from '../../text/rangeSelector';
 import { createProperty, createKeyframe } from '../../core/factory';
-import { TEXT_ANIMATOR_PRESETS } from '../../core/textAnimatorPresets';
+import { TEXT_ANIMATOR_PRESETS, createTextDecode } from '../../core/textAnimatorPresets';
 
 // Full per-character text-animator editor: split mode, the transform deltas each unit animates by,
 // the range selector (shape/window/ease/amount/randomize), and reveal timing (which keyframes the
@@ -74,6 +74,65 @@ export function TextAnimatorsSection({ layer, updateLayerProperty }: {
           </button>
         ))}
       </div>
+
+      <DecodeSection layer={layer} updateLayerProperty={updateLayerProperty} />
+    </div>
+  );
+}
+
+// Text Decode / scramble (B9) — reveal timing keyframes `decode.progress` 0→1 (like the animator
+// reveal), plus flicker speed + seed + scramble alphabet. Writes via the undoable updateLayerProperty.
+function DecodeSection({ layer, updateLayerProperty }: {
+  layer: TextLayer;
+  updateLayerProperty: (layerId: string, path: string, value: unknown) => void;
+}) {
+  const decode = layer.decode;
+  const on = !!decode?.enabled;
+  const set = (next: TextDecode) => updateLayerProperty(layer.id, 'decode', next);
+  const toggle = () => set(decode ? { ...decode, enabled: !decode.enabled } : createTextDecode(0, 30));
+
+  const kfs = decode?.progress.keyframes ?? [];
+  const startF = kfs[0]?.frame ?? 0;
+  const endF = kfs[kfs.length - 1]?.frame ?? 30;
+  const dur = Math.max(1, endF - startF);
+  const setTiming = (s: number, len: number) => {
+    if (!decode) return;
+    const progress = createProperty('Decode Progress', 'number', 0);
+    progress.keyframes = [createKeyframe(s, 0), createKeyframe(s + Math.max(1, len), 1)];
+    set({ ...decode, progress });
+  };
+
+  return (
+    <div className="mt-2 border-t border-hairline pt-2">
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          title="Enable / disable decode"
+          onClick={toggle}
+          className={`h-3 w-3 flex-shrink-0 rounded-sm border ${on ? 'border-accent bg-accent' : 'border-hairline'}`}
+        />
+        <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Decode (scramble)</span>
+      </div>
+      {on && decode && (
+        <div className="mt-1.5 space-y-0.5">
+          <Field label="Start (frame)"><Num value={startF} onChange={(v) => setTiming(Math.round(v), dur)} /></Field>
+          <Field label="Duration (frames)"><Num value={dur} onChange={(v) => setTiming(startF, Math.round(v))} /></Field>
+          <Field label="Flicker (frames)"><Num value={decode.scrambleHold} min={1} onChange={(v) => set({ ...decode, scrambleHold: Math.max(1, Math.round(v)) })} /></Field>
+          <Field label="Seed">
+            <Num value={decode.seed} onChange={(v) => set({ ...decode, seed: Math.round(v) })} width="w-16" />
+            <button type="button" title="Reseed" onClick={() => set({ ...decode, seed: (decode.seed * 1664525 + 1013904223) >>> 0 })} className="text-slate-500 hover:text-slate-200"><RotateCcw size={11} /></button>
+          </Field>
+          <Field label="Charset">
+            <input
+              type="text"
+              value={decode.charset}
+              onChange={(e) => set({ ...decode, charset: e.target.value })}
+              className="w-32 rounded border border-hairline bg-[#0e1726] px-1.5 py-0.5 text-[10px] text-slate-200 focus:border-accent focus:outline-none"
+            />
+          </Field>
+          <p className="text-[9.5px] leading-snug text-slate-600">Glyphs flicker through the charset, locking left→right over the reveal. Single-line text.</p>
+        </div>
+      )}
     </div>
   );
 }

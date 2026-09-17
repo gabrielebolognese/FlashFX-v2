@@ -38,7 +38,10 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | B8c | Dashed strokes (+ animated dash offset) on pen paths — pure geometry via existing pipeline | ✅ | medium |
 | B8d | In-shape Repeater operator (per-copy transform accumulation) | ✅ | medium |
 | B8e | Gradient strokes on pen paths (CPU-bake per-vertex, no shader) | ✅ | medium |
-| B9 | Kinetic typography completion (type-on, cascades, decode, path text) | ▶ **next** | light |
+| B9a | Kinetic typography — motion presets (type-on, cascades) + Decode/scramble (pure) | ✅ | light |
+| B9b | Text on a path (glyph placement + tangent orient; browser-eyeball placement) | ▶ **next** | medium |
+| B9c | Per-character 3D rotation (delta + stamp 3D wiring; camera-gated) | ⬜ | medium |
+| B9d | Per-glyph blur-in (new per-glyph blur render; browser-gated) | ⬜ | medium |
 | B10 | Masks / track mattes / roto completion | ⬜ | medium |
 | B11 | ★ Effect-stack framework + adjustment layers + blend-mode audit | ⬜ | medium (foundation) |
 | B12 | Glow & light finishing (bloom, deep-glow, light wrap, glints) | ⬜ | medium |
@@ -124,8 +127,20 @@ Audit (subagent) verdict: shape **paths are not keyframable** and there is **no 
 
 **B8 is now COMPLETE (a–e): trim/offset/roughen modifiers, shape morph + keyframable path + pucker/bloat, dashed strokes, in-shape Repeater, gradient strokes.**
 
-## B9 — Kinetic typography completion
-**Delivers:** type-on/typewriter, per-character/word/line **staggered cascades**, blur-in / fade-up, decode/shuffle, **text on a path**, 3D per-character rotation — built on the existing range-selector + text-animator system. **Categories:** 3. **Perf:** Canvas-2D text atlas exists; reuse. **Verify:** extend `verify:textanimator` / `verify:rangeselector`.
+## B9 — Kinetic typography completion (SPLIT)
+Audit: a strong range-selector + text-animator core already exists, with per-glyph animation done via **stamp expansion** (`expandTextGlyphs` splits a text layer into one 1-char `ResolvedLayer` per glyph — like the cloner, ZERO renderer changes; single visual line only, glyph x/y from canvas measurement = browser-gated placement). So type-on/cascades are new PRESETS, decode is a pure content-swap through the existing stamps, and the remaining pieces (path/3D/blur) are render-gated. Split accordingly.
+
+### B9a — Motion presets + Decode/scramble ✅ DONE
+**Delivered:** (1) **Preset library** on the existing animator engine — `type-on` (typewriter, `square` selector + opacity), `cascade up by word`, `slide in`, `rise by line`, `tumble in` (+ the shipped fade-in/pop-in) in `core/textAnimatorPresets.ts`, surfaced as one-click "+" buttons in the animator editor. Pure/config-only, proven by the existing preset path. (2) **Text Decode / scramble** — new pure `core/textDecode.ts` (`decodeContent`/`decodeCharAt`/`scrambleCharAt`/`isGlyphRevealed`): unrevealed glyphs flicker through a seeded charset and lock left→right as `progress` (0..1, keyframed) sweeps; **frame-deterministic** (hash of index+time-bucket, no Math.random/Date). `TextDecode` type + `TextLayer.decode?`; `createTextDecode` factory; wired into `expandTextGlyphs` (swaps the SHOWN char per stamp — advances/positions still use the real char so glyphs flicker in place; **no renderer change**). Decode section in `TextAnimatorEditor` (enable, reveal start/duration, flicker frames, seed+reseed, charset), persisted via `ensureTextDecode`. **Verify:** new `verify:text-kinetic` (9 checks: full-reveal passthrough, all-scrambled charset membership + spaces preserved, left→right prefix lock, reveal monotonicity, determinism, time-bucket flicker/hold, seed variation, empty-charset guard). tsc 0, lint 125, build ok, **66 harnesses**. Fully node-verifiable (glyph placement browser-gated as before).
+
+### B9b — Text on a path ▶ NEXT
+**Delivers:** glyphs flow along a shape/motion path with tangent orientation. **Reuse:** `motionPath.evaluatePathAtProgress` (returns `{position, angle}` incl. tangent) + `positionPath` arc-length. **Hook:** replace the linear advance in `expandTextGlyphs` (map each glyph's cumulative advance fraction → path arc fraction → position + tangent rotation). Needs a `TextLayer` path-ref field + a path picker UI. **Perf:** medium; placement math pure/harnessable, exact placement browser-eyeball (same class as existing cascades).
+
+### B9c — Per-character 3D rotation
+**Delivers:** per-glyph out-of-plane spin (X/Y). **NO new shader** — the 3D card MVP path already exists; extend `TextAnimatorDelta`/`GlyphDelta` with rx/ry (pure, harnessable) and wire `is3D` + a per-glyph `worldMatrix` + non-zero 3D fields onto each stamp. **Perf:** medium; delta math pure, stamp 3D wiring camera-gated (browser-verified).
+
+### B9d — Per-glyph blur-in
+**Delivers:** blur-in cascade (glyphs resolve from blurry). **The one genuinely new render:** blur is currently a LAYER effect, not per-glyph / not in `ResolvedText` — needs a per-glyph blur delta + render support. **Perf:** medium-heavy; browser-gated.
 
 ## B10 — Masks / track mattes / roto completion
 **Delivers:** variable-width mask feather, complete track-matte modes (alpha/luma/inverted), mask-reveal wipes, animated mask shapes, a basic roto/refine-edge cut-out. **Categories:** 5. **Perf:** matte compositing pass; reuse existing mask overlay. **Verify:** `verify:mattes`.

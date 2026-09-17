@@ -539,6 +539,19 @@ export interface TextAnimator {
   delta: TextAnimatorDelta;
 }
 
+/**
+ * Text Decode / scramble (B9) — unrevealed glyphs flicker through random characters and lock to the
+ * real letter as `progress` (0..1, keyframe it) sweeps left→right. Frame-deterministic (seeded). See
+ * core/textDecode.ts. Applied at resolve time via the existing per-glyph stamp path (no render change).
+ */
+export interface TextDecode {
+  enabled: boolean;
+  progress: AnimatableProperty; // 0 = all scrambled, 1 = fully revealed
+  charset: string;              // scramble alphabet
+  seed: number;
+  scrambleHold: number;         // frames each random char holds (flicker speed), >= 1
+}
+
 export interface TextLayer {
   id: string;
   type: 'text';
@@ -562,6 +575,8 @@ export interface TextLayer {
   animOverrides: TextAnimatableOverrides;
   /** Per-character animators (range-selector driven). Empty/absent → plain text (unchanged path). */
   animators?: TextAnimator[];
+  /** Text Decode / scramble reveal (B9). Absent/disabled → unchanged path. */
+  decode?: TextDecode;
   /** M21 — linked color styles for text fill/stroke. */
   fillStyleId?: string;
   strokeStyleId?: string;

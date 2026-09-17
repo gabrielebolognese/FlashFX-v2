@@ -24,6 +24,7 @@
     "verify:expressions-motion": "node scripts/verify-expressions-motion.mjs",
     "verify:shape-motion": "node scripts/verify-shape-motion.mjs",
     "verify:fill-sampler": "node scripts/verify-fill-sampler.mjs",
+    "verify:text-kinetic": "node scripts/verify-text-kinetic.mjs",
     "verify:ai-client": "node scripts/verify-ai-client.mjs",
     "verify:cloud-sync": "node scripts/verify-cloudsync.mjs",
     "verify:plans": "node scripts/verify-plans.mjs",

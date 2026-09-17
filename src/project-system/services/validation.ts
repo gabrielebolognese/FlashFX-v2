@@ -36,7 +36,9 @@ import type {
   ShapeModifier,
   ShapeRepeater,
   PathVertex,
+  TextDecode,
 } from '../../core/types';
+import { DEFAULT_DECODE_CHARSET } from '../../core/textDecode';
 import type { LayerConstraints } from '../../core/reframe';
 
 function isObject(v: unknown): v is Record<string, unknown> {
@@ -60,6 +62,18 @@ function ensureTextAnimators(raw: unknown): TextAnimator[] | undefined {
     });
   }
   return out.length ? out : undefined;
+}
+
+// Preserve the Text Decode config (B9) with a valid progress property. Drops garbage.
+function ensureTextDecode(val: unknown): TextDecode | undefined {
+  if (!isObject(val)) return undefined;
+  return {
+    enabled: val.enabled !== false,
+    progress: ensureAnimatableProperty(val.progress, 'Decode Progress', 'number', 0),
+    charset: typeof val.charset === 'string' && val.charset.length > 0 ? val.charset : DEFAULT_DECODE_CHARSET,
+    seed: typeof val.seed === 'number' ? val.seed : 1,
+    scrambleHold: typeof val.scrambleHold === 'number' && val.scrambleHold >= 1 ? Math.floor(val.scrambleHold) : 2,
+  };
 }
 
 function ensureAnimatableProperty(val: unknown, name: string, valueType: 'number' | 'vec2', defaultValue: number | [number, number]): AnimatableProperty {
@@ -475,6 +489,7 @@ function validateLayer(raw: unknown): Layer | null {
       }
 
       const animators = ensureTextAnimators(r.animators);
+      const decode = ensureTextDecode(r.decode);
       return {
         ...baseFields,
         type: 'text',
@@ -485,6 +500,7 @@ function validateLayer(raw: unknown): Layer | null {
         ...(typeof r.fillStyleId === 'string' ? { fillStyleId: r.fillStyleId } : {}),
         ...(typeof r.strokeStyleId === 'string' ? { strokeStyleId: r.strokeStyleId } : {}),
         ...(animators ? { animators } : {}),
+        ...(decode ? { decode } : {}),
       } as TextLayer;
     }
     case 'group': {
