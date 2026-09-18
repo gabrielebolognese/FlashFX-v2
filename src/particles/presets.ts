@@ -311,6 +311,28 @@ export const PARTICLE_PRESETS: Record<string, () => EmitterConfig> = {
     colorOverLife: [{ t: 0, color: [1, 1, 1, 1] }, { t: 1, color: [1, 1, 1, 0] }],
     blendMode: 'alpha', spriteShape: 'square',
   }),
+
+  // ── B20 plexus (connected-dots network) ──────────────────────────────────────────────────────
+  plexus: () => createEmitterConfig({
+    name: 'Plexus',
+    maxParticles: 120, spawnRate: 20, emitterShape: 'rectangle', emitterWidth: 600, emitterHeight: 400,
+    initialSpeed: { min: 8, max: 24 }, initialAngle: { min: 0, max: 360 }, initialSize: { min: 2, max: 4 },
+    lifetime: { min: 6, max: 10 }, gravity: [0, 0], drag: 0.2, turbulenceStrength: 6, turbulenceScale: 0.004,
+    sizeOverLife: [0, 1, 1, 1, 0], opacityOverLife: [0, 1, 1, 1, 0],
+    colorOverLife: [{ t: 0, color: [0.6, 0.85, 1, 1] }, { t: 1, color: [0.6, 0.85, 1, 0] }],
+    blendMode: 'alpha', spriteShape: 'circle',
+    connectDistance: 130, connectColor: [0.5, 0.8, 1, 0.5], connectWidth: 1,
+  }),
+  constellation: () => createEmitterConfig({
+    name: 'Constellation',
+    maxParticles: 90, spawnRate: 14, emitterShape: 'rectangle', emitterWidth: 700, emitterHeight: 450,
+    initialSpeed: { min: 4, max: 14 }, initialAngle: { min: 0, max: 360 }, initialSize: { min: 1.5, max: 3.5 },
+    lifetime: { min: 8, max: 14 }, gravity: [0, 0], drag: 0.1, turbulenceStrength: 4, turbulenceScale: 0.003,
+    sizeOverLife: [0, 1, 1, 1, 0], opacityOverLife: [0, 1, 1, 1, 0],
+    colorOverLife: [{ t: 0, color: [1, 1, 0.9, 1] }, { t: 1, color: [1, 1, 0.9, 0] }],
+    blendMode: 'additive', spriteShape: 'circle',
+    connectDistance: 160, connectColor: [1, 1, 0.85, 0.4], connectWidth: 1,
+  }),
 };
 
 export const PRESET_NAMES = Object.keys(PARTICLE_PRESETS) as (keyof typeof PARTICLE_PRESETS)[];

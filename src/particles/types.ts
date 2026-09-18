@@ -67,6 +67,11 @@ export interface EmitterConfig {
   attractor?: ParticleAttractor | null;
   /** Spawn positions for emitterShape 'points' (e.g. sampled from a source layer for dissolve). */
   sourcePoints?: [number, number][];
+
+  // Plexus (B20): connect particles within this distance (px) with fading lines (0 = off).
+  connectDistance?: number;
+  connectColor?: [number, number, number, number];
+  connectWidth?: number;
 }
 
 export interface Particle {

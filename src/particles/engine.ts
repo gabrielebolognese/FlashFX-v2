@@ -1,4 +1,5 @@
 import type { EmitterConfig, Particle, ParticleSnapshot, ColorStop } from './types';
+import { computeEdges } from '../core/plexus/plexusGraph';
 
 /**
  * Either 2D canvas context. The particle renderer draws into an OffscreenCanvas
@@ -320,6 +321,25 @@ export class ParticleEngine {
       ctx.globalCompositeOperation = 'screen';
     } else {
       ctx.globalCompositeOperation = 'source-over';
+    }
+
+    // Plexus (B20): connect nearby particles with fading lines (drawn behind the dots).
+    if (cfg.connectDistance && cfg.connectDistance > 0) {
+      const alive = this.particles.filter((p) => p.alive);
+      const edges = computeEdges(alive.map((p) => [p.x, p.y]), cfg.connectDistance, 6000);
+      const col = cfg.connectColor ?? [1, 1, 1, 1];
+      const cr = Math.round(col[0] * 255), cg = Math.round(col[1] * 255), cb = Math.round(col[2] * 255);
+      ctx.lineWidth = cfg.connectWidth ?? 1;
+      ctx.strokeStyle = `rgb(${cr},${cg},${cb})`;
+      for (const e of edges) {
+        const pa = alive[e.a], pb = alive[e.b];
+        ctx.globalAlpha = e.alpha * col[3];
+        ctx.beginPath();
+        ctx.moveTo(offsetX + pa.x, offsetY + pa.y);
+        ctx.lineTo(offsetX + pb.x, offsetY + pb.y);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
     }
 
     for (const p of this.particles) {

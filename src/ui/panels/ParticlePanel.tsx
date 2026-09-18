@@ -184,6 +184,8 @@ function ForcesSection({ config, onChange }: { config: EmitterConfig; onChange: 
       <DragInput label="Drag" value={config.drag} onChange={(v) => onChange({ drag: Math.max(0, v) })} min={0} max={10} step={0.1} precision={1} />
       <DragInput label="Turbulence" value={config.turbulenceStrength} onChange={(v) => onChange({ turbulenceStrength: Math.max(0, v) })} min={0} max={500} step={1} precision={0} />
       <DragInput label="Turb Scale" value={config.turbulenceScale} onChange={(v) => onChange({ turbulenceScale: Math.max(0.001, v) })} min={0.001} max={0.1} step={0.001} precision={3} />
+      {/* B20 plexus: connect nearby particles with fading lines (0 = off). */}
+      <DragInput label="Connect" value={config.connectDistance ?? 0} onChange={(v) => onChange({ connectDistance: Math.max(0, v) })} min={0} max={500} step={5} precision={0} suffix="px" />
       <DragInput label="Spin Min" value={config.spinSpeed.min} onChange={(v) => onChange({ spinSpeed: { ...config.spinSpeed, min: v } })} step={0.1} precision={1} />
       <DragInput label="Spin Max" value={config.spinSpeed.max} onChange={(v) => onChange({ spinSpeed: { ...config.spinSpeed, max: v } })} step={0.1} precision={1} />
     </div>
