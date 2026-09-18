@@ -63,6 +63,7 @@ import { useProjectStore } from '../../project-system/hooks/useProjectStore';
 import { useSmartCropStore } from '../../store/smartCrop';
 import { useFaceBlurStore } from '../../store/faceBlur';
 import { useColorMatchStore } from '../../store/colorMatch';
+import { useCutoutShadowStore } from '../../store/cutoutShadow';
 import type { SplitMode } from '../../core/textExplode';
 
 // Font menu, grouped by category, sourced from the single font manifest (engine/fonts.ts) so
@@ -1819,10 +1820,11 @@ function ImageToolButtons({ layer }: { layer: ImageLayer }) {
   const assetId = layer.image.assetId;
   const btn = 'flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-[11px] bg-surface-3 border border-hairline text-slate-300 hover:bg-surface-4 hover:text-slate-100 transition-colors';
   return (
-    <div className="mt-1.5 grid grid-cols-3 gap-1.5">
-      <button className={btn} onClick={() => useSmartCropStore.getState().show(assetId)} title="Intelligent reframing"><Crop size={13} /> Crop</button>
-      <button className={btn} onClick={() => useFaceBlurStore.getState().show(assetId)} title="Blur / redact faces"><ShieldAlert size={13} /> Faces</button>
-      <button className={btn} onClick={() => useColorMatchStore.getState().show(assetId)} title="Match a reference's color"><Palette size={13} /> Match</button>
+    <div className="mt-1.5 grid grid-cols-2 gap-1.5">
+      <button className={btn} onClick={() => useSmartCropStore.getState().show(assetId)} title="Intelligent reframing"><Crop size={13} /> Smart Crop</button>
+      <button className={btn} onClick={() => useFaceBlurStore.getState().show(assetId)} title="Blur / redact faces"><ShieldAlert size={13} /> Face Blur</button>
+      <button className={btn} onClick={() => useColorMatchStore.getState().show(assetId)} title="Match a reference's color"><Palette size={13} /> Color Match</button>
+      <button className={btn} onClick={() => useCutoutShadowStore.getState().show(assetId)} title="Cutout + cast shadow"><Layers size={13} /> Cutout</button>
     </div>
   );
 }

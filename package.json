@@ -19,6 +19,7 @@
     "verify:crop-solver": "node scripts/verify-crop-solver.mjs",
     "verify:color-transfer": "node scripts/verify-color-transfer.mjs",
     "verify:face-mask": "node scripts/verify-face-mask.mjs",
+    "verify:shadow-geometry": "node scripts/verify-shadow-geometry.mjs",
     "verify:easing": "node scripts/verify-easing.mjs",
     "verify:spatial-path": "node scripts/verify-spatial-path.mjs",
     "verify:separate-dims": "node scripts/verify-separate-dims.mjs",
