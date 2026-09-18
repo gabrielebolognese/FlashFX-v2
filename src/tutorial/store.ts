@@ -1,55 +1,22 @@
 import { create } from 'zustand';
 
-// Tutorial director state. The <TutorialRunner> owns the async loop and writes progress here via
-// _patch; the narration bar + controls read it and call the public setters. `jumpTo` is a signal
-// the runner consumes (skip to a chapter, or past the end → handoff).
-
-export type TutorialPhase = 'idle' | 'running' | 'handoff';
-export type TutorialSpeed = 1 | 2 | 4;
+// Manual guided tour of the Full editor. It NEVER runs on its own: the user clicks Next through a
+// fixed sequence of spotlight + prompt steps (one step waits for the user to select a layer instead
+// of a Next click). The <TutorialRunner> reads active/stepIndex and drives the SpotlightOverlay +
+// prompt box; when stepIndex runs past the last step the runner stops it.
 
 interface TutorialState {
   active: boolean;
-  phase: TutorialPhase;
-  chapterIndex: number;
   stepIndex: number;
-  paused: boolean;
-  speed: TutorialSpeed;
-  /** Current step's spotlight target (a data-tutorial-id, 'canvas', or undefined for none). */
-  spotlight: string | undefined;
-  /** Runner consumes this: jump to chapter i (>= chapter count → run to handoff). null = no jump. */
-  jumpTo: number | null;
-
   start: () => void;
+  next: () => void;
   stop: () => void;
-  pause: () => void;
-  resume: () => void;
-  setSpeed: (s: TutorialSpeed) => void;
-  skipToChapter: (i: number) => void;
-  skipAll: () => void;
-  /** Runner-internal progress/phase updates. */
-  _patch: (p: Partial<Pick<TutorialState, 'phase' | 'chapterIndex' | 'stepIndex' | 'jumpTo' | 'spotlight'>>) => void;
 }
-
-const SKIP_TO_END = 1_000_000;
 
 export const useTutorialStore = create<TutorialState>((set) => ({
   active: false,
-  phase: 'idle',
-  chapterIndex: 0,
   stepIndex: 0,
-  paused: false,
-  speed: 1,
-  spotlight: undefined,
-  jumpTo: null,
-
-  start: () => set({ active: true, phase: 'running', chapterIndex: 0, stepIndex: 0, paused: false, speed: 1, spotlight: undefined, jumpTo: null }),
-  stop: () => set({ active: false, phase: 'idle', paused: false, spotlight: undefined, jumpTo: null }),
-  pause: () => set({ paused: true }),
-  resume: () => set({ paused: false }),
-  setSpeed: (speed) => set({ speed }),
-  skipToChapter: (i) => set({ jumpTo: i, paused: false }),
-  skipAll: () => set({ jumpTo: SKIP_TO_END, paused: false }),
-  _patch: (p) => set(p),
+  start: () => set({ active: true, stepIndex: 0 }),
+  next: () => set((s) => ({ stepIndex: s.stepIndex + 1 })),
+  stop: () => set({ active: false, stepIndex: 0 }),
 }));
-
-export { SKIP_TO_END };

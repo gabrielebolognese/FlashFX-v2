@@ -7,7 +7,7 @@ import { useTimelineStore } from '../store/timeline';
 import { usePanelStore } from '../store/panels';
 import { getTemplate } from '../animation-templates/catalog';
 import { SpotlightOverlay } from './SpotlightOverlay';
-import { launchTutorial } from './launch';
+import { startEditorTour } from './launch';
 
 /**
  * Onboarding → "Yes, open the example" flow. Mounted in the editor.
@@ -142,13 +142,14 @@ export function TutorialIntro() {
     return undefined;
   }, [phase]);
 
-  // Final step: when the user confirms the switch to the Full editor, launch the guided tutorial.
+  // Final step: when the user confirms the switch to the Full editor, start the manual tour on the
+  // scene that is already there (the forest) - EDIT mode, no rebuild.
   useEffect(() => {
     if (phase !== 'finalBox' || uiMode !== 'pro' || launchedRef.current) return;
     launchedRef.current = true;
     useTutorialIntroStore.getState().clear();
     setPhase('idle');
-    void launchTutorial();
+    startEditorTour();
   }, [phase, uiMode]);
 
   if (phase === 'idle') return null;
@@ -223,7 +224,7 @@ export function TutorialIntro() {
 }
 
 /** Bottom-center prompt box for a showcase step (its own component so it never couples to the
- *  guided-tutorial NarrationBar/store). */
+ *  guided-tutorial runner/store). */
 function ShowcaseBox({ text, button }: { text: string; button?: { label: string; onClick: () => void } }) {
   return (
     <div className="fixed bottom-6 left-1/2 z-[120] w-[min(680px,92vw)] -translate-x-1/2 rounded-xl border border-[#1a2a42] bg-[#0e1c32] px-5 py-4 shadow-2xl">

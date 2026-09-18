@@ -81,6 +81,7 @@ export function PanelLayout() {
       <div className="flex-1 flex flex-row min-h-0 min-w-0">
         {/* Media Pool */}
         <div
+          data-tutorial-id="media-pool"
           className="flex-shrink-0 min-h-0 overflow-hidden"
           style={{ width: layout.mediaWidth }}
         >

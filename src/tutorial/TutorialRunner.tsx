@@ -1,105 +1,78 @@
 import { useEffect, useRef } from 'react';
-import { useTutorialStore, SKIP_TO_END } from './store';
-import { tutorialScript } from './tutorialScript';
-import { NarrationBar } from './NarrationBar';
+import { GraduationCap } from 'lucide-react';
+import { useTutorialStore } from './store';
+import { TOUR_STEPS } from './tutorialScript';
 import { SpotlightOverlay } from './SpotlightOverlay';
-import type { TutorialApi } from './types';
 import { useEditorStore } from '../store/editor';
-import { useTimelineStore } from '../store/timeline';
-import { useShapeToolStore } from '../store/shapeTool';
 
-const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
-
-// The director. Mounted once in the editor; renders nothing when idle. On `active`, runs the script
-// against the REAL editor store - genuine edits, paced, skippable - then hands off. Control state is
-// mirrored into a ref so the async loop reads live paused/speed/jump without re-subscribing.
+// The manual tour runner. Mounted once in the editor; renders nothing when idle. On `active` it shows
+// the current step's spotlight + a prompt box. Most steps advance on the Next button; the one 'select'
+// step advances when the user selects a layer. There is NO input-lock and NO timer - the user drives
+// every step, and can leave the editor be or interact with it (they must, to select a layer).
 export function TutorialRunner() {
   const active = useTutorialStore((s) => s.active);
-  const phase = useTutorialStore((s) => s.phase);
-  const paused = useTutorialStore((s) => s.paused);
-  const spotlight = useTutorialStore((s) => s.spotlight);
+  const stepIndex = useTutorialStore((s) => s.stepIndex);
+  const selectedCount = useEditorStore((s) => s.selection.selectedIds.length);
 
-  const ctrl = useRef({ paused: false, speed: 1 as number, jumpTo: null as number | null, aborted: false });
+  const step = active ? TOUR_STEPS[stepIndex] : undefined;
+  // The 'select' step only fires AFTER we've seen the selection cleared (armed), so a pre-existing
+  // selection can't skip the step the instant it appears.
+  const selectArmed = useRef(false);
 
-  // Keep the loop's control mirror current.
-  useEffect(() => useTutorialStore.subscribe((s) => {
-    ctrl.current.paused = s.paused;
-    ctrl.current.speed = s.speed;
-    ctrl.current.jumpTo = s.jumpTo;
-  }), []);
+  // End the tour once we advance past the last step.
+  useEffect(() => {
+    if (active && stepIndex >= TOUR_STEPS.length) useTutorialStore.getState().stop();
+  }, [active, stepIndex]);
 
-  // Esc = skip the whole tutorial.
+  // Entering a 'select' step: clear any selection so the user genuinely performs the click.
   useEffect(() => {
     if (!active) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); useTutorialStore.getState().skipAll(); } };
-    window.addEventListener('keydown', onKey, true);
-    return () => window.removeEventListener('keydown', onKey, true);
-  }, [active]);
+    const s = TOUR_STEPS[stepIndex];
+    if (s?.advance === 'select') {
+      selectArmed.current = false;
+      useEditorStore.getState().deselectAll();
+    }
+  }, [active, stepIndex]);
 
+  // Advance the 'select' step when the user selects a layer (after the clear has landed).
   useEffect(() => {
-    if (!active) return;
-    ctrl.current = { paused: false, speed: 1, jumpTo: null, aborted: false };
+    if (step?.advance !== 'select') return;
+    if (selectedCount === 0) { selectArmed.current = true; return; }
+    if (selectArmed.current) useTutorialStore.getState().next();
+  }, [step, selectedCount]);
 
-    const wait = async (ms: number) => {
-      let remaining = ms;
-      while (remaining > 0 && !ctrl.current.aborted) {
-        if (ctrl.current.paused) { await sleep(80); continue; }
-        const chunk = Math.min(80, remaining / ctrl.current.speed);
-        await sleep(chunk);
-        remaining -= chunk * ctrl.current.speed;
-      }
-    };
-    const api: TutorialApi = {
-      editor: () => useEditorStore.getState(),
-      timeline: () => useTimelineStore.getState(),
-      tools: () => useShapeToolStore.getState(),
-      wait,
-      setFrame: (n) => useTimelineStore.getState().seekTo(n), // drives the playback controller + a real re-render
-      select: (ids) => useEditorStore.getState()._setSelection({ selectedIds: ids, activeId: ids[ids.length - 1] ?? null, selectedKeyframes: [], selectedCurvePoints: [] }),
-      lastLayerId: () => { const ls = useEditorStore.getState().composition.layers; return ls[ls.length - 1]?.id; },
-    };
+  if (!active || !step) return null;
 
-    (async () => {
-      await wait(600); // let the fresh project's comp settle before the first edit
-      let ci = 0, si = 0;
-      while (ci < tutorialScript.length && !ctrl.current.aborted) {
-        const chapter = tutorialScript[ci];
-        if (si >= chapter.steps.length) { ci++; si = 0; continue; }
-        const step = chapter.steps[si];
-        useTutorialStore.getState()._patch({ phase: 'running', chapterIndex: ci, stepIndex: si, spotlight: step.spotlight });
-        try { await step.run?.(api); } catch (err) { console.error('[tutorial] step failed', step.id, err); }
-        await wait(step.hold ?? 1200);
-        if (ctrl.current.aborted) return;
-        if (ctrl.current.jumpTo != null) {
-          const target = ctrl.current.jumpTo;
-          ctrl.current.jumpTo = null;
-          useTutorialStore.getState()._patch({ jumpTo: null });
-          if (target >= SKIP_TO_END || target >= tutorialScript.length) break; // skip to handoff
-          ci = Math.max(0, target); si = 0;
-          continue;
-        }
-        si++;
-      }
-      if (!ctrl.current.aborted) {
-        useTimelineStore.getState().pause();
-        useTutorialStore.getState()._patch({ phase: 'handoff', spotlight: undefined });
-      }
-    })();
-
-    return () => { ctrl.current.aborted = true; };
-  }, [active]);
-
-  if (!active) return null;
+  const isLast = stepIndex === TOUR_STEPS.length - 1;
 
   return (
     <>
-      {/* Soft input-lock while auto-running (lifted on pause / handoff) so clicks don't fight the
-          script; the narration bar sits above it. */}
-      {phase === 'running' && !paused && (
-        <div className="fixed inset-0 z-[110] cursor-progress" onClick={(e) => e.stopPropagation()} />
-      )}
-      {phase === 'running' && <SpotlightOverlay target={spotlight} />}
-      <NarrationBar />
+      <SpotlightOverlay target={step.spotlight} />
+      <div className="fixed bottom-6 left-1/2 z-[120] w-[min(680px,92vw)] -translate-x-1/2 rounded-xl border border-[#26405f] bg-[#0e1c32]/95 px-5 py-4 shadow-2xl backdrop-blur-sm">
+        <div className="flex items-center gap-4">
+          <GraduationCap size={18} className="shrink-0 text-[#f7b500]" />
+          <p className="flex-1 text-[13px] leading-relaxed text-slate-100">{step.text}</p>
+          {step.advance === 'select' ? (
+            <span className="shrink-0 text-[12px] font-medium italic text-slate-400">Waiting for a selection</span>
+          ) : (
+            <button
+              type="button"
+              onClick={() => (isLast ? useTutorialStore.getState().stop() : useTutorialStore.getState().next())}
+              className="shrink-0 rounded-md bg-[#f7b500] px-4 py-2 text-[12px] font-semibold text-[#0e1c32] transition-colors hover:bg-[#ffc21a]"
+            >
+              {isLast ? 'Finish' : 'Next'}
+            </button>
+          )}
+        </div>
+        {/* Always-available exit, so the user is never trapped in the tour. */}
+        <button
+          type="button"
+          onClick={() => useTutorialStore.getState().stop()}
+          className="absolute right-2 top-2 text-[10px] text-slate-500 transition-colors hover:text-slate-300"
+        >
+          Skip
+        </button>
+      </div>
     </>
   );
 }

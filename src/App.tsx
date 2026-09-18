@@ -467,7 +467,7 @@ function Editor() {
 
   return (
     <div className="h-screen w-screen flex flex-col bg-surface-sunken text-slate-300 overflow-hidden select-none" onContextMenu={(e) => e.preventDefault()}>
-      <div className={`flex items-stretch bg-surface-1 border-b border-hairline shadow-[0_1px_3px_rgba(0,0,0,0.4)] ${uiMode === 'starter' ? 'h-14' : ''}`}>
+      <div data-tutorial-id="top-bar" className={`flex items-stretch bg-surface-1 border-b border-hairline shadow-[0_1px_3px_rgba(0,0,0,0.4)] ${uiMode === 'starter' ? 'h-14' : ''}`}>
         <button
           onClick={closeProject}
           className="flex items-center gap-1.5 px-3 text-slate-400 hover:text-slate-200 hover:bg-white/[0.03] transition-colors border-r border-hairline"
