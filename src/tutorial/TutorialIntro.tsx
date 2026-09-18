@@ -48,6 +48,10 @@ const LOADING_MS = 1800; // bridge long enough for the fresh comp to settle befo
 const PLAY_TAIL_MS = 200; // small tail so play() reaches the last content frame before we pause
 const STATIC_BEAT_MS = 1400; // let a no-play template register on screen before its box appears
 
+// Phases where the editor is building/playing on its own and the user must just watch (no button).
+// A passive "do not touch" box shows here so the user doesn't think they need to act.
+const WATCH_PHASES: Phase[] = ['penBuild', 'penPlay', 'raceBuild', 'racePlay', 'recBuild', 'recStatic', 'forestBuild', 'forestStatic'];
+
 // ── Store-scripting helpers (read the live stores fresh each call) ───────────────────────────────
 
 function clearComposition() {
@@ -103,9 +107,13 @@ export function TutorialIntro() {
   // Cancel any in-flight build if we unmount mid-show.
   useEffect(() => () => buildRef.current?.cancel(), []);
 
-  // Arm the loading bridge once the example project is actually open.
+  // Arm the loading bridge once the example project is actually open. Force the editor into Starter
+  // (mini) mode for the whole showcase - the loading cover hides the layout switch, the mode switch
+  // lives in the Starter inspector (so the final step can spotlight it), and keeping uiMode at
+  // 'starter' means the finalBox launch only fires on a REAL user switch to Full, not on load.
   useEffect(() => {
     if (!pending || !activeProjectId || phase !== 'idle') return;
+    usePanelStore.getState().setUiMode('starter');
     setPhase('loading');
   }, [pending, activeProjectId, phase]);
 
@@ -184,6 +192,10 @@ export function TutorialIntro() {
       )}
 
       {phase === 'finalBox' && <SpotlightOverlay target="editor-mode-switch" />}
+
+      {WATCH_PHASES.includes(phase) && (
+        <ShowcaseBox text="Sit back and watch. Please do not touch the screen while the animation plays; I'll prompt you when it's your turn." />
+      )}
 
       {phase === 'penBox' && (
         <ShowcaseBox
