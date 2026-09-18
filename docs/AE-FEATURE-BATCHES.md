@@ -64,11 +64,11 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | B16-gpu | Beam/lightning as a glowing ribbon layer (ribbon->shape + glow, or WGSL SDF beam) | ⬜ (browser) | **heavy** |
 | B17 | Tiling & generative simulations - sim presets over existing pattern engine + motion-tile param model (harnessed) | ✅ | medium |
 | B17-gpu | Motion-tile effect (repeat + mirror + seamless edge blend) + radio/vegas pattern WGSL cases | ⬜ (browser) | medium |
-| B18 | 3D scene completion (DOF/bokeh, lights & shadows, parallax, focus pull) | ▶ **next** | **heavy** |
-| B19 | Particle system polish (emitters, physics, trails, fire/smoke/confetti) | ⬜ | **heavy** |
-| B20 | Generative geometry (3D stroke, plexus, flowing surfaces) | ⬜ | **heavy** |
+| B18 | 3D scene completion (DOF/bokeh, lights & shadows, parallax, focus pull) | ⏭️ skip (3D) | **heavy** |
+| B19 | Particle system polish (emitters, physics, trails, fire/smoke/confetti) | ▶ **next** | **heavy** |
+| B20 | Plexus - 2D connected-dots network (3D stroke / flowing surfaces dropped) | ⬜ | medium |
 | B21 | Physics dynamics (collisions, stacking, springs/ropes, soft-body) | ⬜ | **heavy** |
-| B22 | 3D objects & extrusion (extruded text/logos, materials) | ⬜ | **heavy** |
+| B22 | 3D objects & extrusion (extruded text/logos, materials) | ⏭️ skip (3D) | **heavy** |
 | B23 | Destruction generators (shatter, card dance) | ⬜ | medium |
 | B24 | Deformation & warp (puppet, liquify, turbulent displace, ripple, roughen) | ⬜ | medium |
 | B25 | Character rigging (rubber-hose limbs, IK, joystick controllers) | ⬜ | **heavy** |
@@ -230,20 +230,22 @@ Audit: the per-layer effect stack **already exists** (ordered `LayerEffect[]` on
 ## B17-gpu - Motion-tile effect + missing pattern cases (browser-gated)
 **Delivers:** a `motionTile` warp effect - tile the layer `tilesX x tilesY` with optional mirror and a seamless scroll, using `tileParams.tileUV` as the exact spec (UV wrap in the existing warp stage) - plus a dedicated `radioWaves` pattern and a path-following `vegasStroke` (animated outline stroke) as new WGSL. Additive; layers without motion-tile stay byte-identical. Unverifiable here.
 
-## B18 - 3D scene completion
-**Delivers:** depth of field / **bokeh**, lights & shadows, parallax multiplane, **focus pulls**, environment/reflection. **Categories:** 7. **Depends on:** the 2.5D camera system (M0–M3 built). **Perf:** **HEAVY**.
+## B18 - 3D scene completion ⏭️ SKIPPED (3D - out of scope)
+**Decision (2026-09):** the app is intentionally **2.5D-only** (cards-in-space + camera, already built); full 3D is out of scope. Skipped: 3D lights & shadows, environment/reflection, full DOF/focus-pull. If ever wanted, only the 2.5D-compatible slivers (a 2D **bokeh blur** effect and camera **parallax** on the existing multiplane) would be revisited as a light batch - not the 3D scene.
+~~**Delivers:** depth of field / bokeh, lights & shadows, parallax multiplane, focus pulls, environment/reflection. Categories: 7. Depends on the 2.5D camera system. Perf: HEAVY.~~
 
 ## B19 - Particle system polish
 **Delivers:** Particular-grade emitters, air/gravity/turbulence physics, trails/streaks, presets (fire/smoke/sparks/confetti/dust), text/logo dissolve-into-particles. **Categories:** 8. **Perf:** **HEAVY** GPU compute - dedicated + profiled; frame-pure via seeded hashing. Likely splits (emitter core / physics / presets).
 
-## B20 - Generative geometry
-**Delivers:** 3D stroke (draws in space), plexus (connected-dot networks), Mir/Tao-like flowing surfaces, node particles. **Categories:** 9. **Perf:** **HEAVY** - GPU instancing/lines; reuse cloner LOD.
+## B20 - Plexus (2D connected-dots) - descoped, no 3D
+**Delivers (2D only):** **plexus** - a connected-dot network (points + proximity lines, animated), which is a pure 2D graph over points. **Dropped as 3D (out of scope):** 3D stroke "draws in space" and Mir/Tao flowing surfaces. **Categories:** 9. **Perf:** medium - lines over points (the pure part is the point/edge graph; the line render reuses the existing pen/stroke pipeline). **Verify:** pure proximity-graph harnessed.
 
 ## B21 - Physics dynamics
 **Delivers:** collisions, stacking/piling, springs/ropes/chains, soft-body jiggle, magnets/attraction. **Categories:** 13. **Depends on:** existing Rapier physics bake. **Perf:** **HEAVY** (bake step, so playback stays cheap).
 
-## B22 - 3D objects & extrusion
-**Delivers:** extruded 3D text/logos with bevels, imported models, materials/reflections. **Categories:** 17. **Perf:** **HEAVY** - likely multi-batch; scope carefully.
+## B22 - 3D objects & extrusion ⏭️ SKIPPED (3D - out of scope)
+**Decision (2026-09):** full 3D extrusion / imported models / materials are out of scope (the app is 2.5D-only). Skipped entirely. A **faux-bevel** on 2D text (inner shadow + highlight, no real geometry) could be a light stylise item later, but is not this batch.
+~~**Delivers:** extruded 3D text/logos with bevels, imported models, materials/reflections. Categories: 17.~~
 
 ## B23 - Destruction generators
 **Delivers:** shatter (fracture + explode with physics), card-dance (tile-grid assembly driven by a map). **Categories:** 25. **Perf:** medium; frame-pure.
