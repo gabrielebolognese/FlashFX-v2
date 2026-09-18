@@ -54,8 +54,9 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | B11c-gpu | Content-layer blend rendering (hardware pipeline variants + dst-dependent scene composite) + cross-class effect reorder (multipass) | ⬜ (browser) | **heavy** |
 | B12 | Glow & light finishing - bloom mode + light-finish presets + param model + type scaffold (harnessed) | ✅ | medium |
 | B12-gpu | Bloom downsample pyramid + light-wrap pass + star glints/streaks (WGSL) | ⬜ (browser) | **heavy** |
-| B13 | Stylise & cinematic finish (chromatic ab., lens distort, grain, halftone) | ▶ **next** | medium |
-| B14 | Glitch & datamosh (RGB split, pixel-sort, VHS, block glitch) | ⬜ | medium |
+| B13 | Stylise & cinematic finish - curated stylise presets over existing effects (harnessed) | ✅ | medium |
+| B13-gpu | Vignette WGSL case (the one missing stylise effect) | ⬜ (browser) | light |
+| B14 | Glitch & datamosh (RGB split, pixel-sort, VHS, block glitch) | ▶ **next** | medium |
 | B15 | Color grading (wheels/curves/HSL, LUT loading, film looks) | ⬜ | medium |
 | B16 | Light rays, flares & beams (lens flare, Saber-like beams, god-rays) | ⬜ | **heavy** |
 | B17 | Tiling & generative simulations (motion tile, caustics, wave/radio, cell) | ⬜ | medium |
@@ -195,8 +196,11 @@ Audit: the per-layer effect stack **already exists** (ordered `LayerEffect[]` on
 ## B12-gpu - Bloom pyramid + light wrap + glints (browser-gated)
 **Delivers:** the real bloom **downsample pyramid** (threshold-extract → progressive downsample/blur → additive upsample, one pyramid shared with blur), a **light-wrap** pass (blur the backdrop, mask to the subject's outer edge, add - drives `lightWrap`), and **star glints / light streaks** (radial kernel from bright points - drives `glints`/`glintLength`/`glintAngle`). All hang off the already-resolved `ResolvedGlow`. **Perf:** medium (shared pyramid). WGSL - unverifiable here.
 
-## B13 - Stylise & cinematic finish
-**Delivers:** chromatic aberration, lens distortion + vignette, film grain, halftone/dots, scanlines, posterize/cartoon/cel. **Categories:** 14. **Depends on:** B11. **Perf:** medium.
+## B13 - Stylise & cinematic finish ✅ (presets over existing effects; vignette split to B13-gpu)
+**Audit finding:** every headline stylise effect ALREADY exists in the effect registry with a working `IMAGE_SHADER` case - chromatic aberration (242), lens/barrel/pincushion/fisheye distortion (210-215), film grain (155) + add/gaussian noise, halftone (308) + dots (150), scanlines (249) + VHS (246) + CRT (248), posterize (118), cartoon (305) + posterPaint/cel + crossHatch. So the batch is **curation + exposure, not new effects.** **Shipped (renders now + harnessed):** new pure leaf `core/effects/stylizePresets.ts` = 8 built-in looks (Cinematic, Film, VHS, CRT, Comic, Retro, Dream, Lens) as effect-stack presets composed from those existing ids, + `applyStylizePreset` (deep clone). Verified by `npm run verify:stylize-presets` (4 checks: every preset effect is a REAL registry effect, params match the registry `paramCount`, clone is mutation-safe). Inspector filters panel gained a **"Stylise Looks" bar** that applies a look via the existing `setLayerEffects` (one click, immediately visible). No shader work - the effects were already wired. **Split out - B13-gpu:** only `vignette` is missing from the registry - one small radial-darken WGSL color case (browser-gated).
+
+## B13-gpu - Vignette (browser-gated)
+**Delivers:** the one stylise effect not yet in the registry: a radial vignette (darken toward the frame edges by uv distance from centre, with radius + softness params) as a new `color`-class `EFFECT_TYPE.vignette` + its `applyColorEffect` WGSL case. Small + additive; unverifiable here.
 
 ## B14 - Glitch & datamosh
 **Delivers:** RGB/channel split, block & pixel-sort glitch, VHS/scanline degrade, digital noise, displacement glitch. **Categories:** 27. **Depends on:** B11. **Perf:** medium; keep frame-pure (seeded).

@@ -1,9 +1,10 @@
 import { useState, useCallback } from 'react';
-import { ChevronRight, Search, RotateCcw, Upload, ChevronUp, ChevronDown, X, Eye, EyeOff, Layers, Lock, Bookmark } from 'lucide-react';
+import { ChevronRight, Search, RotateCcw, Upload, ChevronUp, ChevronDown, X, Eye, EyeOff, Layers, Lock, Bookmark, Sparkles } from 'lucide-react';
 import { FILTER_CATEGORIES, type FilterDef, type FilterCategory } from './filterDefinitions';
 import type { ImageLayer } from '../../../core/types';
 import { useEditorStore } from '../../../store/editor';
 import { useEffectPresetStore } from '../../../store/effectPresets';
+import { STYLIZE_PRESETS, applyStylizePreset } from '../../../core/effects/stylizePresets';
 import { getEffectDef, getEffectDefByType, isLegacyFilter } from '../../../core/effects/effectRegistry';
 import { isWireFilter, buildWire, readWireValue } from '../../../core/effects/wireEffects';
 
@@ -155,6 +156,7 @@ export function ImageFiltersPanel({ layer }: { layer: ImageLayer }) {
           onToggle={toggleLayerEffect}
           onRemove={removeLayerEffect}
         />
+        <StylizePresetBar layer={layer} />
         <EffectPresetBar layer={layer} />
         {filteredCategories.map((category) => (
           <FilterCategoryAccordion
@@ -253,6 +255,32 @@ function AppliedEffects({
 
 // Effect presets (B11a): save the current effect stack as a named, reusable preset and apply/delete
 // saved ones. Presets are app-global (localStorage) so they carry across projects.
+/** Built-in stylise/cinematic looks (B13). Each applies a curated stack of existing, rendering
+ *  effects (chromatic aberration, film grain, halftone, scanlines, posterize, cel, VHS/CRT). */
+function StylizePresetBar({ layer }: { layer: ImageLayer }) {
+  const setLayerEffects = useEditorStore((s) => s.setLayerEffects);
+  return (
+    <div className="mb-2 mx-1 rounded-md border border-hairline bg-[#0a1524] px-2.5 py-1.5">
+      <div className="flex items-center gap-1.5 mb-1">
+        <Sparkles size={11} className="text-accent" />
+        <span className="text-[10px] font-semibold text-slate-300 uppercase tracking-wider flex-1">Stylise Looks</span>
+      </div>
+      <div className="flex flex-wrap gap-1">
+        {STYLIZE_PRESETS.map((p) => (
+          <button
+            key={p.name}
+            onClick={() => setLayerEffects(layer.id, applyStylizePreset(p))}
+            title={`Apply the "${p.label}" look (${p.effects.length} effects)`}
+            className="rounded border border-hairline bg-surface-1 px-1.5 py-0.5 text-[9px] text-slate-300 hover:text-accent hover:border-accent/40 transition-colors"
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function EffectPresetBar({ layer }: { layer: ImageLayer }) {
   const presets = useEffectPresetStore((s) => s.presets);
   const savePreset = useEffectPresetStore((s) => s.savePreset);

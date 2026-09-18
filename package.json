@@ -16,6 +16,7 @@
     "verify:adjustment-coverage": "node scripts/verify-adjustment-coverage.mjs",
     "verify:blend-modes": "node scripts/verify-blend-modes.mjs",
     "verify:glow-params": "node scripts/verify-glow-params.mjs",
+    "verify:stylize-presets": "node scripts/verify-stylize-presets.mjs",
     "verify:cloner": "node scripts/verify-cloner.mjs",
     "verify:crop-solver": "node scripts/verify-crop-solver.mjs",
     "verify:color-transfer": "node scripts/verify-color-transfer.mjs",
