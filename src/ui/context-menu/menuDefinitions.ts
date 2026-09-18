@@ -1,6 +1,6 @@
 import {
   ZoomIn, ZoomOut, Maximize, Grid3x3, Magnet, Plus, Square, Circle, Type, Folder,
-  Clipboard, Copy, Scissors, Trash2, Pencil, MoveVertical, ArrowUp, ArrowDown,
+  Clipboard, Copy, Scissors, Crop, Trash2, Pencil, MoveVertical, ArrowUp, ArrowDown,
   ChevronsUp, ChevronsDown, RotateCcw, Sparkles, Layers, Film, Image, Music,
   Volume2, VolumeX, Upload, FolderPlus, LayoutGrid, List, Clock, SortAsc,
   RefreshCcw, Play, Pause, SkipForward, SkipBack, Star, Hexagon,
@@ -27,6 +27,7 @@ import { videoDecoderPool } from '../../engine/video/videoDecoderPool';
 import { generateThumbnailSheet } from '../../engine/video/thumbnailSheet';
 import { detectSceneCuts } from '../../engine/video/sceneDetect';
 import { useAiImageStore } from '../../store/aiImage';
+import { useSmartCropStore } from '../../store/smartCrop';
 import { useInspectorStore } from '../../store/inspector';
 import { addAssetToFavorites, addAssetToFolder } from '../../library/folderService';
 import { processAudioAsset, toMono, toStereo, normalize, amplifyBy } from '../../engine/audio/audioProcessing';
@@ -866,6 +867,7 @@ export function buildMediaAssetMenu(assetType: 'image' | 'video' | 'audio', asse
         item('set-bg', 'Set as Background', () => ed.addImageAsBackground(assetId), Image),
         disabled('convert-shape', 'Convert to Shape', Square),
         item('crop-img', 'Crop', () => { ed.cropImageAsset(assetId); useInspectorStore.getState().requestTab('masks'); }, Scissors),
+        item('smart-crop', 'Smart Crop', () => useSmartCropStore.getState().show(assetId), Crop),
         item('auto-fit', 'Auto Fit Canvas', () => ed.addImageFitCanvas(assetId), Maximize),
       ],
     });

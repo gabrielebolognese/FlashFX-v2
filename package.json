@@ -15,6 +15,7 @@
     "test": "node scripts/test-all.mjs",
     "verify:adjustment-coverage": "node scripts/verify-adjustment-coverage.mjs",
     "verify:cloner": "node scripts/verify-cloner.mjs",
+    "verify:crop-solver": "node scripts/verify-crop-solver.mjs",
     "verify:easing": "node scripts/verify-easing.mjs",
     "verify:spatial-path": "node scripts/verify-spatial-path.mjs",
     "verify:separate-dims": "node scripts/verify-separate-dims.mjs",
