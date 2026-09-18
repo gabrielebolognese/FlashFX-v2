@@ -65,8 +65,8 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | B17 | Tiling & generative simulations - sim presets over existing pattern engine + motion-tile param model (harnessed) | ✅ | medium |
 | B17-gpu | Motion-tile effect (repeat + mirror + seamless edge blend) + radio/vegas pattern WGSL cases | ⬜ (browser) | medium |
 | B18 | 3D scene completion (DOF/bokeh, lights & shadows, parallax, focus pull) | ⏭️ skip (3D) | **heavy** |
-| B19 | Particle system polish (emitters, physics, trails, fire/smoke/confetti) | ▶ **next** | **heavy** |
-| B20 | Plexus - 2D connected-dots network (3D stroke / flowing surfaces dropped) | ⬜ | medium |
+| B19 | Particle system polish - wind/attractor forces + dissolve emitter + 5 presets + frame-purity FIX (harnessed) | ✅ | **heavy** |
+| B20 | Plexus - 2D connected-dots network (3D stroke / flowing surfaces dropped) | ▶ **next** | medium |
 | B21 | Physics dynamics (collisions, stacking, springs/ropes, soft-body) | ⬜ | **heavy** |
 | B22 | 3D objects & extrusion (extruded text/logos, materials) | ⏭️ skip (3D) | **heavy** |
 | B23 | Destruction generators (shatter, card dance) | ⬜ | medium |
@@ -234,8 +234,8 @@ Audit: the per-layer effect stack **already exists** (ordered `LayerEffect[]` on
 **Decision (2026-09):** the app is intentionally **2.5D-only** (cards-in-space + camera, already built); full 3D is out of scope. Skipped: 3D lights & shadows, environment/reflection, full DOF/focus-pull. If ever wanted, only the 2.5D-compatible slivers (a 2D **bokeh blur** effect and camera **parallax** on the existing multiplane) would be revisited as a light batch - not the 3D scene.
 ~~**Delivers:** depth of field / bokeh, lights & shadows, parallax multiplane, focus pulls, environment/reflection. Categories: 7. Depends on the 2.5D camera system. Perf: HEAVY.~~
 
-## B19 - Particle system polish
-**Delivers:** Particular-grade emitters, air/gravity/turbulence physics, trails/streaks, presets (fire/smoke/sparks/confetti/dust), text/logo dissolve-into-particles. **Categories:** 8. **Perf:** **HEAVY** GPU compute - dedicated + profiled; frame-pure via seeded hashing. Likely splits (emitter core / physics / presets).
+## B19 - Particle system polish ✅ (full - no split)
+**Audit finding:** a mature particle system already existed (`src/particles/`: seeded `ParticleEngine`, gravity/drag/**turbulence**, trails, size/opacity/colour-over-life, 5 sprite shapes, and 8 presets incl. fire/smoke/sparks/confetti/snow/magic/rain/bubbles - rendered on a 2D canvas), but with **no harness**. **Shipped:** (1) **Bug fix - frame-purity**: the engine reseeded its RNG per-frame only on keyframe restore, so **scrubbing backward produced different particles than playing forward** (the sim was NOT frame-pure despite the doc's claim). Now `stepFrame` reseeds `mulberry32(baseSeed + frame*7919)` every frame, so play and scrub are byte-identical (proven by the harness). (2) New forces: **wind** (constant directional) + **attractor** (radial pull/push with radius falloff), applied in the sim, exposed as Wind X/Y in `ParticlePanel`. (3) **Dissolve emitter**: a `'points'` emitter shape spawning from `sourcePoints`, plus pure `sampleRegionPoints` / `sampleMaskPoints` (deterministic - the logo/text dissolve foundation). (4) 5 new presets: **dust, embers, steam, fireworks, dissolve**. All optional new config fields, so old projects load unchanged. Verified by `npm run verify:particles` (9 checks: frame-purity + scrub-determinism, gravity/drag/wind/attractor/lifetime, points emitter, dissolve samplers, all 13 presets simulate). **Categories:** 8. **Perf:** the sim is CPU (bounded by maxParticles) + keyframe-snapshot scrubbing; frame-pure. **Follow-up (optional):** live source-layer alpha -> `sourcePoints` + source fade-out (couples the dissolve to a real layer) is a browser-render integration, not built here.
 
 ## B20 - Plexus (2D connected-dots) - descoped, no 3D
 **Delivers (2D only):** **plexus** - a connected-dot network (points + proximity lines, animated), which is a pure 2D graph over points. **Dropped as 3D (out of scope):** 3D stroke "draws in space" and Mir/Tao flowing surfaces. **Categories:** 9. **Perf:** medium - lines over points (the pure part is the point/edge graph; the line render reuses the existing pen/stroke pipeline). **Verify:** pure proximity-graph harnessed.

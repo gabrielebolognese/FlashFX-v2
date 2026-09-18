@@ -15,7 +15,15 @@ export interface ColorStop {
   color: [number, number, number, number];
 }
 
-export type EmitterShape = 'point' | 'circle' | 'rectangle' | 'ring';
+export type EmitterShape = 'point' | 'circle' | 'rectangle' | 'ring' | 'points';
+
+/** A radial attractor/repeller force (B19): pulls (strength>0) or pushes (<0) particles within radius. */
+export interface ParticleAttractor {
+  x: number;
+  y: number;
+  strength: number;
+  radius: number;
+}
 
 export interface EmitterConfig {
   id: string;
@@ -51,6 +59,14 @@ export interface EmitterConfig {
   blendMode: ParticleBlendMode;
   spriteShape: 'circle' | 'square' | 'star' | 'spark' | 'smoke';
   trailLength: number;
+
+  // B19 polish (all optional so existing configs load unchanged; absent/0 = off).
+  /** Constant directional force (px/s^2), e.g. wind. */
+  wind?: [number, number];
+  /** Radial attractor/repeller force. */
+  attractor?: ParticleAttractor | null;
+  /** Spawn positions for emitterShape 'points' (e.g. sampled from a source layer for dissolve). */
+  sourcePoints?: [number, number][];
 }
 
 export interface Particle {

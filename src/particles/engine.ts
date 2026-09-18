@@ -166,6 +166,11 @@ export class ParticleEngine {
     const dt = 1 / this.frameRate;
     const cfg = this.config;
 
+    // Frame-purity: seed this frame's spawn RNG deterministically from (baseSeed, frame) so scrubbing
+    // (restore-keyframe + step) is byte-identical to playing straight through. A continuous stream is
+    // path-dependent - stepping to frame N after a keyframe restore diverges from a fresh forward sim.
+    this.rng = mulberry32((this.baseSeed + this.currentFrame * 7919) >>> 0);
+
     if (this.currentFrame % this.KEYFRAME_INTERVAL === 0) {
       this.saveKeyframe();
     }
@@ -213,6 +218,19 @@ export class ParticleEngine {
       p.vx *= (1 - cfg.drag * dt);
       p.vy *= (1 - cfg.drag * dt);
 
+      // Wind (B19): constant directional force.
+      if (cfg.wind) { p.vx += cfg.wind[0] * dt; p.vy += cfg.wind[1] * dt; }
+
+      // Attractor (B19): radial pull (strength>0) / push (<0), linear falloff to 0 at radius.
+      if (cfg.attractor && cfg.attractor.strength !== 0) {
+        const dx = cfg.attractor.x - p.x, dy = cfg.attractor.y - p.y;
+        const dist = Math.hypot(dx, dy) || 1;
+        const rad = cfg.attractor.radius > 0 ? cfg.attractor.radius : 1;
+        const falloff = Math.max(0, 1 - dist / rad);
+        const f = (cfg.attractor.strength * falloff) / dist;
+        p.vx += dx * f * dt; p.vy += dy * f * dt;
+      }
+
       // Turbulence
       if (cfg.turbulenceStrength > 0) {
         const scale = cfg.turbulenceScale || 0.01;
@@ -257,6 +275,15 @@ export class ParticleEngine {
         p.x = (rng() - 0.5) * cfg.emitterWidth;
         p.y = (rng() - 0.5) * cfg.emitterHeight;
         break;
+      case 'points': {
+        // B19 dissolve: spawn from a provided point set (e.g. sampled from a source layer).
+        const pts = cfg.sourcePoints;
+        if (pts && pts.length > 0) {
+          const idx = Math.floor(rng() * pts.length) % pts.length;
+          p.x = pts[idx][0]; p.y = pts[idx][1];
+        } else { p.x = 0; p.y = 0; }
+        break;
+      }
     }
 
     // Velocity
@@ -347,6 +374,11 @@ export class ParticleEngine {
     let c = 0;
     for (const p of this.particles) if (p.alive) c++;
     return c;
+  }
+
+  /** Deep copies of the currently-alive particles (for inspection/verification). */
+  getParticles(): Particle[] {
+    return this.particles.filter((p) => p.alive).map((p) => ({ ...p }));
   }
 }
 

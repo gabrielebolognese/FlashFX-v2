@@ -179,6 +179,8 @@ function ForcesSection({ config, onChange }: { config: EmitterConfig; onChange: 
     <div className="space-y-2">
       <DragInput label="Gravity X" value={config.gravity[0]} onChange={(v) => onChange({ gravity: [v, config.gravity[1]] })} step={1} precision={0} />
       <DragInput label="Gravity Y" value={config.gravity[1]} onChange={(v) => onChange({ gravity: [config.gravity[0], v] })} step={1} precision={0} />
+      <DragInput label="Wind X" value={config.wind?.[0] ?? 0} onChange={(v) => onChange({ wind: [v, config.wind?.[1] ?? 0] })} step={1} precision={0} />
+      <DragInput label="Wind Y" value={config.wind?.[1] ?? 0} onChange={(v) => onChange({ wind: [config.wind?.[0] ?? 0, v] })} step={1} precision={0} />
       <DragInput label="Drag" value={config.drag} onChange={(v) => onChange({ drag: Math.max(0, v) })} min={0} max={10} step={0.1} precision={1} />
       <DragInput label="Turbulence" value={config.turbulenceStrength} onChange={(v) => onChange({ turbulenceStrength: Math.max(0, v) })} min={0} max={500} step={1} precision={0} />
       <DragInput label="Turb Scale" value={config.turbulenceScale} onChange={(v) => onChange({ turbulenceScale: Math.max(0.001, v) })} min={0.001} max={0.1} step={0.001} precision={3} />

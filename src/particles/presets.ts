@@ -33,6 +33,8 @@ export function createEmitterConfig(overrides: Partial<EmitterConfig> = {}): Emi
     blendMode: 'alpha',
     spriteShape: 'circle',
     trailLength: 0,
+    wind: [0, 0],
+    attractor: null,
     ...overrides,
   };
 }
@@ -259,6 +261,55 @@ export const PARTICLE_PRESETS: Record<string, () => EmitterConfig> = {
     ],
     blendMode: 'alpha',
     spriteShape: 'circle',
+  }),
+
+  // ── B19 polish presets ──────────────────────────────────────────────────────────────────────
+  dust: () => createEmitterConfig({
+    name: 'Dust',
+    maxParticles: 400, spawnRate: 45, emitterShape: 'rectangle', emitterWidth: 400, emitterHeight: 300,
+    initialSpeed: { min: 4, max: 18 }, initialAngle: { min: 0, max: 360 }, initialSize: { min: 1, max: 3 },
+    lifetime: { min: 4, max: 8 }, gravity: [0, -4], drag: 0.8, turbulenceStrength: 10, turbulenceScale: 0.01,
+    wind: [8, 0], sizeOverLife: [0, 1, 1, 1, 0], opacityOverLife: [0, 0.35, 0.3, 0.2, 0],
+    colorOverLife: [{ t: 0, color: [0.85, 0.82, 0.75, 0.4] }, { t: 1, color: [0.8, 0.78, 0.7, 0] }],
+    blendMode: 'alpha', spriteShape: 'circle',
+  }),
+  embers: () => createEmitterConfig({
+    name: 'Embers',
+    maxParticles: 500, spawnRate: 70, emitterShape: 'rectangle', emitterWidth: 220, emitterHeight: 20,
+    initialSpeed: { min: 30, max: 90 }, initialAngle: { min: 250, max: 290 }, initialSize: { min: 2, max: 5 },
+    lifetime: { min: 1.2, max: 2.6 }, gravity: [0, -35], drag: 0.6, turbulenceStrength: 30, turbulenceScale: 0.02,
+    wind: [12, 0], spinSpeed: { min: -2, max: 2 }, trailLength: 4,
+    sizeOverLife: [0.6, 1, 0.8, 0.4, 0], opacityOverLife: [1, 1, 0.7, 0.3, 0],
+    colorOverLife: [{ t: 0, color: [1, 0.95, 0.5, 1] }, { t: 0.5, color: [1, 0.5, 0.1, 1] }, { t: 1, color: [0.6, 0.1, 0.05, 0] }],
+    blendMode: 'additive', spriteShape: 'spark',
+  }),
+  steam: () => createEmitterConfig({
+    name: 'Steam',
+    maxParticles: 250, spawnRate: 22, emitterShape: 'circle', emitterRadius: 20,
+    initialSpeed: { min: 10, max: 30 }, initialAngle: { min: 250, max: 290 }, initialSize: { min: 24, max: 60 },
+    lifetime: { min: 2.5, max: 5 }, gravity: [0, -22], drag: 1.2, turbulenceStrength: 14, turbulenceScale: 0.006,
+    wind: [10, 0], sizeOverLife: [0.3, 0.7, 1, 1.2, 1.4], opacityOverLife: [0, 0.28, 0.22, 0.12, 0],
+    colorOverLife: [{ t: 0, color: [0.95, 0.96, 0.98, 0.3] }, { t: 1, color: [0.9, 0.92, 0.95, 0] }],
+    blendMode: 'screen', spriteShape: 'smoke',
+  }),
+  fireworks: () => createEmitterConfig({
+    name: 'Fireworks',
+    maxParticles: 400, spawnRate: 0, burstCount: 180, burstRepeat: true, burstInterval: 1.6,
+    emitterShape: 'point', initialSpeed: { min: 140, max: 320 }, initialAngle: { min: 0, max: 360 },
+    initialSize: { min: 2, max: 4 }, lifetime: { min: 1, max: 2.2 }, gravity: [0, 120], drag: 1.2,
+    trailLength: 6, sizeOverLife: [1, 1, 0.8, 0.4, 0], opacityOverLife: [1, 1, 0.8, 0.4, 0],
+    colorOverLife: [{ t: 0, color: [1, 0.9, 0.6, 1] }, { t: 0.4, color: [1, 0.3, 0.6, 1] }, { t: 1, color: [0.3, 0.2, 0.8, 0] }],
+    blendMode: 'additive', spriteShape: 'spark',
+  }),
+  dissolve: () => createEmitterConfig({
+    name: 'Dissolve',
+    maxParticles: 800, spawnRate: 0, burstCount: 800, burstRepeat: false,
+    emitterShape: 'rectangle', emitterWidth: 300, emitterHeight: 300,
+    initialSpeed: { min: 10, max: 60 }, initialAngle: { min: 0, max: 360 }, initialSize: { min: 2, max: 5 },
+    lifetime: { min: 1.5, max: 3 }, gravity: [0, -20], drag: 0.7, turbulenceStrength: 25, turbulenceScale: 0.02,
+    wind: [15, 0], sizeOverLife: [1, 1, 0.7, 0.3, 0], opacityOverLife: [1, 1, 0.7, 0.3, 0],
+    colorOverLife: [{ t: 0, color: [1, 1, 1, 1] }, { t: 1, color: [1, 1, 1, 0] }],
+    blendMode: 'alpha', spriteShape: 'square',
   }),
 };
 
