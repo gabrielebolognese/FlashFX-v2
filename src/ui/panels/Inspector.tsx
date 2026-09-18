@@ -32,7 +32,7 @@ import { autoCaptionAudioLayers, useAutoCaptionStore } from '../../store/autoCap
 import { createProperty, createTextAnimOverrides } from '../../core/factory';
 import { getMotionBlur } from '../../core/layerSwitches';
 import { DEFAULT_CONSTRAINTS, type ReframeAxisMode } from '../../core/reframe';
-import { Diamond, Route, Trash2, Wand2, Sliders, Sparkles, Square, Circle, Star, Hexagon, Zap, Scissors, Moon, Layers, Type, Frame, Copy, ChevronUp, ChevronDown, Eye, EyeOff, Plus, Repeat, Link2, Atom, Grid3x3, Aperture, Code2, SlidersHorizontal, Palette, Loader2, Boxes, Box, RotateCcw, Lock, Unlock, Upload, Captions } from 'lucide-react';
+import { Diamond, Route, Trash2, Wand2, Sliders, Sparkles, Square, Circle, Star, Hexagon, Zap, Scissors, Moon, Layers, Type, Frame, Copy, ChevronUp, ChevronDown, Eye, EyeOff, Plus, Repeat, Link2, Atom, Grid3x3, Aperture, Code2, SlidersHorizontal, Palette, Loader2, Boxes, Box, RotateCcw, Lock, Unlock, Upload, Captions, Crop, ShieldAlert } from 'lucide-react';
 import { DragInput } from '../components/DragInput';
 import { useAgentBuildStore } from '../agent-build/agentBuildStore';
 import { useSilenceStore } from '../../store/silenceStripper';
@@ -59,6 +59,9 @@ import { ColorCorrectionPanel } from './color-correction';
 import { smoothEntirePath } from '../../core/motionPath';
 import { mediaAssetManager } from '../../engine/media/assetManager';
 import { useProjectStore } from '../../project-system/hooks/useProjectStore';
+import { useSmartCropStore } from '../../store/smartCrop';
+import { useFaceBlurStore } from '../../store/faceBlur';
+import { useColorMatchStore } from '../../store/colorMatch';
 import type { SplitMode } from '../../core/textExplode';
 
 // Font menu, grouped by category, sourced from the single font manifest (engine/fonts.ts) so
@@ -1789,8 +1792,23 @@ function ImageProperties({
 
       <Section title="Tools">
         <RemoveBackgroundButton layer={layer} />
+        <ImageToolButtons layer={layer} />
       </Section>
     </>
+  );
+}
+
+/** Smart Crop / Face Blur / Color Match - the media-pool image tools, launched here on the selected
+ *  image layer's asset (they also live in the media-pool asset right-click menu). */
+function ImageToolButtons({ layer }: { layer: ImageLayer }) {
+  const assetId = layer.image.assetId;
+  const btn = 'flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-[11px] bg-surface-3 border border-hairline text-slate-300 hover:bg-surface-4 hover:text-slate-100 transition-colors';
+  return (
+    <div className="mt-1.5 grid grid-cols-3 gap-1.5">
+      <button className={btn} onClick={() => useSmartCropStore.getState().show(assetId)} title="Intelligent reframing"><Crop size={13} /> Crop</button>
+      <button className={btn} onClick={() => useFaceBlurStore.getState().show(assetId)} title="Blur / redact faces"><ShieldAlert size={13} /> Faces</button>
+      <button className={btn} onClick={() => useColorMatchStore.getState().show(assetId)} title="Match a reference's color"><Palette size={13} /> Match</button>
+    </div>
   );
 }
 
