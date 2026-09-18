@@ -1,49 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useSpotlightRect } from './spotlightRect';
 
-// Dim-with-cutout spotlight. Finds the DOM node tagged data-tutorial-id={target} (or the canvas for
-// 'canvas'), reads its live rect, and dims everything around it with four surrounding panels plus a
-// highlight ring - so the eye lands on the tool/panel the current step is using. Pointer-events are
-// off throughout (the runner's own soft-lock handles click-blocking); this is purely visual.
-//
-// The rect is re-read on a light interval + on resize/scroll, because the editor relayouts as the
-// build adds layers (the timeline grows, panels shift). When the target can't be found we render
-// nothing - the step degrades to narration-only, never a broken dim.
-
-interface Rect { x: number; y: number; w: number; h: number }
+// Dim-with-cutout spotlight. Reads the current target's live rect (see spotlightRect) and dims
+// everything around it with four surrounding panels plus a highlight ring - so the eye lands on the
+// tool/panel the current step is using. Pointer-events are off throughout (this is purely visual; the
+// manual tour lets the user click through). When the target can't be found we render nothing.
 
 const PAD = 8; // breathing room around the cutout
 
-function findRect(target: string | undefined): Rect | null {
-  if (!target || target === 'none') return null;
-  const sel = target === 'canvas'
-    ? '[data-tutorial-id="canvas"], canvas'
-    : `[data-tutorial-id="${CSS.escape(target)}"]`;
-  const el = document.querySelector(sel) as HTMLElement | null;
-  if (!el) return null;
-  const r = el.getBoundingClientRect();
-  if (r.width < 1 || r.height < 1) return null;
-  return { x: r.left, y: r.top, w: r.width, h: r.height };
-}
-
 export function SpotlightOverlay({ target }: { target: string | undefined }) {
-  const [rect, setRect] = useState<Rect | null>(() => findRect(target));
-
-  useEffect(() => {
-    let raf = 0;
-    const update = () => setRect(findRect(target));
-    update();
-    // Poll on an interval rather than every frame - cheap, and the target only moves on relayout.
-    const id = window.setInterval(update, 200);
-    const onChange = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(update); };
-    window.addEventListener('resize', onChange);
-    window.addEventListener('scroll', onChange, true);
-    return () => {
-      window.clearInterval(id);
-      cancelAnimationFrame(raf);
-      window.removeEventListener('resize', onChange);
-      window.removeEventListener('scroll', onChange, true);
-    };
-  }, [target]);
+  const rect = useSpotlightRect(target);
 
   if (!rect) return null;
 
