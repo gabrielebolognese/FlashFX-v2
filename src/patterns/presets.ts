@@ -30,4 +30,11 @@ export const PATTERN_PRESETS: PatternPreset[] = [
   { name: 'Moiré', config: { type: 'interference', scale: 1.6, speed: 0.4, rotationDeg: 0, complexity: 1, warp: 0, contrast: 0.3, paletteMode: 'smooth', palette: PALETTES.Mono } },
   { name: 'Color Sweep', config: { type: 'gradient', scale: 1, speed: 0.7, rotationDeg: 0, complexity: 1, warp: 0, contrast: 0, paletteMode: 'smooth', palette: PALETTES.Sunset } },
   { name: 'Turbulence', config: { type: 'warp', scale: 0.9, speed: 0.4, rotationDeg: 0, complexity: 4, warp: 0.6, contrast: 0.25, paletteMode: 'smooth', palette: PALETTES.Aurora } },
+  // B17 generative simulations - mapped onto existing pattern types so they render now.
+  { name: 'Caustics', config: { type: 'interference', scale: 1.8, speed: 0.5, rotationDeg: 0, complexity: 2, warp: 0.5, contrast: 0.5, paletteMode: 'smooth', palette: PALETTES.Ocean } },
+  { name: 'Wave World', config: { type: 'waves', scale: 1.2, speed: 0.7, rotationDeg: 0, complexity: 5, warp: 0.3, contrast: 0.35, paletteMode: 'smooth', palette: PALETTES.Aurora } },
+  { name: 'Radio Waves', config: { type: 'rings', scale: 1.4, speed: 1.0, rotationDeg: 0, complexity: 1, warp: 0, contrast: 0.4, paletteMode: 'smooth', palette: PALETTES.Neon } },
+  { name: 'Fractal Noise', config: { type: 'clouds', scale: 1.0, speed: 0.2, rotationDeg: 0, complexity: 6, warp: 0.1, contrast: 0.25, paletteMode: 'smooth', palette: PALETTES.Mono } },
+  { name: 'Energy Field', config: { type: 'warp', scale: 1.1, speed: 0.6, rotationDeg: 0, complexity: 5, warp: 0.7, contrast: 0.3, paletteMode: 'smooth', palette: PALETTES.Neon } },
+  { name: 'Deep Cells', config: { type: 'voronoi', scale: 2.0, speed: 0.3, rotationDeg: 0, complexity: 1, warp: 0.2, contrast: 0.35, paletteMode: 'smooth', palette: PALETTES.Aurora } },
 ];

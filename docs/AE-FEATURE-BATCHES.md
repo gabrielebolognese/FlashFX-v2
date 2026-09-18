@@ -62,8 +62,9 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | B15-gpu | Live per-layer 3D-LUT + curves in IMAGE_SHADER (GPU 3D-texture sample) + HSL secondary | ⬜ (browser) | medium |
 | B16 | Light rays, flares & beams - light presets over existing effects + pure beam/lightning geometry (harnessed) | ✅ | **heavy** |
 | B16-gpu | Beam/lightning as a glowing ribbon layer (ribbon->shape + glow, or WGSL SDF beam) | ⬜ (browser) | **heavy** |
-| B17 | Tiling & generative simulations (motion tile, caustics, wave/radio, cell) | ▶ **next** | medium |
-| B18 | 3D scene completion (DOF/bokeh, lights & shadows, parallax, focus pull) | ⬜ | **heavy** |
+| B17 | Tiling & generative simulations - sim presets over existing pattern engine + motion-tile param model (harnessed) | ✅ | medium |
+| B17-gpu | Motion-tile effect (repeat + mirror + seamless edge blend) + radio/vegas pattern WGSL cases | ⬜ (browser) | medium |
+| B18 | 3D scene completion (DOF/bokeh, lights & shadows, parallax, focus pull) | ▶ **next** | **heavy** |
 | B19 | Particle system polish (emitters, physics, trails, fire/smoke/confetti) | ⬜ | **heavy** |
 | B20 | Generative geometry (3D stroke, plexus, flowing surfaces) | ⬜ | **heavy** |
 | B21 | Physics dynamics (collisions, stacking, springs/ropes, soft-body) | ⬜ | **heavy** |
@@ -223,8 +224,11 @@ Audit: the per-layer effect stack **already exists** (ordered `LayerEffect[]` on
 ## B16-gpu - Beam/lightning as a glowing layer (browser-gated)
 **Delivers:** turn the pure `beamGeometry` ribbon into a rendered energy beam - either a `PolygonShape` from the ribbon outline with the existing `LayerGlow`, or a dedicated WGSL SDF beam pass (soft core + additive glow), animated by feeding `frameNumber` into `lightningPath`'s seed. Endpoints keyframable. Unverifiable here.
 
-## B17 - Tiling & generative simulations
-**Delivers:** motion tile / offset **seamless scroll**; generative sims - caustics, wave world, radio waves, cell pattern, fractal noise, vegas stroke. **Categories:** 26, 28. **Depends on:** B11 + existing generativePattern engine. **Perf:** medium.
+## B17 - Tiling & generative simulations ✅ (sim presets + tile param model; tile render split to B17-gpu)
+**Audit finding:** the generative-pattern engine (`src/patterns/`) already renders 11 pattern types (waves, plasma, kaleidoscope, mosaic, clouds, voronoi, rings, spiral, interference, gradient, warp) with 12 presets, and `offset` (209) already offsets UVs. **Shipped (renders now + harnessed):** 6 new generative-simulation presets in `PATTERN_PRESETS` mapped onto existing types - **Caustics** (interference), **Wave World** (waves), **Radio Waves** (rings), **Fractal Noise** (clouds), **Energy Field** (warp), **Deep Cells** (voronoi) - auto-exposed in `GenerativePatternPanel`. Plus the genuinely-new **motion-tile param engine** `core/effects/tileParams.ts`: `wrapOffset` (seamless - equal at 0 and size), `resolveScroll` (per-frame offset, resolution-relative + frame-pure), `clampMotionTile`, and `tileUV` (screen UV -> source tile UV with grid + scroll + ping-pong mirror; the reference for the GPU shader). Verified by `npm run verify:pattern-tile` (5 checks: every preset uses a real `PATTERN_TYPE` with in-range params, seamless wrap, scroll sign/monotonic/resolution-relative/frame-pure, clamp, tile mirror). **Split out - B17-gpu:** the actual motion-tile effect (repeat + mirror + edge blend) and any missing pattern type (radio-waves refinement / vegas stroke). **Perf:** medium.
+
+## B17-gpu - Motion-tile effect + missing pattern cases (browser-gated)
+**Delivers:** a `motionTile` warp effect - tile the layer `tilesX x tilesY` with optional mirror and a seamless scroll, using `tileParams.tileUV` as the exact spec (UV wrap in the existing warp stage) - plus a dedicated `radioWaves` pattern and a path-following `vegasStroke` (animated outline stroke) as new WGSL. Additive; layers without motion-tile stay byte-identical. Unverifiable here.
 
 ## B18 - 3D scene completion
 **Delivers:** depth of field / **bokeh**, lights & shadows, parallax multiplane, **focus pulls**, environment/reflection. **Categories:** 7. **Depends on:** the 2.5D camera system (M0–M3 built). **Perf:** **HEAVY**.
