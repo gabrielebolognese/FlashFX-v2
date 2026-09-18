@@ -1,7 +1,7 @@
 import { useProjectStore } from '../project-system/hooks/useProjectStore';
 import { usePanelStore } from '../store/panels';
 import { useEditorStore } from '../store/editor';
-import { useTimelineStore } from '../store/timeline';
+import { useTimelineStore, playbackController } from '../store/timeline';
 import { useTutorialStore } from './store';
 
 export const TUTORIAL_SEEN_KEY = 'ffx-tutorial-seen';
@@ -25,6 +25,11 @@ export function startEditorTour(): void {
   panels.setUiMode('pro');
   panels.setEditorWorkspace('edit');
   useTutorialStore.getState().start();
+  // Switching Starter -> Full remounts the Viewport (a fresh WebGPU canvas that re-initialises
+  // asynchronously). Force a repaint of the paused scene a few times across that window so the
+  // canvas keeps showing the current animation instead of flashing blank. renderCurrentFrame
+  // safely no-ops until the new renderer has attached.
+  [100, 300, 600, 1000, 1500].forEach((ms) => setTimeout(() => playbackController.renderCurrentFrame(), ms));
 }
 
 /**
