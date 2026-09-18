@@ -455,7 +455,7 @@ interface EditorState {
   // Manage Effects: reorder (stack render order) and enable/disable one effect.
   reorderLayerEffect: (layerId: string, type: number, direction: 'up' | 'down') => void;
   toggleLayerEffect: (layerId: string, type: number) => void;
-  /** Replace a layer's whole effect stack (B11a — used to apply a saved effect preset). Undoable. */
+  /** Replace a layer's whole effect stack (B11a - used to apply a saved effect preset). Undoable. */
   setLayerEffects: (layerId: string, effects: LayerEffect[]) => void;
   setLayerParent: (childId: string, parentId: string | null) => void;
   addKeyframe: (layerId: string, propertyPath: string, frame: number, value: number | [number, number]) => void;

@@ -754,7 +754,7 @@ function AssetCard({ asset, isSelected, isDragging, onClick, onDragStart, onDrag
       <div className="px-1.5 py-1">
         <div className="text-[9px] text-slate-300 truncate">{asset.name}</div>
         <div className="text-[8px] text-slate-600">
-          {asset.type === 'audio' ? `${asset.duration?.toFixed(1) ?? '\u2014'}s` : `${asset.width}x${asset.height}`}
+          {asset.type === 'audio' ? `${asset.duration?.toFixed(1) ?? '-'}s` : `${asset.width}x${asset.height}`}
         </div>
       </div>
     </div>
@@ -786,7 +786,7 @@ function AssetListRow({ asset, isSelected, isDragging, onClick, onDragStart, onD
       <div className="min-w-0 flex-1">
         <div className="text-[10px] text-slate-200 truncate">{asset.name}</div>
         <div className="text-[8px] text-slate-600">
-          {asset.type === 'audio' ? `${asset.duration?.toFixed(1) ?? '\u2014'}s` : `${asset.width}x${asset.height}`}
+          {asset.type === 'audio' ? `${asset.duration?.toFixed(1) ?? '-'}s` : `${asset.width}x${asset.height}`}
         </div>
       </div>
       <div className="text-[7px] text-slate-500 uppercase flex-shrink-0">

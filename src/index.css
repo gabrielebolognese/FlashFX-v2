@@ -3,23 +3,23 @@
 @tailwind utilities;
 
 /* =====================================================================
-   FlashFX design tokens — the single source of truth (Premium UI System 1).
+   FlashFX design tokens - the single source of truth (Premium UI System 1).
    Canonical tokens are the ffx- names; Tailwind reads these vars
    (tailwind.config.js). The legacy surface / edge / accent / text names
    are kept as ALIASES so existing helpers and stray var() usages keep
    resolving while components migrate onto the new tokens.
    Dark theme is the default. A future :root[data-theme='light'] overrides
-   only the semantic tokens in this block — nothing structural.
+   only the semantic tokens in this block - nothing structural.
    See docs/PREMIUM-UI-SYSTEM.md.
    ===================================================================== */
 :root {
-  /* Fonts — native system/SF stack (no webfont download; native optical sizing). */
+  /* Fonts - native system/SF stack (no webfont download; native optical sizing). */
   --ffx-font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
     "Segoe UI", system-ui, Roboto, Helvetica, Arial, sans-serif;
   --ffx-font-mono: "SF Mono", ui-monospace, "SFMono-Regular", "Cascadia Code",
     "JetBrains Mono", Menlo, Consolas, monospace;
 
-  /* Surfaces — the blue ladder. Depth = a lighter step, never a shadow. */
+  /* Surfaces - the blue ladder. Depth = a lighter step, never a shadow. */
   --ffx-bg-sunken: #070f1c;
   --ffx-bg: #0a1424;
   --ffx-surface-1: #0e1b2e;
@@ -28,30 +28,30 @@
   --ffx-surface-4: #21344e;
   --ffx-surface-5: #2a3f5c;
 
-  /* Lines — white-alpha, so they adapt to any surface. */
+  /* Lines - white-alpha, so they adapt to any surface. */
   --ffx-hairline: rgba(255, 255, 255, 0.08);
   --ffx-border: rgba(255, 255, 255, 0.14);
 
-  /* Accent — the gold (under 5% of pixels). */
+  /* Accent - the gold (under 5% of pixels). */
   --ffx-accent: #d9a521;
   --ffx-accent-hover: #f0bd45;
   --ffx-accent-wash: rgba(217, 165, 33, 0.12);
   --ffx-accent-dim: #a87d18;
   --ffx-on-accent: #12161c;
 
-  /* Text — hierarchy via value step. Primary is a cool off-white, never pure #fff. */
+  /* Text - hierarchy via value step. Primary is a cool off-white, never pure #fff. */
   --ffx-text-primary: #e6edf6;
   --ffx-text-secondary: #94a3b8;
   --ffx-text-tertiary: #64748b;
   --ffx-text-muted: #475569;
 
-  /* Semantic — desaturated to live inside the cool-dark world. */
+  /* Semantic - desaturated to live inside the cool-dark world. */
   --ffx-success: #3dbe7a;
   --ffx-danger: #e5545a;
   --ffx-info: #4c86d6;
-  --ffx-live: #ff3b5c; /* timeline skimmer — distinct from white playhead + gold selection */
+  --ffx-live: #ff3b5c; /* timeline skimmer - distinct from white playhead + gold selection */
 
-  /* Radius — pro tools stay 4–8px; the island is the one signature exception. */
+  /* Radius - pro tools stay 4–8px; the island is the one signature exception. */
   --ffx-radius-sm: 4px;
   --ffx-radius-md: 6px;
   --ffx-radius-lg: 8px;
@@ -59,12 +59,12 @@
   --ffx-radius-island: 14px;
   --ffx-radius-pill: 999px;
 
-  /* Control heights — locked to 3. */
+  /* Control heights - locked to 3. */
   --ffx-h-compact: 24px;
   --ffx-h-default: 28px;
   --ffx-h-comfortable: 32px;
 
-  /* Motion — fast, decelerating, transform/opacity-only. Hard ceiling 320ms. */
+  /* Motion - fast, decelerating, transform/opacity-only. Hard ceiling 320ms. */
   --ffx-dur-instant: 80ms;
   --ffx-dur-micro: 120ms;
   --ffx-dur-standard: 200ms;
@@ -74,19 +74,19 @@
   --ffx-ease-move: cubic-bezier(0.4, 0, 0.2, 1);
   --ffx-ease-spring: cubic-bezier(0.34, 1.3, 0.64, 1); /* island expand only */
 
-  /* Elevation — depth from surface step + hairline; shadow only on floating tiers. */
+  /* Elevation - depth from surface step + hairline; shadow only on floating tiers. */
   --ffx-shadow-overlay: 0 8px 24px -4px rgba(0, 0, 0, 0.5), 0 2px 6px -2px rgba(0, 0, 0, 0.4);
   --ffx-shadow-modal: 0 16px 48px -8px rgba(0, 0, 0, 0.6), 0 4px 12px -4px rgba(0, 0, 0, 0.45);
   --ffx-elev-top-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.05);
   --ffx-focus-ring: 0 0 0 2px rgba(217, 165, 33, 0.55), 0 0 0 4px rgba(217, 165, 33, 0.15);
 
-  /* Materials — blur only on floating-over-static surfaces (see material rules). */
+  /* Materials - blur only on floating-over-static surfaces (see material rules). */
   --ffx-material-menu-bg: rgba(26, 42, 66, 0.85);
   --ffx-material-island-bg: rgba(20, 35, 57, 0.78);
   --ffx-material-blur: blur(24px) saturate(1.8);
   --ffx-material-blur-island: blur(20px) saturate(1.8);
 
-  /* Z-scale — one ladder so stacking contexts stop fighting. */
+  /* Z-scale - one ladder so stacking contexts stop fighting. */
   --ffx-z-canvas-banner: 40;
   --ffx-z-island: 95;
   --ffx-z-overlay: 90;
@@ -181,7 +181,7 @@ input[type="number"] {
   scrollbar-width: none;
 }
 
-/* Blurred materials — ONLY for surfaces that float over STATIC content
+/* Blurred materials - ONLY for surfaces that float over STATIC content
    (menus, popovers, command palette, the dynamic island). Never over the live
    WebGPU viewport/timeline. Ship a semi-opaque fallback bg so they stay cheap
    and readable if blur is dropped. See docs/PREMIUM-UI-SYSTEM.md material rules. */
@@ -251,7 +251,7 @@ input[type="number"] {
   will-change: transform;
 }
 
-/* Dynamic Island entrance — the one place the spring overshoot is allowed. Keeps
+/* Dynamic Island entrance - the one place the spring overshoot is allowed. Keeps
    the translateX(-50%) centering while scaling in (transform + opacity only). */
 @keyframes ffxIslandIn {
   from { opacity: 0; transform: translateX(-50%) scale(0.92); }
@@ -262,7 +262,7 @@ input[type="number"] {
 }
 
 /* Onboarding shape-creation demos: a looping cursor showing fast-click vs
-   drag-to-create. Cosmetic and one-off (not a hot path) — left/top + transform.
+   drag-to-create. Cosmetic and one-off (not a hot path) - left/top + transform.
    Positions are % within each demo's relative canvas. */
 @keyframes ffxDemoCursorFast {
   0%   { left: 62%; top: 80%; }

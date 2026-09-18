@@ -13,34 +13,40 @@ import { launchTutorial } from './launch';
  * Onboarding → "Yes, open the example" flow. Mounted in the editor.
  *
  * Reworked into a scripted showcase (no jarring "editor first, then popup"): first a
- * "Loading editor" bridge covers the raw editor, then an intro button. On start it drives
- * the Starter editor's own choreography one animation at a time:
- *   pen-writing (plays)  → box + Continue
- *   bar-chart-race (plays to end) → box + Show me
- *   recursive-editor (static, no play) → box + Show me
- *   forest (static, no play) → deselect all → focus rectangle on the mode switch + final box
+ * "Loading editor" bridge covers the raw editor, then an intro button. Nothing runs until
+ * the user presses a button - each press BUILDS the next animation with the editor's own
+ * self-assembling choreography (insertAnimationTemplateAnimated), then:
+ *   pen-writing  → build, then play        → box + Continue
+ *   bar-chart-race → build, then play to end → box + Show me
+ *   recursive-editor → build, no play        → box + Show me
+ *   forest       → build, no play           → deselect all → focus rectangle + final box
  * When the user switches to the Full editor (confirmed), the normal guided tutorial launches.
  *
- * Between every step the composition is cleared and the playhead is reset to 0.
+ * Every build seeks to 0 BEFORE inserting, so the template's keyframes anchor at frame 0 and
+ * the animation actually plays from the start (the insert rebases keyframes to the playhead).
  * This is pure UI/store scripting - the interactive TIMING/UX still needs a browser eyeball.
  */
 
 type Phase =
   | 'idle'
   | 'loading' // "Loading editor" bridge (hides the raw editor before the first prompt)
-  | 'intro' // example-project start button
+  | 'intro' // example-project start button (the first "continue")
+  | 'penBuild' // pen-writing self-assembling (no box); onDone → play
   | 'penPlay' // pen-writing playing
   | 'penBox' // box after pen (Continue)
+  | 'raceBuild' // bar-chart-race self-assembling; onDone → play
   | 'racePlay' // bar-chart-race playing to the end
   | 'raceBox' // box after race (Show me)
-  | 'recursive' // recursive-editor shown static (no play)
-  | 'recursiveBox' // box (Show me)
-  | 'forest' // forest shown static (no play)
+  | 'recBuild' // recursive-editor self-assembling; onDone → sit static (no play)
+  | 'recStatic' // recursive-editor built, resting at frame 0
+  | 'recBox' // box (Show me)
+  | 'forestBuild' // forest self-assembling; onDone → sit static (no play)
+  | 'forestStatic' // forest built, resting at frame 0
   | 'finalBox'; // deselect + focus rectangle on the mode switch + final prompt
 
 const LOADING_MS = 1800; // bridge long enough for the fresh comp to settle before we script it
 const PLAY_TAIL_MS = 200; // small tail so play() reaches the last content frame before we pause
-const STATIC_BEAT_MS = 1100; // let a no-play template register on screen before its box appears
+const STATIC_BEAT_MS = 1400; // let a no-play template register on screen before its box appears
 
 // ── Store-scripting helpers (read the live stores fresh each call) ───────────────────────────────
 
@@ -48,28 +54,6 @@ function clearComposition() {
   const st = useEditorStore.getState();
   const ids = st.composition.layers.map((l) => l.id);
   if (ids.length) st.removeLayers(ids);
-}
-
-/** Clear everything, insert the template, and reset the playhead to 0. */
-function loadTemplate(id: string) {
-  clearComposition();
-  useEditorStore.getState().insertAnimationTemplate(id);
-  useTimelineStore.getState().seekTo(0);
-}
-
-function playTemplate(id: string) {
-  loadTemplate(id);
-  const tl = useTimelineStore.getState();
-  tl.seekTo(0);
-  tl.play();
-}
-
-/** Show a template's first frame without ever playing it. */
-function showTemplateStatic(id: string) {
-  loadTemplate(id);
-  const tl = useTimelineStore.getState();
-  tl.pause();
-  tl.seekTo(0);
 }
 
 /** How long to let a template play before pausing on its final content frame. */
@@ -95,6 +79,29 @@ export function TutorialIntro() {
   const uiMode = usePanelStore((s) => s.uiMode);
   const [phase, setPhase] = useState<Phase>('idle');
   const launchedRef = useRef(false);
+  const buildRef = useRef<{ cancel: () => void } | null>(null);
+
+  // Clear the previous scene, anchor at frame 0, then run the self-assembling build. `seekTo(0)`
+  // MUST precede the insert: the template's keyframes are rebased to the current playhead, so
+  // building at any other frame makes the animation start late. When the build commits it restores
+  // the playhead to 0; onSettled then either plays it or leaves it static.
+  const runBuild = (id: string, play: boolean, onSettled: () => void) => {
+    buildRef.current?.cancel();
+    clearComposition();
+    useTimelineStore.getState().seekTo(0);
+    buildRef.current = useEditorStore.getState().insertAnimationTemplateAnimated(id, {
+      onDone: () => {
+        buildRef.current = null;
+        const tl = useTimelineStore.getState();
+        tl.seekTo(0);
+        if (play) tl.play();
+        onSettled();
+      },
+    });
+  };
+
+  // Cancel any in-flight build if we unmount mid-show.
+  useEffect(() => () => buildRef.current?.cancel(), []);
 
   // Arm the loading bridge once the example project is actually open.
   useEffect(() => {
@@ -102,7 +109,7 @@ export function TutorialIntro() {
     setPhase('loading');
   }, [pending, activeProjectId, phase]);
 
-  // Timed transitions for the phases that advance on their own.
+  // Timed transitions for the phases that advance on their own (the builds advance via onDone).
   useEffect(() => {
     if (phase === 'loading') {
       const t = window.setTimeout(() => setPhase('intro'), LOADING_MS);
@@ -116,11 +123,11 @@ export function TutorialIntro() {
       const t = window.setTimeout(() => { pauseAtEnd('bar-chart-race'); setPhase('raceBox'); }, playMs('bar-chart-race'));
       return () => window.clearTimeout(t);
     }
-    if (phase === 'recursive') {
-      const t = window.setTimeout(() => setPhase('recursiveBox'), STATIC_BEAT_MS);
+    if (phase === 'recStatic') {
+      const t = window.setTimeout(() => setPhase('recBox'), STATIC_BEAT_MS);
       return () => window.clearTimeout(t);
     }
-    if (phase === 'forest') {
+    if (phase === 'forestStatic') {
       const t = window.setTimeout(() => { useEditorStore.getState().deselectAll(); setPhase('finalBox'); }, STATIC_BEAT_MS);
       return () => window.clearTimeout(t);
     }
@@ -138,17 +145,18 @@ export function TutorialIntro() {
 
   if (phase === 'idle') return null;
 
-  const startShowcase = () => { playTemplate('pen-writing'); setPhase('penPlay'); };
-  const toRace = () => { playTemplate('bar-chart-race'); setPhase('racePlay'); };
-  const toRecursive = () => { showTemplateStatic('recursive-editor'); setPhase('recursive'); };
-  const toForest = () => { showTemplateStatic('forest'); setPhase('forest'); };
+  // Button handlers: each press starts the NEXT build (the choreography never runs on its own).
+  const startShowcase = () => { setPhase('penBuild'); runBuild('pen-writing', true, () => setPhase('penPlay')); };
+  const toRace = () => { setPhase('raceBuild'); runBuild('bar-chart-race', true, () => setPhase('racePlay')); };
+  const toRecursive = () => { setPhase('recBuild'); runBuild('recursive-editor', false, () => setPhase('recStatic')); };
+  const toForest = () => { setPhase('forestBuild'); runBuild('forest', false, () => setPhase('forestStatic')); };
 
   const showInputGuard = phase !== 'loading' && phase !== 'intro' && phase !== 'finalBox';
 
   return (
     <>
-      {/* Block stray editor interaction while an animation is on screen (the user must not touch it).
-          Off in finalBox, where they need to click the real mode-switch button. */}
+      {/* Block stray editor interaction while a build/animation is on screen (the user must not touch
+          it). Off in finalBox, where they need to click the real mode-switch button. */}
       {showInputGuard && <div className="fixed inset-0 z-[110]" aria-hidden />}
 
       {(phase === 'loading' || phase === 'intro') && (
@@ -189,7 +197,7 @@ export function TutorialIntro() {
           button={{ label: 'Show me', onClick: toRecursive }}
         />
       )}
-      {phase === 'recursiveBox' && (
+      {phase === 'recBox' && (
         <ShowcaseBox
           text="And finally, you can also create small illustrated animations."
           button={{ label: 'Show me', onClick: toForest }}

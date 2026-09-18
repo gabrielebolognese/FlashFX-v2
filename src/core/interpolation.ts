@@ -723,7 +723,7 @@ function resolveVideoLayer(layer: VideoLayer, frame: number, compositionFrameRat
 
 function resolveImageLayer(layer: ImageLayer): ResolvedImage {
   // Effects are static scalars for now (params copied through). Ordered stack, honoring the
-  // per-effect enable AND the layer master switch (B11a — effectsEnabled was previously a no-op).
+  // per-effect enable AND the layer master switch (B11a - effectsEnabled was previously a no-op).
   const effects = resolveEffectStack(layer.effects, layer.effectsEnabled !== false);
   return {
     assetId: layer.image.assetId,

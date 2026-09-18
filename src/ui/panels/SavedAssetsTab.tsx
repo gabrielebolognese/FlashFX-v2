@@ -308,7 +308,7 @@ function SavedAssetCard({
         <div className="text-[8px] text-slate-600">
           {asset.asset_type === 'image'
             ? `${asset.width}x${asset.height}`
-            : `${asset.duration?.toFixed(1) ?? '\u2014'}s`
+            : `${asset.duration?.toFixed(1) ?? '-'}s`
           }
         </div>
       </div>
