@@ -1,6 +1,6 @@
 import {
   ZoomIn, ZoomOut, Maximize, Grid3x3, Magnet, Plus, Square, Circle, Type, Folder,
-  Clipboard, Copy, Scissors, Crop, Trash2, Pencil, MoveVertical, ArrowUp, ArrowDown,
+  Clipboard, Copy, Scissors, Crop, ShieldAlert, Trash2, Pencil, MoveVertical, ArrowUp, ArrowDown,
   ChevronsUp, ChevronsDown, RotateCcw, Sparkles, Layers, Film, Image, Music,
   Volume2, VolumeX, Upload, FolderPlus, LayoutGrid, List, Clock, SortAsc,
   RefreshCcw, Play, Pause, SkipForward, SkipBack, Star, Hexagon,
@@ -28,6 +28,7 @@ import { generateThumbnailSheet } from '../../engine/video/thumbnailSheet';
 import { detectSceneCuts } from '../../engine/video/sceneDetect';
 import { useAiImageStore } from '../../store/aiImage';
 import { useSmartCropStore } from '../../store/smartCrop';
+import { useFaceBlurStore } from '../../store/faceBlur';
 import { useInspectorStore } from '../../store/inspector';
 import { addAssetToFavorites, addAssetToFolder } from '../../library/folderService';
 import { processAudioAsset, toMono, toStereo, normalize, amplifyBy } from '../../engine/audio/audioProcessing';
@@ -879,6 +880,7 @@ export function buildMediaAssetMenu(assetType: 'image' | 'video' | 'audio', asse
       items: [
         item('remove-bg', 'Remove Background', () => useAiImageStore.getState().open(assetId, 'remove-bg'), Wand2),
         item('upscale', 'Upscale (2×)', () => useAiImageStore.getState().open(assetId, 'upscale'), ZoomIn),
+        item('face-blur', 'Face Blur', () => useFaceBlurStore.getState().show(assetId), ShieldAlert),
         disabled('gen-variations', 'Generate Variations', Sparkles),
       ],
     });
