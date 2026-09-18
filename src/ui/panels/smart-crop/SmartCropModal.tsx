@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { X, Crop, Loader2, AlertCircle, Check, Grid2x2, Images } from 'lucide-react';
 import { useSmartCropStore } from '../../../store/smartCrop';
 import { useEditorStore } from '../../../store/editor';
@@ -58,6 +58,9 @@ export function SmartCropModal() {
   const [tightness, setTightness] = useState(100); // 60..100 -> solver tightness 0.6..1.0
   const [showAnalysis, setShowAnalysis] = useState(false);
   const [applying, setApplying] = useState(false);
+  const [manualCrop, setManualCrop] = useState<{ x: number; y: number } | null>(null); // user-dragged position override
+  const areaRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<{ sx: number; sy: number; bx: number; by: number } | null>(null);
 
   const sourceUrl = assetId ? mediaAssetManager.getObjectUrl(assetId) : null;
   const assetName = (assetId && mediaAssetManager.getAsset(assetId)?.name?.replace(/\.[^.]+$/, '')) || 'image';
@@ -96,6 +99,29 @@ export function SmartCropModal() {
     return solveCrop(srcW, srcH, ratio, analysis.regions, { focus, composition, tightness: tightness / 100, steps: 61 });
   }, [analysis, srcW, srcH, ratio, focus, composition, tightness]);
 
+  // The crop the user sees/bakes: the solved size, with the position optionally overridden by a drag.
+  const effRect = useMemo(() => (crop ? { x: manualCrop?.x ?? crop.rect.x, y: manualCrop?.y ?? crop.rect.y, w: crop.rect.w, h: crop.rect.h } : null), [crop, manualCrop]);
+  // Re-solving (ratio/focus/composition/tightness or a new image) clears the manual override.
+  useEffect(() => { setManualCrop(null); }, [ratioIdx, focus, composition, tightness, analysis]);
+
+  const onCropDown = (e: React.PointerEvent) => {
+    if (!effRect) return;
+    e.preventDefault(); (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+    dragRef.current = { sx: e.clientX, sy: e.clientY, bx: effRect.x, by: effRect.y };
+  };
+  const onCropMove = (e: React.PointerEvent) => {
+    const d = dragRef.current; const area = areaRef.current;
+    if (!d || !area || !crop) return;
+    const r = area.getBoundingClientRect();
+    const dx = ((e.clientX - d.sx) / r.width) * srcW;
+    const dy = ((e.clientY - d.sy) / r.height) * srcH;
+    setManualCrop({
+      x: Math.max(0, Math.min(srcW - crop.rect.w, d.bx + dx)),
+      y: Math.max(0, Math.min(srcH - crop.rect.h, d.by + dy)),
+    });
+  };
+  const onCropUp = (e: React.PointerEvent) => { dragRef.current = null; (e.target as HTMLElement).releasePointerCapture?.(e.pointerId); };
+
   const applyCrop = useCallback(async (targetRatio: number, placeOffset = 0) => {
     if (!bitmap || !analysis || !activeProjectId) return;
     const c = solveCrop(analysis.srcW, analysis.srcH, targetRatio, analysis.regions, { focus, composition, tightness: tightness / 100, steps: 61 });
@@ -108,10 +134,17 @@ export function SmartCropModal() {
   }, [bitmap, analysis, activeProjectId, focus, composition, tightness, assetName, addImageFromAsset]);
 
   const handleApply = useCallback(async () => {
-    if (!crop) return;
+    if (!effRect || !bitmap || !activeProjectId) return;
     setApplying(true);
-    try { await applyCrop(crop.ratio); onRefresh?.(); close(); } finally { setApplying(false); }
-  }, [crop, applyCrop, onRefresh, close]);
+    try {
+      const blob = await bakeCrop(bitmap, effRect);
+      const file = new File([blob], `${assetName}-crop-${Math.round(effRect.w)}x${Math.round(effRect.h)}.png`, { type: 'image/png' });
+      const { assetId: newId } = await mediaAssetManager.importImage(file, activeProjectId);
+      const comp = useEditorStore.getState().composition.settings;
+      addImageFromAsset(newId, Math.round(comp.width / 2), Math.round(comp.height / 2));
+      onRefresh?.(); close();
+    } finally { setApplying(false); }
+  }, [effRect, bitmap, activeProjectId, assetName, addImageFromAsset, onRefresh, close]);
 
   const handleVariants = useCallback(async () => {
     setApplying(true);
@@ -145,8 +178,8 @@ export function SmartCropModal() {
             {status === 'analyzing' && <div className="flex flex-col items-center gap-2 text-slate-500"><Loader2 size={22} className="animate-spin" /><span className="text-[11px]">Analyzing…</span></div>}
             {status === 'error' && <div className="flex flex-col items-center gap-2 text-red-400"><AlertCircle size={22} /><span className="text-[11px]">Could not analyze this image</span></div>}
             {status === 'ready' && sourceUrl && (
-              <div className="relative" style={{ aspectRatio: `${srcW} / ${srcH}`, width: '100%', maxHeight: '60vh' }}>
-                <img src={sourceUrl} alt="source" className="absolute inset-0 w-full h-full object-contain" />
+              <div ref={areaRef} className="relative" style={{ aspectRatio: `${srcW} / ${srcH}`, width: '100%', maxHeight: '60vh' }}>
+                <img src={sourceUrl} alt="source" className="absolute inset-0 w-full h-full object-contain select-none" draggable={false} />
                 {/* subtle detected regions (only in analysis mode) */}
                 {showAnalysis && analysis?.regions.map((r, i) => (
                   <div key={i} className="absolute border rounded-sm" style={{
@@ -154,12 +187,15 @@ export function SmartCropModal() {
                     borderColor: r.kind === 'face' ? '#38bdf8' : r.kind === 'subject' ? '#a3e635' : 'rgba(248,181,0,0.6)',
                   }} />
                 ))}
-                {/* crop rectangle with dimmed surround */}
-                {crop && (
-                  <div className="absolute ring-2 ring-[#f7b500]" style={{
-                    left: pct(crop.rect.x, srcW), top: pct(crop.rect.y, srcH), width: pct(crop.rect.w, srcW), height: pct(crop.rect.h, srcH),
-                    boxShadow: '0 0 0 9999px rgba(0,0,0,0.58)',
-                  }}>
+                {/* crop rectangle with dimmed surround - drag to reposition */}
+                {effRect && (
+                  <div
+                    onPointerDown={onCropDown} onPointerMove={onCropMove} onPointerUp={onCropUp}
+                    className="absolute ring-2 ring-[#f7b500] cursor-move"
+                    style={{
+                      left: pct(effRect.x, srcW), top: pct(effRect.y, srcH), width: pct(effRect.w, srcW), height: pct(effRect.h, srcH),
+                      boxShadow: '0 0 0 9999px rgba(0,0,0,0.58)', touchAction: 'none',
+                    }}>
                     <div className="absolute inset-0 grid grid-cols-3 grid-rows-3 pointer-events-none opacity-40">
                       {Array.from({ length: 9 }).map((_, i) => <div key={i} className="border border-white/25" />)}
                     </div>

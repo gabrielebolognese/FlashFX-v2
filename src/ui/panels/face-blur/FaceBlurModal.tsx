@@ -102,6 +102,7 @@ export function FaceBlurModal() {
   useEffect(() => () => { if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current); }, []);
 
   const toggle = (id: string) => setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+  const updateFace = (id: string, patch: Partial<FaceBox>) => setFaces((list) => list.map((f) => (f.id === id ? { ...f, ...patch } : f)));
   const allIds = faces.map((f) => f.id);
 
   const norm = (e: React.PointerEvent) => {
@@ -174,18 +175,9 @@ export function FaceBlurModal() {
                 onPointerDown={onAreaDown} onPointerMove={onAreaMove} onPointerUp={onAreaUp}
               >
                 {displayUrl && <img src={displayUrl} alt="preview" className="absolute inset-0 w-full h-full object-contain select-none" draggable={false} />}
-                {!showOriginal && faces.map((f) => {
-                  const on = selected.includes(f.id);
-                  return (
-                    <button
-                      key={f.id}
-                      onClick={(e) => { e.stopPropagation(); if (!drawMode) toggle(f.id); }}
-                      className={`absolute rounded-sm transition-colors ${on ? 'border-2 border-[#f7b500] bg-[#f7b500]/10' : 'border border-white/40 hover:border-white/80'}`}
-                      style={{ left: `${f.x * 100}%`, top: `${f.y * 100}%`, width: `${f.w * 100}%`, height: `${f.h * 100}%` }}
-                      title={f.manual ? 'Manual region' : on ? 'Selected' : 'Click to select'}
-                    />
-                  );
-                })}
+                {!showOriginal && faces.map((f) => (
+                  <DraggableFace key={f.id} face={f} selected={selected.includes(f.id)} disabled={drawMode} areaRef={areaRef} onToggle={toggle} onChange={updateFace} />
+                ))}
                 {draft && <div className="absolute border-2 border-dashed border-[#f7b500]" style={{ left: `${draft.x * 100}%`, top: `${draft.y * 100}%`, width: `${draft.w * 100}%`, height: `${draft.h * 100}%` }} />}
               </div>
             )}
@@ -237,6 +229,60 @@ export function FaceBlurModal() {
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** A detected/manual face box: drag the body to move, drag a corner to resize; a click (no drag)
+ *  toggles selection. Disabled while the user is drawing a new region. */
+function DraggableFace({ face, selected, disabled, areaRef, onToggle, onChange }: {
+  face: FaceBox; selected: boolean; disabled: boolean; areaRef: React.RefObject<HTMLDivElement>;
+  onToggle: (id: string) => void; onChange: (id: string, patch: Partial<FaceBox>) => void;
+}) {
+  const drag = useRef<{ mode: string; sx: number; sy: number; base: FaceBox; moved: boolean } | null>(null);
+  const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+  const begin = (mode: string) => (e: React.PointerEvent) => {
+    e.stopPropagation(); e.preventDefault();
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    drag.current = { mode, sx: e.clientX, sy: e.clientY, base: { ...face }, moved: false };
+  };
+  const move = (e: React.PointerEvent) => {
+    const d = drag.current; const area = areaRef.current;
+    if (!d || !area) return;
+    const r = area.getBoundingClientRect();
+    const dx = (e.clientX - d.sx) / r.width; const dy = (e.clientY - d.sy) / r.height;
+    if (Math.abs(dx) > 0.004 || Math.abs(dy) > 0.004) d.moved = true;
+    const b = d.base; const MIN = 0.02;
+    if (d.mode === 'move') { onChange(face.id, { x: clamp(b.x + dx, 0, 1 - b.w), y: clamp(b.y + dy, 0, 1 - b.h) }); return; }
+    let { x, y, w, h } = b;
+    if (d.mode.includes('e')) w = clamp(b.w + dx, MIN, 1 - b.x);
+    if (d.mode.includes('s')) h = clamp(b.h + dy, MIN, 1 - b.y);
+    if (d.mode.includes('w')) { const nx = clamp(b.x + dx, 0, b.x + b.w - MIN); x = nx; w = b.w + (b.x - nx); }
+    if (d.mode.includes('n')) { const ny = clamp(b.y + dy, 0, b.y + b.h - MIN); y = ny; h = b.h + (b.y - ny); }
+    onChange(face.id, { x, y, w, h });
+  };
+  const end = (e: React.PointerEvent) => {
+    const d = drag.current; drag.current = null;
+    (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
+    if (d && !d.moved && d.mode === 'move') onToggle(face.id);
+  };
+  const handles: { m: string; s: React.CSSProperties }[] = [
+    { m: 'nw', s: { left: -4, top: -4, cursor: 'nwse-resize' } },
+    { m: 'ne', s: { right: -4, top: -4, cursor: 'nesw-resize' } },
+    { m: 'sw', s: { left: -4, bottom: -4, cursor: 'nesw-resize' } },
+    { m: 'se', s: { right: -4, bottom: -4, cursor: 'nwse-resize' } },
+  ];
+  return (
+    <div
+      onPointerDown={begin('move')} onPointerMove={move} onPointerUp={end}
+      className={`absolute rounded-sm ${disabled ? 'pointer-events-none' : 'cursor-move'} ${selected ? 'border-2 border-[#f7b500] bg-[#f7b500]/10' : 'border border-white/40 hover:border-white/80'}`}
+      style={{ left: `${face.x * 100}%`, top: `${face.y * 100}%`, width: `${face.w * 100}%`, height: `${face.h * 100}%`, touchAction: 'none' }}
+      title={face.manual ? 'Manual region' : selected ? 'Selected' : 'Click to select'}
+    >
+      {selected && !disabled && handles.map((hd) => (
+        <div key={hd.m} onPointerDown={begin(hd.m)} onPointerMove={move} onPointerUp={end}
+          className="absolute w-2 h-2 bg-[#f7b500] rounded-sm border border-black/40" style={{ ...hd.s, touchAction: 'none' }} />
+      ))}
     </div>
   );
 }
