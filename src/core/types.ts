@@ -1203,6 +1203,37 @@ export interface PrecompLayer {
   timeRemap?: PrecompTimeRemap;
 }
 
+/**
+ * Adjustment layer (B11b): a content-less, full-frame layer whose effect stack applies to everything
+ * rendered BELOW it. It draws nothing itself - its `effects` are composited over the accumulated
+ * result of the layers beneath it (see core/effects/adjustmentCoverage for which layers each one
+ * covers). Mirrors the common-layer field set; `effects`/`effectsEnabled` are its whole purpose.
+ */
+export interface AdjustmentLayer {
+  id: string;
+  type: 'adjustment';
+  name: string;
+  parentId: string | null;
+  trackId: string | null;
+  visible: boolean;
+  locked: boolean;
+  blendMode: BlendMode;
+  transform: Transform;
+  inPoint: number;
+  outPoint: number;
+  /** The effect stack applied to the layers below this adjustment. */
+  effects?: LayerEffect[];
+  /** Master switch for the effect stack (default on). */
+  effectsEnabled?: boolean;
+  motionBlur?: boolean;
+  motionBlurShutter?: number;
+  shadow?: LayerShadow;
+  glow?: LayerGlow;
+  blur?: LayerBlur;
+  is3D?: boolean;
+  masks?: Mask[];
+}
+
 // Editor-only decorations common to every layer type. Kept as a shared
 // intersection (rather than copied into all 14 interfaces) so a new field lands
 // once; the distribution `X & (A | B)` = `(X & A) | (X & B)` preserves the
@@ -1214,10 +1245,10 @@ export interface LayerDecorations {
   constraints?: LayerConstraints;
 }
 
-export type Layer = (ShapeLayer | TextLayer | GroupLayer | VideoLayer | ImageLayer | AudioLayer | ParticleLayer | AnimationItemLayer | FieldSampledLayer | GenerativePatternLayer | LottieIconLayer | LayoutObjectLayer | LayoutContainerLayer | ClonerLayer | PrecompLayer | CameraLayer) & LayerDecorations;
+export type Layer = (ShapeLayer | TextLayer | GroupLayer | VideoLayer | ImageLayer | AudioLayer | ParticleLayer | AnimationItemLayer | FieldSampledLayer | GenerativePatternLayer | LottieIconLayer | LayoutObjectLayer | LayoutContainerLayer | ClonerLayer | PrecompLayer | CameraLayer | AdjustmentLayer) & LayerDecorations;
 
 // Track system
-export type TrackType = 'video' | 'image' | 'text' | 'shape' | 'group' | 'audio' | 'particle' | 'animationItem' | 'fieldSampled' | 'generativePattern' | 'lottieIcon' | 'hbox' | 'vbox' | 'grid' | 'layoutContainer' | 'cloner' | 'precomp' | 'camera' | 'mixed';
+export type TrackType = 'video' | 'image' | 'text' | 'shape' | 'group' | 'audio' | 'particle' | 'animationItem' | 'fieldSampled' | 'generativePattern' | 'lottieIcon' | 'hbox' | 'vbox' | 'grid' | 'layoutContainer' | 'cloner' | 'precomp' | 'camera' | 'adjustment' | 'mixed';
 
 export interface Track {
   id: string;
@@ -1803,6 +1834,9 @@ export interface ResolvedLayer {
   blur?: ResolvedBlur;
   cloner?: ResolvedCloner;
   precomp?: ResolvedPrecomp;
+  // Adjustment layer (B11b): its resolved effect stack + which layers below it covers. The renderer's
+  // apply-below composite (browser-gated) consumes this; the layer itself draws nothing.
+  adjustment?: ResolvedAdjustment;
   // 2.5D (M1): world model matrix for 3D layers (`is3D`), for the M2 MVP path. Absent on 2D
   // layers, which keep the cheap affine transform above.
   worldMatrix?: Mat4;
@@ -1815,7 +1849,19 @@ export interface ResolvedLayer {
   // True when this layer is consumed AS a matte source (drawn into the matte, not composited on its
   // own). Resolve marks it not visible so the standalone draw is skipped until the composite lands.
   consumedAsMatte?: boolean;
-  layerType: 'shape' | 'text' | 'video' | 'image' | 'audio' | 'particle' | 'fieldSampled' | 'generativePattern' | 'lottieIcon' | 'cloner' | 'precomp';
+  layerType: 'shape' | 'text' | 'video' | 'image' | 'audio' | 'particle' | 'fieldSampled' | 'generativePattern' | 'lottieIcon' | 'cloner' | 'precomp' | 'adjustment';
+}
+
+/**
+ * A resolved adjustment layer (B11b): its effect stack resolved for the frame plus the coverage the
+ * pure resolver computed (which content layers below it it affects, and whether it is a no-op this
+ * frame). The renderer's apply-below composite (browser-gated) runs `effects` over the accumulated
+ * render of `coveredLayerIds`; `noOp` lets it skip the pass entirely.
+ */
+export interface ResolvedAdjustment {
+  effects: ResolvedEffect[];
+  coveredLayerIds: string[];
+  noOp: boolean;
 }
 
 export interface RenderFrame {

@@ -640,6 +640,12 @@ function validateLayer(raw: unknown): Layer | null {
         dataBinding: isObject(r.dataBinding) ? r.dataBinding : undefined,
       } as unknown as Layer;
     }
+    case 'adjustment': {
+      // Adjustment layer (B11b): baseFields already carries its effects stack + effectsEnabled +
+      // shadow/glow/blur/masks - everything it needs. Pass through so it survives load (else it hits
+      // the default and is silently stripped, the cloner/precomp data-loss class).
+      return { ...baseFields, type: 'adjustment' } as unknown as Layer;
+    }
     // The following layer types carry app-generated structured payloads. Pass them
     // through (like cloner) so they SURVIVE load instead of hitting the default and
     // being silently deleted (was a data-loss bug).

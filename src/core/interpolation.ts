@@ -34,6 +34,7 @@ import { totalPathLength, pointAndAngleAt, glyphPathFraction, type TextPathNode 
 import { pairTrackMattes, type TrackMatteMode } from './trackMatte';
 import { resolveMaskVertices, resolveMaskFeathers } from './maskPath';
 import { resolveEffectStack } from './effects/effectStack';
+import { resolveAdjustmentCoverage } from './effects/adjustmentCoverage';
 import { evaluateMotionPathAtFrame } from './motionPath';
 import { computeInstanceTransforms, selectClonerRenderPath, buildDataBoundSources } from '../cloner';
 import type { ClonerLayer } from '../cloner/types';
@@ -1612,6 +1613,25 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
           },
           layerType: 'precomp',
         });
+      } else if (layer.type === 'adjustment') {
+        // Adjustment layer (B11b): draws nothing itself - it carries its resolved effect stack so the
+        // renderer's apply-below composite (browser-gated) can run it over the layers beneath. The
+        // coverage (which content layers below it affects, and whether it's a no-op) is filled in by
+        // the post-pass below, once the final render order (incl. cloner expansion) is known.
+        const adjEffects = resolveEffectStack(layer.effects, layer.effectsEnabled !== false);
+        resolvedLayers.push({
+          id: layer.id,
+          visible: true,
+          blendMode: layer.blendMode,
+          transform: worldTransform,
+          masks: resolveMasks(layer.masks, frame),
+          motionBlur,
+          shadow,
+          glow,
+          blur,
+          adjustment: { effects: adjEffects, coveredLayerIds: [], noOp: true },
+          layerType: 'adjustment',
+        });
       }
     } catch (e) {
       console.warn(`[FlashFX] Layer evaluation failed for "${layer.id}" (${layer.type}):`, e);
@@ -1747,6 +1767,24 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
     }
     resolvedLayers.length = 0;
     resolvedLayers.push(...rebuilt);
+  }
+
+  // Adjustment layers (B11b): compute per-adjustment coverage from the final render order (pure
+  // resolver) so the renderer's apply-below composite can skip no-ops and the UI can show coverage.
+  // resolvedLayers are already visible + in-range, so every entry is `active`.
+  if (resolvedLayers.some((l) => l.layerType === 'adjustment')) {
+    const coverage = resolveAdjustmentCoverage(
+      resolvedLayers.map((l) => ({
+        id: l.id,
+        isAdjustment: l.layerType === 'adjustment',
+        active: true,
+        hasEffects: (l.adjustment?.effects.length ?? 0) > 0,
+      })),
+    );
+    for (const c of coverage) {
+      const rl = resolvedLayers.find((l) => l.id === c.adjustmentId);
+      if (rl?.adjustment) { rl.adjustment.coveredLayerIds = c.coveredLayerIds; rl.adjustment.noOp = c.noOp; }
+    }
   }
 
   // 2.5D (M1): attach world matrices to any 3D layers (renderer consumes them in M2). Dormant

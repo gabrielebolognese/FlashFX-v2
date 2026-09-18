@@ -7,7 +7,7 @@ import type { LayerEffect } from '../core/types';
 import { cloneEffectStack } from '../core/effects/effectStack';
 import { autoSpatialTangents, segmentArcLength, framesFromCumLengths } from '../core/positionPath';
 import { splitDimensions, mergeDimensions } from '../core/separateDimensions';
-import { createComposition, createRectangleLayer, createCircleLayer, createStarLayer, createPolygonLayer, createDefaultPolygonVertices, createTextLayer, createDefaultTextContent, createVideoLayer, createImageLayer, createAudioLayer, createGroupLayer, createKeyframe, createBackgroundLayer, createMask, createParticleLayer, createAnimationItemLayer, createFieldSampledLayer, createGenerativePatternLayer, createCameraLayer, createLottieIconLayer, createLayoutObjectLayer, createLayoutContainerLayer, createDefaultChildOverride, createProperty, createShapeModifier, createShapeRepeater, uid } from '../core/factory';
+import { createComposition, createRectangleLayer, createCircleLayer, createStarLayer, createPolygonLayer, createDefaultPolygonVertices, createTextLayer, createDefaultTextContent, createVideoLayer, createImageLayer, createAudioLayer, createGroupLayer, createKeyframe, createBackgroundLayer, createMask, createParticleLayer, createAnimationItemLayer, createFieldSampledLayer, createGenerativePatternLayer, createCameraLayer, createAdjustmentLayer, createLottieIconLayer, createLayoutObjectLayer, createLayoutContainerLayer, createDefaultChildOverride, createProperty, createShapeModifier, createShapeRepeater, uid } from '../core/factory';
 import { outlineText, canOutlineFont } from '../text/outlineText';
 import { computeBatchNames, type RenamePattern } from '../core/batchRename';
 import { detachStyleValue, type SharedStyle } from '../core/styles';
@@ -346,6 +346,7 @@ interface EditorState {
   addFieldSampledLayer: (configJSON?: string) => void;
   addGenerativePatternLayer: (configJSON?: string) => void;
   addCameraLayer: () => void;
+  addAdjustmentLayer: () => void;
   /** M16 - add a Cloner. Clones the single selected eligible layer, or a placeholder circle. */
   addCloner: () => void;
   /** M16 - wrap the active selected layer as a Cloner's source. */
@@ -680,6 +681,7 @@ function layerTypeToTrackType(type: Layer['type']): TrackType {
     case 'cloner': return 'cloner';
     case 'precomp': return 'precomp';
     case 'camera': return 'camera';
+    case 'adjustment': return 'adjustment';
     default: return 'mixed';
   }
 }
@@ -2235,6 +2237,25 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const newSel: SelectionState = sel([layer.id], layer.id);
     exec({
       label: 'Add Camera',
+      execute: () => { set({ composition: newComp, selection: newSel }); },
+      undo: () => { set({ composition: oldComp, selection: oldSel }); },
+    });
+  },
+
+  addAdjustmentLayer: () => {
+    // B11b: a content-less, full-frame layer whose effect stack applies to everything below it.
+    const { composition, selection } = get();
+    const oldComp = composition;
+    const oldSel = selection;
+    const count = composition.layers.filter((l) => l.type === 'adjustment').length;
+    const layer = createAdjustmentLayer(
+      count === 0 ? 'Adjustment Layer' : `Adjustment Layer ${count + 1}`,
+      defaultClipFrames(composition),
+    );
+    const newComp = settleComposition(ensureLayerHasTrack({ ...composition, layers: [...composition.layers, layer] }, layer));
+    const newSel: SelectionState = sel([layer.id], layer.id);
+    exec({
+      label: 'Add Adjustment Layer',
       execute: () => { set({ composition: newComp, selection: newSel }); },
       undo: () => { set({ composition: oldComp, selection: oldSel }); },
     });

@@ -187,6 +187,7 @@ export function buildCanvasMenu(): MenuEntry[] {
         item('new-vbox', 'New VBox Layout', () => editor.addLayoutObject('vbox'), Rows3),
         item('new-grid', 'New Grid Layout', () => editor.addLayoutObject('grid'), LayoutGrid),
         item('new-container', 'New Layout Container', () => editor.addLayoutContainer(), Container),
+        item('new-adjustment', 'New Adjustment Layer', () => editor.addAdjustmentLayer(), Wand2),
         item('new-group', 'New Group', () => editor.createGroup(), Folder),
       ],
     },
@@ -245,6 +246,7 @@ export function buildTimelineEmptyMenu(): MenuEntry[] {
       items: [
         item('new-shape-layer', 'New Shape Layer', () => editor.addRectangle(), Square),
         item('new-text-layer', 'New Text Layer', () => editor.addText(), Type),
+        item('new-adjustment-layer', 'New Adjustment Layer', () => editor.addAdjustmentLayer(), Wand2),
         item('new-audio-track', 'New Audio Track', () => editor.addTrack('audio'), Music),
         item('new-group-track', 'New Group Track', () => editor.addTrack('group'), Folder),
       ],

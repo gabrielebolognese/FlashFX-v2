@@ -1,4 +1,4 @@
-import { Type, Film, Image, Music, Folder, Square, Volume2, VolumeX, Eye, EyeOff, AlignHorizontalJustifyStart, Circle } from 'lucide-react';
+import { Type, Film, Image, Music, Folder, Square, Volume2, VolumeX, Eye, EyeOff, AlignHorizontalJustifyStart, Circle, Wand2 } from 'lucide-react';
 import type { Layer, Track, ShapeLayer } from '../../../core/types';
 import { useEditorStore } from '../../../store/editor';
 import { isTrackCompressed } from '../../../core/trackCompression';
@@ -24,6 +24,7 @@ function clipColor(layer: Layer): string {
     case 'audio': return '#f59e0b';
     case 'group': return '#6b7280';
     case 'camera': return '#eab308';
+    case 'adjustment': return '#a855f7';
     case 'shape': {
       const shape = (layer as ShapeLayer).shape;
       switch (shape.type) {
@@ -46,6 +47,7 @@ function trackIcon(type: Track['type']) {
     case 'audio': return <Music size={11} className="text-amber-400" />;
     case 'group': return <Folder size={11} className="text-slate-400" />;
     case 'shape': return <Square size={11} className="text-rose-400" />;
+    case 'adjustment': return <Wand2 size={11} className="text-violet-400" />;
     default: return <Square size={11} className="text-slate-500" />;
   }
 }

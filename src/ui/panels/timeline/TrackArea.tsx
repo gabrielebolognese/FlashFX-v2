@@ -66,6 +66,7 @@ function getClipColor(layer: Layer): string {
     case 'generativePattern': return '#8b5cf6';
     case 'lottieIcon': return '#a78bfa';
     case 'camera': return '#eab308';
+    case 'adjustment': return '#a855f7';
     case 'shape': {
       const shape = (layer as ShapeLayer).shape;
       switch (shape.type) {
@@ -99,6 +100,7 @@ function layerTypeToTrack(t: Layer['type']): Track['type'] {
     case 'generativePattern': return 'generativePattern';
     case 'lottieIcon': return 'lottieIcon';
     case 'camera': return 'camera';
+    case 'adjustment': return 'adjustment';
     default: return 'mixed';
   }
 }

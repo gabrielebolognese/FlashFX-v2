@@ -17,6 +17,7 @@ function clipColor(layer: Layer): string {
     case 'group': return '#6b7280';
     case 'lottieIcon': return '#a78bfa';
     case 'camera': return '#eab308';
+    case 'adjustment': return '#a855f7';
     case 'shape': {
       const shape = (layer as ShapeLayer).shape;
       switch (shape.type) {

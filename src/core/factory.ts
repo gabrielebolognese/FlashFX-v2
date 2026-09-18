@@ -18,6 +18,7 @@ import type {
   LayoutObjectLayer,
   LayoutContainerLayer,
   PrecompLayer,
+  AdjustmentLayer,
   CameraLayer,
   LayoutParams,
   VideoPlaybackMode,
@@ -145,6 +146,26 @@ export function createPrecompLayer(
     inPoint: 0,
     outPoint: durationFrames,
     compositionId,
+  };
+}
+
+/** An adjustment layer (B11b): a content-less, full-frame layer whose effect stack applies to
+ *  everything below it. Starts with an empty stack (a no-op until the user adds effects). */
+export function createAdjustmentLayer(name: string, durationFrames: number): AdjustmentLayer {
+  return {
+    id: uid(),
+    type: 'adjustment',
+    name,
+    parentId: null,
+    trackId: null,
+    visible: true,
+    locked: false,
+    blendMode: 'normal',
+    transform: createTransform(0, 0),
+    inPoint: 0,
+    outPoint: durationFrames,
+    effects: [],
+    effectsEnabled: true,
   };
 }
 

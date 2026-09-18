@@ -3765,6 +3765,12 @@ export class WebGPURenderer {
 
     for (let i = 0; i < expandedLayers.length; i++) {
       const layer = expandedLayers[i];
+      // Adjustment layers (B11b) draw nothing on their own - their effect stack is meant to apply to
+      // the accumulated render of the layers BELOW them. That apply-below composite is a structural
+      // multipass change (B11b-gpu, browser-gated); until it lands the layer is inert (skipped here),
+      // which keeps frames with no adjustment byte-identical. `layer.adjustment` carries the resolved
+      // stack + coverage for that pass. This is the hook point.
+      if (layer.layerType === 'adjustment') continue;
       if (layer.layerType === 'text') {
         // Skip the layer being edited on-canvas - the textarea overlay renders its text.
         if (layer.id === this.editingTextLayerId) continue;

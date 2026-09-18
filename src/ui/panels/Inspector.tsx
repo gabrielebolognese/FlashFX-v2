@@ -245,7 +245,8 @@ export function Inspector() {
   // material/pattern in the data model or renderer, so text used to get an Advanced
   // tab containing two permanently-empty sections.
   const hasAdvanced = isShape;
-  const hasEffects = isText || isShape || isVideo || isImage;
+  // Adjustment layers (B11b) are all about their effect stack, so they get the Effects tab too.
+  const hasEffects = isText || isShape || isVideo || isImage || layer.type === 'adjustment';
 
   const tabs: { id: InspectorTab; label: string; icon: React.ReactNode; show: boolean }[] = [
     { id: 'properties', label: 'Properties', icon: <Sliders size={13} />, show: true },
@@ -428,6 +429,22 @@ function InspectorTabContent({ tab, layer }: { tab: InspectorTab; layer: Layer }
           <StringInput label="Name" value={layer.name} onChange={(v) => updateLayerProperty(layer.id, 'name', v)} />
         </div>
         <Camera3DView layer={layer as CameraLayer} />
+      </>
+    );
+  }
+
+  // Adjustment layer (B11b): a content-less, full-frame layer whose effect stack applies to
+  // everything below it. No spatial transform - just its name + its effect stack.
+  if (layer.type === 'adjustment') {
+    return (
+      <>
+        <div className="p-2 border-b border-hairline space-y-1.5">
+          <StringInput label="Name" value={layer.name} onChange={(v) => updateLayerProperty(layer.id, 'name', v)} />
+          <p className="text-[10px] leading-relaxed text-slate-500">
+            This layer's effects apply to every layer below it. Reorder it in the timeline to change what it affects.
+          </p>
+        </div>
+        <EffectsSection layer={layer} />
       </>
     );
   }

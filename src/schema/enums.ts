@@ -21,7 +21,7 @@ export type AiLayerType = (typeof AI_LAYER_TYPES)[number];
 export const DOCUMENT_LAYER_TYPES = [
   'shape', 'text', 'group', 'image', 'video', 'audio', 'cloner', 'camera', 'precomp',
   'particle', 'animationItem', 'fieldSampled', 'generativePattern', 'lottieIcon',
-  'hbox', 'vbox', 'grid', 'layoutContainer',
+  'hbox', 'vbox', 'grid', 'layoutContainer', 'adjustment',
 ] as const;
 export type DocumentLayerType = (typeof DOCUMENT_LAYER_TYPES)[number];
 

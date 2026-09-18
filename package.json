@@ -13,6 +13,7 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.app.json",
     "test": "node scripts/test-all.mjs",
+    "verify:adjustment-coverage": "node scripts/verify-adjustment-coverage.mjs",
     "verify:cloner": "node scripts/verify-cloner.mjs",
     "verify:easing": "node scripts/verify-easing.mjs",
     "verify:spatial-path": "node scripts/verify-spatial-path.mjs",
