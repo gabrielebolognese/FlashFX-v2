@@ -75,12 +75,22 @@ export interface AnimatableProperty {
   keyframesY?: Keyframe[];
 }
 
+// Separable W3C blend modes (Compositing and Blending Level 1) + linear-dodge "add". Content-layer
+// rendering of these is browser-gated (B11c-gpu); the mode is authored + persisted + resolved now.
 export type BlendMode =
   | 'normal'
+  | 'darken'
   | 'multiply'
+  | 'colorBurn'
+  | 'lighten'
   | 'screen'
+  | 'colorDodge'
+  | 'add'
   | 'overlay'
-  | 'add';
+  | 'softLight'
+  | 'hardLight'
+  | 'difference'
+  | 'exclusion';
 
 export type BackgroundBlendMode =
   | 'normal'

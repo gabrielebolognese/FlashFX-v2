@@ -12,7 +12,8 @@ import { PanelTutorialButton } from '../tutorials/PanelTutorialButton';
 import { tutorialForSectionTitle } from '../tutorials/registry';
 import { MASK_REVEAL_KINDS, type MaskRevealKind } from '../../core/maskReveal';
 import type { TrackMatteMode } from '../../core/trackMatte';
-import type { ShapeLayer, TextLayer, VideoLayer, ImageLayer, AudioLayer, ParticleLayer, GenerativePatternLayer, CameraLayer, AnimationItemLayer, LottieIconLayer, AnimatableProperty, Vec2, Vec4, RectangleShape, CircleShape, StarShape, PolygonShape, MotionPathAnchor, MotionPathLoop, Mask, MaskType, Layer, LayerShadow, LayerGlow, LayerBlur, BlurType, GlowMode, LayoutObjectLayer, LayoutContainerLayer, TextSpanStyle, TextLayoutConfig, TextGradientFill, ShapeModifierType } from '../../core/types';
+import type { ShapeLayer, TextLayer, VideoLayer, ImageLayer, AudioLayer, ParticleLayer, GenerativePatternLayer, CameraLayer, AnimationItemLayer, LottieIconLayer, AnimatableProperty, Vec2, Vec4, RectangleShape, CircleShape, StarShape, PolygonShape, MotionPathAnchor, MotionPathLoop, Mask, MaskType, Layer, LayerShadow, LayerGlow, LayerBlur, BlurType, GlowMode, LayoutObjectLayer, LayoutContainerLayer, TextSpanStyle, TextLayoutConfig, TextGradientFill, ShapeModifierType, BlendMode } from '../../core/types';
+import { BLEND_MODES, BLEND_MODE_META } from '../../core/effects/blendModes';
 
 // Safe fallbacks so the Text inspector renders even for a text layer with missing/empty content or
 // layoutConfig (defensive - factory layers set these, but selection must never crash).
@@ -701,6 +702,20 @@ function InspectorTabContent({ tab, layer }: { tab: InspectorTab; layer: Layer }
               <option value="alphaInv">Alpha inverted</option>
               <option value="luma">Luma matte (layer above)</option>
               <option value="lumaInv">Luma inverted</option>
+            </select>
+          </div>
+        )}
+        {/* Blend mode (B11c): how this layer composites with what's below. Authored + persisted +
+            resolved now; content-layer rendering of non-normal modes is browser-gated (B11c-gpu). */}
+        {['shape', 'text', 'video', 'image', 'generativePattern', 'lottieIcon'].includes(layer.type) && (
+          <div className="flex items-center gap-2 mt-1">
+            <label className="text-caption text-slate-500 w-14 flex-shrink-0">Blend</label>
+            <select
+              value={layer.blendMode ?? 'normal'}
+              onChange={(e) => updateLayerProperty(layer.id, 'blendMode', e.target.value as BlendMode)}
+              className="flex-1 rounded border border-hairline bg-[#0e1726] px-1.5 py-0.5 text-caption text-slate-200 focus:border-accent focus:outline-none"
+            >
+              {BLEND_MODES.map((m) => <option key={m} value={m}>{BLEND_MODE_META[m].label}</option>)}
             </select>
           </div>
         )}
