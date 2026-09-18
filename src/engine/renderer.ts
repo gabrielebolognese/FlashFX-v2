@@ -4444,7 +4444,8 @@ export class WebGPURenderer {
           f[8] = gl.intensity;                     // params.x
           f[9] = gl.radius;                        // params.y
           f[10] = gl.threshold;                    // params.z
-          const modeFloat = gl.mode === 'image' ? 0 : gl.mode === 'outer' ? 1 : 2;
+          // B12: 'bloom' renders as a broad image glow today (true pyramid is browser-gated B12-gpu).
+          const modeFloat = gl.mode === 'image' || gl.mode === 'bloom' ? 0 : gl.mode === 'outer' ? 1 : 2;
           f[11] = modeFloat;                       // params.w
         }
         device.queue.writeBuffer(gpu.glowUniformBuffer, 0, glowBufData, 0, UNIFORM_ALIGN * glowDraws.length);

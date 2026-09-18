@@ -892,6 +892,11 @@ function computeGlow(
     intensity: glow.intensity,
     radius: glow.radius,
     threshold: glow.threshold,
+    // B12: carried for the browser-gated light-wrap / glint passes (absent = off).
+    lightWrap: glow.lightWrap,
+    glints: glow.glints,
+    glintLength: glow.glintLength,
+    glintAngle: glow.glintAngle,
   };
 }
 

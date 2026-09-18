@@ -52,8 +52,9 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | B11b-gpu | Adjustment apply-below composite (RTT below-layers → effect stack → blit back; multipass surgery) | ⬜ (browser) | **heavy** |
 | B11c | Blend modes - W3C enum + pure reference math + routing table + Inspector dropdown (harnessed) | ✅ | medium |
 | B11c-gpu | Content-layer blend rendering (hardware pipeline variants + dst-dependent scene composite) + cross-class effect reorder (multipass) | ⬜ (browser) | **heavy** |
-| B12 | Glow & light finishing (bloom, deep-glow, light wrap, glints) | ▶ **next** | medium |
-| B13 | Stylise & cinematic finish (chromatic ab., lens distort, grain, halftone) | ⬜ | medium |
+| B12 | Glow & light finishing - bloom mode + light-finish presets + param model + type scaffold (harnessed) | ✅ | medium |
+| B12-gpu | Bloom downsample pyramid + light-wrap pass + star glints/streaks (WGSL) | ⬜ (browser) | **heavy** |
+| B13 | Stylise & cinematic finish (chromatic ab., lens distort, grain, halftone) | ▶ **next** | medium |
 | B14 | Glitch & datamosh (RGB split, pixel-sort, VHS, block glitch) | ⬜ | medium |
 | B15 | Color grading (wheels/curves/HSL, LUT loading, film looks) | ⬜ | medium |
 | B16 | Light rays, flares & beams (lens flare, Saber-like beams, god-rays) | ⬜ | **heavy** |
@@ -188,8 +189,11 @@ Audit: the per-layer effect stack **already exists** (ordered `LayerEffect[]` on
 ### B11c-gpu - Content-layer blend rendering + effect reorder (browser-gated)
 **Delivers:** make a content layer's `blendMode` visible. **Hardware modes** (normal/darken/multiply/lighten/screen/add) via per-blend GPU blend-state pipeline variants + a matched fragment output form - the exact pattern proven for generative-pattern layers (`PATTERN_BLEND_INDEX` + the `m==2/3` output forms at renderer.ts ~790-940); additive, `normal` stays the existing path (byte-identical). **Destination-dependent modes** (overlay/softLight/hardLight/colorDodge/colorBurn/difference/exclusion) need the backdrop, so an in-shader scene composite (sample the accumulated scene texture, run `blendChannel` per the reference, write back) - route by `isHardwareBlend`. **Cross-class effect reorder:** rework IMAGE_SHADER from fixed warp→spatial→color into an ordered multi-pass over the resolved `ResolvedEffect[]`. **Perf:** medium (shared scene RTT). Blend math is fixed by `core/effects/blendModes.ts`.
 
-## B12 - Glow & light finishing
-**Delivers:** cinematic **bloom / deep-glow**, glow modes (inner/outer/bloom), **light wrap**, star glints, light streaks. **Categories:** 10, 14. **Depends on:** B11 (composes in the stack; reuses one blur pyramid). **Perf:** medium - shared downsample pyramid. **Verify:** browser-gated GPU; pure param resolution harnessed.
+## B12 - Glow & light finishing ✅ (pure foundation; pyramid/light-wrap/glints split to B12-gpu)
+**Shipped (renders now + harnessed):** extended `GlowMode` with `bloom` (routes to a broad image glow today via the existing `glowExtract`/`glowH`/`glowV` RTT; the true pyramid is B12-gpu) and added light-finish params to `LayerGlow`/`ResolvedGlow` (`lightWrap`, `glints`, `glintLength`, `glintAngle` - persisted + resolved now, consumed by the gated passes). New pure leaf `core/effects/glowParams.ts`: `GLOW_MODE_META` (which modes need the pyramid), **light-finish presets** (Soft Glow / Bloom / Deep Glow / Neon - tuned on params the existing glow already renders, so applying one is immediately visible), `clampGlow`, `applyGlowPreset`, resolution-relative `glowRadiusPx`. Inspector `EffectsSection` gained a **preset row** + the `bloom` mode button. Verified by `npm run verify:glow-params` (5 checks: mode metadata, clamping, preset validity/override, resolution-relative radius). Byte-identical when glow is off. **Split out - B12-gpu (browser-gated):** the actual light-finish PASSES - all WGSL.
+
+## B12-gpu - Bloom pyramid + light wrap + glints (browser-gated)
+**Delivers:** the real bloom **downsample pyramid** (threshold-extract → progressive downsample/blur → additive upsample, one pyramid shared with blur), a **light-wrap** pass (blur the backdrop, mask to the subject's outer edge, add - drives `lightWrap`), and **star glints / light streaks** (radial kernel from bright points - drives `glints`/`glintLength`/`glintAngle`). All hang off the already-resolved `ResolvedGlow`. **Perf:** medium (shared pyramid). WGSL - unverifiable here.
 
 ## B13 - Stylise & cinematic finish
 **Delivers:** chromatic aberration, lens distortion + vignette, film grain, halftone/dots, scanlines, posterize/cartoon/cel. **Categories:** 14. **Depends on:** B11. **Perf:** medium.

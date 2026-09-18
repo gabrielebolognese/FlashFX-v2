@@ -413,7 +413,9 @@ export interface LayerShadow {
   blurRadius: number;
 }
 
-export type GlowMode = 'image' | 'outer' | 'inner';
+// 'bloom' is a multi-scale glow; it renders as a broad image glow today and upgrades to a true
+// downsample pyramid in B12-gpu (browser-gated).
+export type GlowMode = 'image' | 'outer' | 'inner' | 'bloom';
 
 export interface LayerGlow {
   enabled: boolean;
@@ -426,6 +428,16 @@ export interface LayerGlow {
   /** Which filter-panel "wire" filter (glow/bloom/softGlow/…) authored this, so
    * the panel can read its slider back unambiguously. Ignored by the renderer. */
   variant?: string;
+  // B12 light-finishing params. Persist + resolve now; the passes that consume them (light wrap,
+  // star glints) are browser-gated (B12-gpu). Absent/0 = off, so existing glow is unaffected.
+  /** Background light bleeding onto the subject's edges (0..1). */
+  lightWrap?: number;
+  /** Number of star-glint spokes (0 = no glints). */
+  glints?: number;
+  /** Glint spoke length (resolution-relative, 0..100). */
+  glintLength?: number;
+  /** Glint rotation in degrees. */
+  glintAngle?: number;
 }
 
 export type BlurType = 'gaussian' | 'directional' | 'radial' | 'kawase';
@@ -1747,6 +1759,11 @@ export interface ResolvedGlow {
   intensity: number;
   radius: number;
   threshold: number;
+  // B12 (light wrap / glints consumed by the browser-gated passes; absent = off).
+  lightWrap?: number;
+  glints?: number;
+  glintLength?: number;
+  glintAngle?: number;
 }
 
 export interface ResolvedBlur {

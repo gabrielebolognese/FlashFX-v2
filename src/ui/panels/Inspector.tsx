@@ -14,6 +14,7 @@ import { MASK_REVEAL_KINDS, type MaskRevealKind } from '../../core/maskReveal';
 import type { TrackMatteMode } from '../../core/trackMatte';
 import type { ShapeLayer, TextLayer, VideoLayer, ImageLayer, AudioLayer, ParticleLayer, GenerativePatternLayer, CameraLayer, AnimationItemLayer, LottieIconLayer, AnimatableProperty, Vec2, Vec4, RectangleShape, CircleShape, StarShape, PolygonShape, MotionPathAnchor, MotionPathLoop, Mask, MaskType, Layer, LayerShadow, LayerGlow, LayerBlur, BlurType, GlowMode, LayoutObjectLayer, LayoutContainerLayer, TextSpanStyle, TextLayoutConfig, TextGradientFill, ShapeModifierType, BlendMode } from '../../core/types';
 import { BLEND_MODES, BLEND_MODE_META } from '../../core/effects/blendModes';
+import { GLOW_PRESETS, applyGlowPreset } from '../../core/effects/glowParams';
 
 // Safe fallbacks so the Text inspector renders even for a text layer with missing/empty content or
 // layoutConfig (defensive - factory layers set these, but selection must never crash).
@@ -1294,9 +1295,10 @@ function shutterHint(angle: number): string {
 }
 
 const GLOW_MODES: { value: GlowMode; label: string }[] = [
-  { value: 'image', label: 'Bloom' },
+  { value: 'image', label: 'Image' },
   { value: 'outer', label: 'Outer' },
   { value: 'inner', label: 'Inner' },
+  { value: 'bloom', label: 'Bloom' },
 ];
 
 const BLUR_TYPES: { value: BlurType; label: string }[] = [
@@ -1451,6 +1453,21 @@ function EffectsSection({ layer }: { layer: Layer }) {
 
       {glowEnabled && glow && (
         <div className="mt-2 space-y-2">
+          {/* B12 presets - tuned on the params the glow pipeline already renders. */}
+          <div className="flex items-center gap-1">
+            <label className="text-caption text-slate-500 w-14 flex-shrink-0">Preset</label>
+            <div className="flex-1 flex flex-wrap gap-1">
+              {GLOW_PRESETS.map((p) => (
+                <button
+                  key={p.name}
+                  onClick={() => updateLayerProperty(layer.id, 'glow', applyGlowPreset(p, glow))}
+                  className="px-1.5 py-1 text-[9px] rounded bg-surface-4 text-slate-400 border border-transparent hover:border-cyan-500/40 hover:text-cyan-300 transition-colors"
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="flex items-center gap-1">
             <label className="text-caption text-slate-500 w-14 flex-shrink-0">Mode</label>
             <div className="flex-1 flex gap-1">
