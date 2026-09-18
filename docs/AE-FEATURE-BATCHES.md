@@ -56,8 +56,9 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | B12-gpu | Bloom downsample pyramid + light-wrap pass + star glints/streaks (WGSL) | ⬜ (browser) | **heavy** |
 | B13 | Stylise & cinematic finish - curated stylise presets over existing effects (harnessed) | ✅ | medium |
 | B13-gpu | Vignette WGSL case (the one missing stylise effect) | ⬜ (browser) | light |
-| B14 | Glitch & datamosh (RGB split, pixel-sort, VHS, block glitch) | ▶ **next** | medium |
-| B15 | Color grading (wheels/curves/HSL, LUT loading, film looks) | ⬜ | medium |
+| B14 | Glitch & datamosh - curated glitch presets over existing frame-pure effects (harnessed) | ✅ | medium |
+| B14-gpu | Pixel-sort + true datamosh block-displacement WGSL cases | ⬜ (browser) | medium |
+| B15 | Color grading (wheels/curves/HSL, LUT loading, film looks) | ▶ **next** | medium |
 | B16 | Light rays, flares & beams (lens flare, Saber-like beams, god-rays) | ⬜ | **heavy** |
 | B17 | Tiling & generative simulations (motion tile, caustics, wave/radio, cell) | ⬜ | medium |
 | B18 | 3D scene completion (DOF/bokeh, lights & shadows, parallax, focus pull) | ⬜ | **heavy** |
@@ -202,8 +203,11 @@ Audit: the per-layer effect stack **already exists** (ordered `LayerEffect[]` on
 ## B13-gpu - Vignette (browser-gated)
 **Delivers:** the one stylise effect not yet in the registry: a radial vignette (darken toward the frame edges by uv distance from centre, with radius + softness params) as a new `color`-class `EFFECT_TYPE.vignette` + its `applyColorEffect` WGSL case. Small + additive; unverifiable here.
 
-## B14 - Glitch & datamosh
-**Delivers:** RGB/channel split, block & pixel-sort glitch, VHS/scanline degrade, digital noise, displacement glitch. **Categories:** 27. **Depends on:** B11. **Perf:** medium; keep frame-pure (seeded).
+## B14 - Glitch & datamosh ✅ (presets over existing effects; pixel-sort/datamosh split to B14-gpu)
+**Audit finding:** the glitch family already exists in the registry with frame-pure `IMAGE_SHADER` cases (seeded by `effectTime`, so scrubbing is byte-identical): rgbSplit (240), channelOffset (241), digitalGlitch (245), vhs (246) + vhsNoise (247), scanlines (249) + scanlineNoise (250), blockPixelation, wave, add/gaussian noise. So the batch is curation. **Shipped (renders now + harnessed):** new pure leaf `core/effects/glitchPresets.ts` = 7 built-in looks (RGB Split, Datamosh, Signal Loss, Digital Decay, Broken Signal, Corrupt, Wave Glitch) as effect-stack presets over those ids (reusing B13's preset type + `applyStylizePreset`). Verified by `npm run verify:glitch-presets` (3 checks: every effect is REAL with matching `paramCount`, mutation-safe clone). The filters panel's preset bar was generalized (`LookPresetBar`) and now shows **Stylise Looks + Glitch** rows. **Split out - B14-gpu:** the two genuinely-missing effects - **pixel-sort** and **true datamosh** (block motion-vector displacement) - as new WGSL cases (browser-gated).
+
+## B14-gpu - Pixel-sort + datamosh (browser-gated)
+**Delivers:** `pixelSort` (threshold-gated per-row/column luminance sort - a spatial-class multi-tap case) and `dataMosh` (block-displacement smear driven by a seeded pseudo motion-vector field), added to the registry + `applySpatialEffect` WGSL. Frame-pure (seeded by `effectTime`). Unverifiable here.
 
 ## B15 - Color grading
 **Delivers:** Lumetri-style **wheels / curves / HSL**, **LUT** (.cube) loading + apply, film-look presets. **Categories:** 21. **Depends on:** B11 + existing color-correction panel. **Perf:** medium - 3D-LUT sample.

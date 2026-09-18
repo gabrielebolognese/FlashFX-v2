@@ -4,7 +4,8 @@ import { FILTER_CATEGORIES, type FilterDef, type FilterCategory } from './filter
 import type { ImageLayer } from '../../../core/types';
 import { useEditorStore } from '../../../store/editor';
 import { useEffectPresetStore } from '../../../store/effectPresets';
-import { STYLIZE_PRESETS, applyStylizePreset } from '../../../core/effects/stylizePresets';
+import { STYLIZE_PRESETS, applyStylizePreset, type StylizePreset } from '../../../core/effects/stylizePresets';
+import { GLITCH_PRESETS } from '../../../core/effects/glitchPresets';
 import { getEffectDef, getEffectDefByType, isLegacyFilter } from '../../../core/effects/effectRegistry';
 import { isWireFilter, buildWire, readWireValue } from '../../../core/effects/wireEffects';
 
@@ -156,7 +157,8 @@ export function ImageFiltersPanel({ layer }: { layer: ImageLayer }) {
           onToggle={toggleLayerEffect}
           onRemove={removeLayerEffect}
         />
-        <StylizePresetBar layer={layer} />
+        <LookPresetBar layer={layer} title="Stylise Looks" presets={STYLIZE_PRESETS} />
+        <LookPresetBar layer={layer} title="Glitch" presets={GLITCH_PRESETS} />
         <EffectPresetBar layer={layer} />
         {filteredCategories.map((category) => (
           <FilterCategoryAccordion
@@ -255,18 +257,18 @@ function AppliedEffects({
 
 // Effect presets (B11a): save the current effect stack as a named, reusable preset and apply/delete
 // saved ones. Presets are app-global (localStorage) so they carry across projects.
-/** Built-in stylise/cinematic looks (B13). Each applies a curated stack of existing, rendering
- *  effects (chromatic aberration, film grain, halftone, scanlines, posterize, cel, VHS/CRT). */
-function StylizePresetBar({ layer }: { layer: ImageLayer }) {
+/** Built-in one-click looks (B13 stylise, B14 glitch). Each applies a curated stack of existing,
+ *  rendering effects via setLayerEffects (chromatic aberration, grain, halftone, RGB split, VHS, ...). */
+function LookPresetBar({ layer, title, presets }: { layer: ImageLayer; title: string; presets: StylizePreset[] }) {
   const setLayerEffects = useEditorStore((s) => s.setLayerEffects);
   return (
     <div className="mb-2 mx-1 rounded-md border border-hairline bg-[#0a1524] px-2.5 py-1.5">
       <div className="flex items-center gap-1.5 mb-1">
         <Sparkles size={11} className="text-accent" />
-        <span className="text-[10px] font-semibold text-slate-300 uppercase tracking-wider flex-1">Stylise Looks</span>
+        <span className="text-[10px] font-semibold text-slate-300 uppercase tracking-wider flex-1">{title}</span>
       </div>
       <div className="flex flex-wrap gap-1">
-        {STYLIZE_PRESETS.map((p) => (
+        {presets.map((p) => (
           <button
             key={p.name}
             onClick={() => setLayerEffects(layer.id, applyStylizePreset(p))}
