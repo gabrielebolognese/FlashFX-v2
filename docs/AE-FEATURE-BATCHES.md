@@ -70,8 +70,9 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | B21 | Physics dynamics - reviewed + hardened (velocity fix) + magnets/attraction + spring/jiggle force models (harnessed) | ✅ | **heavy** |
 | B21-sim | Spring/rope/chain joints + soft-body via Rapier joints (browser/WASM) | ⬜ (browser) | **heavy** |
 | B22 | 3D objects & extrusion (extruded text/logos, materials) | ⏭️ skip (3D) | **heavy** |
-| B23 | Destruction generators (shatter, card dance) | ▶ **next** | medium |
-| B24 | Deformation & warp (puppet, liquify, turbulent displace, ripple, roughen) | ⬜ | medium |
+| B23 | Destruction generators - Voronoi fracture + explosion trajectory + card-dance grid/stagger engines (harnessed) | ✅ | medium |
+| B23-render | Resolve/store expansion of shatter + card-dance into rendered clipped pieces | ⬜ (browser) | medium |
+| B24 | Deformation & warp (puppet, liquify, turbulent displace, ripple, roughen) | ▶ **next** | medium |
 | B25 | Character rigging (rubber-hose limbs, IK, joystick controllers) | ⬜ | **heavy** |
 | B26 | Transitions & preset system (save/browse, drag-drop, MOGRT-like controls) | ⬜ | light |
 | B27 | Tracking & match-move (point/planar track, corner pin, stabilize) | ⬜ | **heavy** |
@@ -251,8 +252,11 @@ Audit: the per-layer effect stack **already exists** (ordered `LayerEffect[]` on
 **Decision (2026-09):** full 3D extrusion / imported models / materials are out of scope (the app is 2.5D-only). Skipped entirely. A **faux-bevel** on 2D text (inner shadow + highlight, no real geometry) could be a light stylise item later, but is not this batch.
 ~~**Delivers:** extruded 3D text/logos with bevels, imported models, materials/reflections. Categories: 17.~~
 
-## B23 - Destruction generators
-**Delivers:** shatter (fracture + explode with physics), card-dance (tile-grid assembly driven by a map). **Categories:** 25. **Perf:** medium; frame-pure.
+## B23 - Destruction generators ✅ (pure engines; the piece render split to B23-render)
+**Shipped (pure + harnessed):** the destruction ENGINES. `core/destruction/fracture.ts` - `fractureVoronoi` decomposes a rect into exact Voronoi shard polygons by clipping the rect with each pair's perpendicular-bisector half-plane (Sutherland-Hodgman), + `polygonArea`/`polygonCentroid`, + `shardExplode` (a shard's frame-pure trajectory: fly outward from the blast centre with seeded speed/spin jitter, gravity fall, fade). `core/destruction/cardDance.ts` - `tileGrid` (cols x rows tiles with UV sub-regions), `tileMapValue` (leftToRight/topToBottom/diagonal/radial/random ordering maps), `cardDanceTransform` (per-tile fly-in/out staggered by the map, easing to identity so the layer reassembles exactly). Frame-pure throughout. Verified by `npm run verify:destruction` (6 checks: shards partition the rect + sites in their cells, fracture determinism, explosion outward + frame-pure + fade, tile-grid coverage, map ordering, settled 'in' = identity). **Split out - B23-render:** turning the shards/tiles into rendered pieces. **Categories:** 25. **Perf:** medium; frame-pure.
+
+## B23-render - Destruction piece render (browser-gated)
+**Delivers:** expand a shatter/card-dance modifier into rendered pieces - the resolve-time way (per-piece stamps of the source, each clipped to its shard polygon / tile rect via a mask, transformed by `shardExplode`/`cardDanceTransform`) or a store-bake (create real shard/tile layers with the animation keyframed). Needs per-piece source clipping (polygon/rect mask on a stamp or baked layer), which is an unverifiable renderer/store integration here. The `fracture`/`cardDance` engines are the exact spec.
 
 ## B24 - Deformation & warp
 **Delivers:** puppet mesh warp, liquify smear/push, turbulent-displace jelly/flag, wave/ripple, displacement map, bezier/mesh warp, roughen edges. **Categories:** 12. **Perf:** medium - mesh warp GPU.

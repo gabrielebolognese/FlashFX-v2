@@ -24,6 +24,7 @@
     "verify:particles": "node scripts/verify-particles.mjs",
     "verify:plexus": "node scripts/verify-plexus.mjs",
     "verify:physics": "node scripts/verify-physics.mjs",
+    "verify:destruction": "node scripts/verify-destruction.mjs",
     "verify:cloner": "node scripts/verify-cloner.mjs",
     "verify:crop-solver": "node scripts/verify-crop-solver.mjs",
     "verify:color-transfer": "node scripts/verify-color-transfer.mjs",
