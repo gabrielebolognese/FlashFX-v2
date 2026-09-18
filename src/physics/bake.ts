@@ -10,8 +10,10 @@ import {
   deactivateToDynamic,
   stepWorld,
   readBodyTransform,
+  applyImpulseToBody,
 } from './world';
 import { deriveVelocityFromEvaluator } from './velocity';
+import { magnetForce } from './forces';
 
 export type LayerTransformEvaluator = (layerId: string, frame: number) => { x: number; y: number; rotation: number; width: number; height: number };
 
@@ -123,6 +125,21 @@ export async function bakePhysicsWorld(
       if (frame < binding.birthFrame) {
         const t = evaluator(binding.layerId, frame);
         setKinematicPosition(handle, binding.layerId, t.x, t.y, t.rotation);
+      }
+    }
+
+    // Magnets (B21): apply an attraction/repulsion impulse to each active dynamic body before
+    // stepping. Non-dynamic (pre-activation) bodies are ignored by applyImpulseToBody, so this is a
+    // no-op until a body is live and byte-identical when no magnets are configured.
+    if (config.magnets && config.magnets.length > 0) {
+      const dt = 1 / frameRate;
+      for (const binding of dynamicBindings) {
+        if (frame < binding.birthFrame) continue;
+        const tr = readBodyTransform(handle, binding.layerId);
+        if (!tr) continue;
+        let fx = 0, fy = 0;
+        for (const m of config.magnets) { const f = magnetForce({ x: tr.x, y: tr.y }, m); fx += f.x; fy += f.y; }
+        applyImpulseToBody(handle, binding.layerId, fx * dt, fy * dt);
       }
     }
 

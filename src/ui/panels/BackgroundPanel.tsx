@@ -518,6 +518,29 @@ function PhysicsWorldTab() {
               />
             </label>
           </div>
+
+          {/* Magnet / attractor (B21): a radial force field on dynamic bodies (strength>0 attracts, <0 repels). */}
+          {(() => {
+            const magnet = world.magnets?.[0];
+            const setMagnet = (patch: Partial<{ x: number; y: number; strength: number; radius: number }>) =>
+              updatePhysicsWorld({ magnets: [{ x: 0, y: 0, strength: 6000, radius: 0, ...magnet, ...patch }] });
+            return (
+              <div className="mt-2 pt-2 border-t border-hairline">
+                <label className="flex items-center gap-1.5 text-[10px] text-slate-400">
+                  <input type="checkbox" checked={!!magnet} onChange={(e) => updatePhysicsWorld({ magnets: e.target.checked ? [{ x: 0, y: 0, strength: 6000, radius: 0 }] : [] })} className="accent-[#f7b500]" />
+                  Magnet
+                </label>
+                {magnet && (
+                  <div className="grid grid-cols-2 gap-2 mt-1">
+                    <label className="text-[9px] text-slate-500">X<input type="number" value={magnet.x} step={10} onChange={(e) => setMagnet({ x: +e.target.value })} className="w-full bg-surface-1 border border-hairline rounded px-1.5 py-0.5 text-[10px] text-slate-300 mt-0.5" /></label>
+                    <label className="text-[9px] text-slate-500">Y<input type="number" value={magnet.y} step={10} onChange={(e) => setMagnet({ y: +e.target.value })} className="w-full bg-surface-1 border border-hairline rounded px-1.5 py-0.5 text-[10px] text-slate-300 mt-0.5" /></label>
+                    <label className="text-[9px] text-slate-500">Strength<input type="number" value={magnet.strength} step={500} onChange={(e) => setMagnet({ strength: +e.target.value })} className="w-full bg-surface-1 border border-hairline rounded px-1.5 py-0.5 text-[10px] text-slate-300 mt-0.5" /></label>
+                    <label className="text-[9px] text-slate-500">Radius<input type="number" value={magnet.radius} step={20} min={0} onChange={(e) => setMagnet({ radius: Math.max(0, +e.target.value) })} className="w-full bg-surface-1 border border-hairline rounded px-1.5 py-0.5 text-[10px] text-slate-300 mt-0.5" /></label>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </div>
       </div>
 

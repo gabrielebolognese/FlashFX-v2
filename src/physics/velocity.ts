@@ -13,6 +13,7 @@ export function deriveVelocityFromEvaluator(
 
   let totalDx = 0;
   let totalDy = 0;
+  let samples = 0;
 
   for (let i = 0; i < window; i++) {
     const frameBefore = handoffFrame - (i + 1);
@@ -22,10 +23,14 @@ export function deriveVelocityFromEvaluator(
     const posAt = evaluator(layerId, frameAt);
     totalDx += posAt.x - posBefore.x;
     totalDy += posAt.y - posBefore.y;
+    samples++;
   }
 
-  const avgDx = totalDx / window;
-  const avgDy = totalDy / window;
+  // Harden (B21): divide by the samples actually taken, not `window`. Near frame 0 the loop breaks
+  // early, and dividing by the full window under-estimated the handoff velocity.
+  if (samples === 0) return { x: 0, y: 0 };
+  const avgDx = totalDx / samples;
+  const avgDy = totalDy / samples;
 
   return {
     x: avgDx / dt,

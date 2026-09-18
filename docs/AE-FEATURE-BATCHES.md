@@ -67,9 +67,10 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | B18 | 3D scene completion (DOF/bokeh, lights & shadows, parallax, focus pull) | ⏭️ skip (3D) | **heavy** |
 | B19 | Particle system polish - wind/attractor forces + dissolve emitter + 5 presets + frame-purity FIX (harnessed) | ✅ | **heavy** |
 | B20 | Plexus - 2D connected-dots network (pure edge graph + particle line render + 2 presets, harnessed) | ✅ | medium |
-| B21 | Physics dynamics (collisions, stacking, springs/ropes, soft-body) | ▶ **next** | **heavy** |
+| B21 | Physics dynamics - reviewed + hardened (velocity fix) + magnets/attraction + spring/jiggle force models (harnessed) | ✅ | **heavy** |
+| B21-sim | Spring/rope/chain joints + soft-body via Rapier joints (browser/WASM) | ⬜ (browser) | **heavy** |
 | B22 | 3D objects & extrusion (extruded text/logos, materials) | ⏭️ skip (3D) | **heavy** |
-| B23 | Destruction generators (shatter, card dance) | ⬜ | medium |
+| B23 | Destruction generators (shatter, card dance) | ▶ **next** | medium |
 | B24 | Deformation & warp (puppet, liquify, turbulent displace, ripple, roughen) | ⬜ | medium |
 | B25 | Character rigging (rubber-hose limbs, IK, joystick controllers) | ⬜ | **heavy** |
 | B26 | Transitions & preset system (save/browse, drag-drop, MOGRT-like controls) | ⬜ | light |
@@ -240,8 +241,11 @@ Audit: the per-layer effect stack **already exists** (ordered `LayerEffect[]` on
 ## B20 - Plexus (2D connected-dots) ✅ (built on the frame-pure particle system)
 **Delivers (2D only):** **plexus** - a connected-dot network (points + proximity lines, animated). **Approach:** reuse the B19 frame-pure particle sim as the moving-point source, and connect nearby particles - so plexus is frame-pure for free and needs no new layer type. **Shipped:** new pure leaf `core/plexus/plexusGraph.ts` (`computeEdges` - all point pairs within `connectDistance`, per-edge alpha fading 1->0 with distance, no self/dup edges, `maxEdges` cap; `edgeDegrees`), harnessed by `npm run verify:plexus` (6 checks). The particle renderer draws the edges as fading lines behind the dots when `connectDistance > 0` (new optional `connectDistance`/`connectColor`/`connectWidth` on `EmitterConfig`, a `Connect` control in `ParticlePanel`), plus **Plexus** + **Constellation** presets. **Dropped as 3D (out of scope):** 3D stroke "draws in space" + Mir/Tao flowing surfaces. **Categories:** 9. **Perf:** medium - O(n^2) edges capped at 6000, over the bounded particle count. The line-drawing is 2D canvas (browser-eyeball for looks); the edge math is fully harnessed.
 
-## B21 - Physics dynamics
-**Delivers:** collisions, stacking/piling, springs/ropes/chains, soft-body jiggle, magnets/attraction. **Categories:** 13. **Depends on:** existing Rapier physics bake. **Perf:** **HEAVY** (bake step, so playback stays cheap).
+## B21 - Physics dynamics ✅ (review + harden + magnets; spring/rope joints split to B21-sim)
+**Audit finding:** a real Rapier 2D system already existed (roles kinematic/dynamic/static/ghost, colliders box/circle/hull/polyline, materials restitution/friction/damping/axis-locks, boundary walls, velocity handoff, a deterministic bake cache) - so **collisions + stacking already work** - but it had **no harness** and a bug. **Review + harden:** fixed `deriveVelocityFromEvaluator` - it divided the handoff velocity by the full sample `window` even when the loop broke early near frame 0, under-estimating the velocity; now it divides by the samples actually taken (proven by the harness). **Expand:** new pure leaf `physics/forces.ts` - `magnetForce` (radial attract/repel with radius falloff), `springForce` (Hooke + axis damping, a rope/chain segment), `dampedSpringStep` (soft-body jiggle / spring-to-rest integrator). **Magnets are wired end-to-end** (`magnets` on `PhysicsWorldConfig`/`PhysicsWorldDef`, applied as an impulse to active dynamic bodies in the bake, a Magnet control in the physics panel) - additive + byte-identical when none set. Verified by `npm run verify:physics` (7 checks: magnet attract/repel/falloff, spring rest/stretch/compress/damping, jiggle convergence, velocity round-trip + the sample-count fix). **Split out - B21-sim:** springs/ropes/chains + soft-body as real Rapier JOINTS (the `springForce`/`dampedSpringStep` models are the spec) - browser/WASM, unverifiable here. **Categories:** 13. **Perf:** bake step (playback stays cheap).
+
+## B21-sim - Spring/rope/chain joints + soft-body (browser-gated)
+**Delivers:** multi-body **spring joints**, **ropes/chains** (a chain of distance/spring joints between segment bodies), and **soft-body jiggle** (a body spring-pulled toward its keyframed rest pose), wired via the Rapier joint API in `world.ts`/`bake.ts` using the pure `springForce`/`dampedSpringStep` as the reference. Runs in the browser (Rapier WASM) - not runnable here.
 
 ## B22 - 3D objects & extrusion ⏭️ SKIPPED (3D - out of scope)
 **Decision (2026-09):** full 3D extrusion / imported models / materials are out of scope (the app is 2.5D-only). Skipped entirely. A **faux-bevel** on 2D text (inner shadow + highlight, no real geometry) could be a light stylise item later, but is not this batch.

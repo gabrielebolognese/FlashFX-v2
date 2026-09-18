@@ -1525,6 +1525,8 @@ export interface PhysicsWorldDef {
   gravityY: number;
   timeScale: number;
   substeps: number;
+  /** Magnet/attractor force fields (B21): { x, y, strength, radius }. strength>0 attracts, <0 repels. */
+  magnets?: { x: number; y: number; strength: number; radius: number }[];
 }
 
 export interface ProceduralBinding {

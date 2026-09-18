@@ -50,12 +50,22 @@ export interface PhysicsBinding {
   solidBeforeActivation: boolean;
 }
 
+/** A radial magnet/attractor force field (B21). strength>0 attracts, <0 repels; radius 0 = infinite. */
+export interface MagnetConfig {
+  x: number;
+  y: number;
+  strength: number;
+  radius: number;
+}
+
 export interface PhysicsWorldConfig {
   enabled: boolean;
   gravityX: number;
   gravityY: number;
   timeScale: number;
   substeps: number;
+  /** Magnet/attractor force fields applied to dynamic bodies during the bake (B21). */
+  magnets?: MagnetConfig[];
 }
 
 export interface BakedFrame {

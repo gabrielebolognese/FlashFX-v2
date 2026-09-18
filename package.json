@@ -23,6 +23,7 @@
     "verify:pattern-tile": "node scripts/verify-pattern-tile.mjs",
     "verify:particles": "node scripts/verify-particles.mjs",
     "verify:plexus": "node scripts/verify-plexus.mjs",
+    "verify:physics": "node scripts/verify-physics.mjs",
     "verify:cloner": "node scripts/verify-cloner.mjs",
     "verify:crop-solver": "node scripts/verify-crop-solver.mjs",
     "verify:color-transfer": "node scripts/verify-color-transfer.mjs",

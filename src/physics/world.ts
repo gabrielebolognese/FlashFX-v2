@@ -166,6 +166,17 @@ export function stepWorld(handle: PhysicsWorldHandle): void {
   handle.world.step();
 }
 
+/** Apply a linear impulse to a body (B21 magnet forces). No-op on non-dynamic bodies / missing ids. */
+export function applyImpulseToBody(handle: PhysicsWorldHandle, layerId: string, ix: number, iy: number): void {
+  const entry = handle.bodies.get(layerId);
+  if (!entry) return;
+  const rb = entry.rigidBody;
+  try {
+    if (typeof rb.isDynamic === 'function' && !rb.isDynamic()) return; // kinematic/fixed ignore forces
+    rb.applyImpulse({ x: ix, y: iy }, true);
+  } catch { /* Rapier not ready / body inactive - ignore */ }
+}
+
 export function readBodyTransform(handle: PhysicsWorldHandle, layerId: string): { x: number; y: number; rotation: number; vx: number; vy: number } | null {
   const entry = handle.bodies.get(layerId);
   if (!entry) return null;

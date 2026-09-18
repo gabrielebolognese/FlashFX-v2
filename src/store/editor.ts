@@ -5839,6 +5839,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       gravityY: world.gravityY,
       timeScale: world.timeScale,
       substeps: world.substeps,
+      magnets: world.magnets, // B21: magnet/attractor force fields (undefined = none)
     };
 
     const physicsBindings = bindings.map((b) => ({
