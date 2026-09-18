@@ -58,8 +58,9 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | B13-gpu | Vignette WGSL case (the one missing stylise effect) | ⬜ (browser) | light |
 | B14 | Glitch & datamosh - curated glitch presets over existing frame-pure effects (harnessed) | ✅ | medium |
 | B14-gpu | Pixel-sort + true datamosh block-displacement WGSL cases | ⬜ (browser) | medium |
-| B15 | Color grading (wheels/curves/HSL, LUT loading, film looks) | ▶ **next** | medium |
-| B16 | Light rays, flares & beams (lens flare, Saber-like beams, god-rays) | ⬜ | **heavy** |
+| B15 | Color grading - LUT/.cube engine + curves + film-look grade tool (harnessed, renders now) | ✅ | medium |
+| B15-gpu | Live per-layer 3D-LUT + curves in IMAGE_SHADER (GPU 3D-texture sample) + HSL secondary | ⬜ (browser) | medium |
+| B16 | Light rays, flares & beams (lens flare, Saber-like beams, god-rays) | ▶ **next** | **heavy** |
 | B17 | Tiling & generative simulations (motion tile, caustics, wave/radio, cell) | ⬜ | medium |
 | B18 | 3D scene completion (DOF/bokeh, lights & shadows, parallax, focus pull) | ⬜ | **heavy** |
 | B19 | Particle system polish (emitters, physics, trails, fire/smoke/confetti) | ⬜ | **heavy** |
@@ -209,8 +210,11 @@ Audit: the per-layer effect stack **already exists** (ordered `LayerEffect[]` on
 ## B14-gpu - Pixel-sort + datamosh (browser-gated)
 **Delivers:** `pixelSort` (threshold-gated per-row/column luminance sort - a spatial-class multi-tap case) and `dataMosh` (block-displacement smear driven by a seeded pseudo motion-vector field), added to the registry + `applySpatialEffect` WGSL. Frame-pure (seeded by `effectTime`). Unverifiable here.
 
-## B15 - Color grading
-**Delivers:** Lumetri-style **wheels / curves / HSL**, **LUT** (.cube) loading + apply, film-look presets. **Categories:** 21. **Depends on:** B11 + existing color-correction panel. **Perf:** medium - 3D-LUT sample.
+## B15 - Color grading ✅ (LUT/curve engine + grade tool; live per-layer LUT split to B15-gpu)
+**Audit finding:** color **wheels** (lift/gamma/gain/offset) already exist in `ImageColorCorrection`; curves, LUT and HSL did not. **Shipped (renders now + harnessed):** a real pure engine - `core/effects/lut.ts` (`.cube` parser + `identityLUT` + trilinear `sampleLUT` of an N³ 3D LUT), `core/effects/curves.ts` (`evalCurve`/`bakeCurve1D`/`sampleCurve1D` tone curves), `core/effects/gradePresets.ts` (8 film looks: Teal & Orange, Warm, Cool, Bleach Bypass, Noir, Vintage, Vibrant + None, as master/per-channel curves + saturation). Verified by `npm run verify:color-grade` (7 checks: cube parse + reject malformed/1D, identity round-trip, invert-LUT + trilinear midpoint, clamp, curve endpoints/interp/clamp, bake round-trip, preset validity). A **Color Grade image tool** (media-pool right-click + Inspector button) applies a film-look preset and/or a loaded `.cube` LUT per pixel on a 2D canvas, intensity-blended, live preview + bake to a new PNG asset (the image-tools pattern - real, no GPU). **Split out - B15-gpu:** the live per-layer path. **Perf:** medium (a per-pixel 3D-LUT trilinear + 1D-LUT curve lookups on the bake; the GPU does it as a 3D-texture sample).
+
+## B15-gpu - Live per-layer color grading (browser-gated)
+**Delivers:** apply a LUT/curves to a layer in real time - bind the parsed 3D LUT as a GPU 3D texture and sample it (+ per-channel 1D-LUT curves) in `IMAGE_SHADER`, driven by new `ImageColorCorrection` fields (lut ref + curves + HSL secondary). Reuses the pure `core/effects/lut.ts`/`curves.ts` as the exact spec. WGSL/3D-texture - unverifiable here.
 
 ## B16 - Light rays, flares & beams
 **Delivers:** lens flares (Optical-Flares-like), energy **beams / lightning** (Saber-like), volumetric god-rays. **Categories:** 10. **Depends on:** B11. **Perf:** **HEAVY** - dedicated; scoped, may split.

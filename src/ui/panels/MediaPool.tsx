@@ -17,6 +17,7 @@ import { SmartCropModal } from './smart-crop/SmartCropModal';
 import { FaceBlurModal } from './face-blur/FaceBlurModal';
 import { ColorMatchModal } from './color-match/ColorMatchModal';
 import { CutoutShadowModal } from './cutout-shadow/CutoutShadowModal';
+import { ColorGradeModal } from './color-grade/ColorGradeModal';
 import { useContextMenu } from '../context-menu';
 import { buildMediaPoolEmptyMenu, buildMediaAssetMenu } from '../context-menu/menuDefinitions';
 import { BrandsTab } from './BrandsTab';
@@ -245,6 +246,7 @@ export function MediaPool() {
       <FaceBlurModal />
       <ColorMatchModal />
       <CutoutShadowModal />
+      <ColorGradeModal />
       {fileDragOver && (
         <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none bg-[#0a1628]/80 border-2 border-dashed border-emerald-400 rounded-lg m-2">
           <div className="flex flex-col items-center gap-3">

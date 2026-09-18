@@ -65,6 +65,7 @@ import { useSmartCropStore } from '../../store/smartCrop';
 import { useFaceBlurStore } from '../../store/faceBlur';
 import { useColorMatchStore } from '../../store/colorMatch';
 import { useCutoutShadowStore } from '../../store/cutoutShadow';
+import { useColorGradeStore } from '../../store/colorGrade';
 import type { SplitMode } from '../../core/textExplode';
 
 // Font menu, grouped by category, sourced from the single font manifest (engine/fonts.ts) so
@@ -1842,6 +1843,7 @@ function ImageToolButtons({ layer }: { layer: ImageLayer }) {
       <button className={btn} onClick={() => useFaceBlurStore.getState().show(assetId)} title="Blur / redact faces"><ShieldAlert size={13} /> Face Blur</button>
       <button className={btn} onClick={() => useColorMatchStore.getState().show(assetId)} title="Match a reference's color"><Palette size={13} /> Color Match</button>
       <button className={btn} onClick={() => useCutoutShadowStore.getState().show(assetId)} title="Cutout + cast shadow"><Layers size={13} /> Cutout</button>
+      <button className={btn} onClick={() => useColorGradeStore.getState().show(assetId)} title="Film-look grade + LUT"><SlidersHorizontal size={13} /> Grade</button>
     </div>
   );
 }
