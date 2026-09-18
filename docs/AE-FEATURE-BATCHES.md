@@ -60,8 +60,9 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | B14-gpu | Pixel-sort + true datamosh block-displacement WGSL cases | ⬜ (browser) | medium |
 | B15 | Color grading - LUT/.cube engine + curves + film-look grade tool (harnessed, renders now) | ✅ | medium |
 | B15-gpu | Live per-layer 3D-LUT + curves in IMAGE_SHADER (GPU 3D-texture sample) + HSL secondary | ⬜ (browser) | medium |
-| B16 | Light rays, flares & beams (lens flare, Saber-like beams, god-rays) | ▶ **next** | **heavy** |
-| B17 | Tiling & generative simulations (motion tile, caustics, wave/radio, cell) | ⬜ | medium |
+| B16 | Light rays, flares & beams - light presets over existing effects + pure beam/lightning geometry (harnessed) | ✅ | **heavy** |
+| B16-gpu | Beam/lightning as a glowing ribbon layer (ribbon->shape + glow, or WGSL SDF beam) | ⬜ (browser) | **heavy** |
+| B17 | Tiling & generative simulations (motion tile, caustics, wave/radio, cell) | ▶ **next** | medium |
 | B18 | 3D scene completion (DOF/bokeh, lights & shadows, parallax, focus pull) | ⬜ | **heavy** |
 | B19 | Particle system polish (emitters, physics, trails, fire/smoke/confetti) | ⬜ | **heavy** |
 | B20 | Generative geometry (3D stroke, plexus, flowing surfaces) | ⬜ | **heavy** |
@@ -216,8 +217,11 @@ Audit: the per-layer effect stack **already exists** (ordered `LayerEffect[]` on
 ## B15-gpu - Live per-layer color grading (browser-gated)
 **Delivers:** apply a LUT/curves to a layer in real time - bind the parsed 3D LUT as a GPU 3D texture and sample it (+ per-channel 1D-LUT curves) in `IMAGE_SHADER`, driven by new `ImageColorCorrection` fields (lut ref + curves + HSL secondary). Reuses the pure `core/effects/lut.ts`/`curves.ts` as the exact spec. WGSL/3D-texture - unverifiable here.
 
-## B16 - Light rays, flares & beams
-**Delivers:** lens flares (Optical-Flares-like), energy **beams / lightning** (Saber-like), volumetric god-rays. **Categories:** 10. **Depends on:** B11. **Perf:** **HEAVY** - dedicated; scoped, may split.
+## B16 - Light rays, flares & beams ✅ (presets + beam geometry; beam-layer render split to B16-gpu)
+**Audit finding:** all five light effects already render (lightRays 290, sunRays 291, lightWrap 292, lensFlare 293, specularHighlight 294 - each has an `applySpatialEffect` WGSL case). So flares/god-rays are curation. **Shipped (renders now + harnessed):** `core/effects/lightPresets.ts` = 6 light looks (Sun Flare, God Rays, Lens Flare, Dreamy Light, Hero Glint, Volumetric) over those ids, exposed as a "Light" row in the filters preset bar. Plus the genuinely-new **beam/lightning geometry** `core/beam/beamGeometry.ts`: `lightningPath` (seeded midpoint-displacement bolt - **frame-pure** via house `mulberry32`, so mixing the frame number into the seed animates it while scrubbing stays byte-identical), `straightBeam`, and `ribbon` (offset a polyline into a tapered quad strip). Verified by `npm run verify:light` (6 checks: endpoints exact, count = 2^iterations+1, amp/iter 0 = straight, frame-pure determinism + off-axis zig-zag, ribbon +/- half-width + taper, preset validity). **Split out - B16-gpu:** drawing the beam as a glowing ribbon layer. **Perf:** heavy (the effects are per-pixel; the beam ribbon is cheap geometry).
+
+## B16-gpu - Beam/lightning as a glowing layer (browser-gated)
+**Delivers:** turn the pure `beamGeometry` ribbon into a rendered energy beam - either a `PolygonShape` from the ribbon outline with the existing `LayerGlow`, or a dedicated WGSL SDF beam pass (soft core + additive glow), animated by feeding `frameNumber` into `lightningPath`'s seed. Endpoints keyframable. Unverifiable here.
 
 ## B17 - Tiling & generative simulations
 **Delivers:** motion tile / offset **seamless scroll**; generative sims - caustics, wave world, radio waves, cell pattern, fractal noise, vegas stroke. **Categories:** 26, 28. **Depends on:** B11 + existing generativePattern engine. **Perf:** medium.

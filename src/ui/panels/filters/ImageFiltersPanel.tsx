@@ -6,6 +6,7 @@ import { useEditorStore } from '../../../store/editor';
 import { useEffectPresetStore } from '../../../store/effectPresets';
 import { STYLIZE_PRESETS, applyStylizePreset, type StylizePreset } from '../../../core/effects/stylizePresets';
 import { GLITCH_PRESETS } from '../../../core/effects/glitchPresets';
+import { LIGHT_PRESETS } from '../../../core/effects/lightPresets';
 import { getEffectDef, getEffectDefByType, isLegacyFilter } from '../../../core/effects/effectRegistry';
 import { isWireFilter, buildWire, readWireValue } from '../../../core/effects/wireEffects';
 
@@ -159,6 +160,7 @@ export function ImageFiltersPanel({ layer }: { layer: ImageLayer }) {
         />
         <LookPresetBar layer={layer} title="Stylise Looks" presets={STYLIZE_PRESETS} />
         <LookPresetBar layer={layer} title="Glitch" presets={GLITCH_PRESETS} />
+        <LookPresetBar layer={layer} title="Light" presets={LIGHT_PRESETS} />
         <EffectPresetBar layer={layer} />
         {filteredCategories.map((category) => (
           <FilterCategoryAccordion

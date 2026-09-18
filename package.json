@@ -19,6 +19,7 @@
     "verify:stylize-presets": "node scripts/verify-stylize-presets.mjs",
     "verify:glitch-presets": "node scripts/verify-glitch-presets.mjs",
     "verify:color-grade": "node scripts/verify-color-grade.mjs",
+    "verify:light": "node scripts/verify-light.mjs",
     "verify:cloner": "node scripts/verify-cloner.mjs",
     "verify:crop-solver": "node scripts/verify-crop-solver.mjs",
     "verify:color-transfer": "node scripts/verify-color-transfer.mjs",
