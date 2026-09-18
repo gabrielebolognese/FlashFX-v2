@@ -29,6 +29,7 @@ import { detectSceneCuts } from '../../engine/video/sceneDetect';
 import { useAiImageStore } from '../../store/aiImage';
 import { useSmartCropStore } from '../../store/smartCrop';
 import { useFaceBlurStore } from '../../store/faceBlur';
+import { useColorMatchStore } from '../../store/colorMatch';
 import { useInspectorStore } from '../../store/inspector';
 import { addAssetToFavorites, addAssetToFolder } from '../../library/folderService';
 import { processAudioAsset, toMono, toStereo, normalize, amplifyBy } from '../../engine/audio/audioProcessing';
@@ -881,6 +882,7 @@ export function buildMediaAssetMenu(assetType: 'image' | 'video' | 'audio', asse
         item('remove-bg', 'Remove Background', () => useAiImageStore.getState().open(assetId, 'remove-bg'), Wand2),
         item('upscale', 'Upscale (2×)', () => useAiImageStore.getState().open(assetId, 'upscale'), ZoomIn),
         item('face-blur', 'Face Blur', () => useFaceBlurStore.getState().show(assetId), ShieldAlert),
+        item('color-match', 'Color Match', () => useColorMatchStore.getState().show(assetId), Palette),
         disabled('gen-variations', 'Generate Variations', Sparkles),
       ],
     });
