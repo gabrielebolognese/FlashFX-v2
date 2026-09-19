@@ -74,8 +74,9 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | B23-render | Resolve/store expansion of shatter + card-dance into rendered clipped pieces | ⬜ (browser) | medium |
 | B24 | Deformation & warp - puppet pin-mesh engine + deform presets over existing warps (harnessed) | ✅ | medium |
 | B24-render | Puppet mesh-warp render (warp the layer texture through the deformed triangle mesh) | ⬜ (browser) | medium |
-| B25 | Character rigging (rubber-hose limbs, IK, joystick controllers) | ▶ **next** | **heavy** |
-| B26 | Transitions & preset system (save/browse, drag-drop, MOGRT-like controls) | ⬜ | light |
+| B25 | Character rigging - 2-bone IK + FABRIK + rubber-hose + joystick blend solvers (harnessed) | ✅ | **heavy** |
+| B25-rig | Rig binding (attach layers to a chain, pin/target handles) + limb render + rig UI | ⬜ (browser) | **heavy** |
+| B26 | Transitions & preset system (save/browse, drag-drop, MOGRT-like controls) | ▶ **next** | light |
 | B27 | Tracking & match-move (point/planar track, corner pin, stabilize) | ⬜ | **heavy** |
 | B28 | Keying (chroma/luma key, spill suppression, edge refine) | ⬜ | medium |
 | B29 | Footage cleanup & beauty (denoise, deflicker, skin retouch) | ⬜ | **heavy** |
@@ -265,8 +266,11 @@ Audit: the per-layer effect stack **already exists** (ordered `LayerEffect[]` on
 ## B24-render - Puppet mesh-warp render (browser-gated)
 **Delivers:** render a layer through the `warpMesh` deformed grid - triangulate the mesh, map the source as a texture across the deformed triangles (a per-triangle textured draw, or a vertex-displaced quad grid) in the renderer. `core/warp/puppet.ts` is the exact spec; the GPU mesh draw is unverifiable here.
 
-## B25 - Character rigging
-**Delivers:** rubber-hose bendy limbs, IK/FK posing, joystick/controller pose-swapping, auto-squash. **Categories:** 11. **Perf:** **HEAVY** rig eval; scoped, likely splits.
+## B25 - Character rigging ✅ (pure solvers; rig binding/render split to B25-rig)
+**Greenfield** (no prior rig code). **Shipped (pure + harnessed):** `core/rig/rigging.ts` - the solver math for posing a 2D character: `solveTwoBone` (analytic law-of-cosines IK for an arm/leg - reachable targets hit exactly with correct bone lengths, `bendSign` flips the elbow, unreachable straightens), `solveFabrik` (N-bone Forward-And-Backward-Reaching IK for tails/spines - reaches the target, preserves every segment length, root fixed), `rubberHosePath` (bendy-limb quadratic bezier), `blendJoystick` (bilinear pose blend over 4 corner poses, Character-Animator style). Verified by `npm run verify:rig` (7 checks). **Split out - B25-rig:** binding real layers to a chain + drawing the limbs + the rig UI. **Categories:** 11. **Perf:** solver eval is cheap; the rig binding/render is the heavy part. **Not built:** auto-squash (a follow-on that would drive scale from limb velocity, tying into B32 squash & stretch).
+
+## B25-rig - Rig binding + render (browser-gated)
+**Delivers:** attach layers as bones to an IK/FABRIK chain, expose draggable target/pole/pin handles on the canvas, drive the bound layers' transforms from the solved joint positions each frame, draw rubber-hose limbs, and a joystick control widget. `core/rig/rigging.ts` is the solver; this is the layer-binding + on-canvas + render integration, unverifiable here.
 
 ## B26 - Transitions & preset system
 **Delivers:** save/browse **animation presets**, drag-drop **transitions** (whip/zoom/blur/liquid/spin), MOGRT-like control panels, one-click house eases + stagger. **Categories:** 15. **Depends on:** B1, B7. **Perf:** light.
