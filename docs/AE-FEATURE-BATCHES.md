@@ -72,8 +72,9 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | B22 | 3D objects & extrusion (extruded text/logos, materials) | ⏭️ skip (3D) | **heavy** |
 | B23 | Destruction generators - Voronoi fracture + explosion trajectory + card-dance grid/stagger engines (harnessed) | ✅ | medium |
 | B23-render | Resolve/store expansion of shatter + card-dance into rendered clipped pieces | ⬜ (browser) | medium |
-| B24 | Deformation & warp (puppet, liquify, turbulent displace, ripple, roughen) | ▶ **next** | medium |
-| B25 | Character rigging (rubber-hose limbs, IK, joystick controllers) | ⬜ | **heavy** |
+| B24 | Deformation & warp - puppet pin-mesh engine + deform presets over existing warps (harnessed) | ✅ | medium |
+| B24-render | Puppet mesh-warp render (warp the layer texture through the deformed triangle mesh) | ⬜ (browser) | medium |
+| B25 | Character rigging (rubber-hose limbs, IK, joystick controllers) | ▶ **next** | **heavy** |
 | B26 | Transitions & preset system (save/browse, drag-drop, MOGRT-like controls) | ⬜ | light |
 | B27 | Tracking & match-move (point/planar track, corner pin, stabilize) | ⬜ | **heavy** |
 | B28 | Keying (chroma/luma key, spill suppression, edge refine) | ⬜ | medium |
@@ -258,8 +259,11 @@ Audit: the per-layer effect stack **already exists** (ordered `LayerEffect[]` on
 ## B23-render - Destruction piece render (browser-gated)
 **Delivers:** expand a shatter/card-dance modifier into rendered pieces - the resolve-time way (per-piece stamps of the source, each clipped to its shard polygon / tile rect via a mask, transformed by `shardExplode`/`cardDanceTransform`) or a store-bake (create real shard/tile layers with the animation keyframed). Needs per-piece source clipping (polygon/rect mask on a stamp or baked layer), which is an unverifiable renderer/store integration here. The `fracture`/`cardDance` engines are the exact spec.
 
-## B24 - Deformation & warp
-**Delivers:** puppet mesh warp, liquify smear/push, turbulent-displace jelly/flag, wave/ripple, displacement map, bezier/mesh warp, roughen edges. **Categories:** 12. **Perf:** medium - mesh warp GPU.
+## B24 - Deformation & warp ✅ (puppet engine + deform presets; mesh render split to B24-render)
+**Audit finding:** the warp effects already render (bulge, pinch, twirl, wave, **ripple**, **turbulentDisplace** - all `warp`-class `applyWarpEffect` cases). **Shipped (harnessed):** (1) 8 **deform presets** over those effects (Jelly, Flag Wave, Ripple, Wobble, Melt, Bulge, Pinch, Vortex) - render now, exposed as a "Deform" row in the filters preset bar; (2) the genuinely-new **puppet mesh-warp engine** `core/warp/puppet.ts`: `warpPoint` (a point displaced by an inverse-distance-weighted blend of pin offsets - no pins = identity, one pin = uniform translate, a point on a pin's rest lands on its pos), `buildWarpMesh` (rest grid), `warpMesh` (deform every vertex). Pure + deterministic. Verified by `npm run verify:warp` (6 checks: identity, single-pin translate, pin-rest exactness, two-pin inverse-distance blend, mesh build/apply/immutability, preset validity). **Split out - B24-render:** warp the layer texture through the deformed triangle mesh (GPU). **Categories:** 12. **Perf:** medium. **Not built (out of scope / gated):** liquify brush (interactive stroke field) and displacement-map (needs a map texture) - the puppet mesh covers bezier/mesh warp.
+
+## B24-render - Puppet mesh-warp render (browser-gated)
+**Delivers:** render a layer through the `warpMesh` deformed grid - triangulate the mesh, map the source as a texture across the deformed triangles (a per-triangle textured draw, or a vertex-displaced quad grid) in the renderer. `core/warp/puppet.ts` is the exact spec; the GPU mesh draw is unverifiable here.
 
 ## B25 - Character rigging
 **Delivers:** rubber-hose bendy limbs, IK/FK posing, joystick/controller pose-swapping, auto-squash. **Categories:** 11. **Perf:** **HEAVY** rig eval; scoped, likely splits.
