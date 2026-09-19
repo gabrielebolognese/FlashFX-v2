@@ -27,6 +27,7 @@
     "verify:destruction": "node scripts/verify-destruction.mjs",
     "verify:warp": "node scripts/verify-warp.mjs",
     "verify:rig": "node scripts/verify-rig.mjs",
+    "verify:anim-presets": "node scripts/verify-anim-presets.mjs",
     "verify:cloner": "node scripts/verify-cloner.mjs",
     "verify:crop-solver": "node scripts/verify-crop-solver.mjs",
     "verify:color-transfer": "node scripts/verify-color-transfer.mjs",

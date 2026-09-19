@@ -492,6 +492,52 @@ export const ANIMATION_PRESETS: AnimationPreset[] = [
       },
     ],
   },
+  // B26 transitions: fast "whip" pans (position overshoot + a brief directional scale stretch that
+  // reads as motion blur) and spins. All drive existing properties, so they render now.
+  {
+    id: 'whip-left', name: 'Whip Left', category: 'Combination', description: 'Fast whip in from the left with overshoot',
+    tracks: [
+      { property: 'position', keyframes: [{ at: 0, value: (c) => [c.position[0] - c.compWidth * 0.7, c.position[1]], easing: 'spring' }, { at: 1, value: (c) => c.position }] },
+      { property: 'scale', keyframes: [{ at: 0, value: (c) => [c.scale[0] * 1.5, c.scale[1] * 0.75], easing: 'easeOut' }, { at: 0.6, value: (c) => c.scale }] },
+    ],
+  },
+  {
+    id: 'whip-right', name: 'Whip Right', category: 'Combination', description: 'Fast whip in from the right with overshoot',
+    tracks: [
+      { property: 'position', keyframes: [{ at: 0, value: (c) => [c.position[0] + c.compWidth * 0.7, c.position[1]], easing: 'spring' }, { at: 1, value: (c) => c.position }] },
+      { property: 'scale', keyframes: [{ at: 0, value: (c) => [c.scale[0] * 1.5, c.scale[1] * 0.75], easing: 'easeOut' }, { at: 0.6, value: (c) => c.scale }] },
+    ],
+  },
+  {
+    id: 'whip-up', name: 'Whip Up', category: 'Combination', description: 'Fast whip in from below with overshoot',
+    tracks: [
+      { property: 'position', keyframes: [{ at: 0, value: (c) => [c.position[0], c.position[1] + c.compHeight * 0.7], easing: 'spring' }, { at: 1, value: (c) => c.position }] },
+      { property: 'scale', keyframes: [{ at: 0, value: (c) => [c.scale[0] * 0.75, c.scale[1] * 1.5], easing: 'easeOut' }, { at: 0.6, value: (c) => c.scale }] },
+    ],
+  },
+  {
+    id: 'whip-down', name: 'Whip Down', category: 'Combination', description: 'Fast whip in from above with overshoot',
+    tracks: [
+      { property: 'position', keyframes: [{ at: 0, value: (c) => [c.position[0], c.position[1] - c.compHeight * 0.7], easing: 'spring' }, { at: 1, value: (c) => c.position }] },
+      { property: 'scale', keyframes: [{ at: 0, value: (c) => [c.scale[0] * 0.75, c.scale[1] * 1.5], easing: 'easeOut' }, { at: 0.6, value: (c) => c.scale }] },
+    ],
+  },
+  {
+    id: 'spin-in', name: 'Spin In', category: 'Rotation', description: 'Spin and scale up into place',
+    tracks: [
+      { property: 'rotation', keyframes: [{ at: 0, value: (c) => c.rotation - 270, easing: 'easeOut' }, { at: 1, value: (c) => c.rotation }] },
+      { property: 'scale', keyframes: [{ at: 0, value: ZERO, easing: 'easeOut' }, { at: 1, value: (c) => c.scale }] },
+      { property: 'opacity', keyframes: [{ at: 0, value: 0, easing: 'easeOut' }, { at: 0.4, value: (c) => c.opacity }] },
+    ],
+  },
+  {
+    id: 'spin-out', name: 'Spin Out', category: 'Rotation', description: 'Spin and scale down out of frame',
+    tracks: [
+      { property: 'rotation', keyframes: [{ at: 0, value: (c) => c.rotation, easing: 'easeIn' }, { at: 1, value: (c) => c.rotation + 270 }] },
+      { property: 'scale', keyframes: [{ at: 0, value: (c) => c.scale, easing: 'easeIn' }, { at: 1, value: ZERO }] },
+      { property: 'opacity', keyframes: [{ at: 0.6, value: (c) => c.opacity, easing: 'easeIn' }, { at: 1, value: 0 }] },
+    ],
+  },
 ];
 
 export function getPresetById(id: string): AnimationPreset | undefined {

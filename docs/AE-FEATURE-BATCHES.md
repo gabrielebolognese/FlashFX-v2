@@ -76,8 +76,8 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | B24-render | Puppet mesh-warp render (warp the layer texture through the deformed triangle mesh) | ⬜ (browser) | medium |
 | B25 | Character rigging - 2-bone IK + FABRIK + rubber-hose + joystick blend solvers (harnessed) | ✅ | **heavy** |
 | B25-rig | Rig binding (attach layers to a chain, pin/target handles) + limb render + rig UI | ⬜ (browser) | **heavy** |
-| B26 | Transitions & preset system (save/browse, drag-drop, MOGRT-like controls) | ▶ **next** | light |
-| B27 | Tracking & match-move (point/planar track, corner pin, stabilize) | ⬜ | **heavy** |
+| B26 | Transitions & preset system - harden the preset engine + whip/spin transitions (harnessed) | ✅ | light |
+| B27 | Tracking & match-move (point/planar track, corner pin, stabilize) | ▶ **next** | **heavy** |
 | B28 | Keying (chroma/luma key, spill suppression, edge refine) | ⬜ | medium |
 | B29 | Footage cleanup & beauty (denoise, deflicker, skin retouch) | ⬜ | **heavy** |
 | B30 | Practical VFX compositing (stock element add/screen workflow, light leaks) | ⬜ | light |
@@ -272,8 +272,8 @@ Audit: the per-layer effect stack **already exists** (ordered `LayerEffect[]` on
 ## B25-rig - Rig binding + render (browser-gated)
 **Delivers:** attach layers as bones to an IK/FABRIK chain, expose draggable target/pole/pin handles on the canvas, drive the bound layers' transforms from the solved joint positions each frame, draw rubber-hose limbs, and a joystick control widget. `core/rig/rigging.ts` is the solver; this is the layer-binding + on-canvas + render integration, unverifiable here.
 
-## B26 - Transitions & preset system
-**Delivers:** save/browse **animation presets**, drag-drop **transitions** (whip/zoom/blur/liquid/spin), MOGRT-like control panels, one-click house eases + stagger. **Categories:** 15. **Depends on:** B1, B7. **Perf:** light.
+## B26 - Transitions & preset system ✅ (full, no split)
+**Audit finding:** a rich animation-preset engine already exists (`core/animationPresets.ts` - 24 presets across Position/Fade/Scale/Rotation/Combination, `generatePresetKeyframes` resolving each preset's tracks to real keyframes at the layer's in/out, consumed by `AnimatePanel`), and effect presets (`useEffectPresetStore`) + the B13-17 look-preset bars cover the "save/browse" side. **Shipped:** (1) **Review + harden** - the preset engine shipped untested; added `npm run verify:anim-presets` (5 checks: every preset generates non-empty tracks in [start, start+dur] with ordered frames + valid property paths, fade-in ramps 0->ctx opacity, slide-left off-screen->rest, category bucketing). (2) **New drag-in transitions** (the missing ones from this batch, all driving existing properties so they render now): **Whip Left/Right/Up/Down** (position spring overshoot + a brief directional scale stretch that reads as motion blur) and **Spin In/Out** (rotation + scale + opacity), auto-exposed in `AnimatePanel`. **Categories:** 15. **Depends on:** B1 (easing) + B7 ✅. **Perf:** light. **Not built (need a blur track):** true blur/liquid dissolve transitions - the preset engine drives position/scale/rotation/opacity only; a blur-track transition would follow B12-gpu / B11c-gpu.
 
 ## B27 - Tracking & match-move
 **Delivers:** point & **planar tracking**, corner-pin, basic camera solve, warp-stabilize. **Categories:** 16. **Perf:** **HEAVY** - dedicated.
