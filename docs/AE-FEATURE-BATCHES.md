@@ -77,8 +77,9 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | B25 | Character rigging - 2-bone IK + FABRIK + rubber-hose + joystick blend solvers (harnessed) | ✅ | **heavy** |
 | B25-rig | Rig binding (attach layers to a chain, pin/target handles) + limb render + rig UI | ⬜ (browser) | **heavy** |
 | B26 | Transitions & preset system - harden the preset engine + whip/spin transitions (harnessed) | ✅ | light |
-| B27 | Tracking & match-move (point/planar track, corner pin, stabilize) | ▶ **next** | **heavy** |
-| B28 | Keying (chroma/luma key, spill suppression, edge refine) | ⬜ | medium |
+| B27 | Tracking & match-move - corner-pin homography + match-move/stabilize transform math (harnessed) | ✅ | **heavy** |
+| B27-track | The tracker: follow point/planar features across video frames (NCC/optical-flow, browser) + UI | ⬜ (browser) | **heavy** |
+| B28 | Keying (chroma/luma key, spill suppression, edge refine) | ▶ **next** | medium |
 | B29 | Footage cleanup & beauty (denoise, deflicker, skin retouch) | ⬜ | **heavy** |
 | B30 | Practical VFX compositing (stock element add/screen workflow, light leaks) | ⬜ | light |
 | B31 | Audio-reactive & data-driven (audio→keyframes, visualisers, data binding) | ⬜ | medium |
@@ -275,8 +276,11 @@ Audit: the per-layer effect stack **already exists** (ordered `LayerEffect[]` on
 ## B26 - Transitions & preset system ✅ (full, no split)
 **Audit finding:** a rich animation-preset engine already exists (`core/animationPresets.ts` - 24 presets across Position/Fade/Scale/Rotation/Combination, `generatePresetKeyframes` resolving each preset's tracks to real keyframes at the layer's in/out, consumed by `AnimatePanel`), and effect presets (`useEffectPresetStore`) + the B13-17 look-preset bars cover the "save/browse" side. **Shipped:** (1) **Review + harden** - the preset engine shipped untested; added `npm run verify:anim-presets` (5 checks: every preset generates non-empty tracks in [start, start+dur] with ordered frames + valid property paths, fade-in ramps 0->ctx opacity, slide-left off-screen->rest, category bucketing). (2) **New drag-in transitions** (the missing ones from this batch, all driving existing properties so they render now): **Whip Left/Right/Up/Down** (position spring overshoot + a brief directional scale stretch that reads as motion blur) and **Spin In/Out** (rotation + scale + opacity), auto-exposed in `AnimatePanel`. **Categories:** 15. **Depends on:** B1 (easing) + B7 ✅. **Perf:** light. **Not built (need a blur track):** true blur/liquid dissolve transitions - the preset engine drives position/scale/rotation/opacity only; a blur-track transition would follow B12-gpu / B11c-gpu.
 
-## B27 - Tracking & match-move
-**Delivers:** point & **planar tracking**, corner-pin, basic camera solve, warp-stabilize. **Categories:** 16. **Perf:** **HEAVY** - dedicated.
+## B27 - Tracking & match-move ✅ (pure math; the tracker split to B27-track)
+**Greenfield.** **Shipped (pure + harnessed):** the match-move MATH that consumes tracked feature positions. `core/tracking/homography.ts` - `computeHomography` (solve the 3x3 projective transform mapping a source quad to a destination quad via an 8x8 Gaussian solve - the corner-pin / planar warp), `applyHomography`, `invertHomography`. `core/tracking/matchMove.ts` - `onePointOffset` (1-point match-move), `twoPointTransform`+`applyRigid` (2-point position+rotation+uniform-scale), `smoothTrack` + `stabilizeCorrections` (warp-stabilize: correction = smoothed - raw cancels high-frequency shake). Verified by `npm run verify:tracking` (7 checks: homography identity / exact corner mapping / invert round-trip, 1- and 2-point match-move exactness, smoothing, stabilise reduces jitter >40%). **Split out - B27-track:** the actual tracker (find + follow features across frames). **Categories:** 16. **Perf:** the math is trivial; the tracker is the heavy part.
+
+## B27-track - The tracker (browser-gated)
+**Delivers:** follow point/planar features across video frames (normalized cross-correlation of a search patch, or reuse the B6 optical-flow field) to produce the per-frame positions/quad that `homography.ts`/`matchMove.ts` consume, plus the on-canvas track-point UI and apply (corner-pin a layer / match-move / stabilize). Needs decoded video frames + per-frame image correlation - browser, unverifiable here.
 
 ## B28 - Keying
 **Delivers:** chroma/luma key, spill suppression, edge refine, screen replacement. **Categories:** 22. **Perf:** medium.
