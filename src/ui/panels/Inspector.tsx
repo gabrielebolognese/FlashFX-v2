@@ -34,7 +34,7 @@ import { autoCaptionAudioLayers, useAutoCaptionStore } from '../../store/autoCap
 import { createProperty, createTextAnimOverrides } from '../../core/factory';
 import { getMotionBlur } from '../../core/layerSwitches';
 import { DEFAULT_CONSTRAINTS, type ReframeAxisMode } from '../../core/reframe';
-import { Diamond, Route, Trash2, Wand2, Sliders, Sparkles, Square, Circle, Star, Hexagon, Zap, Scissors, Moon, Layers, Type, Frame, Copy, ChevronUp, ChevronDown, Eye, EyeOff, Plus, Repeat, Link2, Atom, Grid3x3, Aperture, Code2, SlidersHorizontal, Palette, Loader2, Boxes, Box, RotateCcw, Lock, Unlock, Upload, Captions, Crop, ShieldAlert } from 'lucide-react';
+import { Diamond, Route, Trash2, Wand2, Sliders, Sparkles, Square, Circle, Star, Hexagon, Zap, Scissors, Moon, Layers, Type, Frame, Copy, ChevronUp, ChevronDown, Eye, EyeOff, Plus, Repeat, Link2, Atom, Grid3x3, Aperture, Code2, SlidersHorizontal, Palette, Loader2, Boxes, Box, RotateCcw, Lock, Unlock, Upload, Captions, Crop, ShieldAlert, ScanLine } from 'lucide-react';
 import { DragInput } from '../components/DragInput';
 import { useAgentBuildStore } from '../agent-build/agentBuildStore';
 import { useSilenceStore } from '../../store/silenceStripper';
@@ -66,6 +66,7 @@ import { useFaceBlurStore } from '../../store/faceBlur';
 import { useColorMatchStore } from '../../store/colorMatch';
 import { useCutoutShadowStore } from '../../store/cutoutShadow';
 import { useColorGradeStore } from '../../store/colorGrade';
+import { useChromaKeyStore } from '../../store/chromaKey';
 import type { SplitMode } from '../../core/textExplode';
 
 // Font menu, grouped by category, sourced from the single font manifest (engine/fonts.ts) so
@@ -1844,6 +1845,7 @@ function ImageToolButtons({ layer }: { layer: ImageLayer }) {
       <button className={btn} onClick={() => useColorMatchStore.getState().show(assetId)} title="Match a reference's color"><Palette size={13} /> Color Match</button>
       <button className={btn} onClick={() => useCutoutShadowStore.getState().show(assetId)} title="Cutout + cast shadow"><Layers size={13} /> Cutout</button>
       <button className={btn} onClick={() => useColorGradeStore.getState().show(assetId)} title="Film-look grade + LUT"><SlidersHorizontal size={13} /> Grade</button>
+      <button className={btn} onClick={() => useChromaKeyStore.getState().show(assetId)} title="Chroma key green/blue screen to transparency"><ScanLine size={13} /> Chroma Key</button>
     </div>
   );
 }

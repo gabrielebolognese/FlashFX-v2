@@ -79,8 +79,9 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | B26 | Transitions & preset system - harden the preset engine + whip/spin transitions (harnessed) | ✅ | light |
 | B27 | Tracking & match-move - corner-pin homography + match-move/stabilize transform math (harnessed) | ✅ | **heavy** |
 | B27-track | The tracker: follow point/planar features across video frames (NCC/optical-flow, browser) + UI | ⬜ (browser) | **heavy** |
-| B28 | Keying (chroma/luma key, spill suppression, edge refine) | ▶ **next** | medium |
-| B29 | Footage cleanup & beauty (denoise, deflicker, skin retouch) | ⬜ | **heavy** |
+| B28 | Keying - YCbCr chroma key + luma key + despill + choke/feather matte math (harnessed) + CPU-bake Chroma Key image tool (renders now) | ✅ | medium |
+| B28-gpu | Live per-layer WGSL keyer: upgrade the frozen chromaKey effect (id 163) to YCbCr Cb/Cr distance + key-channel despill + multi-param/color-picker UI | ⬜ (browser) | medium |
+| B29 | Footage cleanup & beauty (denoise, deflicker, skin retouch) | ▶ **next** | **heavy** |
 | B30 | Practical VFX compositing (stock element add/screen workflow, light leaks) | ⬜ | light |
 | B31 | Audio-reactive & data-driven (audio→keyframes, visualisers, data binding) | ⬜ | medium |
 | B32 | Motion-design principle rigs (anticipation, follow-through, squash & stretch) | ⬜ | light |
@@ -282,8 +283,14 @@ Audit: the per-layer effect stack **already exists** (ordered `LayerEffect[]` on
 ## B27-track - The tracker (browser-gated)
 **Delivers:** follow point/planar features across video frames (normalized cross-correlation of a search patch, or reuse the B6 optical-flow field) to produce the per-frame positions/quad that `homography.ts`/`matchMove.ts` consume, plus the on-canvas track-point UI and apply (corner-pin a layer / match-move / stabilize). Needs decoded video frames + per-frame image correlation - browser, unverifiable here.
 
-## B28 - Keying
+## B28 - Keying ✅
 **Delivers:** chroma/luma key, spill suppression, edge refine, screen replacement. **Categories:** 22. **Perf:** medium.
+
+**Shipped (harnessed + rendering now):**
+- Pure keying core `src/core/keying/keying.ts` (leaf module, no imports): `rgbToYCbCr` (BT.601), `luma709` (BT.709), `chromaKeyAlpha` (Cb/Cr chroma-plane distance, so it keys evenly across a lit vs shadowed backing - the property naive RGB-Euclidean fails), `lumaKeyAlpha` (soft threshold + invert), `suppressSpill` (green/blue despill by key channel), `chokeMatte` (separable erode/dilate) and `featherMatte` (separable box blur), plus `dominantChannel`. Deterministic; proved by `scripts/verify-keying.mjs` (`npm run verify:keying`, 9 checks incl. the luminance-independence property).
+- CPU-bake **Chroma Key** image tool that renders today (mirrors Color Match / Grade / Cutout): `src/engine/chroma-key/chromaKey.ts` (`renderChromaKey` builds the matte, chokes then feathers it, despills RGB, bakes a straight-alpha transparent PNG; `sampleBitmapColor` eyedropper), `src/store/chromaKey.ts`, `src/ui/panels/chroma-key/ChromaKeyModal.tsx` (key-colour swatch + eyedropper, tolerance/softness/despill/choke/feather, checker preview). Wired into the image-asset "AI" menu (`menuDefinitions.ts`), mounted in `MediaPool.tsx`, and surfaced as an Inspector Tools button (`Inspector.tsx`). Apply imports the keyed PNG via `mediaAssetManager.importImage` -> `addImageFromAsset`; the straight-alpha pipeline composites it natively (no renderer change).
+
+**Deferred to B28-gpu (browser-gated, unverifiable here):** the live per-layer WGSL keyer. A crude green-only chromaKey effect already exists (`EFFECT_TYPE.chromaKey=163`, RGB-Euclidean, single frozen slider) - id 163 is serialized/frozen, so upgrading its WGSL math to YCbCr Cb/Cr distance + key-channel despill would change the look of saved projects; that upgrade plus a real color-picker/multi-param filter UI (`filterDefinitions.ts`) is B28-gpu. Edge refine already has a live GPU path (matteExpansion/featherAlpha). Screen replacement / difference key needs a second texture binding (renderer bind-group change) and is out of scope here.
 
 ## B29 - Footage cleanup & beauty
 **Delivers:** denoise, deflicker, skin/beauty retouch. **Categories:** 23. **Perf:** **HEAVY** - dedicated.
