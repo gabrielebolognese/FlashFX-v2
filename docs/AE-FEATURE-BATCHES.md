@@ -81,8 +81,9 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | B27-track | The tracker: follow point/planar features across video frames (NCC/optical-flow, browser) + UI | ⬜ (browser) | **heavy** |
 | B28 | Keying - YCbCr chroma key + luma key + despill + choke/feather matte math (harnessed) + CPU-bake Chroma Key image tool (renders now) | ✅ | medium |
 | B28-gpu | Live per-layer WGSL keyer: upgrade the frozen chromaKey effect (id 163) to YCbCr Cb/Cr distance + key-channel despill + multi-param/color-picker UI | ⬜ (browser) | medium |
-| B29 | Footage cleanup & beauty (denoise, deflicker, skin retouch) | ▶ **next** | **heavy** |
-| B30 | Practical VFX compositing (stock element add/screen workflow, light leaks) | ⬜ | light |
+| B29 | Footage cleanup & beauty - denoise + edge-preserving skin retouch (frequency separation, face-limited) + deflicker gain math (harnessed) + CPU-bake Retouch image tool (renders now) | ✅ | **heavy** |
+| B29-video | Temporal deflicker apply: per-frame luma via video decode (sceneDetect-style) -> deflickerGains -> re-expose frames; + live per-layer WGSL denoise/retouch | ⬜ (browser) | **heavy** |
+| B30 | Practical VFX compositing (stock element add/screen workflow, light leaks) | ▶ **next** | light |
 | B31 | Audio-reactive & data-driven (audio→keyframes, visualisers, data binding) | ⬜ | medium |
 | B32 | Motion-design principle rigs (anticipation, follow-through, squash & stretch) | ⬜ | light |
 
@@ -292,8 +293,14 @@ Audit: the per-layer effect stack **already exists** (ordered `LayerEffect[]` on
 
 **Deferred to B28-gpu (browser-gated, unverifiable here):** the live per-layer WGSL keyer. A crude green-only chromaKey effect already exists (`EFFECT_TYPE.chromaKey=163`, RGB-Euclidean, single frozen slider) - id 163 is serialized/frozen, so upgrading its WGSL math to YCbCr Cb/Cr distance + key-channel despill would change the look of saved projects; that upgrade plus a real color-picker/multi-param filter UI (`filterDefinitions.ts`) is B28-gpu. Edge refine already has a live GPU path (matteExpansion/featherAlpha). Screen replacement / difference key needs a second texture binding (renderer bind-group change) and is out of scope here.
 
-## B29 - Footage cleanup & beauty
+## B29 - Footage cleanup & beauty ✅
 **Delivers:** denoise, deflicker, skin/beauty retouch. **Categories:** 23. **Perf:** **HEAVY** - dedicated.
+
+**Shipped (harnessed + rendering now):**
+- Pure cleanup core `src/core/cleanup/cleanup.ts` (leaf, no imports): `boxBlur1` (separable), `surfaceBlur1` (edge-preserving range-limited blur = the denoise / skin-smooth primitive; keeps real edges), `frequencySeparate`/`recombine` (split tone from texture so retouch smooths tone while keeping pores; lossless at detail 1), `movingAverage` + `deflickerGains` (temporal per-frame luma -> correcting gain), and `ellipseMaskField` (soft face mask). Deterministic; proved by `scripts/verify-cleanup.mjs` (`npm run verify:cleanup`, 6 checks incl. edge-preservation and flicker-smoothing).
+- CPU-bake **Retouch** image tool that renders today (mirrors the Chroma Key / Color tools): `src/engine/retouch/retouch.ts` (`renderRetouch` = global denoise + edge-preserving skin smooth with frequency-separation detail keep, optionally limited to detected faces), `src/store/retouch.ts`, `src/ui/panels/retouch/RetouchModal.tsx` (Denoise / Skin smooth / Detail keep / Radius sliders + a "Faces only" toggle that runs the browser FaceDetector and reuses `face-blur` `ellipseMask` geometry). Wired into the image "AI" menu, mounted in `MediaPool.tsx`, and an Inspector Tools button. Apply imports the baked PNG via `mediaAssetManager.importImage` -> `addImageFromAsset`; original untouched.
+
+**Deferred to B29-video (browser/video-gated, unverifiable here):** temporal **deflicker apply** - the gain math is pure + harnessed (`deflickerGains`), but extracting per-frame luma needs the browser video decoder (a `sceneDetect`-style `videoDecoderPool.decodeFrame` loop) and re-exposing frames across time cannot run/verify in node. Also a live per-layer WGSL denoise/retouch effect. Both ship there. Non-destructive still-image retouch is the rendering-now surface; deflicker is inherently multi-frame.
 
 ## B30 - Practical VFX compositing
 **Delivers:** an add/screen composite workflow for stock elements (fire/smoke/sparks/blood), light leaks. **Categories:** 24. **Perf:** light - mostly blend modes + asset workflow (leans on B11).

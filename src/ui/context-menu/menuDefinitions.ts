@@ -5,7 +5,7 @@ import {
   Volume2, VolumeX, Upload, FolderPlus, LayoutGrid, List, Clock, SortAsc,
   RefreshCcw, Play, Pause, SkipForward, SkipBack, Star, Hexagon,
   Eye, EyeOff, Move, Maximize2, Minimize2, Crosshair, Ruler, AlignCenter,
-  FastForward, Rewind, Tag, Palette, Settings, Wand2, ScanLine, AudioLines,
+  FastForward, Rewind, Tag, Palette, Settings, Wand2, ScanLine, Feather, AudioLines,
   Waves, Activity, Gauge, Ungroup, Group, MousePointer, Columns3, Rows3,
   Zap, ArrowLeftToLine, ArrowRightToLine, Container, Download,
   Combine, Diff, SquareStack, Blend, Captions, Spline,
@@ -33,6 +33,7 @@ import { useColorMatchStore } from '../../store/colorMatch';
 import { useCutoutShadowStore } from '../../store/cutoutShadow';
 import { useColorGradeStore } from '../../store/colorGrade';
 import { useChromaKeyStore } from '../../store/chromaKey';
+import { useRetouchStore } from '../../store/retouch';
 import { useInspectorStore } from '../../store/inspector';
 import { addAssetToFavorites, addAssetToFolder } from '../../library/folderService';
 import { processAudioAsset, toMono, toStereo, normalize, amplifyBy } from '../../engine/audio/audioProcessing';
@@ -889,6 +890,7 @@ export function buildMediaAssetMenu(assetType: 'image' | 'video' | 'audio', asse
         item('cutout-shadow', 'Cutout + Shadow', () => useCutoutShadowStore.getState().show(assetId), Layers),
         item('color-grade', 'Color Grade', () => useColorGradeStore.getState().show(assetId), Palette),
         item('chroma-key', 'Chroma Key', () => useChromaKeyStore.getState().show(assetId), ScanLine),
+        item('retouch', 'Retouch', () => useRetouchStore.getState().show(assetId), Feather),
         disabled('gen-variations', 'Generate Variations', Sparkles),
       ],
     });

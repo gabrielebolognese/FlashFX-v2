@@ -30,6 +30,7 @@
     "verify:anim-presets": "node scripts/verify-anim-presets.mjs",
     "verify:tracking": "node scripts/verify-tracking.mjs",
     "verify:keying": "node scripts/verify-keying.mjs",
+    "verify:cleanup": "node scripts/verify-cleanup.mjs",
     "verify:cloner": "node scripts/verify-cloner.mjs",
     "verify:crop-solver": "node scripts/verify-crop-solver.mjs",
     "verify:color-transfer": "node scripts/verify-color-transfer.mjs",
