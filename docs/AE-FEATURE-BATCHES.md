@@ -83,8 +83,8 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | B28-gpu | Live per-layer WGSL keyer: upgrade the frozen chromaKey effect (id 163) to YCbCr Cb/Cr distance + key-channel despill + multi-param/color-picker UI | ⬜ (browser) | medium |
 | B29 | Footage cleanup & beauty - denoise + edge-preserving skin retouch (frequency separation, face-limited) + deflicker gain math (harnessed) + CPU-bake Retouch image tool (renders now) | ✅ | **heavy** |
 | B29-video | Temporal deflicker apply: per-frame luma via video decode (sceneDetect-style) -> deflickerGains -> re-expose frames; + live per-layer WGSL denoise/retouch | ⬜ (browser) | **heavy** |
-| B30 | Practical VFX compositing (stock element add/screen workflow, light leaks) | ▶ **next** | light |
-| B31 | Audio-reactive & data-driven (audio→keyframes, visualisers, data binding) | ⬜ | medium |
+| B30 | Practical VFX compositing - curated light-leak/film-burn/atmosphere element catalog + sweep-keyframe generator (harnessed) + one-click add as a screen/add generativePattern (renders now) | ✅ | light |
+| B31 | Audio-reactive & data-driven (audio→keyframes, visualisers, data binding) | ▶ **next** | medium |
 | B32 | Motion-design principle rigs (anticipation, follow-through, squash & stretch) | ⬜ | light |
 
 ---
@@ -302,8 +302,17 @@ Audit: the per-layer effect stack **already exists** (ordered `LayerEffect[]` on
 
 **Deferred to B29-video (browser/video-gated, unverifiable here):** temporal **deflicker apply** - the gain math is pure + harnessed (`deflickerGains`), but extracting per-frame luma needs the browser video decoder (a `sceneDetect`-style `videoDecoderPool.decodeFrame` loop) and re-exposing frames across time cannot run/verify in node. Also a live per-layer WGSL denoise/retouch effect. Both ship there. Non-destructive still-image retouch is the rendering-now surface; deflicker is inherently multi-frame.
 
-## B30 - Practical VFX compositing
+## B30 - Practical VFX compositing ✅
 **Delivers:** an add/screen composite workflow for stock elements (fire/smoke/sparks/blood), light leaks. **Categories:** 24. **Perf:** light - mostly blend modes + asset workflow (leans on B11).
+
+**Key audit finding:** layer-level Screen/Add blend renders on canvas TODAY only for `generativePattern` layers (dedicated GPU pipeline variants: normal/add/multiply/screen). Image/shape/text/video content-layer blend is still the `B11c-gpu` gap. So the rendering-now VFX element is a full-frame **generativePattern** set to screen/add - which composites additively today. (We do NOT bundle copyrighted stock fire/smoke video; the shipping elements are procedural.)
+
+**Shipped (harnessed + rendering now):**
+- Pure VFX core `src/core/vfx/vfxElements.ts` (leaf, imports only the pattern-config types): a curated `VFX_ELEMENTS` catalog (light leaks / film burns / atmosphere - warm black-anchored palettes so screen/add only adds highlights) + `buildVfxSweep` (opacity envelope fade-in/hold/fade-out + film-burn flash + optional position drift, emitted as keyframes; frame-pure). Proved by `scripts/verify-vfx.mjs` (`npm run verify:vfx`, 6 checks).
+- One-command editor action `addVfxElement(id)` (editor.ts): drops a full-frame generativePattern with the element's warm pattern config, sets `blendMode` to screen/add, and bakes the sweep keyframes - undoable, one command.
+- UI: a **Light Leak** button in the CanvasToolbar (one-click adds the default warm leak, renders now) and a **VFX Looks** picker in `GenerativePatternPanel` that applies any curated leak/burn/atmosphere look + its screen/add blend to a selected pattern layer. The pattern's own `speed`/time evolution animates the overlay frame-purely; `buildVfxSweep` adds the fade/drift.
+
+**Leans on (already ✅):** blend-mode model (B11c), the generative-pattern engine (B17) + warm palettes, `animationPresets` keyframe pattern. **Gated:** true Screen/Add compositing for image/shape/text element layers remains `B11c-gpu` (browser). Light leaks sidestep it by being generativePattern layers, which already blend.
 
 ## B31 - Audio-reactive & data-driven
 **Delivers:** audio→keyframes, waveform/bar/circle **visualisers**, beat/transient sync, data/spreadsheet/JSON binding, animated counters. **Categories:** 18. **Depends on:** existing audio pipeline. **Perf:** medium.

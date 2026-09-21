@@ -23,6 +23,8 @@ import { applyReplaceSource, sourceFromLayer, sourceKindForLayer, type ReplaceSo
 import { computeReframe, applyAxisPosition, applyAxisScale, DEFAULT_CONSTRAINTS, type LayerConstraints, type ReframeInput } from '../core/reframe';
 import { serializePatternConfig, parsePatternConfig } from '../patterns/config';
 import { DEFAULT_PATTERN } from '../patterns/presets';
+import { getVfxElement, buildVfxSweep } from '../core/vfx/vfxElements';
+import type { GenerativePatternLayer } from '../core/types';
 import { getTemplate as getAnimationTemplate, ANIMATION_TEMPLATES } from '../animation-templates/catalog';
 import { instantiateTemplate as instantiateAnimationTemplate } from '../animation-templates/instantiate';
 import { getLayerRect } from '../core/snap/bbox';
@@ -345,6 +347,9 @@ interface EditorState {
   addParticleLayer: () => void;
   addFieldSampledLayer: (configJSON?: string) => void;
   addGenerativePatternLayer: (configJSON?: string) => void;
+  /** B30 - add a practical-VFX element (light leak / film burn / atmosphere) as a full-frame screen/add
+   *  generativePattern with its sweep keyframes, in one undoable command. */
+  addVfxElement: (elementId: string) => void;
   addCameraLayer: () => void;
   addAdjustmentLayer: () => void;
   /** M16 - add a Cloner. Clones the single selected eligible layer, or a placeholder circle. */
@@ -2217,6 +2222,36 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const newSel: SelectionState = sel([layer.id], layer.id);
     exec({
       label: 'Add Pattern Layer',
+      execute: () => { set({ composition: newComp, selection: newSel }); },
+      undo: () => { set({ composition: oldComp, selection: oldSel }); },
+    });
+  },
+
+  addVfxElement: (elementId) => {
+    const el = getVfxElement(elementId);
+    if (!el) return;
+    const { composition, selection } = get();
+    const oldComp = composition;
+    const oldSel = selection;
+    const cw = composition.settings.width, ch = composition.settings.height;
+    const w = el.fullFrame ? cw : Math.round(cw * 0.6);
+    const h = el.fullFrame ? ch : Math.round(ch * 0.6);
+    const config = serializePatternConfig(el.pattern);
+    const knobs = { scale: el.pattern.scale, rotation: el.pattern.rotationDeg, warp: el.pattern.warp, contrast: el.pattern.contrast };
+    const dur = defaultClipFrames(composition);
+    const base = createGenerativePatternLayer(el.label, cw / 2, ch / 2, w, h, config, knobs, dur);
+    let layer: GenerativePatternLayer = { ...base, blendMode: el.blend };
+    if (el.sweep) {
+      const { opacity, position } = buildVfxSweep(el.sweep, { compWidth: cw, compHeight: ch }, 0, dur);
+      const transform = { ...layer.transform };
+      transform.opacity = { ...transform.opacity, defaultValue: el.sweep.peakOpacity, keyframes: opacity.map((k) => createKeyframe(k.frame, k.value as number, 'linear')) };
+      if (position) transform.position = { ...transform.position, keyframes: position.map((k) => createKeyframe(k.frame, k.value as [number, number], 'linear')) };
+      layer = { ...layer, transform };
+    }
+    const newComp = settleComposition(ensureLayerHasTrack({ ...composition, layers: [...composition.layers, layer] }, layer));
+    const newSel: SelectionState = sel([layer.id], layer.id);
+    exec({
+      label: 'Add VFX Element',
       execute: () => { set({ composition: newComp, selection: newSel }); },
       undo: () => { set({ composition: oldComp, selection: oldSel }); },
     });

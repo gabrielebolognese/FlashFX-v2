@@ -6,6 +6,7 @@ import { parsePatternConfig, serializePatternConfig } from '../../patterns/confi
 import type { PatternConfig, PatternType } from '../../patterns/types';
 import { PATTERN_TYPES } from '../../patterns/types';
 import { PATTERN_PRESETS, PALETTES } from '../../patterns/presets';
+import { VFX_ELEMENTS } from '../../core/vfx/vfxElements';
 
 type Knob = 'scale' | 'rotation' | 'warp' | 'contrast';
 
@@ -34,6 +35,12 @@ export function GenerativePatternPanel({ layer }: { layer: GenerativePatternLaye
     write(config);
     setKnob('scale', config.scale); setKnob('rotation', config.rotationDeg); setKnob('warp', config.warp); setKnob('contrast', config.contrast);
   };
+  // B30 VFX looks: apply a light-leak / film-burn / atmosphere look AND its screen/add blend (the one
+  // content-layer blend that renders) so the pattern layer becomes a practical VFX overlay in one click.
+  const applyVfx = (el: (typeof VFX_ELEMENTS)[number]) => {
+    applyPreset(el.pattern);
+    updateLayerProperty(layer.id, 'blendMode', el.blend);
+  };
 
   return (
     <div className="p-3 space-y-3">
@@ -45,6 +52,19 @@ export function GenerativePatternPanel({ layer }: { layer: GenerativePatternLaye
             <button key={p.name} onClick={() => applyPreset(p.config)}
               className="px-2 py-1 rounded text-[11px] bg-surface-3 text-slate-300 hover:bg-[#1a2f52] hover:text-slate-100 transition-colors text-left truncate">
               {p.name}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* VFX looks (light leaks / film burns / atmosphere) - applies a warm look + its screen/add blend */}
+      <div>
+        <div className="text-[10px] uppercase tracking-wider text-slate-500 font-medium mb-1.5">VFX Looks</div>
+        <div className="grid grid-cols-2 gap-1">
+          {VFX_ELEMENTS.map((el) => (
+            <button key={el.id} onClick={() => applyVfx(el)}
+              className="px-2 py-1 rounded text-[11px] bg-surface-3 text-slate-300 hover:bg-[#3a2a12] hover:text-slate-100 transition-colors text-left truncate">
+              {el.label}
             </button>
           ))}
         </div>

@@ -29,6 +29,7 @@ import {
   Container,
   Wand2,
   Video,
+  Flame,
 } from 'lucide-react';
 
 type ToolAction =
@@ -36,7 +37,7 @@ type ToolAction =
   | { kind: 'shape'; shape: ShapeToolType }
   | { kind: 'vector'; tool: VectorToolType }
   | { kind: 'texttool' }
-  | { kind: 'instant'; action: 'addText' | 'importVideo' | 'importImage' | 'addParticle' | 'addAnimationItem' | 'addFieldSampled' | 'addPattern' | 'addCloner' | 'addCamera' | 'addAdjustment' | 'addHBox' | 'addVBox' | 'addGrid' | 'addLayoutContainer' }
+  | { kind: 'instant'; action: 'addText' | 'importVideo' | 'importImage' | 'addParticle' | 'addAnimationItem' | 'addFieldSampled' | 'addPattern' | 'addLightLeak' | 'addCloner' | 'addCamera' | 'addAdjustment' | 'addHBox' | 'addVBox' | 'addGrid' | 'addLayoutContainer' }
   | { kind: 'placeholder' };
 
 interface ToolDef {
@@ -67,6 +68,7 @@ const TOOLS: ToolDef[] = [
   { icon: Activity, label: 'Animation Item', action: { kind: 'instant', action: 'addAnimationItem' }, group: 'advanced' },
   { icon: Grid3x3, label: 'Field Sampled', action: { kind: 'instant', action: 'addFieldSampled' }, group: 'advanced' },
   { icon: Waves, label: 'Pattern', action: { kind: 'instant', action: 'addPattern' }, group: 'advanced' },
+  { icon: Flame, label: 'Light Leak', action: { kind: 'instant', action: 'addLightLeak' }, group: 'advanced' },
   { icon: Boxes, label: 'Cloner', action: { kind: 'instant', action: 'addCloner' }, group: 'advanced' },
   { icon: Video, label: 'Camera (3D)', action: { kind: 'instant', action: 'addCamera' }, group: 'advanced' },
   { icon: Wand2, label: 'Adjustment Layer', action: { kind: 'instant', action: 'addAdjustment' }, group: 'advanced' },
@@ -82,6 +84,7 @@ export function CanvasToolbar() {
   const addParticleLayer = useEditorStore((s) => s.addParticleLayer);
   const addFieldSampledLayer = useEditorStore((s) => s.addFieldSampledLayer);
   const addGenerativePatternLayer = useEditorStore((s) => s.addGenerativePatternLayer);
+  const addVfxElement = useEditorStore((s) => s.addVfxElement);
   const addCloner = useEditorStore((s) => s.addCloner);
   const addCameraLayer = useEditorStore((s) => s.addCameraLayer);
   const addAdjustmentLayer = useEditorStore((s) => s.addAdjustmentLayer);
@@ -133,6 +136,7 @@ export function CanvasToolbar() {
         else if (tool.action.action === 'addAnimationItem') addAnimationItem('Progress Bar');
         else if (tool.action.action === 'addFieldSampled') addFieldSampledLayer();
         else if (tool.action.action === 'addPattern') addGenerativePatternLayer();
+        else if (tool.action.action === 'addLightLeak') addVfxElement('warm-leak');
         else if (tool.action.action === 'addCloner') addCloner();
         else if (tool.action.action === 'addCamera') addCameraLayer();
         else if (tool.action.action === 'addAdjustment') addAdjustmentLayer();
