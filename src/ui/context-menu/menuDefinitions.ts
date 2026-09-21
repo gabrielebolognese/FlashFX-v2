@@ -34,6 +34,7 @@ import { useCutoutShadowStore } from '../../store/cutoutShadow';
 import { useColorGradeStore } from '../../store/colorGrade';
 import { useChromaKeyStore } from '../../store/chromaKey';
 import { useRetouchStore } from '../../store/retouch';
+import { useAudioReactStore } from '../../store/audioReact';
 import { useInspectorStore } from '../../store/inspector';
 import { addAssetToFavorites, addAssetToFolder } from '../../library/folderService';
 import { processAudioAsset, toMono, toStereo, normalize, amplifyBy } from '../../engine/audio/audioProcessing';
@@ -366,6 +367,13 @@ export function buildClipMenu(layerId: string): MenuEntry[] {
               const f = s ? parseFloat(s) : NaN;
               if (Number.isFinite(f) && f > 0) editor.setNonVideoClipSpeed(layerId, f);
             }, FastForward),
+      ],
+    },
+    {
+      type: 'group',
+      label: 'Animate',
+      items: [
+        item('clip-audio-react', 'Audio React…', () => useAudioReactStore.getState().show(layerId), AudioLines),
       ],
     },
     {

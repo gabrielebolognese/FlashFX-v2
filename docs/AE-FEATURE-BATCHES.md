@@ -84,8 +84,10 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | B29 | Footage cleanup & beauty - denoise + edge-preserving skin retouch (frequency separation, face-limited) + deflicker gain math (harnessed) + CPU-bake Retouch image tool (renders now) | ✅ | **heavy** |
 | B29-video | Temporal deflicker apply: per-frame luma via video decode (sceneDetect-style) -> deflickerGains -> re-expose frames; + live per-layer WGSL denoise/retouch | ⬜ (browser) | **heavy** |
 | B30 | Practical VFX compositing - curated light-leak/film-burn/atmosphere element catalog + sweep-keyframe generator (harnessed) + one-click add as a screen/add generativePattern (renders now) | ✅ | light |
-| B31 | Audio-reactive & data-driven (audio→keyframes, visualisers, data binding) | ▶ **next** | medium |
-| B32 | Motion-design principle rigs (anticipation, follow-through, squash & stretch) | ⬜ | light |
+| B31 | Audio-reactive - audio->keyframes (RMS envelope + beat pulses) driving a layer property, harnessed + renders now; animated counter already ships (animation-item) | ✅ | medium |
+| B31-viz | Bar/circle spectrum visualiser - needs an offline FFT (nonexistent) + a bar/arc render (new animation-item type or a data-fed cloner) | ⬜ (browser) | medium |
+| B31-data | Data binding (spreadsheet/JSON -> property) - CSV/JSON parser + authoring UI + non-cloner routing (applyOverrides/cloner binding exist but are cloner-only) | ⬜ | medium |
+| B32 | Motion-design principle rigs (anticipation, follow-through, squash & stretch) | ▶ **next** | light |
 
 ---
 
@@ -314,8 +316,17 @@ Audit: the per-layer effect stack **already exists** (ordered `LayerEffect[]` on
 
 **Leans on (already ✅):** blend-mode model (B11c), the generative-pattern engine (B17) + warm palettes, `animationPresets` keyframe pattern. **Gated:** true Screen/Add compositing for image/shape/text element layers remains `B11c-gpu` (browser). Light leaks sidestep it by being generativePattern layers, which already blend.
 
-## B31 - Audio-reactive & data-driven
+## B31 - Audio-reactive & data-driven ✅ (audio->keyframes shipped; visualiser/data-binding split out)
 **Delivers:** audio→keyframes, waveform/bar/circle **visualisers**, beat/transient sync, data/spreadsheet/JSON binding, animated counters. **Categories:** 18. **Depends on:** existing audio pipeline. **Perf:** medium.
+
+This is a five-feature batch; per the split rule the strong rendering-now core shipped and the FFT visualiser + data-binding split into gated rows. **Animated counters already ship** (the `counter` animation-item, `animation-items/engine.ts` evaluateCounter) - nothing to build.
+
+**Shipped (harnessed + rendering now) - audio->keyframes + beat sync:**
+- Pure core `src/core/audioReactive/audioReactive.ts` (leaf, no imports): `frameAmplitude` (per-frame RMS envelope), `smoothEnvelope` (attack/release), `mapAmplitude` (gain/threshold/exponent curve), `buildAmplitudeTrack` + `buildBeatTrack` (+ `secondsToFrames`) emitting plain keyframes for scale/opacity/rotation/position. Deterministic; proved by `scripts/verify-audio-reactive.mjs` (`npm run verify:audio-reactive`, 6 checks).
+- Browser glue `src/engine/audio/audioReactive.ts`: `generateAudioReactiveTrack` decodes via `extractMonoAudio` (the same decode beat detection uses), runs the pure math (amplitude) or the pure `detectBeats` (beat), returns a keyframe track. Reuses B-era `detectBeats`/`computeRms` infrastructure; only the decode is browser-only.
+- UI: `src/store/audioReact.ts` + `src/ui/panels/audio-react/AudioReactModal.tsx` (pick an audio/video source, driven property, Amplitude vs Beat, min/max + sensitivity/smoothness/threshold or decay), launched from the clip context menu ("Audio React..."), mounted in `MediaPool.tsx`. Apply writes the keyframes via `updateLayerProperty(layerId,'<path>.keyframes', kf[])` (one undoable command); they then play + export frame-purely.
+
+**Deferred:** `B31-viz` (bar/circle **spectrum** visualiser) needs an offline FFT that does not exist anywhere (beat detection is energy-flux, no FFT) plus a bar/arc render surface - browser/new. `B31-data` (spreadsheet/JSON **data binding** to a property) needs a CSV/JSON parser + authoring UI + non-cloner routing; the primitives (`core/overrides.ts` applyOverrides, `cloner/dataBinding.ts`) exist but are cloner-only today.
 
 ## B32 - Motion-design principle rigs
 **Delivers:** anticipation, follow-through/overlapping action, secondary motion, squash & stretch, staggered offset, motion trails/smears/echo - as one-click **applyable behaviours/rigs**. **Categories:** 19. **Depends on:** B1, B7. **Perf:** light.
