@@ -47,6 +47,7 @@ import { AuthGate } from './auth/AuthGate';
 import { AuthConfirm } from './auth/AuthConfirm';
 import { AccountSettingsModal } from './auth/AccountSettingsModal';
 import { AuthModal } from './auth/AuthModal';
+import { SaveReminderModal } from './auth/SaveReminderModal';
 import { refreshPlan } from './billing/checkout';
 
 // The Animation Builder is a whole authoring mode whose toggle is hidden from the public UI
@@ -556,6 +557,7 @@ function Editor() {
       <TutorialRunner />
       <TutorialIntro />
       <ConsentBanner />
+      <SaveReminderModal />
       <AgentBuildOverlay />
     </div>
   );
@@ -667,7 +669,7 @@ function EditorSignInBar() {
       <ArrowRight size={16} className="shrink-0 text-red-400 animate-pulse" />
       <button
         onClick={() => setShowAuth(true)}
-        className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-accent hover:bg-accent-hover text-on-accent text-[11px] font-semibold transition-colors"
+        className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-gradient-to-r from-yellow-400 to-orange-500 text-black text-[11px] font-bold shadow transition-[filter] hover:brightness-110"
       >
         <LogIn size={13} /> Sign in
       </button>
