@@ -22,28 +22,26 @@ try {
   const M = await import(pathToFileURL(outfile).href);
   const { OAUTH_PROVIDERS, resolveEnabledProviders } = M;
 
-  check('catalog: google/azure/apple with labels + env keys; Microsoft maps to azure', () => {
-    assert.deepEqual(ids(OAUTH_PROVIDERS), ['google', 'azure', 'apple']);
-    const azure = OAUTH_PROVIDERS.find((p) => p.id === 'azure');
-    assert.equal(azure.label, 'Microsoft', 'azure is labelled Microsoft');
-    for (const p of OAUTH_PROVIDERS) {
-      assert.ok(p.label && typeof p.label === 'string', `${p.id} has a label`);
-      assert.ok(/^VITE_OAUTH_/.test(p.envKey), `${p.id} has a VITE_OAUTH_* env key`);
-    }
+  check('catalog: google only, with label + env key (Microsoft/Apple removed)', () => {
+    assert.deepEqual(ids(OAUTH_PROVIDERS), ['google']);
+    const google = OAUTH_PROVIDERS[0];
+    assert.equal(google.label, 'Google');
+    assert.equal(google.envKey, 'VITE_OAUTH_GOOGLE');
   });
 
-  check('resolveEnabledProviders: all shown by default (empty env)', () => {
-    assert.deepEqual(ids(resolveEnabledProviders({})), ['google', 'azure', 'apple']);
+  check('resolveEnabledProviders: google shown by default (empty env)', () => {
+    assert.deepEqual(ids(resolveEnabledProviders({})), ['google']);
   });
 
-  check('a provider is hidden ONLY when its flag is exactly "false"', () => {
-    assert.deepEqual(ids(resolveEnabledProviders({ VITE_OAUTH_APPLE: 'false' })), ['google', 'azure']);
-    assert.deepEqual(ids(resolveEnabledProviders({ VITE_OAUTH_GOOGLE: 'false', VITE_OAUTH_MICROSOFT: 'false' })), ['apple']);
-    assert.deepEqual(ids(resolveEnabledProviders({ VITE_OAUTH_GOOGLE: 'false', VITE_OAUTH_MICROSOFT: 'false', VITE_OAUTH_APPLE: 'false' })), []);
+  check('google is hidden ONLY when VITE_OAUTH_GOOGLE is exactly "false"', () => {
+    assert.deepEqual(ids(resolveEnabledProviders({ VITE_OAUTH_GOOGLE: 'false' })), []);
+    // legacy flags for the removed providers have no effect
+    assert.deepEqual(ids(resolveEnabledProviders({ VITE_OAUTH_MICROSOFT: 'false', VITE_OAUTH_APPLE: 'false' })), ['google']);
   });
 
-  check('non-"false" values keep a provider visible (true / 1 / undefined)', () => {
-    assert.deepEqual(ids(resolveEnabledProviders({ VITE_OAUTH_GOOGLE: 'true', VITE_OAUTH_MICROSOFT: '1', VITE_OAUTH_APPLE: undefined })), ['google', 'azure', 'apple']);
+  check('non-"false" values keep google visible (true / 1 / undefined)', () => {
+    assert.deepEqual(ids(resolveEnabledProviders({ VITE_OAUTH_GOOGLE: 'true' })), ['google']);
+    assert.deepEqual(ids(resolveEnabledProviders({ VITE_OAUTH_GOOGLE: undefined })), ['google']);
   });
 
   console.log(`\n✓ all ${passed} checks passed`);
