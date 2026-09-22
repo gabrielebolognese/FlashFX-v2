@@ -4,6 +4,7 @@ import { Button } from '../ui/primitives/Button';
 import { Input } from '../ui/primitives/Input';
 import { useAuthStore } from './store';
 import { OAuthButtons } from './OAuthButtons';
+import { FlashFXLogo } from '../ui/components/FlashFXLogo';
 
 // Full-screen account gate. Shown by App when accounts are ENABLED (Supabase configured) and the
 // visitor is not signed in - so creating/opening projects requires an account. When accounts are
@@ -50,11 +51,8 @@ export function AuthGate({ loading }: { loading?: boolean }) {
     <div className="h-screen w-screen bg-[#0a0f16] text-slate-200 flex items-center justify-center px-4">
       <div className="w-full max-w-[360px]">
         {/* Brand */}
-        <div className="mb-7 flex items-center justify-center gap-2.5">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-[#f7b500] to-[#e09000]">
-            <span className="text-[14px] font-bold leading-none text-[#0a0f16]">F</span>
-          </div>
-          <span className="text-lg font-semibold tracking-tight">FlashFX</span>
+        <div className="mb-7 flex items-center justify-center">
+          <FlashFXLogo size={30} />
         </div>
 
         {loading ? (

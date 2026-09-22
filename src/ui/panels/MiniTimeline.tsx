@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { Play, Pause, SkipBack } from 'lucide-react';
-import type { Layer, ShapeLayer } from '../../core/types';
+import type { Layer, ShapeLayer, AnimatableProperty } from '../../core/types';
 import { useEditorStore } from '../../store/editor';
 import { useTimelineStore } from '../../store/timeline';
 
@@ -36,6 +36,22 @@ function clipColor(layer: Layer): string {
 }
 
 const ROW_H = 20; // double the previous compact bar height, matching the full timeline's clip feel
+
+// All keyframe frames on a layer's transform (mirrors the full timeline's collectKeyframeFrames, +
+// separated-dimension X/Y), so the mini timeline can show the same keyframe markers on each clip.
+function collectKf(layer: Layer): number[] {
+  const t = layer.transform;
+  const props: AnimatableProperty[] = [t.position, t.rotation, t.scale, t.anchorPoint, t.opacity];
+  const frames = new Set<number>();
+  for (const p of props) {
+    for (const kf of p.keyframes) frames.add(kf.frame);
+    if (p.separated) {
+      for (const kf of p.keyframesX ?? []) frames.add(kf.frame);
+      for (const kf of p.keyframesY ?? []) frames.add(kf.frame);
+    }
+  }
+  return [...frames].sort((a, b) => a - b);
+}
 
 export function MiniTimeline() {
   const layers = useEditorStore((s) => s.composition.layers);
@@ -141,7 +157,7 @@ export function MiniTimeline() {
             return (
               <div
                 key={track.id}
-                className="relative border-b border-hairline"
+                className="relative"
                 style={{ height: ROW_H, backgroundColor: i % 2 === 0 ? '#080f1c' : '#0a1424' }}
               >
                 {trackClips.map((layer) => {
@@ -153,14 +169,27 @@ export function MiniTimeline() {
                       key={layer.id}
                       onPointerDown={(e) => onClipDown(e, layer)}
                       title={`${layer.name} · in ${layer.inPoint} · out ${layer.outPoint}`}
-                      className={`absolute top-[2px] bottom-[2px] cursor-grab select-none ${isSel ? 'ring-1 ring-white/70 z-10' : ''}`}
+                      className={`absolute inset-y-0 overflow-hidden cursor-grab select-none ${isSel ? 'ring-1 ring-white/70 z-10' : ''}`}
                       style={{
                         left: `${(inF / total) * 100}%`,
                         width: `${Math.max(1, (dur / total) * 100)}%`,
                         backgroundColor: clipColor(layer),
                         opacity: drag && drag.layerId === layer.id ? 0.75 : 1,
                       }}
-                    />
+                    >
+                      {/* Keyframe markers, same as the full timeline. */}
+                      {collectKf(layer).map((f) => {
+                        const rel = (f - layer.inPoint) / dur;
+                        if (rel < 0 || rel > 1) return null;
+                        return (
+                          <span
+                            key={f}
+                            className="pointer-events-none absolute top-1/2 h-[5px] w-[5px] -translate-x-1/2 -translate-y-1/2 rotate-45 bg-white/90 shadow-[0_0_2px_rgba(0,0,0,0.6)]"
+                            style={{ left: `${rel * 100}%` }}
+                          />
+                        );
+                      })}
+                    </div>
                   );
                 })}
               </div>

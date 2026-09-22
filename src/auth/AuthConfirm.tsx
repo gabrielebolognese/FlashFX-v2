@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { CheckCircle2, XCircle, Loader2 } from 'lucide-react';
 import type { EmailOtpType } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
+import { FlashFXLogo } from '../ui/components/FlashFXLogo';
 
 // Branded email-confirmation landing. The custom "Confirm signup" email links here on OUR domain:
 //   {{ .SiteURL }}/?auth_confirm=1&token_hash={{ .TokenHash }}&type=signup
@@ -34,11 +35,8 @@ export function AuthConfirm() {
   return (
     <div className="flex h-screen w-screen items-center justify-center bg-[#0a0f16] px-4 text-slate-200">
       <div className="w-full max-w-[360px] text-center">
-        <div className="mb-7 flex items-center justify-center gap-2.5">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-[#f7b500] to-[#e09000]">
-            <span className="text-[14px] font-bold leading-none text-[#0a0f16]">F</span>
-          </div>
-          <span className="text-lg font-semibold tracking-tight">FlashFX</span>
+        <div className="mb-7 flex items-center justify-center">
+          <FlashFXLogo size={30} />
         </div>
 
         <div className="rounded-xl border border-[#1c2433] bg-[#0d1219] p-7 shadow-2xl">
