@@ -8,7 +8,7 @@ import { useTimelineStore } from './store/timeline';
 import { usePanelStore } from './store/panels';
 import { ProjectApp, useProjectStore } from './project-system';
 import { useAnimationBuilderStore } from './animation-builder';
-import { ArrowLeft, LayoutGrid, Settings2, Sparkles, Download, ListChecks, Maximize2, UserRound, LogOut } from 'lucide-react';
+import { ArrowLeft, ArrowRight, LayoutGrid, Settings2, Sparkles, Download, ListChecks, Maximize2, UserRound, LogOut, LogIn } from 'lucide-react';
 import { ExportModal } from './ui/panels/ExportModal';
 import { AiChatPanel } from './ui/panels/AiChatPanel';
 import { TasksPanel } from './ui/panels/TasksPanel';
@@ -46,6 +46,7 @@ import { useAuthStore } from './auth/store';
 import { AuthGate } from './auth/AuthGate';
 import { AuthConfirm } from './auth/AuthConfirm';
 import { AccountSettingsModal } from './auth/AccountSettingsModal';
+import { AuthModal } from './auth/AuthModal';
 import { refreshPlan } from './billing/checkout';
 
 // The Animation Builder is a whole authoring mode whose toggle is hidden from the public UI
@@ -476,6 +477,7 @@ function Editor() {
           <ArrowLeft size={14} />
           <span className="text-[11px] font-medium">Projects</span>
         </button>
+        <EditorSignInBar />
         {uiMode === 'pro' ? (
           <div className="flex-1 min-w-0">
             <Toolbar />
@@ -554,7 +556,6 @@ function Editor() {
       <TutorialRunner />
       <TutorialIntro />
       <ConsentBanner />
-      <LegalModal />
       <AgentBuildOverlay />
     </div>
   );
@@ -643,6 +644,34 @@ function PanelsMenu() {
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+// Guest-first sign-in nudge in the editor top-left. When accounts are enabled and the visitor is NOT
+// signed in, it warns that projects live only in this browser and points a red arrow at a Sign in
+// button (which opens the auth modal: Google/Microsoft/Apple + email). Hidden when signed in, or when
+// accounts are not configured (no Supabase env).
+function EditorSignInBar() {
+  const enabled = useAuthStore((s) => s.enabled);
+  const status = useAuthStore((s) => s.status);
+  const [showAuth, setShowAuth] = useState(false);
+
+  if (!enabled || status === 'signed-in') return null;
+
+  return (
+    <div className="flex items-center gap-2 px-3 border-r border-hairline">
+      <span className="text-[10px] leading-tight text-red-300 max-w-[320px]">
+        Your projects are saved in localStorage. If you clear the cache they will be lost. Save them in the <span className="font-semibold text-red-200">cloud</span>
+      </span>
+      <ArrowRight size={16} className="shrink-0 text-red-400 animate-pulse" />
+      <button
+        onClick={() => setShowAuth(true)}
+        className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-accent hover:bg-accent-hover text-on-accent text-[11px] font-semibold transition-colors"
+      >
+        <LogIn size={13} /> Sign in
+      </button>
+      {showAuth && <AuthModal onClose={() => setShowAuth(false)} />}
     </div>
   );
 }
@@ -765,12 +794,12 @@ function App() {
     return <AuthConfirm />;
   }
 
-  // Account gate: when accounts are enabled (Supabase configured), a visitor must sign in before
-  // reaching the dashboard/editor - so projects are created only with an account. When accounts are
-  // NOT enabled (no Supabase env), skip the gate so the app stays local-first and runs with zero
-  // backend. Placed after all hooks (never gate before a hook runs).
-  if (authEnabled && authStatus !== 'signed-in') {
-    return <AuthGate loading={authStatus === 'loading'} />;
+  // Guest-first: a signed-out visitor can use the app (projects save locally in this browser); sign-in
+  // is OPTIONAL and unlocks cloud sync. The editor top bar nudges signed-out users to sign in
+  // (EditorSignInBar). Only show the full-screen gate briefly while the session is still hydrating, to
+  // avoid a flash of the signed-out UI for a returning signed-in user. Placed after all hooks.
+  if (authEnabled && authStatus === 'loading') {
+    return <AuthGate loading />;
   }
 
   if (onboardingActive) {
@@ -781,6 +810,8 @@ function App() {
     <ContextMenuProvider>
       <ProjectApp editorComponent={Editor} />
       <ContextMenuRenderer />
+      {/* Global so the dashboard footer + consent banner links work outside the editor too. */}
+      <LegalModal />
     </ContextMenuProvider>
   );
 }
