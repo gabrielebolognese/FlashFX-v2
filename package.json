@@ -89,6 +89,7 @@
     "verify:compiler": "node scripts/verify-compiler.mjs",
     "verify:director": "node scripts/verify-director.mjs",
     "director:run": "node scripts/director-run.mjs",
+    "apple:secret": "node scripts/apple-client-secret.mjs",
     "verify:audioschedule": "node scripts/verify-audioschedule.mjs",
     "verify:transformhud": "node scripts/verify-transformhud.mjs",
     "verify:measure": "node scripts/verify-measure.mjs",
