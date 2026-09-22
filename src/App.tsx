@@ -8,7 +8,7 @@ import { useTimelineStore } from './store/timeline';
 import { usePanelStore } from './store/panels';
 import { ProjectApp, useProjectStore } from './project-system';
 import { useAnimationBuilderStore } from './animation-builder';
-import { ArrowLeft, LayoutGrid, Settings2, GraduationCap, Sparkles, Download, ListChecks, Maximize2 } from 'lucide-react';
+import { ArrowLeft, LayoutGrid, Settings2, Sparkles, Download, ListChecks, Maximize2, UserRound, LogOut } from 'lucide-react';
 import { ExportModal } from './ui/panels/ExportModal';
 import { AiChatPanel } from './ui/panels/AiChatPanel';
 import { TasksPanel } from './ui/panels/TasksPanel';
@@ -41,11 +41,11 @@ import { TutorialRunner } from './tutorial/TutorialRunner';
 import { TutorialIntro } from './tutorial/TutorialIntro';
 import { ConsentBanner } from './legal/ConsentBanner';
 import { LegalModal } from './legal/LegalModal';
-import { launchTutorial } from './tutorial/launch';
 import { AgentBuildOverlay } from './ui/agent-build/AgentBuildOverlay';
 import { useAuthStore } from './auth/store';
 import { AuthGate } from './auth/AuthGate';
 import { AuthConfirm } from './auth/AuthConfirm';
+import { AccountSettingsModal } from './auth/AccountSettingsModal';
 import { refreshPlan } from './billing/checkout';
 
 // The Animation Builder is a whole authoring mode whose toggle is hidden from the public UI
@@ -528,6 +528,7 @@ function Editor() {
           </button>
         )}
         {workspace === 'editor' && <PanelsMenu />}
+        {workspace === 'editor' && <EditorAccountMenu />}
       </div>
       <div className="flex-1 flex flex-row min-h-0 min-w-0">
         <Suspense fallback={<div className="flex-1" />}>
@@ -646,6 +647,69 @@ function PanelsMenu() {
   );
 }
 
+// Editor top-bar account affordance: avatar -> Account settings / Preferences / Sign out. Renders
+// only when accounts are enabled (Supabase configured); otherwise the app stays local-first with no
+// account concept. Mirrors the PanelsMenu click-outside dropdown pattern.
+function EditorAccountMenu() {
+  const enabled = useAuthStore((s) => s.enabled);
+  const user = useAuthStore((s) => s.user);
+  const signOut = useAuthStore((s) => s.signOut);
+  const openSettings = useSettingsStore((s) => s.openSettings);
+  const [open, setOpen] = useState(false);
+  const [account, setAccount] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    window.addEventListener('mousedown', close);
+    return () => window.removeEventListener('mousedown', close);
+  }, [open]);
+
+  if (!enabled) return null;
+  const initials = ((user?.displayName || user?.email || '?').trim()[0] ?? '?').toUpperCase();
+
+  return (
+    <div ref={menuRef} className="relative">
+      <button
+        onClick={() => setOpen(!open)}
+        title="Account"
+        aria-label="Account"
+        className={`flex items-center px-3 h-full text-slate-400 hover:text-slate-200 hover:bg-white/[0.03] transition-colors border-l border-hairline ${open ? 'bg-white/[0.04]' : ''}`}
+      >
+        {user?.avatarUrl ? (
+          <img src={user.avatarUrl} alt="" className="h-5 w-5 rounded-full object-cover" />
+        ) : (
+          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-gradient-to-br from-[#f7b500] to-[#e09000] text-[10px] font-bold text-[#0a0f16]">{initials}</span>
+        )}
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-full mt-1 z-50 bg-surface-2 border border-hairline rounded-lg shadow-overlay py-1 min-w-[200px]">
+          <div className="px-3 py-1.5 border-b border-hairline">
+            <div className="truncate text-[11px] font-medium text-slate-200">{user?.displayName ?? 'Your account'}</div>
+            {user?.email && <div className="truncate text-[10px] text-slate-500">{user.email}</div>}
+          </div>
+          <button onClick={() => { setAccount(true); setOpen(false); }} className="w-full px-3 py-1.5 flex items-center gap-2 text-[11px] text-slate-300 hover:bg-white/[0.04] transition-colors">
+            <UserRound size={12} /> <span>Account settings</span>
+          </button>
+          <button onClick={() => { openSettings(); setOpen(false); }} className="w-full px-3 py-1.5 flex items-center gap-2 text-[11px] text-slate-300 hover:bg-white/[0.04] transition-colors">
+            <Settings2 size={12} /> <span>Preferences</span>
+          </button>
+          <div className="border-t border-hairline my-1" />
+          <button onClick={() => { void signOut(); setOpen(false); }} className="w-full px-3 py-1.5 flex items-center gap-2 text-[11px] text-slate-300 hover:bg-white/[0.04] transition-colors">
+            <LogOut size={12} /> <span>Sign out</span>
+          </button>
+        </div>
+      )}
+
+      {account && <AccountSettingsModal onClose={() => setAccount(false)} />}
+    </div>
+  );
+}
+
 function App() {
   const onboardingActive = useOnboardingStore((s) => s.active);
   const onboardingStep = useOnboardingStore((s) => s.step);
@@ -717,16 +781,6 @@ function App() {
     <ContextMenuProvider>
       <ProjectApp editorComponent={Editor} />
       <ContextMenuRenderer />
-      {/* Small corner button re-launches the guided tutorial (from a fresh project). */}
-      <button
-        onClick={() => { void launchTutorial(); }}
-        title="Replay the tutorial"
-        aria-label="Replay the tutorial"
-        className="fixed bottom-3 left-3 z-50 flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-[#0a1628]/90 border border-hairline text-slate-400 hover:text-slate-100 hover:border-hairline shadow-overlay transition-colors"
-      >
-        <GraduationCap size={14} />
-        <span className="text-[11px] font-medium">Tutorial</span>
-      </button>
     </ContextMenuProvider>
   );
 }

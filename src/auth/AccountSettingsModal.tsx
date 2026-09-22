@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { UserRound, KeyRound, Trash2, AlertTriangle, LogOut, ShieldCheck, Sparkles, type LucideIcon } from 'lucide-react';
+import { UserRound, KeyRound, Trash2, AlertTriangle, LogOut, ShieldCheck, Sparkles, Pencil, type LucideIcon } from 'lucide-react';
 import { Modal } from '../ui/primitives/Modal';
 import { Button } from '../ui/primitives/Button';
 import { Input } from '../ui/primitives/Input';
@@ -11,7 +11,7 @@ import { usePlanStore } from '../billing/plans';
 import { UpgradeModal } from '../billing/UpgradeModal';
 import { useIslandStore } from '../ui/island/islandStore';
 
-type Dialog = 'password' | 'projects' | 'media' | 'account' | null;
+type Dialog = 'password' | 'projects' | 'media' | 'account' | 'name' | null;
 
 function formatBytes(n: number): string {
   if (!n || n < 1024) return `${Math.max(0, Math.round(n || 0))} B`;
@@ -79,7 +79,12 @@ export function AccountSettingsModal({ onClose }: { onClose: () => void }) {
             <span className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#f7b500] to-[#e09000] text-[26px] font-bold text-[#0a0f16]">{initials}</span>
           )}
           <div className="min-w-0 flex-1">
-            <div className="truncate text-[17px] font-semibold text-slate-100">{user?.displayName ?? 'Your account'}</div>
+            <div className="flex items-center gap-1.5">
+              <div className="truncate text-[17px] font-semibold text-slate-100">{user?.displayName ?? 'Your account'}</div>
+              <button onClick={() => setDialog('name')} title="Edit name" aria-label="Edit name" className="shrink-0 text-slate-500 transition-colors hover:text-slate-200">
+                <Pencil size={13} />
+              </button>
+            </div>
             <div className="truncate text-[12px] text-slate-500">{user?.email ?? ''}</div>
             <div className="mt-1.5 flex items-center gap-2">
               <span className="rounded bg-surface-3 px-1.5 py-0.5 text-[10px] font-medium text-slate-400">{planLabel} plan</span>
@@ -123,6 +128,7 @@ export function AccountSettingsModal({ onClose }: { onClose: () => void }) {
       </div>
 
       {showUpgrade && <UpgradeModal onClose={() => setShowUpgrade(false)} />}
+      {dialog === 'name' && <EditNameModal current={user?.displayName ?? ''} onClose={() => setDialog(null)} />}
       {dialog === 'password' && <ChangePasswordModal onClose={() => setDialog(null)} />}
       {dialog === 'projects' && (
         <ConfirmDialog title="Delete all projects?" body="Permanently removes every project and its media from this device." confirmLabel="Delete projects" busy={busy} onConfirm={() => void run('projects')} onClose={() => setDialog(null)} />
@@ -194,6 +200,36 @@ function ConfirmDialog({ title, body, confirmLabel, phrase, busy, onConfirm, onC
           >
             {busy ? 'Working…' : confirmLabel}
           </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function EditNameModal({ current, onClose }: { current: string; onClose: () => void }) {
+  const updateDisplayName = useAuthStore((s) => s.updateDisplayName);
+  const [name, setName] = useState(current);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const save = async () => {
+    const trimmed = name.trim();
+    if (!trimmed) { setMsg({ ok: false, text: 'Enter a name.' }); return; }
+    setBusy(true); setMsg(null);
+    const res = await updateDisplayName(trimmed);
+    setBusy(false);
+    if (res.ok) { setMsg({ ok: true, text: 'Name updated.' }); }
+    else setMsg({ ok: false, text: res.error ?? 'Could not update.' });
+  };
+
+  return (
+    <Modal onClose={onClose} size="sm" icon={<UserRound size={16} />} title="Display name">
+      <div className="space-y-2.5">
+        <Input type="text" autoComplete="name" placeholder="Your name" value={name} onChange={(e) => setName(e.target.value)} maxLength={60} autoFocus />
+        {msg && <p className={`text-[11px] ${msg.ok ? 'text-success' : 'text-danger'}`}>{msg.text}</p>}
+        <div className="flex justify-end gap-2 pt-1">
+          <Button variant="secondary" size="comfortable" onClick={onClose}>Close</Button>
+          <Button variant="primary" size="comfortable" onClick={() => void save()} disabled={busy || !name.trim() || name.trim() === current}>{busy ? 'Saving…' : 'Save'}</Button>
         </div>
       </div>
     </Modal>

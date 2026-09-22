@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type { User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { captureError, trackEvent } from '../lib/telemetry';
-import type { AuthStatus, AuthUser, AuthResult } from './types';
+import type { AuthStatus, AuthUser, AuthResult, OAuthProvider } from './types';
 
 // Phase 1 groundwork: a null-guarded auth layer over Supabase Auth. The app is
 // local-first - it runs identically with no accounts. When Supabase is configured
@@ -32,7 +32,7 @@ interface AuthState {
   init: () => void;
   signInWithEmail: (email: string, password: string) => Promise<AuthResult>;
   signUpWithEmail: (email: string, password: string) => Promise<AuthResult>;
-  signInWithOAuth: (provider: 'google') => Promise<AuthResult>;
+  signInWithOAuth: (provider: OAuthProvider) => Promise<AuthResult>;
   sendPasswordReset: (email: string) => Promise<AuthResult>;
   signOut: () => Promise<void>;
   /** Update the account's display name (stored in user_metadata.full_name). */

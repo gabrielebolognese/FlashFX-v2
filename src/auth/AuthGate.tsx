@@ -3,6 +3,7 @@ import type { FormEvent } from 'react';
 import { Button } from '../ui/primitives/Button';
 import { Input } from '../ui/primitives/Input';
 import { useAuthStore } from './store';
+import { OAuthButtons } from './OAuthButtons';
 
 // Full-screen account gate. Shown by App when accounts are ENABLED (Supabase configured) and the
 // visitor is not signed in - so creating/opening projects requires an account. When accounts are
@@ -65,7 +66,9 @@ export function AuthGate({ loading }: { loading?: boolean }) {
             <h1 className="text-[16px] font-semibold text-slate-100">{heading}</h1>
             <p className="mt-1 text-[12px] text-slate-500">{sub}</p>
 
-            <form onSubmit={submit} className="mt-5 space-y-2.5">
+            {mode !== 'reset' && <div className="mt-5"><OAuthButtons onError={setError} /></div>}
+
+            <form onSubmit={submit} className="mt-4 space-y-2.5">
               <Input
                 type="email"
                 autoComplete="email"

@@ -5,19 +5,14 @@ import { Modal } from '../ui/primitives/Modal';
 import { Button } from '../ui/primitives/Button';
 import { Input } from '../ui/primitives/Input';
 import { useAuthStore } from './store';
+import { OAuthButtons } from './OAuthButtons';
 
 type Mode = 'signin' | 'signup' | 'reset';
-
-// Google sign-in is hidden until a Google Cloud OAuth client is configured (the prior Google
-// account was abandoned). Email + password is the live method. Flip this on once OAuth is set up in
-// the Supabase dashboard - the wiring (store.signInWithOAuth) is already in place.
-const GOOGLE_AUTH_ENABLED = false;
 
 export function AuthModal({ onClose }: { onClose: () => void }) {
   const enabled = useAuthStore((s) => s.enabled);
   const signIn = useAuthStore((s) => s.signInWithEmail);
   const signUp = useAuthStore((s) => s.signUpWithEmail);
-  const oauth = useAuthStore((s) => s.signInWithOAuth);
   const reset = useAuthStore((s) => s.sendPasswordReset);
 
   const [mode, setMode] = useState<Mode>('signin');
@@ -53,18 +48,7 @@ export function AuthModal({ onClose }: { onClose: () => void }) {
         </p>
       ) : (
         <div className="space-y-4">
-          {GOOGLE_AUTH_ENABLED && mode !== 'reset' && (
-            <>
-              <Button variant="secondary" size="comfortable" block onClick={() => void oauth('google')}>
-                Continue with Google
-              </Button>
-              <div className="flex items-center gap-2 text-caption text-tertiary">
-                <span className="h-px flex-1 bg-hairline" />
-                or
-                <span className="h-px flex-1 bg-hairline" />
-              </div>
-            </>
-          )}
+          {mode !== 'reset' && <OAuthButtons onError={setError} />}
 
           <form onSubmit={submit} className="space-y-2.5">
             <Input
