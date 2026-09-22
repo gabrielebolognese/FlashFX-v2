@@ -87,7 +87,9 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | B31 | Audio-reactive - audio->keyframes (RMS envelope + beat pulses) driving a layer property, harnessed + renders now; animated counter already ships (animation-item) | ✅ | medium |
 | B31-viz | Bar/circle spectrum visualiser - needs an offline FFT (nonexistent) + a bar/arc render (new animation-item type or a data-fed cloner) | ⬜ (browser) | medium |
 | B31-data | Data binding (spreadsheet/JSON -> property) - CSV/JSON parser + authoring UI + non-cloner routing (applyOverrides/cloner binding exist but are cloner-only) | ⬜ | medium |
-| B32 | Motion-design principle rigs (anticipation, follow-through, squash & stretch) | ▶ **next** | light |
+| B32 | Motion-design principle rigs - anticipation + follow-through/overshoot + squash & stretch + staggered offset as one-click keyframe rigs (harnessed, renders now) | ✅ | light |
+| B32-render | Echo / motion trails / smears - temporal ghosting (transform echo feasible at resolve-time via the cloner staggered-time path; pixel-accurate echo needs a GPU accumulation pass) | ⬜ (browser) | medium |
+| B32-secondary | Secondary motion (lag a child behind a parent) - bake the parent transform at frame-k into child keyframes; needs a cross-layer read (absent from ExpressionContext) + UI | ⬜ | medium |
 
 ---
 
@@ -328,5 +330,18 @@ This is a five-feature batch; per the split rule the strong rendering-now core s
 
 **Deferred:** `B31-viz` (bar/circle **spectrum** visualiser) needs an offline FFT that does not exist anywhere (beat detection is energy-flux, no FFT) plus a bar/arc render surface - browser/new. `B31-data` (spreadsheet/JSON **data binding** to a property) needs a CSV/JSON parser + authoring UI + non-cloner routing; the primitives (`core/overrides.ts` applyOverrides, `cloner/dataBinding.ts`) exist but are cloner-only today.
 
-## B32 - Motion-design principle rigs
-**Delivers:** anticipation, follow-through/overlapping action, secondary motion, squash & stretch, staggered offset, motion trails/smears/echo - as one-click **applyable behaviours/rigs**. **Categories:** 19. **Depends on:** B1, B7. **Perf:** light.
+## B32 - Motion-design principle rigs ✅ (4 keyframe rigs shipped; echo/secondary split out)
+**Delivers:** anticipation, follow-through/overlapping action, secondary motion, squash & stretch, staggered offset, motion trails/smears/echo - as one-click **applyable behaviours/rigs**. **Categories:** 19. **Depends on:** B1, B7 (both ✅). **Perf:** light.
+
+Six deliverables; the four that are pure keyframe transforms shipped now (harnessed, rendering), and the two that need a render pass / cross-layer plumbing split into gated rows.
+
+**Shipped (harnessed + rendering now):**
+- Pure core `src/core/motionRigs/motionRigs.ts` (leaf, imports only types; mirrors `keyframeAssistants.ts`): `addAnticipation` (insert a windup keyframe opposite the first move), `addFollowThrough` (set an overshoot/settle ease - backOut/elasticOut/bounceOut - on the segment into the rest pose, rendered live by `keyframeEase.segmentProgress`, no bake), `buildSquashStretch` (per-frame volume-preserving scale keyframes driven by position speed - stretch along the motion axis, squash the other, scaleX*scaleY = baseline area), and `shiftKeyframes` (frame shift for stagger). Deterministic; proved by `scripts/verify-motion-rigs.mjs` (`npm run verify:motion-rigs`, 7 checks).
+- Store action `applyMotionPrinciple(layerIds, principle, opts)` (editor.ts): picks the primary animated transform property (or drives scale from position for squash & stretch; shifts all keyframed transform props by a per-layer `computeStaggerOffsets` delay for stagger), applies to the selection in one undoable command. Reuses the existing `stagger` engine for the eased per-layer delays.
+- UI: a **Principles** section in `AnimatePanel.tsx` (Anticipation / Follow-Through / Squash & Stretch / Stagger buttons) targeting the selected layer(s). The rigs rewrite ordinary keyframes, so they play + export frame-purely.
+
+**Deferred:** `B32-render` (echo / motion trails / smears) - a transform echo is feasible at resolve-time (the cloner staggered-local-time path already stamps delayed copies), but a dedicated echo post-pass and a pixel-accurate afterimage (video / animated text / particles) need a GPU render-target accumulation; the `filterDefinitions` echo/smear/trails/ghosting sliders are currently locked as unimplemented. `B32-secondary` (secondary motion / overlapping lag of a child behind a parent) renders via baked keyframes (sample the parent transform at frame-k, physics-bake pattern) but needs a cross-layer read - absent from `ExpressionContext` - plus a parent-picker UI. Note: a single-property overshoot/settle IS covered by the shipped follow-through rig.
+
+---
+
+**Plan complete: every B-batch is ✅ or a documented gated/skip row.** Remaining work is the browser-gated backlog (GPU/WGSL, Rapier-WASM sims, ML/FFT, video-decode, render-target passes): B10d, B10e, B11b-gpu, B11c-gpu, B12-gpu, B13-gpu, B14-gpu, B15-gpu, B16-gpu, B17-gpu, B21-sim, B23-render, B24-render, B25-rig, B27-track, B28-gpu, B29-video, B31-viz, B31-data, B32-render, B32-secondary. 3D batches (B18, B22, and B20's full-3D scope) are intentionally skipped (2.5D-only).

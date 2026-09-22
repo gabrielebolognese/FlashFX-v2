@@ -25,6 +25,9 @@ import { serializePatternConfig, parsePatternConfig } from '../patterns/config';
 import { DEFAULT_PATTERN } from '../patterns/presets';
 import { getVfxElement, buildVfxSweep } from '../core/vfx/vfxElements';
 import type { GenerativePatternLayer } from '../core/types';
+import { addAnticipation, addFollowThrough, buildSquashStretch, shiftKeyframes, type OvershootEase } from '../core/motionRigs/motionRigs';
+import { computeStaggerOffsets } from '../stagger/timing';
+import { DEFAULT_STAGGER_CONFIG } from '../stagger/types';
 import { getTemplate as getAnimationTemplate, ANIMATION_TEMPLATES } from '../animation-templates/catalog';
 import { instantiateTemplate as instantiateAnimationTemplate } from '../animation-templates/instantiate';
 import { getLayerRect } from '../core/snap/bbox';
@@ -131,6 +134,55 @@ function mapKeyframesByPath(
     return updated;
   });
   return { ...composition, layers };
+}
+
+// B32 motion-design principle rigs applied to whole layers. The per-property keyframe math is pure
+// (core/motionRigs); this picks the target property + applies to the selection in one undoable command.
+export type MotionPrinciple = 'anticipation' | 'follow-through' | 'squash-stretch' | 'stagger';
+export interface MotionPrincipleOptions { amount?: number; ease?: OvershootEase; gapFrames?: number }
+
+const TRANSFORM_PROP_PATHS = ['transform.position', 'transform.scale', 'transform.rotation', 'transform.opacity'];
+
+/** The transform property carrying the most keyframes (>= 2), or null - the "main" animated channel a
+ *  rig should act on. Skips a separated position (empty `keyframes`). */
+function primaryAnimatedPath(layer: Layer): string | null {
+  let best: string | null = null, bestN = 1;
+  for (const path of TRANSFORM_PROP_PATHS) {
+    const prop = deepGet(layer, path) as AnimatableProperty | undefined;
+    const n = prop && Array.isArray(prop.keyframes) ? prop.keyframes.length : 0;
+    if (n >= 2 && n > bestN) { best = path; bestN = n; }
+  }
+  return best;
+}
+
+function applyPrincipleToLayer(layer: Layer, principle: MotionPrinciple, opts: MotionPrincipleOptions, delay: number): Layer {
+  if (!('transform' in layer)) return layer;
+  if (principle === 'stagger') {
+    let updated: Layer = layer;
+    for (const path of TRANSFORM_PROP_PATHS) {
+      const prop = deepGet(updated, path) as AnimatableProperty | undefined;
+      if (prop && Array.isArray(prop.keyframes) && prop.keyframes.length > 0) {
+        updated = deepSet(updated, `${path}.keyframes`, shiftKeyframes(prop.keyframes, delay)) as Layer;
+      }
+    }
+    return updated;
+  }
+  if (principle === 'squash-stretch') {
+    const pos = deepGet(layer, 'transform.position') as AnimatableProperty | undefined;
+    if (!pos || !Array.isArray(pos.keyframes) || pos.keyframes.length < 2) return layer;
+    const kfs = pos.keyframes;
+    const scaleProp = deepGet(layer, 'transform.scale') as AnimatableProperty | undefined;
+    const base = (scaleProp && Array.isArray(scaleProp.defaultValue) ? scaleProp.defaultValue : [1, 1]) as [number, number];
+    const scaleKfs = buildSquashStretch(kfs, kfs[0].frame, kfs[kfs.length - 1].frame, { baseline: base, amount: opts.amount ?? 0.3 });
+    return deepSet(layer, 'transform.scale.keyframes', scaleKfs) as Layer;
+  }
+  const path = primaryAnimatedPath(layer);
+  if (!path) return layer;
+  const prop = deepGet(layer, path) as AnimatableProperty;
+  const next = principle === 'anticipation'
+    ? addAnticipation(prop.keyframes, { amount: opts.amount ?? 0.25 })
+    : addFollowThrough(prop.keyframes, opts.ease ?? 'backOut');
+  return deepSet(layer, `${path}.keyframes`, next) as Layer;
 }
 
 interface SelectionState {
@@ -530,6 +582,9 @@ interface EditorState {
   bakeLayerAnimation: (layerId: string) => void;
   applyAnimationPreset: (layerId: string, presetId: string) => void;
   applyAnimationPresetBatch: (layerIds: string[], presetId: string, durationSeconds: number, atStart: boolean) => void;
+  /** B32 - apply a motion-design principle rig (anticipation / follow-through / squash & stretch /
+   *  stagger) to the given layers (or the selection), rewriting keyframes in one undoable command. */
+  applyMotionPrinciple: (layerIds: string[], principle: MotionPrinciple, opts?: MotionPrincipleOptions) => void;
   setCompositionSetting: (key: string, value: number) => void;
   /** M14 - resize the composition frame and reflow every top-level layer per its constraints (one undo). */
   setCompositionSize: (width: number, height: number) => void;
@@ -4723,6 +4778,28 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
     exec({
       label: `Apply ${preset.name} to ${layerIds.length} clip${layerIds.length > 1 ? 's' : ''}`,
+      execute: () => { set({ composition: newComp }); },
+      undo: () => { set({ composition: oldComp }); },
+    });
+  },
+
+  applyMotionPrinciple: (layerIds, principle, opts = {}) => {
+    const state = get();
+    const ids = layerIds && layerIds.length ? layerIds
+      : state.selection.selectedIds.length ? state.selection.selectedIds
+      : state.selection.activeId ? [state.selection.activeId] : [];
+    if (ids.length === 0) return;
+    const oldComp = state.composition;
+    // Stagger: per-layer eased frame delay in selection order (reuses the stagger engine).
+    const delays = principle === 'stagger'
+      ? computeStaggerOffsets(ids, { ...DEFAULT_STAGGER_CONFIG, gapFrames: opts.gapFrames ?? 4 })
+      : null;
+    const idSet = new Set(ids);
+    const newLayers = oldComp.layers.map((l) => (idSet.has(l.id) ? applyPrincipleToLayer(l, principle, opts, delays?.get(l.id) ?? 0) : l));
+    const newComp = settleComposition({ ...oldComp, layers: newLayers });
+    const label = principle === 'squash-stretch' ? 'Squash & Stretch' : principle === 'follow-through' ? 'Follow-Through' : principle === 'anticipation' ? 'Anticipation' : 'Stagger';
+    exec({
+      label: `Apply ${label}`,
       execute: () => { set({ composition: newComp }); },
       undo: () => { set({ composition: oldComp }); },
     });

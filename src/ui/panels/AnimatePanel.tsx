@@ -3,9 +3,18 @@ import { Clock, PlayCircle } from 'lucide-react';
 import { useEditorStore } from '../../store/editor';
 import { useTimelineStore } from '../../store/timeline';
 import { getPresetsByCategory, PRESET_CATEGORIES } from '../../core/animationPresets';
+import type { MotionPrinciple } from '../../store/editor';
+
+const PRINCIPLES: { id: MotionPrinciple; label: string; desc: string }[] = [
+  { id: 'anticipation', label: 'Anticipation', desc: 'A windup opposite the first move' },
+  { id: 'follow-through', label: 'Follow-Through', desc: 'Overshoot + settle into the pose' },
+  { id: 'squash-stretch', label: 'Squash & Stretch', desc: 'Volume-preserving scale from speed' },
+  { id: 'stagger', label: 'Stagger', desc: 'Offset keyframes across selected layers' },
+];
 
 export function AnimatePanel({ layerId }: { layerId: string }) {
   const applyAnimationPresetBatch = useEditorStore((s) => s.applyAnimationPresetBatch);
+  const applyMotionPrinciple = useEditorStore((s) => s.applyMotionPrinciple);
   const frameRate = useEditorStore((s) => s.composition.settings.frameRate);
   const selectedIds = useEditorStore((s) => s.selection.selectedIds);
   const currentFrame = useTimelineStore((s) => s.currentFrame);
@@ -96,6 +105,26 @@ export function AnimatePanel({ layerId }: { layerId: string }) {
           </p>
         </div>
       )}
+
+      {/* Motion-design principles (rigs over the layer's existing keyframes) */}
+      <div className="border-b border-[#13182370]">
+        <div className="px-3 pt-3 pb-1.5 text-[10px] uppercase tracking-wider text-slate-500 font-semibold">
+          Principles
+        </div>
+        <div className="grid grid-cols-2 gap-1.5 px-3 pb-3">
+          {PRINCIPLES.map((p) => (
+            <button
+              key={p.id}
+              onClick={() => applyMotionPrinciple(targetIds, p.id)}
+              title={p.desc}
+              className="group flex flex-col items-start text-left px-2.5 py-2 rounded-lg bg-[#11151f] border border-[#1c2230] hover:border-accent-dim hover:bg-accent/[0.06] transition-colors"
+            >
+              <span className="text-[11.5px] font-medium text-slate-200 group-hover:text-accent-hover leading-tight">{p.label}</span>
+              <span className="text-[9.5px] text-slate-500 leading-tight mt-0.5 line-clamp-2">{p.desc}</span>
+            </button>
+          ))}
+        </div>
+      </div>
 
       {/* Preset grid */}
       {PRESET_CATEGORIES.map((category) => (

@@ -33,6 +33,7 @@
     "verify:cleanup": "node scripts/verify-cleanup.mjs",
     "verify:vfx": "node scripts/verify-vfx.mjs",
     "verify:audio-reactive": "node scripts/verify-audio-reactive.mjs",
+    "verify:motion-rigs": "node scripts/verify-motion-rigs.mjs",
     "verify:cloner": "node scripts/verify-cloner.mjs",
     "verify:crop-solver": "node scripts/verify-crop-solver.mjs",
     "verify:color-transfer": "node scripts/verify-color-transfer.mjs",
