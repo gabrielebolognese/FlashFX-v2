@@ -39,6 +39,8 @@ import { resolveExitStep } from './core/selection';
 import { OnboardingFlow, useOnboardingStore } from './onboarding';
 import { TutorialRunner } from './tutorial/TutorialRunner';
 import { TutorialIntro } from './tutorial/TutorialIntro';
+import { ProTutorial } from './tutorial/ProTutorial';
+import { useProTutorialStore } from './tutorial/proTutorialStore';
 import { ConsentBanner } from './legal/ConsentBanner';
 import { LegalModal } from './legal/LegalModal';
 import { AgentBuildOverlay } from './ui/agent-build/AgentBuildOverlay';
@@ -557,6 +559,7 @@ function Editor() {
       <PanelHelpTutorial />
       <TutorialRunner />
       <TutorialIntro />
+      <ProTutorial />
       <ConsentBanner />
       <SaveReminderModal />
       <AgentBuildOverlay />
@@ -781,6 +784,20 @@ function App() {
     } catch {
       /* localStorage unavailable - skip onboarding rather than block boot */
     }
+  }, []);
+
+  // /subscription-success -> "Show me everything": on the reload back into the app, open a fresh
+  // project and arm the Pro tutorial choreography (ProTutorial plays it once the project is open).
+  useEffect(() => {
+    let kind: string | null = null;
+    try { kind = sessionStorage.getItem('ffx-pro-tour'); if (kind) sessionStorage.removeItem('ffx-pro-tour'); } catch { /* ignore */ }
+    if (kind !== 'storage') return;
+    void (async () => {
+      try {
+        await useProjectStore.getState().createAndOpenProject({ name: '100 GB Storage', width: 1920, height: 1080, frameRate: 30, durationFrames: 360, videoFormat: 'long' });
+        useProTutorialStore.getState().start('storage');
+      } catch { /* ignore */ }
+    })();
   }, []);
 
   useEffect(() => {

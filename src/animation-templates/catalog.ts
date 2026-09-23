@@ -16,6 +16,7 @@ import { bulletList } from './categories/lists';
 import { barChartGrow } from './categories/charts';
 import { logoPop } from './categories/logo';
 import { blackjack } from './categories/blackjack';
+import { storageReveal } from './categories/storage';
 
 // The animation-template library. Add a template = author a builder in categories/ and list it here.
 
@@ -48,6 +49,7 @@ export const ANIMATION_TEMPLATES: AnimationTemplate[] = [
   bulletList,
   barChartGrow,
   logoPop,
+  storageReveal,
 ];
 
 export const CATEGORY_LABELS: Record<TemplateCategory, string> = {

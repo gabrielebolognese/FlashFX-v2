@@ -29,8 +29,12 @@ const CSS = `
 `;
 
 export function SubscriptionSuccess() {
-  // For now this just returns to the app home. Later it will kick off the Pro tutorial choreography.
-  const showEverything = () => { window.location.href = '/'; };
+  // Arm the Pro tutorial choreography, then reload into the app; App's boot handler opens a fresh
+  // project and ProTutorial plays the "100 GB storage" reveal in the starter editor.
+  const showEverything = () => {
+    try { sessionStorage.setItem('ffx-pro-tour', 'storage'); } catch { /* ignore */ }
+    window.location.href = '/';
+  };
 
   return (
     <div className="sus-anim fixed inset-0 overflow-y-auto text-slate-100" style={{ background: 'linear-gradient(160deg, #1e3350 0%, #16273f 55%, #132035 100%)' }}>
