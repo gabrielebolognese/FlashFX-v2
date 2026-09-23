@@ -41,6 +41,12 @@ async function decodeImageCapped(file: Blob): Promise<{ bitmap: ImageBitmap; ori
   return { bitmap, originalWidth, originalHeight };
 }
 
+/** True for an animated-image mime/name (GIF/WebP/APNG/AVIF). These are stored as VIDEO assets but
+ *  have no audio track, so the reload path must skip audio init (a hidden <video> can't play a GIF). */
+function isAnimatedImageMime(type: string | undefined, name: string | undefined): boolean {
+  return /image\/(gif|webp|apng|avif)/i.test(type || '') || /\.(gif|webp|apng|avif)(\?|#|$)/i.test(name || '');
+}
+
 export type AssetStatus = 'ready' | 'loading' | 'missing' | 'error' | 'storage-error';
 
 interface RegisteredAsset {
@@ -329,6 +335,71 @@ class MediaAssetManager {
     return { assetId, metadata };
   }
 
+  // Animated GIF/WebP/APNG/AVIF: modelled as a VIDEO asset (so it plays + exports through the video
+  // pipeline) but decoded by the browser ImageDecoder (routed in videoDecoderPool). No audio. Callers
+  // probe with isAnimatedImage() first; a single-frame image still goes through importImage.
+  async importAnimatedImage(
+    file: File,
+    projectId: string,
+  ): Promise<{ assetId: string; metadata: VideoAssetMetadata }> {
+    if (file.size === 0) throw new Error('Cannot import a zero-byte file.');
+    const assetId = `asset_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+
+    const projectAsset: ProjectAsset = {
+      id: assetId,
+      projectId,
+      name: file.name,
+      type: 'video', // persists to the video store + reloads through the video path
+      blob: file,
+      mimeType: file.type || 'image/gif',
+      createdAt: Date.now(),
+    };
+    await putAsset(projectAsset);
+
+    const objectUrl = URL.createObjectURL(file);
+    this.assets.set(assetId, {
+      id: assetId,
+      name: file.name,
+      mimeType: file.type,
+      objectUrl,
+      createdAt: projectAsset.createdAt,
+      metadata: null,
+      imageMetadata: null,
+      audioMetadata: null,
+      imageBitmap: null,
+      waveform: null,
+      audioBuffer: null,
+      status: 'loading',
+    });
+    this.objectUrls.set(assetId, objectUrl);
+
+    const savePromise = this.persistToVideoStore(projectId, assetId, file);
+
+    try {
+      const workerMeta = await videoDecoderPool.initAsset(assetId, file);
+      const metadata: VideoAssetMetadata = {
+        assetId,
+        width: workerMeta.width,
+        height: workerMeta.height,
+        duration: workerMeta.duration,
+        frameRate: workerMeta.frameRate,
+        hasAudio: false,
+        codec: workerMeta.codec,
+        fileSize: file.size,
+      };
+      const asset = this.assets.get(assetId);
+      if (asset) { asset.metadata = metadata; asset.status = 'ready'; }
+      frameScheduler.registerAsset(assetId, assetId, workerMeta.frameRate, workerMeta.frameCount);
+      try { await savePromise; } catch { if (asset) asset.status = 'storage-error'; }
+      this.notify();
+      return { assetId, metadata };
+    } catch (err) {
+      const asset = this.assets.get(assetId);
+      if (asset) asset.status = 'error';
+      throw err;
+    }
+  }
+
   async importAudio(
     file: File,
     projectId: string
@@ -443,7 +514,8 @@ class MediaAssetManager {
       }
 
       frameScheduler.registerAsset(assetId, assetId, workerMeta.frameRate, workerMeta.frameCount);
-      videoAudioPlayer.initAudio(assetId, file);
+      // Animated images (GIF/WebP/APNG/AVIF) have no audio track - skip the hidden <video> audio element.
+      if (!isAnimatedImageMime(file.type, fileName)) videoAudioPlayer.initAudio(assetId, file);
       // Do NOT decode the whole file's audio here. On project OPEN this ran a multi-GB `decodeAudioData`
       // for EVERY stored video just to build a waveform - the dominant open-time OOM. The waveform is
       // now computed lazily (ensureWaveform) the first time a clip's strip needs it, serialized so many

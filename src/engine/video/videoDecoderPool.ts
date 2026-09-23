@@ -4,6 +4,15 @@ import type {
   VideoMetadata,
 } from './videoWorker.types';
 import { mediabunnyController } from './mediabunnyController';
+import { imageDecoderController } from './imageDecoderController';
+
+// Animated images (GIF / animated WebP / APNG / AVIF) are modelled as video assets but decoded by the
+// browser ImageDecoder, not mediabunny (which has no GIF demuxer). Detected from the source's mime /
+// extension so it's reload-safe (the persisted blob keeps its image/* type).
+function isAnimatedImageSource(source: File | string): boolean {
+  const hay = typeof source === 'string' ? source : `${source.type} ${source.name}`;
+  return /image\/(gif|webp|apng|avif)|\.(gif|webp|apng|avif)(\?|#|$)/i.test(hay);
+}
 
 // Video decode backend. mediabunny (default) replaces the legacy hand-rolled mp4box+WebCodecs worker;
 // the legacy pump stays in-tree for instant rollback - set localStorage.ffx_video_engine='legacy' and
@@ -58,6 +67,8 @@ class VideoDecoderPool {
   // Sources are retained even after a worker is LRU-evicted, so a later decode
   // request can transparently re-init the decoder on demand.
   private sources = new Map<string, File | string>();
+  // Assets whose decode backend is the browser ImageDecoder (animated GIF/WebP/APNG/AVIF).
+  private gifAssets = new Set<string>();
   // Bound the number of live hardware VideoDecoders. Browsers refuse new decoders
   // past a limit (~16 across WebCodecs + media elements) → decode errors → black
   // frames. Keep the N most-recently-used; evict the rest (re-init on demand). Held
@@ -86,6 +97,11 @@ class VideoDecoderPool {
 
   /** Initialize a worker for a video asset. Returns metadata once the moov is parsed. */
   async initAsset(assetId: string, source: File | string): Promise<VideoMetadata> {
+    if (isAnimatedImageSource(source)) {
+      this.gifAssets.add(assetId);
+      this.sources.set(assetId, source);
+      return imageDecoderController.initAsset(assetId, source);
+    }
     if (USE_MEDIABUNNY) { this.sources.set(assetId, source); return mediabunnyController.initAsset(assetId, source); }
     this.sources.set(assetId, source);
     const existing = this.workers.get(assetId);
@@ -154,6 +170,7 @@ class VideoDecoderPool {
 
   /** Decode a single frame. Returns a transferable VideoFrame. */
   async decodeFrame(assetId: string, frameIndex: number): Promise<VideoFrame> {
+    if (this.gifAssets.has(assetId)) return imageDecoderController.decodeFrame(assetId, frameIndex);
     if (USE_MEDIABUNNY) return mediabunnyController.decodeFrame(assetId, frameIndex);
     const state = await this.ensureWorker(assetId);
     if (!state) {
@@ -197,6 +214,7 @@ class VideoDecoderPool {
 
   /** Decode a frame at full resolution for export (bypasses proxy mode). */
   async decodeFrameForExport(assetId: string, frameIndex: number): Promise<VideoFrame> {
+    if (this.gifAssets.has(assetId)) return imageDecoderController.decodeFrameForExport(assetId, frameIndex);
     if (USE_MEDIABUNNY) return mediabunnyController.decodeFrameForExport(assetId, frameIndex);
     const state = await this.ensureWorker(assetId);
     if (!state) {
@@ -236,6 +254,7 @@ class VideoDecoderPool {
 
   /** Cancel an in-flight decode request. */
   cancelFrame(assetId: string, frameIndex: number): void {
+    if (this.gifAssets.has(assetId)) return; // ImageDecoder decodes are cheap; nothing to cancel
     if (USE_MEDIABUNNY) return; // mediabunny getSample has no cancel handle; scrub cancel is Phase 2
     const state = this.workers.get(assetId);
     if (!state) return;
@@ -253,6 +272,7 @@ class VideoDecoderPool {
   /** Tear down the worker for an asset. */
   async destroyAsset(assetId: string): Promise<void> {
     this.sources.delete(assetId); // also clears an LRU-evicted asset with no live worker
+    if (this.gifAssets.has(assetId)) { this.gifAssets.delete(assetId); await imageDecoderController.destroyAsset(assetId); return; }
     if (USE_MEDIABUNNY) { await mediabunnyController.destroyAsset(assetId); return; }
     const state = this.workers.get(assetId);
     if (!state) return;
@@ -277,6 +297,7 @@ class VideoDecoderPool {
 
   /** Get cached metadata synchronously, or null if not initialized. */
   getMetadata(assetId: string): VideoMetadata | null {
+    if (this.gifAssets.has(assetId)) return imageDecoderController.getMetadata(assetId);
     if (USE_MEDIABUNNY) return mediabunnyController.getMetadata(assetId);
     return this.workers.get(assetId)?.metadata ?? null;
   }
@@ -289,6 +310,7 @@ class VideoDecoderPool {
 
   /** Set proxy decode scale for an asset. 1 = full, 0.5 = half. */
   setProxyMode(assetId: string, scale: number): void {
+    if (this.gifAssets.has(assetId)) return; // no proxy scaling for animated images
     if (USE_MEDIABUNNY) { mediabunnyController.setProxyMode(assetId, scale); return; }
     const state = this.workers.get(assetId);
     if (!state) return;

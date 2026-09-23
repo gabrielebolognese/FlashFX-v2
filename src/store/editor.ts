@@ -47,6 +47,7 @@ import { buildPrecompose } from '../core/precompose';
 import { createMotionPath } from './motionPath';
 import { useHistoryStore, type Command } from './history';
 import { mediaAssetManager, type ImageAssetMetadata } from '../engine/media/assetManager';
+import { isAnimatedImage } from '../engine/video/imageDecoderController';
 
 // After adding an image, prompt (non-modally) if it doesn't fit the canvas - offering fit-vs-keep.
 function maybePromptImageSize(layerId: string, meta: ImageAssetMetadata, canvasW: number, canvasH: number): void {
@@ -3011,6 +3012,15 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   addImage: async (file: File, projectId: string) => {
+    // An animated GIF/WebP/APNG/AVIF becomes a VIDEO layer so it plays; a still image stays an image.
+    // (addVideoFromAsset is its own undoable command, so we return before the image command below.)
+    if (await isAnimatedImage(file)) {
+      const { assetId } = await mediaAssetManager.importAnimatedImage(file, projectId);
+      const { composition } = get();
+      get().addVideoFromAsset(assetId, composition.settings.width / 2, composition.settings.height / 2);
+      return;
+    }
+
     const { composition, selection } = get();
     const oldComp = composition;
     const oldSel = selection;

@@ -1,4 +1,16 @@
 import { mediaAssetManager } from './assetManager';
+import { isAnimatedImage } from '../video/imageDecoderController';
+
+// Image formats that CAN be animated. Only these are probed with isAnimatedImage (which reads the
+// file); a plain jpg/png is never probed. An animated one is imported as a video (plays + exports).
+const ANIMATABLE_IMAGE_EXT = new Set(['gif', 'webp', 'apng', 'avif']);
+
+function isAnimatableImage(file: File): boolean {
+  const t = (file.type || '').toLowerCase();
+  if (/^image\/(gif|webp|apng|avif)$/.test(t)) return true;
+  const ext = (file.name.split('.').pop() || '').toLowerCase();
+  return ANIMATABLE_IMAGE_EXT.has(ext);
+}
 
 // Canva-style import: bring footage into the MEDIA POOL (as assets) WITHOUT placing anything on the
 // timeline. Placing many videos at once used to auto-create a clip per file, and each import fired an
@@ -54,7 +66,15 @@ export async function importFilesToPool(
       const file = list[cursor++];
       const kind = classify(file);
       try {
-        if (kind === 'image') { await mediaAssetManager.importImage(file, projectId); imported++; }
+        if (kind === 'image') {
+          // An animated GIF/WebP/APNG/AVIF imports as a video so it plays; a still one stays an image.
+          if (isAnimatableImage(file) && (await isAnimatedImage(file))) {
+            await mediaAssetManager.importAnimatedImage(file, projectId);
+          } else {
+            await mediaAssetManager.importImage(file, projectId);
+          }
+          imported++;
+        }
         else if (kind === 'video') { await mediaAssetManager.importVideo(file, projectId); imported++; }
         else if (kind === 'audio') { await mediaAssetManager.importAudio(file, projectId); imported++; }
         else { skipped++; }
