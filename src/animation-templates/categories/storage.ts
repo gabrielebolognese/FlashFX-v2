@@ -3,9 +3,9 @@ import type { Layer, ShapeLayer, TextLayer, Vec4 } from '../../core/types';
 import { createCameraLayer, createProperty, createAnimationItemLayer } from '../../core/factory';
 import { group, card, dot, label, assemble, setKeys, fadeIn, popIn, floatLoop, glow, EASE_IO, EASE_OUT } from '../kit';
 
-// Pro tutorial, part 1: the "100 GB of storage" reveal. A 2.5D scene - a stack of storage blocks
+// Pro tutorial, part 1: the "20 GB of storage" reveal. A 2.5D scene - a stack of storage blocks
 // (blue at the base fading to gold at the top) rises bottom-to-top at staggered depths, a big gold
-// counter tickers 0 -> 100 GB as a flat HUD over the 3D stack, glowing data sparks drift in the
+// counter tickers 0 -> 20 GB as a flat HUD over the 3D stack, glowing data sparks drift in the
 // foreground, and a camera pushes in + trucks across so the near blocks parallax past the far ones.
 // Authored 0-based; played via insertAnimationTemplateAnimated in the starter editor.
 
@@ -28,7 +28,7 @@ function buildStorageReveal(ctx: BuildCtx): Layer[] {
   const W = ctx.center[0] * 2, H = ctx.center[1] * 2;
   const [cx, cy] = ctx.center;
   const zoom = (50 * W) / 36; // AE 50mm framing distance for this comp
-  const g = group('100 GB Storage', ctx.center);
+  const g = group('20 GB Storage', ctx.center);
 
   // Far backdrop panel (deep in Z) to ground the stack.
   const panel = depth(card([0, 60], W * 0.9, H * 0.82, 40, PANEL), 1150);
@@ -48,19 +48,19 @@ function buildStorageReveal(ctx: BuildCtx): Layer[] {
     blocks.push(b);
   }
 
-  // The number: 0 -> 100 GB, big gold digits. A flat HUD (not 3D) so it stays crisp over the stack;
+  // The number: 0 -> 20 GB, big gold digits. A flat HUD (not 3D) so it stays crisp over the stack;
   // its value animates over the clip via the simulated data source (no keyframes needed).
   const counterCfg = {
     type: 'counter',
     config: {
-      startValue: 0, endValue: 100, decimalPlaces: 0, thousandsSeparator: false,
+      startValue: 0, endValue: 20, decimalPlaces: 0, thousandsSeparator: false,
       prefix: '', suffix: ' GB',
       digitStyle: { fillColor: GOLD, fontSize: 200, fontFamily: 'Inter', fontWeight: 800 },
       prefixStyle: {},
     },
   };
   const dataSource = { mode: 'simulated', simulatedStart: 0, simulatedEnd: 1, simulatedEasing: 'easeOut' };
-  const counter = createAnimationItemLayer('100 GB', 0, -250, 'counter', JSON.stringify(counterCfg), JSON.stringify(dataSource), DUR);
+  const counter = createAnimationItemLayer('20 GB', 0, -250, 'counter', JSON.stringify(counterCfg), JSON.stringify(dataSource), DUR);
   popIn(counter, 8, 16);
 
   const sub = label('of cloud storage', [0, -110], { size: 46, weight: 600, color: WHITE });
@@ -91,9 +91,9 @@ function buildStorageReveal(ctx: BuildCtx): Layer[] {
 
 export const storageReveal: AnimationTemplate = {
   id: 'storage-reveal',
-  name: '100 GB Storage Reveal',
+  name: '20 GB Storage Reveal',
   category: 'showcase',
-  description: 'A 2.5D stack of storage blocks builds up while a big counter tickers to 100 GB.',
+  description: 'A 2.5D stack of storage blocks builds up while a big counter tickers to 20 GB.',
   tags: ['pro', 'storage', '2.5d', 'counter', 'camera', 'showcase'],
   durationFrames: DUR,
   authorFps: 30,

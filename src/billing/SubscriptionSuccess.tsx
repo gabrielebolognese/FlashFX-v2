@@ -6,7 +6,7 @@ import { Crown, PlayCircle, ArrowRight } from 'lucide-react';
 // the right with a "Show me everything" CTA. Pure CSS animations, self-contained (no engine).
 
 const FEATURES: { title: string; desc: string }[] = [
-  { title: '100 GB of storage', desc: 'Keep your projects in the cloud, synced across every device you sign in on.' },
+  { title: '20 GB of storage', desc: 'Keep your projects in the cloud, synced across every device you sign in on.' },
   { title: 'AI animation', desc: 'Generate and edit whole animated scenes from a prompt, right inside the editor.' },
   { title: 'Expressions & premium packs', desc: 'Code-driven animation, plus premium templates and effect packs.' },
   { title: '3D features', desc: 'Cameras, depth and 3D layers to give your motion real dimension.' },
@@ -30,7 +30,7 @@ const CSS = `
 
 export function SubscriptionSuccess() {
   // Arm the Pro tutorial choreography, then reload into the app; App's boot handler opens a fresh
-  // project and ProTutorial plays the "100 GB storage" reveal in the starter editor.
+  // project and ProTutorial plays the "20 GB storage" reveal in the starter editor.
   const showEverything = () => {
     try { sessionStorage.setItem('ffx-pro-tour', 'storage'); } catch { /* ignore */ }
     window.location.href = '/';

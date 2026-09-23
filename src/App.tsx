@@ -797,7 +797,7 @@ function App() {
     useOnboardingStore.getState().complete();
     void (async () => {
       try {
-        await useProjectStore.getState().createAndOpenProject({ name: '100 GB Storage', width: 1920, height: 1080, frameRate: 30, durationFrames: 360, videoFormat: 'long' });
+        await useProjectStore.getState().createAndOpenProject({ name: '20 GB Storage', width: 1920, height: 1080, frameRate: 30, durationFrames: 360, videoFormat: 'long' });
         useProTutorialStore.getState().start('storage');
       } catch { /* ignore */ }
     })();

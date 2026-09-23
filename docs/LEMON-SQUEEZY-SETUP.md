@@ -41,8 +41,7 @@ for live at launch.
    numeric **Store ID**.
 2. **Create the Pro product + subscription variant.** Products -> New Product:
    - Name: `FlashFX Pro` (or similar).
-   - Pricing model: **Subscription**, monthly, your price (the UI currently labels `$12/mo` - keep or
-     change, see Part 3 storage note).
+   - Pricing model: **Subscription**, monthly, **$29.99/mo** (locked - must match `VITE_LEMON_PRICE_LABEL`).
    - Save, then open the product's **variant** and note the numeric **Variant ID**.
 3. **Get the checkout link.** On the variant, "Share" gives a hosted checkout URL:
    ```
@@ -88,7 +87,7 @@ supabase functions deploy lemon-webhook --no-verify-jwt
 **Client env** (`.env`, safe to commit only the `.env.example` template):
 ```
 VITE_LEMON_CHECKOUT_URL=https://<STORE>.lemonsqueezy.com/buy/<variant-uuid>
-VITE_LEMON_PRICE_LABEL=$12/mo
+VITE_LEMON_PRICE_LABEL=$29.99/mo
 # optional, only if we move to API-created checkouts:
 # VITE_LEMON_STORE_ID=...
 # VITE_LEMON_VARIANT_ID=...
@@ -126,19 +125,18 @@ A rewrite of `paddle-webhook` (reuses its service-role PostgREST upsert; only ve
 - **Envelope** (JSON:API): event is `meta.event_name`; the subscription record is `data.attributes`;
   identity is `meta.custom_data.user_id`. If `user_id` is missing, return 200 "no user mapping" (same as
   Paddle - no email fallback exists).
-- **Status mapping** (`data.attributes.status` -> our `plan`/`status`):
+- **Status mapping** (`data.attributes.status` -> our `plan`/`status`), with a **3-day-max grace window** (LOCKED):
 
-  | LS status                     | plan   | status   | entitlement |
-  |-------------------------------|--------|----------|-------------|
-  | `active`, `on_trial`          | `pro`  | active/trialing | Pro |
-  | `cancelled` (until `ends_at`) | `pro`  | canceled | Pro until period end |
-  | `past_due`, `unpaid`, `paused`| `pro`  | past_due | keep Pro (grace) - or downgrade, your call |
-  | `expired`                     | `free` | canceled | Free |
+  | LS status                       | plan   | status   | entitlement |
+  |---------------------------------|--------|----------|-------------|
+  | `active`, `on_trial`            | `pro`  | active/trialing | Pro |
+  | `cancelled`, `past_due`, `unpaid`, `paused` | `pro` | canceled/past_due | Pro for up to 3 more days, then Free |
+  | `expired`                       | `free` | canceled | Free immediately |
 
-  `refreshPlan()` already grants Pro only when `plan==='pro'` AND `status` is in `{active,trialing}`, so a
-  strict reading downgrades `canceled`/`past_due` immediately. Decide whether we honor a grace window
-  (recommended: Pro until `current_period_end`) - I will set `current_period_end = ends_at ?? renews_at`
-  and adjust `refreshPlan()` to treat `canceled` as Pro while `current_period_end` is in the future.
+  **Grace = 3 days MAX** (founder decision). When a sub leaves active/on_trial, set
+  `current_period_end = min(ends_at ?? (now + 3 days), now + 3 days)` - i.e. capped at 3 days even if the
+  paid period runs longer. `refreshPlan()` is adjusted to grant Pro when `plan==='pro'` AND (`status` is
+  active/trialing OR `current_period_end` is in the future). `expired` sets `plan='free'` at once.
 - **Upsert**: `ls_customer_id = data.attributes.customer_id`, `ls_subscription_id = data.id`,
   `ls_variant_id = data.attributes.variant_id`, `ls_order_id = data.attributes.order_id`, via the
   service role (bypasses RLS), `Prefer: resolution=merge-duplicates`.
@@ -167,12 +165,13 @@ Today a guest who clicks Upgrade fails with "please sign in first" after the cli
 `user === null` when Upgrade is clicked, open `AuthModal` first, then continue to checkout on success.
 I will wire this in `UpgradeModal`.
 
-### 3f. Storage number - resolve before launch (decision needed)
+### 3f. Storage number - RESOLVED (20 GB, done Sep 23 2026)
 
-`plans.ts` enforces Pro = **20 GB** cloud media, but the marketing (`SubscriptionSuccess`, the
-"100 GB Storage" tour) says **100 GB**. These must agree. Tell me the real number and I align both the
-enforced limit and the copy. (Supabase free tier is 1 GB storage total, so 100 GB has a real backend
-cost - worth a deliberate choice.)
+Pro = **20 GB** everywhere. `plans.ts` already enforced 20 GB; the marketing copy that said "100 GB"
+(`SubscriptionSuccess` feature list, the `storage-reveal` tutorial: project name, counter target 0->20,
+group/template name + description, and the `App.tsx` tour project name) is now aligned to 20 GB. The
+`$29.99/mo` price label default is set in `checkout.ts` (`PRO_PRICE_LABEL`). This part shipped ahead of
+the rest of the LS build.
 
 ---
 
@@ -183,7 +182,7 @@ cost - worth a deliberate choice.)
    [LS test card](https://docs.lemonsqueezy.com/help/checkout/test-mode).
 3. Confirm the webhook fires (LS dashboard -> Webhooks -> recent deliveries = 200) and a `subscriptions`
    row appears with your `user_id`, `plan='pro'`, `status='active'`.
-4. Confirm the app flips to Pro (account badge, storage bar to 20/100 GB) after the redirect to
+4. Confirm the app flips to Pro (account badge, storage bar to 20 GB) after the redirect to
    `/subscription-success` (or a reload - see the "no realtime refresh" note).
 5. Cancel in LS -> confirm `subscription_updated`/`cancelled` arrives and entitlement behaves per the
    grace-window decision.
@@ -191,12 +190,16 @@ cost - worth a deliberate choice.)
 
 ---
 
-## Open decisions (answer these and I build Part 3)
+## Locked decisions (Sep 23 2026)
 
-1. **Storage**: is Pro 20 GB or 100 GB? (aligns `plans.ts` + all copy)
-2. **Grace window**: keep Pro until `current_period_end` on cancel/past_due (recommended), or downgrade
-   immediately?
-3. **Price**: keep `$12/mo`, or change? (must match the LS variant + `VITE_LEMON_PRICE_LABEL`)
+1. **Storage**: Pro = **20 GB** everywhere. DONE in code (see 3f).
+2. **Grace window**: **3 days max** after a sub leaves active/on_trial, then Free. Spec in 3b - built
+   with the rest of Part 3.
+3. **Price**: **$29.99/mo**. Label default DONE in `checkout.ts`; the LS variant must be created at this
+   price and `VITE_LEMON_PRICE_LABEL=$29.99/mo`.
+
+Remaining before I build Part 3 (3a-3e): you create the LS store/product/variant (Part 1) and share the
+checkout link + variant ID, so the webhook + checkout can be tested against a real product.
 
 Known limitation carried over from Paddle: plan refresh happens on sign-in + a short post-checkout poll,
 not via realtime. A webhook-driven upgrade shows up on next reload/re-login. A Supabase Realtime

@@ -7,7 +7,7 @@ import { usePanelStore } from '../store/panels';
 
 // Runs a Pro tutorial choreography once a project is open. Mounted in the editor. Sets the starter
 // editor, clears the scene, inserts the template (rebased to frame 0), and plays it - so the user
-// watches the template's own build-up (the storage stack rising + the counter tickering to 100 GB),
+// watches the template's own build-up (the storage stack rising + the counter tickering to 20 GB),
 // with no meta "agent assembling" show. Armed via useProTutorialStore from App's boot handler.
 
 const TEMPLATE: Record<ProTutorialKind, string> = { storage: 'storage-reveal' };

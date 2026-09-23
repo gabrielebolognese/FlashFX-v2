@@ -8,7 +8,7 @@ import { useAuthStore } from '../auth/store';
 //                               publishable key). Presence of this + the price id turns billing ON.
 //   VITE_PADDLE_PRICE_ID      - the "FlashFX Pro" recurring price id (pri_…).
 //   VITE_PADDLE_ENV           - 'sandbox' (default) or 'production'.
-//   VITE_PADDLE_PRICE_LABEL   - optional display price, e.g. '$12/mo'.
+//   VITE_PADDLE_PRICE_LABEL   - optional display price, e.g. '$29.99/mo'.
 // The webhook (supabase/functions/paddle-webhook) writes the subscription; refreshPlan() reads it.
 
 const PADDLE_TOKEN = import.meta.env.VITE_PADDLE_CLIENT_TOKEN as string | undefined;
@@ -19,7 +19,7 @@ const PADDLE_ENV = (import.meta.env.VITE_PADDLE_ENV as string | undefined) ?? 's
 export const BILLING_ENABLED: boolean = !!(PADDLE_TOKEN && PADDLE_PRICE_ID);
 
 /** Shown on the upgrade CTA. */
-export const PRO_PRICE_LABEL = (import.meta.env.VITE_PADDLE_PRICE_LABEL as string | undefined) ?? '$12/mo';
+export const PRO_PRICE_LABEL = (import.meta.env.VITE_PADDLE_PRICE_LABEL as string | undefined) ?? '$29.99/mo';
 
 export type CheckoutError = 'not-configured' | 'not-signed-in' | 'failed';
 export interface CheckoutResult { ok: boolean; error?: CheckoutError }
