@@ -3,6 +3,8 @@ import { Sparkles } from 'lucide-react';
 import { Modal } from '../ui/primitives/Modal';
 import { PLAN_LIMITS } from './plans';
 import { startCheckout, PRO_PRICE_LABEL } from './checkout';
+import { useAuthStore } from '../auth/store';
+import { AuthModal } from '../auth/AuthModal';
 
 function size(bytes: number): string {
   const gb = bytes / 1024 ** 3;
@@ -25,8 +27,13 @@ const ROWS: { label: string; free: string; pro: string }[] = [
 export function UpgradeModal({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [showAuth, setShowAuth] = useState(false);
+  const authEnabled = useAuthStore((s) => s.enabled);
 
   const upgrade = async () => {
+    // Guests can't pay (checkout needs a Supabase user to key the subscription). Rather than fail after
+    // the click, send them through sign-in first, then continue straight into checkout.
+    if (!useAuthStore.getState().user && authEnabled) { setShowAuth(true); return; }
     setBusy(true); setMsg(null);
     const res = await startCheckout();
     setBusy(false);
@@ -38,6 +45,13 @@ export function UpgradeModal({ onClose }: { onClose: () => void }) {
       );
     }
   };
+
+  const onAuthClose = () => {
+    setShowAuth(false);
+    if (useAuthStore.getState().user) void upgrade(); // signed in -> continue to checkout
+  };
+
+  if (showAuth) return <AuthModal onClose={onAuthClose} />;
 
   return (
     <Modal onClose={onClose} size="md" icon={<Sparkles size={16} />} title="Upgrade to Pro">

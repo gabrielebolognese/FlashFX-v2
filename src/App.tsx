@@ -760,7 +760,7 @@ function App() {
     catch { return false; }
   });
   // Hidden post-checkout landing (/subscription-success, or ?subscription=success). Reached only via
-  // the Paddle success redirect or a direct link - no nav points to it. Read once at boot.
+  // the Lemon Squeezy after-purchase redirect or a direct link - no nav points to it. Read once at boot.
   const [isSubscriptionSuccess] = useState(() => {
     try {
       const path = window.location.pathname.replace(/\/+$/, '');

@@ -4,11 +4,16 @@ How to switch FlashFX billing from the dormant Paddle integration to **Lemon Squ
 code plan to build once the LS product exists.
 
 **Decision (2026-09-23):** replace Paddle entirely. Paddle was never activated (no keys, no webhook
-secret, zero customers), so there is nothing to migrate. This doc is the setup checklist (Part 1-2, you
-do it) plus the implementation plan (Part 3, I build it after you confirm the LS product/variant IDs).
+secret, zero customers), so there is nothing to migrate.
 
-Replace `<PROJECT_REF>` with your Supabase ref (`bmqjuirylayevygjqxxj`) and `<STORE>` with your LS store
-subdomain throughout.
+**STATUS (2026-09-23): Part 3 code is BUILT and env-gated (Paddle removed).** The LS product exists:
+- Store: `flashfx.lemonsqueezy.com` - Product/Store ID `1382876` - Variant ID `2160425`
+- Checkout URL: `https://flashfx.lemonsqueezy.com/checkout/buy/a6be9a6a-56df-4756-91b7-9250c79a819d`
+- `VITE_LEMON_CHECKOUT_URL` is set in local `.env` (billing ON in dev). What remains for go-live is
+  server-side only: **deploy the function, set the signing secret, create the LS webhook** (the
+  "Go-live checklist" at the very bottom).
+
+Replace `<PROJECT_REF>` with your Supabase ref (`bmqjuirylayevygjqxxj`) throughout.
 
 ---
 
@@ -101,7 +106,7 @@ until you set this - exactly how Paddle behaves today.
 
 All env-gated, so it can land before go-live without exposing anything.
 
-### 3a. Migration - make `subscriptions` Lemon-shaped
+### 3a. Migration - make `subscriptions` Lemon-shaped (BUILT: `20260923120000_subscriptions_lemonsqueezy.sql`)
 
 New migration (timestamp later than `20260823100000_subscriptions.sql`), safe because the table has no
 rows yet:
@@ -115,7 +120,7 @@ alter table public.subscriptions add column if not exists ls_order_id        tex
 ```
 `user_id` / `plan` / `status` / `current_period_end` / RLS are unchanged.
 
-### 3b. New edge function `supabase/functions/lemon-webhook/index.ts`
+### 3b. New edge function `supabase/functions/lemon-webhook/index.ts` (BUILT)
 
 A rewrite of `paddle-webhook` (reuses its service-role PostgREST upsert; only verify + parse differ).
 
@@ -141,7 +146,7 @@ A rewrite of `paddle-webhook` (reuses its service-role PostgREST upsert; only ve
   `ls_variant_id = data.attributes.variant_id`, `ls_order_id = data.attributes.order_id`, via the
   service role (bypasses RLS), `Prefer: resolution=merge-duplicates`.
 
-### 3c. Rewrite `src/billing/checkout.ts` for Lemon.js
+### 3c. Rewrite `src/billing/checkout.ts` for Lemon.js (BUILT)
 
 - Load `https://assets.lemonsqueezy.com/lemon.js` (idempotent), call `createLemonSqueezy()`.
 - `startCheckout()`: require a signed-in user (unchanged guard -> `not-signed-in`). Build the URL:
@@ -154,12 +159,12 @@ A rewrite of `paddle-webhook` (reuses its service-role PostgREST upsert; only ve
   config); the webhook is the authoritative plan flip, the poll is just for snappy UI.
 - Swap env reads `VITE_PADDLE_*` -> `VITE_LEMON_*`; `BILLING_ENABLED = !!VITE_LEMON_CHECKOUT_URL`.
 
-### 3d. Remove Paddle
+### 3d. Remove Paddle (BUILT)
 
 Delete `supabase/functions/paddle-webhook/`, the `VITE_PADDLE_*` lines in `.env`/`.env.example`, and the
 Paddle-specific code paths in `checkout.ts`. Grep must return no `paddle` hits outside git history.
 
-### 3e. Funnel fix (small UX gap the audit found)
+### 3e. Funnel fix (small UX gap the audit found) (BUILT)
 
 Today a guest who clicks Upgrade fails with "please sign in first" after the click. Better: if
 `user === null` when Upgrade is clicked, open `AuthModal` first, then continue to checkout on success.
@@ -198,9 +203,35 @@ the rest of the LS build.
 3. **Price**: **$29.99/mo**. Label default DONE in `checkout.ts`; the LS variant must be created at this
    price and `VITE_LEMON_PRICE_LABEL=$29.99/mo`.
 
-Remaining before I build Part 3 (3a-3e): you create the LS store/product/variant (Part 1) and share the
-checkout link + variant ID, so the webhook + checkout can be tested against a real product.
+All three are DONE in code (commit lands with this doc). The LS product/variant now exist (see STATUS
+at top), so Part 3a-3e are built and env-gated.
 
 Known limitation carried over from Paddle: plan refresh happens on sign-in + a short post-checkout poll,
 not via realtime. A webhook-driven upgrade shows up on next reload/re-login. A Supabase Realtime
 subscription on the `subscriptions` row is a later polish if instant reflection matters.
+
+---
+
+## Go-live checklist (what remains - all server-side, no code)
+
+The client + webhook code is built and the checkout link is wired in `.env`. To make a real payment flip
+an account to Pro:
+
+1. **Push the migration** so `subscriptions` has the `ls_*` columns:
+   `supabase db push` (or apply `20260923120000_subscriptions_lemonsqueezy.sql` in the SQL editor).
+2. **Deploy the webhook** (no JWT - LS is not a Supabase user):
+   `supabase functions deploy lemon-webhook --no-verify-jwt`
+3. **Set the signing secret** (from LS Settings -> Webhooks; test and live differ):
+   `supabase secrets set LEMON_SQUEEZY_SIGNING_SECRET=<secret>`
+4. **Create the LS webhook** (Settings -> Webhooks -> Add):
+   - URL: `https://bmqjuirylayevygjqxxj.supabase.co/functions/v1/lemon-webhook`
+   - Signing secret: the same value as step 3.
+   - Events: `subscription_created`, `subscription_updated`, `subscription_cancelled`,
+     `subscription_expired`, `subscription_paused`, `subscription_unpaused`. (Payment events are ignored
+     by the function; the accompanying `subscription_updated` carries the authoritative status.)
+5. **Set the product's after-purchase redirect** to `.../subscription-success` (makes the celebration
+   page reachable; the overlay's `Checkout.Success` already polls the plan without it).
+6. **Test in LS test mode** with a test card, then repeat steps 3-4 for **live mode** (different secret).
+
+Until steps 1-4 are done, checkout opens and charges, but the app won't flip to Pro (no webhook writing
+the row). That is the expected env-gated state.
