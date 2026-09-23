@@ -48,6 +48,7 @@ import { AuthConfirm } from './auth/AuthConfirm';
 import { AccountSettingsModal } from './auth/AccountSettingsModal';
 import { AuthModal } from './auth/AuthModal';
 import { SaveReminderModal } from './auth/SaveReminderModal';
+import { SubscriptionSuccess } from './billing/SubscriptionSuccess';
 import { refreshPlan } from './billing/checkout';
 
 // The Animation Builder is a whole authoring mode whose toggle is hidden from the public UI
@@ -755,6 +756,14 @@ function App() {
     try { return new URLSearchParams(window.location.search).get('auth_confirm') === '1'; }
     catch { return false; }
   });
+  // Hidden post-checkout landing (/subscription-success, or ?subscription=success). Reached only via
+  // the Paddle success redirect or a direct link - no nav points to it. Read once at boot.
+  const [isSubscriptionSuccess] = useState(() => {
+    try {
+      const path = window.location.pathname.replace(/\/+$/, '');
+      return path === '/subscription-success' || new URLSearchParams(window.location.search).get('subscription') === 'success';
+    } catch { return false; }
+  });
 
   // Load the account's plan on sign-in (billing sets it later; stays 'free' until then).
   useEffect(() => {
@@ -790,6 +799,11 @@ function App() {
       localStorage.removeItem('ffx-default-video-format');
     }
   }, [onboardingStep, bgColor, shapeMode, contentType]);
+
+  // Post-checkout Pro celebration (hidden route). Shown before the auth gate so it lands cleanly.
+  if (isSubscriptionSuccess) {
+    return <SubscriptionSuccess />;
+  }
 
   // Email confirmation link → branded confirm screen (verifies the token, then continues into the app).
   if (isAuthConfirm) {
