@@ -792,6 +792,9 @@ function App() {
     let kind: string | null = null;
     try { kind = sessionStorage.getItem('ffx-pro-tour'); if (kind) sessionStorage.removeItem('ffx-pro-tour'); } catch { /* ignore */ }
     if (kind !== 'storage') return;
+    // A first-run onboarding must not hijack this reload and block the editor (which mounts ProTutorial).
+    try { localStorage.setItem('flashfx_onboarding_seen', 'true'); } catch { /* ignore */ }
+    useOnboardingStore.getState().complete();
     void (async () => {
       try {
         await useProjectStore.getState().createAndOpenProject({ name: '100 GB Storage', width: 1920, height: 1080, frameRate: 30, durationFrames: 360, videoFormat: 'long' });

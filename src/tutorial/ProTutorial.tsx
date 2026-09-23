@@ -22,15 +22,18 @@ export function ProTutorial() {
     if (!kind || !activeProjectId || ran.current) return;
     const templateId = TEMPLATE[kind];
     ran.current = true;
-    usePanelStore.getState().setUiMode('starter');
-    const ed = useEditorStore.getState();
-    ed.removeLayers(ed.composition.layers.map((l) => l.id));
-    const tl = useTimelineStore.getState();
-    tl.seekTo(0);                          // anchor so the template's keyframes rebase to frame 0
-    ed.insertAnimationTemplate(templateId);
-    tl.seekTo(0);
-    tl.play();
-    clear();
+    // Defer one frame so the freshly-opened editor is fully mounted before we build + play.
+    requestAnimationFrame(() => {
+      usePanelStore.getState().setUiMode('starter');
+      const ed = useEditorStore.getState();
+      ed.removeLayers(ed.composition.layers.map((l) => l.id));
+      const tl = useTimelineStore.getState();
+      tl.seekTo(0);                          // anchor so the template's keyframes rebase to frame 0
+      ed.insertAnimationTemplate(templateId);
+      tl.seekTo(0);
+      tl.play();
+      clear();
+    });
   }, [kind, activeProjectId, clear]);
 
   return null;
