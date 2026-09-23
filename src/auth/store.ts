@@ -56,16 +56,37 @@ export const useAuthStore = create<AuthState>((set) => ({
       set({ status: 'signed-out', enabled: false, user: null });
       return;
     }
+
+    // Resolve the initial session, but NEVER let a hung getSession() freeze the whole app on the auth
+    // loading gate. getSession() can hang indefinitely when the Supabase project is paused/down (it
+    // tries to refresh an expired token over the network) or when a stale Web Locks auth-token lock is
+    // held by a crashed tab. The app is local-first, so if the session doesn't resolve quickly we
+    // proceed signed-out; onAuthStateChange (or the late getSession result, if it finds a session)
+    // still upgrades to signed-in afterwards.
+    let settled = false;
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      set({ status: 'signed-out', user: null });
+    }, 4000);
+
     sb.auth
       .getSession()
       .then(({ data }) => {
-        set({ status: data.session ? 'signed-in' : 'signed-out', user: toAuthUser(data.session?.user) });
+        clearTimeout(timeout);
+        if (data.session) { settled = true; set({ status: 'signed-in', user: toAuthUser(data.session.user) }); }
+        else if (!settled) { settled = true; set({ status: 'signed-out', user: null }); }
       })
       .catch((e) => {
+        clearTimeout(timeout);
         captureError(e, { kind: 'auth-init' });
-        set({ status: 'signed-out' });
+        if (!settled) { settled = true; set({ status: 'signed-out', user: null }); }
       });
+
+    // A real auth event always wins, even after the timeout fallback fired.
     sb.auth.onAuthStateChange((_event, session) => {
+      clearTimeout(timeout);
+      settled = true;
       set({ status: session ? 'signed-in' : 'signed-out', user: toAuthUser(session?.user) });
     });
   },
