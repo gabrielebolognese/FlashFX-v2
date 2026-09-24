@@ -5,12 +5,15 @@ import './index.css';
 import { loadBundledFonts } from './engine/fonts';
 import { hydrateCustomFonts } from './engine/customFonts';
 import { installGlobalErrorHandlers, trackEvent } from './lib/telemetry';
+import { installTelemetrySinks } from './lib/telemetrySinks';
 import { RootErrorBoundary } from './ui/RootErrorBoundary';
 import { UnsupportedBrowser } from './ui/UnsupportedBrowser';
 import { useAuthStore } from './auth/store';
 
-// Route uncaught errors + unhandled promise rejections into telemetry before anything else runs.
+// Route uncaught errors + unhandled promise rejections into telemetry before anything else runs, and
+// activate real providers (Sentry/PostHog) if their env keys are set - inert/console-only otherwise.
 installGlobalErrorHandlers();
+installTelemetrySinks();
 
 const root = createRoot(document.getElementById('root')!);
 
