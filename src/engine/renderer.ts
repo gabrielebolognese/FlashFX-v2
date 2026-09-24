@@ -3902,12 +3902,18 @@ export class WebGPURenderer {
             videoTextureCache.uploadFrame(vidLayer.id, sourceFrame, videoFrame);
           } else {
             // Exact frame not decoded yet: show the freshest decoded frame <= target (drop-to-newest)
-            // instead of FREEZING on the last texture, then upgrade to the exact frame on a later tick.
+            // instead of FREEZING, then upgrade to exact on a later tick. During a SCRUB allow ANY
+            // distance so a far seek snaps to the nearest decoded keyframe (frameScheduler prefetches it)
+            // rather than holding the pre-jump frame; during playback keep the tight window so a miss
+            // never shows a stale frame.
+            const maxDist = frameScheduler.isScrubbingNow()
+              ? Number.MAX_SAFE_INTEGER
+              : WebGPURenderer.PRESENT_MAX_DISTANCE;
             const pick = frameScheduler.getPresentableFrame(
               video.assetId,
               sourceFrame,
               currentIdx < 0 ? null : currentIdx,
-              WebGPURenderer.PRESENT_MAX_DISTANCE
+              maxDist
             );
             if (pick && pick.index !== currentIdx) {
               videoTextureCache.uploadFrame(vidLayer.id, pick.index, pick.frame);

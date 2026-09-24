@@ -1,4 +1,4 @@
-import { Input, BlobSource, ALL_FORMATS, VideoSampleSink, type InputVideoTrack, type VideoSample } from 'mediabunny';
+import { Input, BlobSource, ALL_FORMATS, VideoSampleSink, EncodedPacketSink, type InputVideoTrack, type VideoSample } from 'mediabunny';
 import type { VideoMetadata } from './videoWorker.types';
 
 // mediabunny-backed video decode. Playback requests are served by a small pool of LONG-LIVED FORWARD
@@ -51,6 +51,7 @@ interface AssetCtl {
   cursors: Cursor[];
   reqSeq: number;
   frameCache: Map<number, ImageBitmap>; // recently-decoded frames (index -> bitmap), insertion-order LRU
+  packetSink: EncodedPacketSink | null;  // lazily created for keyframe lookup (getNearestKeyframeIndex)
 }
 
 class MediabunnyController {
@@ -99,12 +100,30 @@ class MediabunnyController {
 
     // optimizeForLatency shortens the decoder pipeline → faster seeks + fewer open frames.
     const sink = new VideoSampleSink(track, { optimizeForLatency: true });
-    this.assets.set(assetId, { assetId, input, track, sink, metadata, firstTs, fps, proxyScale: 1, cursors: [], reqSeq: 0, frameCache: new Map() });
+    this.assets.set(assetId, { assetId, input, track, sink, metadata, firstTs, fps, proxyScale: 1, cursors: [], reqSeq: 0, frameCache: new Map(), packetSink: null });
     return metadata;
   }
 
   getMetadata(assetId: string): VideoMetadata | null {
     return this.assets.get(assetId)?.metadata ?? null;
+  }
+
+  /** Source-frame index of the nearest key frame at or before `frameIndex` (for keyframe-snap on a far
+   *  seek: decoding a key frame is ~1 decode, vs walking the whole GOP to the exact frame). Read-only -
+   *  uses an EncodedPacketSink, no decode. Returns null if unavailable, so callers fail safe. */
+  async getNearestKeyframeIndex(assetId: string, frameIndex: number): Promise<number | null> {
+    const ctl = this.assets.get(assetId);
+    if (!ctl) return null;
+    if (!ctl.packetSink) ctl.packetSink = new EncodedPacketSink(ctl.track);
+    const i = Math.max(0, Math.min(Math.round(frameIndex), ctl.metadata.frameCount - 1));
+    try {
+      const pkt = await ctl.packetSink.getKeyPacket(this.timeForIndex(ctl, i));
+      if (!pkt) return null;
+      const k = Math.round((pkt.timestamp - ctl.firstTs) * ctl.fps);
+      return Math.max(0, Math.min(k, ctl.metadata.frameCount - 1));
+    } catch {
+      return null;
+    }
   }
 
   // Open a cursor at index i so its first yielded sample is frame i (samples(start) yields the sample

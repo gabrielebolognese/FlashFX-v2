@@ -308,6 +308,14 @@ class VideoDecoderPool {
     return this.workers.get(assetId)?.keyframes ?? [];
   }
 
+  /** Source-frame index of the nearest key frame at or before `frameIndex`, for keyframe-snap on a far
+   *  seek. Returns null when unavailable (animated images, legacy backend) so callers fail safe. */
+  async getNearestKeyframe(assetId: string, frameIndex: number): Promise<number | null> {
+    if (this.gifAssets.has(assetId)) return null;
+    if (USE_MEDIABUNNY) return mediabunnyController.getNearestKeyframeIndex(assetId, frameIndex);
+    return null;
+  }
+
   /** Set proxy decode scale for an asset. 1 = full, 0.5 = half. */
   setProxyMode(assetId: string, scale: number): void {
     if (this.gifAssets.has(assetId)) return; // no proxy scaling for animated images

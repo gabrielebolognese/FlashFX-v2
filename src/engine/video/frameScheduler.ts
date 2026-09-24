@@ -126,6 +126,18 @@ class FrameScheduler {
     // so this is a no-op once the frame is in flight.
     const entry = this.buffers.get(assetId)?.get(sourceFrame);
     if (!entry) this.prefetch();
+
+    // Keyframe-snap: while SCRUBBING, if the exact frame isn't ready yet, also decode the nearest key
+    // frame (~1 decode, vs walking the whole GOP to the exact frame). It lands in the buffer and the
+    // renderer shows it immediately via drop-to-newest (see the scrub-widened present distance) instead
+    // of freezing. Fire-and-forget; fails safe - a null keyframe or a legacy/GIF asset does nothing.
+    if (this.isScrubbing && !entry) {
+      void videoDecoderPool.getNearestKeyframe(assetId, sourceFrame).then((k) => {
+        if (k == null || k === sourceFrame) return;
+        const buf = this.buffers.get(assetId);
+        if (buf) this.requestDecode(assetId, buf, k);
+      });
+    }
   }
 
   registerAsset(assetId: string, layerId: string, frameRate: number, totalFrames: number): void {
@@ -311,34 +323,44 @@ class FrameScheduler {
       const framesToRequest = this.computeFramesToRequest(assetId, meta.frameCount);
 
       for (const frameIndex of framesToRequest) {
-        if (buffer.has(frameIndex)) continue;
-
-        buffer.set(frameIndex, 'in-flight');
-        videoDecoderPool.decodeFrame(assetId, frameIndex).then(
-          (frame) => {
-            const currentBuffer = this.buffers.get(assetId);
-            if (!currentBuffer || currentBuffer.get(frameIndex) !== 'in-flight') {
-              frame.close();
-              return;
-            }
-            const byteSize = this.estimateFrameSize(frame);
-            currentBuffer.set(frameIndex, { frame, byteSize });
-            this.totalMemoryUsage += byteSize;
-            // Bound OPEN frames per asset FIRST (keeps the decoder emitting), then
-            // the global byte budget as a cross-asset backstop.
-            this.enforceFrameCap(assetId);
-            this.enforceMemoryBudget();
-            this.onFrameReady?.();
-          },
-          () => {
-            const currentBuffer = this.buffers.get(assetId);
-            if (currentBuffer?.get(frameIndex) === 'in-flight') {
-              currentBuffer.delete(frameIndex);
-            }
-          }
-        );
+        this.requestDecode(assetId, buffer, frameIndex);
       }
     }
+  }
+
+  /** Decode + buffer one frame (in-flight-guarded, cap-enforced). Shared by prefetch + keyframe-snap. */
+  private requestDecode(assetId: string, buffer: Map<number, BufferEntry>, frameIndex: number): void {
+    if (buffer.has(frameIndex)) return;
+
+    buffer.set(frameIndex, 'in-flight');
+    videoDecoderPool.decodeFrame(assetId, frameIndex).then(
+      (frame) => {
+        const currentBuffer = this.buffers.get(assetId);
+        if (!currentBuffer || currentBuffer.get(frameIndex) !== 'in-flight') {
+          frame.close();
+          return;
+        }
+        const byteSize = this.estimateFrameSize(frame);
+        currentBuffer.set(frameIndex, { frame, byteSize });
+        this.totalMemoryUsage += byteSize;
+        // Bound OPEN frames per asset FIRST (keeps the decoder emitting), then
+        // the global byte budget as a cross-asset backstop.
+        this.enforceFrameCap(assetId);
+        this.enforceMemoryBudget();
+        this.onFrameReady?.();
+      },
+      () => {
+        const currentBuffer = this.buffers.get(assetId);
+        if (currentBuffer?.get(frameIndex) === 'in-flight') {
+          currentBuffer.delete(frameIndex);
+        }
+      }
+    );
+  }
+
+  /** True while the user is actively scrubbing (used by the renderer to widen drop-to-newest). */
+  isScrubbingNow(): boolean {
+    return this.isScrubbing;
   }
 
   private computeFramesToRequest(assetId: string, totalFrames: number): number[] {
