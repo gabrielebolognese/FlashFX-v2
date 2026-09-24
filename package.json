@@ -59,6 +59,7 @@
     "verify:cloud-sync": "node scripts/verify-cloudsync.mjs",
     "verify:plans": "node scripts/verify-plans.mjs",
     "verify:export-memory": "node scripts/verify-export-memory.mjs",
+    "verify:export-math": "node scripts/verify-export-math.mjs",
     "verify:load-resilience": "node scripts/verify-load-resilience.mjs",
     "verify:rangeselector": "node scripts/verify-rangeselector.mjs",
     "verify:textanimator": "node scripts/verify-textanimator.mjs",
