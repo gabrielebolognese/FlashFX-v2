@@ -1,5 +1,6 @@
 import { useRef } from 'react';
 import { useEditorStore } from '../../store/editor';
+import { requirePro } from '../../billing/upgradePrompt';
 import { useShapeToolStore, type ShapeToolType, type VectorToolType } from '../../store/shapeTool';
 import { useProjectStore } from '../../project-system/hooks/useProjectStore';
 import {
@@ -138,7 +139,7 @@ export function CanvasToolbar() {
         else if (tool.action.action === 'addPattern') addGenerativePatternLayer();
         else if (tool.action.action === 'addLightLeak') addVfxElement('warm-leak');
         else if (tool.action.action === 'addCloner') addCloner();
-        else if (tool.action.action === 'addCamera') addCameraLayer();
+        else if (tool.action.action === 'addCamera') { if (requirePro('3d')) addCameraLayer(); }
         else if (tool.action.action === 'addAdjustment') addAdjustmentLayer();
         else if (tool.action.action === 'addHBox') addLayoutObject('hbox');
         else if (tool.action.action === 'addVBox') addLayoutObject('vbox');

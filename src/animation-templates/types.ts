@@ -34,6 +34,9 @@ export interface AnimationTemplate {
   durationFrames: number;
   /** fps the keyframes were authored at (rebased/rescaled on insert). */
   authorFps: number;
+  /** Pro-only ("premium pack"). Omitted/false = free. Set true on curated premium templates; the
+   *  insert UI shows a Pro badge and routes free users to the upgrade prompt. */
+  premium?: boolean;
   /** Assemble the layers: fresh ids, parent-linked to a root group, 0-based keyframes. */
   build: (ctx: BuildCtx) => Layer[];
 }

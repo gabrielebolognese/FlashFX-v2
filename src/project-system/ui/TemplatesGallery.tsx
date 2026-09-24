@@ -4,6 +4,7 @@ import { ANIMATION_TEMPLATES, CATEGORY_LABELS } from '../../animation-templates/
 import type { AnimationTemplate } from '../../animation-templates/types';
 import { useProjectStore } from '../hooks/useProjectStore';
 import { launchAnimationTemplate } from '../../templates/launch';
+import { requirePro } from '../../billing/upgradePrompt';
 
 // Dashboard "Templates" tab: the animation-template library as project cards. "Start with this"
 // creates a NEW project seeded with that template and opens the editor (so it also lands in
@@ -30,6 +31,8 @@ export function TemplatesGallery() {
 
   const start = async (id: string) => {
     if (starting) return;
+    const tpl = ANIMATION_TEMPLATES.find((t) => t.id === id);
+    if (tpl?.premium && !requirePro('premium-pack')) return; // premium pack: route free users to upgrade
     setStarting(id);
     try {
       await launchAnimationTemplate(id);
@@ -101,6 +104,9 @@ function TemplateCard({ tpl, busy, disabled, onStart }: { tpl: AnimationTemplate
           <Film size={9} className="text-slate-200" />
           <span className="text-[8px] text-slate-200 font-medium uppercase tracking-wide">{seconds}s</span>
         </span>
+        {tpl.premium && (
+          <span className="absolute top-1.5 right-1.5 px-1.5 py-0.5 rounded bg-[#f7b500] text-[8px] font-bold text-[#0a0f16] uppercase tracking-wide">Pro</span>
+        )}
       </button>
 
       {/* Info + action */}

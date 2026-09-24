@@ -63,3 +63,20 @@ export const usePlanStore = create<PlanState>((set) => ({
 export function currentPlan(): Plan {
   return usePlanStore.getState().plan;
 }
+
+// ── Pro feature gates ──────────────────────────────────────────────────────
+// The Pro-only feature areas. Watermark-free export and all core editing stay FREE (founder decision).
+// Every gate is the same `plan === 'pro'` check today; kept as one predicate + one hook so the rule
+// lives in exactly one place. Gating is applied at USER-INITIATED UI actions (not at shared store
+// mutations), so free templates / AI output that legitimately use 3D or expressions still resolve.
+export type ProFeature = 'ai' | 'expressions' | '3d' | 'premium-pack';
+
+/** True when the plan may use Pro features. Non-hook (for store actions / event handlers). */
+export function isProPlan(plan: Plan = currentPlan()): boolean {
+  return plan === 'pro';
+}
+
+/** React selector: re-renders when the Pro entitlement changes (for disabled states / Pro badges). */
+export function useIsPro(): boolean {
+  return usePlanStore((s) => s.plan === 'pro');
+}

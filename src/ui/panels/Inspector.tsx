@@ -3,6 +3,7 @@ import { useInspectorStore, type InspectorTab } from '../../store/inspector';
 import { DEFAULT_SHADOW, DEFAULT_GLOW, DEFAULT_BLUR } from '../../core/effectDefaults';
 import { TextAnimatorsSection } from './TextAnimatorEditor';
 import { useEditorStore } from '../../store/editor';
+import { requirePro } from '../../billing/upgradePrompt';
 import { useTimelineStore } from '../../store/timeline';
 import { useMotionPathStore } from '../../store/motionPath';
 import { useMaskStore } from '../../store/mask';
@@ -467,7 +468,7 @@ function InspectorTabContent({ tab, layer }: { tab: InspectorTab; layer: Layer }
         {/* 2.5D - 3D layer switch. Off for groups (cameras render their own panel above). */}
         {layer.type !== 'group' && (
           <button
-            onClick={() => toggleLayer3D(layer.id)}
+            onClick={() => { if (layer.is3D || requirePro('3d')) toggleLayer3D(layer.id); }}
             title="Toggle 3D layer (adds Z position + X/Y/Z rotation)"
             className={`flex items-center gap-1.5 mb-1.5 px-2 py-1 rounded text-caption border transition-colors ${
               layer.is3D

@@ -24,7 +24,7 @@ try {
     entryPoints: ['src/billing/plans.ts'],
     outfile, bundle: true, format: 'esm', platform: 'neutral', logLevel: 'silent',
   });
-  const { PLAN_LIMITS, planLimits, mediaSyncAllowed, fitsMediaQuota, assetWithinLimit, currentPlan } =
+  const { PLAN_LIMITS, planLimits, mediaSyncAllowed, fitsMediaQuota, assetWithinLimit, currentPlan, isProPlan } =
     await import(pathToFileURL(outfile).href);
 
   check('free/pro limits are the agreed values', () => {
@@ -67,6 +67,12 @@ try {
   check('planLimits returns the right object', () => {
     assert.equal(planLimits('free').cloudMediaBytes, 500 * MB);
     assert.equal(planLimits('pro').maxAssetBytes, 1 * GB);
+  });
+
+  check('isProPlan gates Pro features (AI / expressions / 3D / premium packs)', () => {
+    assert.equal(isProPlan('pro'), true);
+    assert.equal(isProPlan('free'), false);
+    assert.equal(isProPlan(), false); // defaults to currentPlan() = free
   });
 
   console.log(`\nplans: all ${passed} checks passed`);

@@ -52,6 +52,7 @@ import { AuthModal } from './auth/AuthModal';
 import { SaveReminderModal } from './auth/SaveReminderModal';
 import { SubscriptionSuccess } from './billing/SubscriptionSuccess';
 import { refreshPlan } from './billing/checkout';
+import { UpgradeModalHost } from './billing/UpgradeModal';
 
 // The Animation Builder is a whole authoring mode whose toggle is hidden from the public UI
 // (workspace is effectively always 'editor'), so lazy-load it: its code stays out of the main
@@ -848,6 +849,8 @@ function App() {
       <ContextMenuRenderer />
       {/* Global so the dashboard footer + consent banner links work outside the editor too. */}
       <LegalModal />
+      {/* Global Pro upgrade prompt - opened by requirePro(...) from any gated action. */}
+      <UpgradeModalHost />
     </ContextMenuProvider>
   );
 }

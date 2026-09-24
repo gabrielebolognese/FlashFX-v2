@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import { useEditorStore } from '../../store/editor';
+import { requirePro } from '../../billing/upgradePrompt';
 import { useTimelineStore } from '../../store/timeline';
 import { useHistoryStore } from '../../store/history';
 import {
@@ -519,7 +520,7 @@ function AlignContent() {
         <section className="mt-4">
           <h3 className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold mb-2">3D</h3>
           <button
-            onClick={() => useEditorStore.getState().convertSelectionTo3D()}
+            onClick={() => { if (requirePro('3d')) useEditorStore.getState().convertSelectionTo3D(); }}
             disabled={noneToConvert}
             title={noneToConvert ? 'Every selected layer is already 3D (or can’t be 3D)' : 'Enable 3D on all selected layers so a camera can move through them'}
             className="w-full flex items-center justify-center gap-2 px-3 py-3 rounded-md border border-accent-dim bg-accent-wash text-accent font-semibold hover:bg-accent-wash hover:border-accent-dim active:bg-accent-wash transition duration-100 disabled:opacity-30 disabled:pointer-events-none"

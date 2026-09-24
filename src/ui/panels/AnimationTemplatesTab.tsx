@@ -4,6 +4,7 @@ import { useEditorStore } from '../../store/editor';
 import { useAgentBuildStore } from '../agent-build/agentBuildStore';
 import { ANIMATION_TEMPLATES, CATEGORY_LABELS } from '../../animation-templates/catalog';
 import type { TemplateCategory } from '../../animation-templates/types';
+import { requirePro } from '../../billing/upgradePrompt';
 
 // Phase-1 gallery: browse the animation templates and click "Use this" to drop a fully-keyframed
 // animation onto the timeline at the playhead. Static cards for now; live Canvas2D previews land in
@@ -74,11 +75,13 @@ export function AnimationTemplatesTab() {
             <div className="p-2">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-[12px] font-medium text-slate-100 truncate">{t.name}</span>
-                <span className="text-[9px] text-slate-500 uppercase tracking-wide flex-shrink-0">{CATEGORY_LABELS[t.category]}</span>
+                {t.premium
+                  ? <span className="text-[8px] font-bold text-[#f7b500] bg-[#f7b500]/15 rounded px-1 py-0.5 uppercase tracking-wide flex-shrink-0">Pro</span>
+                  : <span className="text-[9px] text-slate-500 uppercase tracking-wide flex-shrink-0">{CATEGORY_LABELS[t.category]}</span>}
               </div>
               <p className="mt-0.5 text-[10px] leading-snug text-slate-500 line-clamp-2">{t.description}</p>
               <button
-                onClick={() => insertAnimated(t.id)}
+                onClick={() => { if (t.premium && !requirePro('premium-pack')) return; insertAnimated(t.id); }}
                 disabled={building}
                 className="mt-2 w-full h-7 flex items-center justify-center gap-1 rounded bg-accent hover:bg-[#ffc21a] disabled:opacity-40 disabled:cursor-not-allowed text-on-accent text-[11px] font-semibold transition-colors"
               >

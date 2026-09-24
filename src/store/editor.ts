@@ -48,6 +48,7 @@ import { createMotionPath } from './motionPath';
 import { useHistoryStore, type Command } from './history';
 import { mediaAssetManager, type ImageAssetMetadata } from '../engine/media/assetManager';
 import { isAnimatedImage } from '../engine/video/imageDecoderController';
+import { isProPlan } from '../billing/plans';
 
 // After adding an image, prompt (non-modally) if it doesn't fit the canvas - offering fit-vs-keep.
 function maybePromptImageSize(layerId: string, meta: ImageAssetMetadata, canvasW: number, canvasH: number): void {
@@ -5182,7 +5183,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   insertAllAnimationTemplates: () => {
     const { composition, selection } = get();
-    if (ANIMATION_TEMPLATES.length === 0) return;
+    // Free users get the free templates only; premium packs are skipped (never handed out in bulk).
+    const templates = isProPlan() ? ANIMATION_TEMPLATES : ANIMATION_TEMPLATES.filter((t) => !t.premium);
+    if (templates.length === 0) return;
     const oldComp = composition;
     const oldSel = selection;
     const fps = composition.settings.frameRate;
@@ -5193,7 +5196,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     let working = composition;
     const allIds: string[] = [];
     let firstGroupId: string | null = null;
-    for (const tpl of ANIMATION_TEMPLATES) {
+    for (const tpl of templates) {
       const layers = instantiateAnimationTemplate(tpl, { playhead: start, frameRate: fps, center });
       for (const l of layers) {
         working = ensureLayerHasTrack({ ...working, layers: [...working.layers, l] }, l);

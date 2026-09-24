@@ -1,10 +1,20 @@
 import { useState } from 'react';
 import { Sparkles } from 'lucide-react';
 import { Modal } from '../ui/primitives/Modal';
-import { PLAN_LIMITS } from './plans';
+import { PLAN_LIMITS, type ProFeature } from './plans';
 import { startCheckout, PRO_PRICE_LABEL } from './checkout';
 import { useAuthStore } from '../auth/store';
 import { AuthModal } from '../auth/AuthModal';
+import { useUpgradePrompt } from './upgradePrompt';
+
+// A one-line intro tailored to the feature the user just tried to use (null = generic entry from the
+// account panel). Keeps the upsell specific to what they were reaching for.
+const FEATURE_INTRO: Record<ProFeature, string> = {
+  'ai': 'AI animation generation and editing is a Pro feature.',
+  'expressions': 'Expressions (code-driven animation) are a Pro feature.',
+  '3d': '3D cameras, depth and layers are a Pro feature.',
+  'premium-pack': 'This is a premium pack, included with Pro.',
+};
 
 function size(bytes: number): string {
   const gb = bytes / 1024 ** 3;
@@ -19,12 +29,13 @@ const ROWS: { label: string; free: string; pro: string }[] = [
   { label: 'Cloud project backup', free: 'Unlimited', pro: 'Unlimited' },
   { label: 'Cloud media sync', free: size(PLAN_LIMITS.free.cloudMediaBytes), pro: size(PLAN_LIMITS.pro.cloudMediaBytes) },
   { label: 'Max file size', free: size(PLAN_LIMITS.free.maxAssetBytes), pro: size(PLAN_LIMITS.pro.maxAssetBytes) },
-  { label: 'Export quality', free: '1080p', pro: '4K' },
-  { label: 'Watermark', free: 'Yes', pro: 'None' },
-  { label: 'AI generation', free: 'Your own key', pro: 'Included' },
+  { label: 'Watermark', free: 'None', pro: 'None' },
+  { label: 'AI generation', free: 'No', pro: 'Included' },
+  { label: 'Expressions & packs', free: 'No', pro: 'Included' },
+  { label: '3D camera & depth', free: 'No', pro: 'Included' },
 ];
 
-export function UpgradeModal({ onClose }: { onClose: () => void }) {
+export function UpgradeModal({ onClose, feature = null }: { onClose: () => void; feature?: ProFeature | null }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [showAuth, setShowAuth] = useState(false);
@@ -56,8 +67,13 @@ export function UpgradeModal({ onClose }: { onClose: () => void }) {
   return (
     <Modal onClose={onClose} size="md" icon={<Sparkles size={16} />} title="Upgrade to Pro">
       <div className="space-y-4">
+        {feature && (
+          <p className="rounded-md border border-[#f7b500]/25 bg-[#f7b500]/10 px-3 py-2 text-[12px] font-medium text-[#f7b500]">
+            {FEATURE_INTRO[feature]}
+          </p>
+        )}
         <p className="text-[12px] leading-relaxed text-slate-400">
-          Your work follows you everywhere - full media sync, bigger files, 4K exports, and AI included.
+          Go Pro for AI animation, expressions and premium packs, 3D camera and depth, and 20 GB of cloud storage.
         </p>
 
         <div className="overflow-hidden rounded-lg border border-hairline">
@@ -88,4 +104,14 @@ export function UpgradeModal({ onClose }: { onClose: () => void }) {
       </div>
     </Modal>
   );
+}
+
+/** Mounted once at the app root. Renders the UpgradeModal whenever any gated action calls
+ *  requirePro(...) / useUpgradePrompt.show(...), with copy tailored to the feature. */
+export function UpgradeModalHost() {
+  const open = useUpgradePrompt((s) => s.open);
+  const feature = useUpgradePrompt((s) => s.feature);
+  const close = useUpgradePrompt((s) => s.close);
+  if (!open) return null;
+  return <UpgradeModal feature={feature} onClose={close} />;
 }

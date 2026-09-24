@@ -1,13 +1,15 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import {
   Play, Trash2, ToggleLeft, ToggleRight, ChevronDown, ChevronRight,
-  AlertCircle, CheckCircle2, Zap, Clock,
+  AlertCircle, CheckCircle2, Zap, Clock, Lock,
 } from 'lucide-react';
 import type { Layer } from '../../../core/types';
 import { discoverProperties } from '../../../animation-builder/propertyDiscovery';
 import { useExpressionStore } from '../../../expressions/store';
 import { expressionManager } from '../../../expressions/manager';
 import type { ExpressionDef } from '../../../expressions/types';
+import { useIsPro } from '../../../billing/plans';
+import { useUpgradePrompt } from '../../../billing/upgradePrompt';
 
 const EMPTY_MAP = new Map<string, ExpressionDef>();
 
@@ -16,11 +18,16 @@ interface CodeTabProps {
 }
 
 export function CodeTab({ layer }: CodeTabProps) {
+  const isPro = useIsPro();
   const properties = useMemo(() => discoverProperties(layer), [layer]);
   const [selectedProp, setSelectedProp] = useState(properties[0]?.name ?? '');
   const layerExpressions = useExpressionStore((s) => s.expressions.get(layer.id) ?? EMPTY_MAP);
 
   const propNames = properties.map((p) => p.name);
+
+  // Expressions are Pro-only. Free users see a locked panel + upgrade CTA instead of the editor.
+  // (No store-level gate, so expressions inside free templates / AI output still run.)
+  if (!isPro) return <ExpressionsLocked />;
 
   return (
     <div className="flex flex-col gap-0 p-0 h-full">
@@ -36,6 +43,29 @@ export function CodeTab({ layer }: CodeTabProps) {
         onSelect={setSelectedProp}
       />
       <QuickReference />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Pro lock
+// ---------------------------------------------------------------------------
+
+function ExpressionsLocked() {
+  const show = useUpgradePrompt((s) => s.show);
+  return (
+    <div className="flex flex-col items-center justify-center gap-3 p-6 text-center">
+      <Lock size={22} className="text-[#f7b500]" />
+      <p className="text-[12px] font-medium text-slate-200">Expressions are a Pro feature</p>
+      <p className="text-[11px] leading-relaxed text-slate-500">
+        Drive any property with code - loops, wiggle, inertia, and links between layers.
+      </p>
+      <button
+        onClick={() => show('expressions')}
+        className="mt-1 rounded-md bg-[#f7b500] px-3 py-1.5 text-[12px] font-semibold text-[#0a0f16] transition-colors hover:bg-[#ffc83d]"
+      >
+        Upgrade to Pro
+      </button>
     </div>
   );
 }

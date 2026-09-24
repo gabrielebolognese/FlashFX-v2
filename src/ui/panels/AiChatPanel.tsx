@@ -6,6 +6,7 @@ import { useProjectStore } from '../../project-system/hooks/useProjectStore';
 import { useAiChatStore, EMPTY_CONVERSATION, convKey, type AiMsg } from '../../store/aiChat';
 import { useAiSettingsStore, isAiConfigured, makeAiClient } from '../../store/aiSettings';
 import { useIslandStore } from '../island/islandStore';
+import { requirePro } from '../../billing/upgradePrompt';
 
 // AI assistant, wired to the REAL pipeline (Director → Coder → assemble → auto-fix). A prompt
 // generates a whole scene and commits it as ONE undo step (Ctrl+Z reverts). The heavy engine (+zod
@@ -64,6 +65,7 @@ export function AiChatPanel() {
   const send = useCallback(async () => {
     const text = draft.trim();
     if (!text || generating) return;
+    if (!requirePro('ai')) return; // AI generation is Pro-only
     if (!configured) { setShowKey(true); return; }
     const client = makeAiClient({ apiKey, proxyUrl });
     if (!client) { setShowKey(true); return; }

@@ -14,6 +14,7 @@ import type { LucideIcon } from 'lucide-react';
 import type { MenuEntry } from './types';
 import type { Vec2, InterpolationType } from '../../core/types';
 import { useEditorStore, DEFAULT_PROXY_SCALE, type KeyframeTarget } from '../../store/editor';
+import { requirePro } from '../../billing/upgradePrompt';
 import { useTimelineStore } from '../../store/timeline';
 import { useGridStore } from '../../store/grid';
 import { useViewportNavStore } from '../../store/viewportNav';
@@ -891,8 +892,8 @@ export function buildMediaAssetMenu(assetType: 'image' | 'video' | 'audio', asse
       label: 'AI',
       icon: Wand2,
       items: [
-        item('remove-bg', 'Remove Background', () => useAiImageStore.getState().open(assetId, 'remove-bg'), Wand2),
-        item('upscale', 'Upscale (2×)', () => useAiImageStore.getState().open(assetId, 'upscale'), ZoomIn),
+        item('remove-bg', 'Remove Background', () => { if (requirePro('ai')) useAiImageStore.getState().open(assetId, 'remove-bg'); }, Wand2),
+        item('upscale', 'Upscale (2×)', () => { if (requirePro('ai')) useAiImageStore.getState().open(assetId, 'upscale'); }, ZoomIn),
         item('face-blur', 'Face Blur', () => useFaceBlurStore.getState().show(assetId), ShieldAlert),
         item('color-match', 'Color Match', () => useColorMatchStore.getState().show(assetId), Palette),
         item('cutout-shadow', 'Cutout + Shadow', () => useCutoutShadowStore.getState().show(assetId), Layers),
