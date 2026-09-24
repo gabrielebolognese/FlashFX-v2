@@ -1,5 +1,6 @@
 import { Input, BlobSource, ALL_FORMATS, VideoSampleSink, EncodedPacketSink, type InputVideoTrack, type VideoSample } from 'mediabunny';
 import type { VideoMetadata } from './videoWorker.types';
+import { cursorsToEvict } from './cursorBudget';
 
 // mediabunny-backed video decode. Playback requests are served by a small pool of LONG-LIVED FORWARD
 // iterators ("cursors"), NOT per-frame getSample(t): getSample spins up a fresh VideoDecoder and
@@ -22,6 +23,12 @@ const BACK_TOL = 1;           // frames a request may sit behind a cursor and st
 // instead of tearing the cursor down and re-walking the whole GOP. Frame content is deterministic per
 // (asset, source index), so caching by index is frame-pure. Kept tiny; bounded memory per asset.
 const FRAME_CACHE_SIZE = 4;
+// Global cap on open decode cursors across ALL assets (each holds one hardware VideoDecoder). Browsers
+// refuse new decoders past ~16, after which decodes error and frames go black - so with many video
+// assets we tear down the least-recently-used cursors to stay under this. Fail-open: an evicted cursor
+// reseeks on next use (the normal jump path), and the gen-supersede machinery tolerates tearing down a
+// cursor with an in-flight job (that decode just fails and is re-requested).
+const MAX_TOTAL_CURSORS = 12;
 
 /** Rejected when a newer request supersedes an in-flight pump; the scheduler drops it harmlessly. */
 class SupersededError extends Error {
@@ -35,8 +42,9 @@ interface Cursor {
   sample: VideoSample | null; // retained current frame, kept OPEN for continuity
   gen: number;                // seek-generation; bumped on reopen to supersede older pumps
   chain: Promise<unknown>;    // single-flight per cursor
-  lastSeq: number;            // for LRU cursor reuse
+  lastSeq: number;            // for LRU cursor reuse + eviction
   reopenTo: number | null;    // if set, the pump reopens the iterator at this index first
+  busy: boolean;              // true while runJob is pumping it - the cursor-budget won't evict it
 }
 
 interface AssetCtl {
@@ -175,6 +183,10 @@ class MediabunnyController {
       c.reopenTo = i;
     }
 
+    // Keep total open decoders under the budget (the cursor just routed has the max lastSeq, so it is
+    // never the one evicted). Cheap; runs off the just-set-up routing.
+    this.enforceCursorBudget();
+
     const myGen = c.gen;
     const cur = c;
     const job = cur.chain.then(() => this.runJob(ctl, cur, i, myGen));
@@ -207,9 +219,29 @@ class MediabunnyController {
     }
   }
 
+  // Keep the total open cursors across all assets under MAX_TOTAL_CURSORS by removing the globally
+  // least-recently-used ones (the just-acquired cursor has the highest lastSeq, so it's never evicted).
+  // Removed cursors close their iterator + retained sample; a later decode on that asset reopens (a
+  // normal reseek). Any in-flight job on a removed cursor fails and is re-requested by the scheduler.
+  private enforceCursorBudget(): void {
+    const open: { ctl: AssetCtl; c: Cursor }[] = [];
+    for (const ctl of this.assets.values()) {
+      for (const c of ctl.cursors) if (c.it && !c.busy) open.push({ ctl, c }); // never evict a cursor mid-pump
+    }
+    for (const idx of cursorsToEvict(open.map((o) => o.c.lastSeq), MAX_TOTAL_CURSORS)) {
+      const { ctl, c } = open[idx];
+      void c.it?.return().catch(() => {});
+      c.it = null;
+      c.sample?.close();
+      c.sample = null;
+      const at = ctl.cursors.indexOf(c);
+      if (at >= 0) ctl.cursors.splice(at, 1);
+    }
+  }
+
   private acquireCursor(ctl: AssetCtl, seq: number): Cursor {
     if (ctl.cursors.length < CURSOR_POOL_SIZE) {
-      const c: Cursor = { it: null, index: -1, targetIndex: -1, sample: null, gen: 0, chain: Promise.resolve(), lastSeq: seq, reopenTo: null };
+      const c: Cursor = { it: null, index: -1, targetIndex: -1, sample: null, gen: 0, chain: Promise.resolve(), lastSeq: seq, reopenTo: null, busy: false };
       ctl.cursors.push(c);
       return c;
     }
@@ -220,37 +252,42 @@ class MediabunnyController {
   }
 
   private async runJob(ctl: AssetCtl, c: Cursor, i: number, myGen: number): Promise<VideoFrame> {
-    if (myGen !== c.gen) {
-      if (c.sample) return c.sample.toVideoFrame();
-      throw new SupersededError();
-    }
-    // Reopen the iterator at a new position (jump).
-    if (c.reopenTo != null) {
-      if (c.it) { await c.it.return(); c.it = null; } // cheap decoder close (not a flush)
-      c.sample?.close();
-      c.sample = null;
-      c.it = ctl.sink.samples(this.timeForIndex(ctl, c.reopenTo));
-      c.index = -1;
-      c.reopenTo = null;
-    }
-    // Forward pump: advance until the retained sample IS frame i (each next() = one decode).
-    while (!c.sample || c.index < i) {
+    c.busy = true; // the cursor-budget won't evict a cursor while its pump is running
+    try {
       if (myGen !== c.gen) {
         if (c.sample) return c.sample.toVideoFrame();
         throw new SupersededError();
       }
-      const { value, done } = await c.it!.next();
-      if (done) break; // EOF - clamp to the last frame
-      if (c.sample && c.index < i) c.sample.close(); // drop a skipped intermediate
-      c.sample = value;
-      c.index = this.indexOf(ctl, value);
-      if (c.index >= i) break;
+      // Reopen the iterator at a new position (jump).
+      if (c.reopenTo != null) {
+        if (c.it) { await c.it.return(); c.it = null; } // cheap decoder close (not a flush)
+        c.sample?.close();
+        c.sample = null;
+        c.it = ctl.sink.samples(this.timeForIndex(ctl, c.reopenTo));
+        c.index = -1;
+        c.reopenTo = null;
+      }
+      // Forward pump: advance until the retained sample IS frame i (each next() = one decode).
+      while (!c.sample || c.index < i) {
+        if (myGen !== c.gen) {
+          if (c.sample) return c.sample.toVideoFrame();
+          throw new SupersededError();
+        }
+        const { value, done } = await c.it!.next();
+        if (done) break; // EOF - clamp to the last frame
+        if (c.sample && c.index < i) c.sample.close(); // drop a skipped intermediate
+        c.sample = value;
+        c.index = this.indexOf(ctl, value);
+        if (c.index >= i) break;
+      }
+      if (!c.sample) throw new Error(`mediabunny: no frame at index ${i}`);
+      // Populate the backward-scrub cache off the retained sample (async ImageBitmap copy, non-blocking).
+      this.cacheFrame(ctl, i, c.sample);
+      // Independent clone → the scheduler owns & closes it; the sample stays retained for continuity.
+      return c.sample.toVideoFrame();
+    } finally {
+      c.busy = false;
     }
-    if (!c.sample) throw new Error(`mediabunny: no frame at index ${i}`);
-    // Populate the backward-scrub cache off the retained sample (async ImageBitmap copy, non-blocking).
-    this.cacheFrame(ctl, i, c.sample);
-    // Independent clone → the scheduler owns & closes it; the sample stays retained for continuity.
-    return c.sample.toVideoFrame();
   }
 
   // Copy the just-decoded frame into the LRU as an ImageBitmap (off the retained sample, so it can't
