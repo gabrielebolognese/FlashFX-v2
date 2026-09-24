@@ -90,6 +90,13 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | B32 | Motion-design principle rigs - anticipation + follow-through/overshoot + squash & stretch + staggered offset as one-click keyframe rigs (harnessed, renders now) | ✅ | light |
 | B32-render | Echo / motion trails / smears - temporal ghosting (transform echo feasible at resolve-time via the cloner staggered-time path; pixel-accurate echo needs a GPU accumulation pass) | ⬜ (browser) | medium |
 | B32-secondary | Secondary motion (lag a child behind a parent) - bake the parent transform at frame-k into child keyframes; needs a cross-layer read (absent from ExpressionContext) + UI | ⬜ | medium |
+| PB1 | Playback: decoded-frame LRU on the mediabunny path (backward/oscillating scrubs hit the cache instead of re-walking the GOP) | ▶ **next** | medium |
+| PB2 | Playback: keyframe-snap-then-refine on far seeks + real half-res CanvasSink proxy (the 4K scrub-freeze fix) | ⬜ | heavy |
+| PB3 | Playback: frame-keyed resolve memoization / dirty-layer skip (the long-timeline CPU floor) | ⬜ | heavy |
+| PB4 | Playback: background all-intra/short-GOP proxy transcoded to OPFS (the definitive long-video seek fix) | ⬜ | heavy |
+| PB5 | Playback: adaptive prefetch + drop-to-newest everywhere + global decoder/cursor budget | ⬜ | medium |
+| PB6 | Playback: filmstrip/thumbnail decode lane separation + OPFS sprite-sheet cache | ⬜ | medium |
+| PB7 | Playback: range-stream URL/chunked assets + optional importExternalTexture zero-copy upload | ⬜ | medium |
 
 ---
 
@@ -344,4 +351,68 @@ Six deliverables; the four that are pure keyframe transforms shipped now (harnes
 
 ---
 
-**Plan complete: every B-batch is ✅ or a documented gated/skip row.** Remaining work is the browser-gated backlog (GPU/WGSL, Rapier-WASM sims, ML/FFT, video-decode, render-target passes): B10d, B10e, B11b-gpu, B11c-gpu, B12-gpu, B13-gpu, B14-gpu, B15-gpu, B16-gpu, B17-gpu, B21-sim, B23-render, B24-render, B25-rig, B27-track, B28-gpu, B29-video, B31-viz, B31-data, B32-render, B32-secondary. 3D batches (B18, B22, and B20's full-3D scope) are intentionally skipped (2.5D-only).
+**All B-batches (the After-Effects feature plan) are ✅ or a documented gated/skip row.** AE browser-gated backlog (GPU/WGSL, Rapier-WASM sims, ML/FFT, video-decode, render-target passes): B10d, B10e, B11b-gpu, B11c-gpu, B12-gpu, B13-gpu, B14-gpu, B15-gpu, B16-gpu, B17-gpu, B21-sim, B23-render, B24-render, B25-rig, B27-track, B28-gpu, B29-video, B31-viz, B31-data, B32-render, B32-secondary. 3D batches (B18, B22, and B20's full-3D scope) are intentionally skipped (2.5D-only).
+
+**The active queue is now the PB (playback performance) batches below** - `/next-batch` points at **PB1**.
+
+---
+
+## Playback performance batches (PB1-PB7)
+
+Source: the video/image playback perf audit ([`PLAYBACK-PERF-AUDIT.md`](./PLAYBACK-PERF-AUDIT.md), a 6-agent code+research audit). Batch 1 (the 6 quick wins - scrub coalescing, `retainOnly`, pattern/lottie stable textures, binary keyframe search, classic drop-to-newest) already SHIPPED (commit 404fb33); the deferred quick win + the structural/heavy fixes are queued here. These are the video **hot path** (browser-only WebGPU/WebCodecs), so most need a runtime eyeball the founder runs after each batch; verification is gates + any harnessable pure logic, then a manual browser scenario list. Frame-purity + the scheduler's open-frame cap (`MAX_OPEN_FRAMES_PER_ASSET`) are non-negotiable invariants for every one.
+
+### PB1 - Decoded-frame LRU on the mediabunny path ▶ **next**
+- **Delivers:** a small (3-4 entry) LRU of recently-decoded frames on the live mediabunny backend so backward / oscillating scrubs BEYOND the scheduler's 8-frame buffer hit the cache instead of tearing down the cursor and re-walking the whole GOP. Ports the legacy worker's 4-frame decoded cache (`videoWorker.ts:472-478`).
+- **Source:** PLAYBACK-PERF-AUDIT recommendation #2 (the deferred quick win).
+- **Depends on:** nothing (additive to `mediabunnyController`).
+- **Perf weight:** medium. **The real risk is VideoSample/VideoFrame lifecycle** (a close-while-in-use bug crashes playback) - build it with the browser open.
+- **Likely files:** `src/engine/video/mediabunnyController.ts` (cache keyed by exact source index, checked in `decodeFrame` routing before the jump decision; close on evict); reuse `src/engine/cache/lruCache.ts`.
+- **Verification:** gates green; manual browser: scrub backward + oscillate around a point on a long clip and confirm it's instant, no leaked/detached-frame errors in the console, memory stays flat.
+
+### PB2 - Keyframe-snap-then-refine + real half-res CanvasSink proxy
+- **Delivers:** (a) on a far seek/scrub present the nearest already-decodable keyframe INSTANTLY (one decode) while the exact frame decodes forward, refine on settle - kills the "freeze then snap"; expose keyframe positions (mediabunny `getKeyPacket`; today `getKeyframes` is stubbed to `[]`). (b) implement the real 0.5x downscale decode behind the already-wired `setProxyMode` (currently a no-op stub) via a mediabunny CanvasSink, full-res on settle.
+- **Source:** PLAYBACK-PERF-AUDIT #7 + #8 - together the 4K scrub-freeze fix.
+- **Depends on:** PB1 helps but not required.
+- **Perf weight:** heavy (browser). Note: a 0.5 decode-scale still walks the GOP, so #8 needs #7 to remove the freeze.
+- **Likely files:** `src/engine/video/mediabunnyController.ts` (CanvasSink proxy + `getKeyPacket`), `src/engine/video/videoDecoderPool.ts` (`getKeyframes`), `src/engine/video/frameScheduler.ts` (snap request on jump). The proxy activation plumbing (`activateProxyForLargeAssets`) is already wired.
+- **Verification:** gates; manual browser: far-seek a 4K long-GOP clip shows a frame within ~1 decode (no ~1s freeze); scrubbing 4K is smooth at reduced quality then sharpens on pause.
+
+### PB3 - Frame-keyed resolve memoization / dirty-layer skip
+- **Delivers:** memoize a layer's `ResolvedLayer` by `(layerId, frame)`, invalidated on edit, and skip re-resolving layers / static sub-comps unchanged since the last frame - so `resolveFrame` stops re-resolving the ENTIRE composition every played frame + every scrub sample. Precomps whose sub-comp is static across many parent frames benefit most.
+- **Source:** PLAYBACK-PERF-AUDIT #6/#13 - the long-TIMELINE CPU floor (many clips, dense keyframes, nested precomps).
+- **Depends on:** nothing; repurposes the existing RenderTree dirty-tracking (`renderTree.ts` `syncFromLayers` builds content signatures, currently discarded via `markAllClean`).
+- **Perf weight:** heavy, but mostly PURE CPU logic -> harnessable. Frame-purity is critical: the memo MUST be byte-identical to a fresh resolve (prove with a fuzz harness, like `verify:keyframe-search`).
+- **Likely files:** `src/core/interpolation.ts` (`resolveFrame`), `src/engine/cache/renderTree.ts`; new `scripts/verify-resolve-memo.mjs`.
+- **Verification:** new harness proving memoized == fresh resolve over random edits/frames; gates; manual browser: a long, keyframe-dense / precomp-heavy timeline scrubs without the per-frame CPU stall.
+
+### PB4 - Background all-intra / short-GOP proxy to OPFS
+- **Delivers:** on import, transcode originals in a background worker to a low-res, short-keyframe-interval (ideally all-intra) proxy so every seek is ~1 decode; edit against the proxy, relink to full-res only for export. Persist the proxy (+ filmstrip/waveform) to OPFS/IndexedDB so it survives reload.
+- **Source:** PLAYBACK-PERF-AUDIT #14 - the definitive long-video seek fix every desktop NLE ships.
+- **Depends on:** PB2 (proxy routing) conceptually; the `videoDecoderPool` facade already routes per-asset so a proxy source swaps behind it. mediabunny has the WebCodecs encoder/muxer; project-system already persists media to IndexedDB.
+- **Perf weight:** heavy (browser + worker). Mirror the existing per-import audio/thumbnail worker pattern.
+- **Likely files:** new proxy-transcode worker, `src/engine/media/assetManager.ts` (import hook + relink-for-export), `src/engine/video/videoDecoderPool.ts` (proxy vs original source), OPFS persistence in `project-system`.
+- **Verification:** gates; manual browser: import a long 4K clip, confirm background proxy generation + instant scrubbing once ready, correct full-res export, proxy survives reload.
+
+### PB5 - Adaptive prefetch + drop-to-newest everywhere + global decoder/cursor budget
+- **Delivers:** widen the prefetch lookahead when decodes are cheap (proxy/all-intra) and keep it narrow for 4K long-GOP, staying under `MAX_OPEN_FRAMES_PER_ASSET`; extend drop-to-newest presentation fully (batch-1 added the classic-path miss fallback); add a global decoder/cursor budget that tears down idle cursors (LRU) near the ~12-14 mark and sizes the per-asset cursor pool to layers-per-asset instead of a fixed 2.
+- **Source:** PLAYBACK-PERF-AUDIT #7(present)/#9/#10.
+- **Depends on:** PB2/PB4 (adaptive window benefits most once proxy exists).
+- **Perf weight:** medium (browser). Respect the open-frame-cap invariant in `frameScheduler.ts`.
+- **Likely files:** `src/engine/video/frameScheduler.ts`, `src/engine/video/mediabunnyController.ts` (cursor budget/sizing), `src/engine/video/videoDecoderPool.ts` (adapt the existing `MAX_ACTIVE_WORKERS` LRU as the global budget).
+- **Verification:** gates; manual browser: many-clip timeline doesn't hit black frames (decoder ceiling); 4K playback doesn't underrun.
+
+### PB6 - Filmstrip/thumbnail decode lane + OPFS sprite cache
+- **Delivers:** generate timeline thumbnails/filmstrips on a DEDICATED decode lane (not the playback cursor) via mediabunny `samplesAtTimestamps` / a CanvasSink at target size, snapped to keyframes, and persist packed sprite sheets to OPFS so they aren't re-decoded on reload - prevents the "thumbnail decode storm" starving playback on a long timeline.
+- **Source:** PLAYBACK-PERF-AUDIT #11.
+- **Depends on:** nothing; `thumbnailSheet.ts` (sprite packing) + `sceneDetect.ts` exist - confirm they use a dedicated decoder, not the playback cursor.
+- **Perf weight:** medium.
+- **Likely files:** thumbnail/filmstrip generation modules, `project-system` OPFS persistence.
+- **Verification:** gates; manual browser: scrubbing while a long timeline builds thumbnails stays smooth; thumbnails persist across reload.
+
+### PB7 - Range-stream URL/chunked assets + zero-copy texture upload
+- **Delivers:** (a) feed mediabunny a range-based streaming source for URL/Supabase/Drive assets instead of `fetch().blob()` (which buffers the whole file before frame 1), and lazy range-read >512MB chunked local assets instead of concatenating every chunk up front; (b) optional: draw PLAYING frames via `device.importExternalTexture` (zero-copy `texture_external`), reserving the pooled owned texture for the paused/effects/last-frame-hold case.
+- **Source:** PLAYBACK-PERF-AUDIT #12 + #15.
+- **Depends on:** nothing (local File imports already stream lazily via mediabunny `BlobSource` - extend that to URL/chunked).
+- **Perf weight:** medium (browser).
+- **Likely files:** `src/engine/video/mediabunnyController.ts` (source construction), `src/engine/media/assetManager.ts` (chunked reassembly), `src/engine/renderer.ts` + `src/engine/video/videoTextureCache.ts` (importExternalTexture hybrid path).
+- **Verification:** gates; manual browser: a long URL-hosted clip shows its first frame without a full-file download stall; playback uploads stay cheap at 4K.
