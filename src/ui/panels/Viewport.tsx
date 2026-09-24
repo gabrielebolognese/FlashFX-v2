@@ -41,6 +41,10 @@ export function Viewport() {
   const rendererRef = useRef<WebGPURenderer | null>(null);
 
   const composition = useEditorStore((s) => s.composition);
+  // Linked styles are a resolve input (getStyle read-through) that lives OUTSIDE `composition`, so the
+  // resolve-context effect below depends on it too - otherwise a style edit wouldn't refresh the
+  // TimelineEngine (and its per-frame resolve cache would go stale until the next composition change).
+  const styles = useEditorStore((s) => s.styles);
   const activeGroupId = useEditorStore((s) => s.activeGroupId);
   const selectLayer = useEditorStore((s) => s.selectLayer);
   const activeLayerId = useEditorStore((s) => s.selection.activeId);
@@ -177,7 +181,7 @@ export function Viewport() {
     playbackController.setFrameRate(composition.settings.frameRate);
     playbackController.setDuration(composition.settings.durationFrames);
     playbackController.renderCurrentFrame();
-  }, [composition]);
+  }, [composition, styles]);
 
   // Repaint whenever the font set changes (bundled faces finish loading, or a custom font is
   // imported/removed) so a static frame re-rasterizes with the real face.

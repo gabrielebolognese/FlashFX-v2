@@ -1,124 +1,92 @@
-// Acceptance harness for resolveFrame's structural cache (core/interpolation.ts).
-//
-// Proves the cache is correct: parenting/group data resolves through the cached
-// layer map, repeated resolves of a stable composition are identical (no cross-call
-// corruption), a track-only edit (same layers array, new tracks array) correctly
-// invalidates it, and distinct compositions don't share a cache entry.
-// Run: node scripts/verify-resolve-cache.mjs
+// Proves the TimelineEngine per-frame resolve cache (PB3) is correct: a cache HIT returns exactly what
+// a fresh resolveFrame() produces, and it is INVALIDATED whenever the composition or resolve context
+// changes (so an edit is never served a stale frame). Frame-purity is non-negotiable, so this is the
+// safety net for the memoization. Bundles the real TS with esbuild. Run: node scripts/verify-resolve-cache.mjs
 
 import { build } from 'esbuild';
 import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const tmp = mkdtempSync(join(tmpdir(), 'resolvecache-verify-'));
-const outfile = join(tmp, 'rc.mjs');
+const entry = join(tmp, 'entry.ts');
+const outfile = join(tmp, 'out.mjs');
+
+const SETTINGS = { width: 1920, height: 1080, frameRate: 30, durationFrames: 100, backgroundColor: [0, 0, 0, 1] };
 
 let passed = 0;
-function check(name, fn) {
-  fn();
-  passed++;
-  console.log(`  ✓ ${name}`);
+function check(name, fn) { fn(); passed++; console.log(`  [pass] ${name}`); }
+
+// Pull the resolved position of the first resolved layer (the renderer reads transform.positionX).
+function firstX(frame) {
+  const l = frame?.layers?.[0];
+  return l?.transform?.positionX;
 }
-const near = (a, b, eps = 1e-6) => Math.abs(a - b) <= eps;
-const SETTINGS = { width: 1920, height: 1080, frameRate: 30, durationFrames: 100, backgroundColor: [0, 0, 0, 1] };
-const track = (id, order, over = {}) => ({ id, name: id, type: 'shape', order, locked: false, visible: true, ...over });
-const has = (rf, id) => rf.layers.some((l) => l.id === id);
-const worldPos = (rf, id) => {
-  const l = rf.layers.find((x) => x.id === id);
-  return l ? [l.transform.positionX, l.transform.positionY] : null;
-};
 
 try {
-  await build({
-    stdin: {
-      contents: `
-        export { resolveFrame } from './src/core/interpolation';
-        export { createComposition, createRectangleLayer } from './src/core/factory';
-      `,
-      resolveDir: process.cwd(),
-      sourcefile: 'entry.ts',
-      loader: 'ts',
-    },
-    bundle: true, format: 'esm', platform: 'node', outfile, logLevel: 'silent',
-  });
+  writeFileSync(entry, `
+    export { createComposition, createRectangleLayer } from ${JSON.stringify(process.cwd() + '/src/core/factory')};
+    export { TimelineEngine } from ${JSON.stringify(process.cwd() + '/src/engine/timeline')};
+    export { resolveFrame } from ${JSON.stringify(process.cwd() + '/src/core/interpolation')};
+  `);
+  await build({ entryPoints: [entry], outfile, bundle: true, format: 'esm', platform: 'neutral', logLevel: 'silent' });
+  // interpolation -> expressions spawns a Web Worker at module load; Node has none. Stub it (mirrors verify-precomp).
   if (typeof globalThis.Worker === 'undefined') {
     globalThis.Worker = class { postMessage() {} terminate() {} addEventListener() {} removeEventListener() {} set onmessage(_v) {} set onerror(_v) {} };
   }
-  const { resolveFrame, createComposition, createRectangleLayer } = await import(pathToFileURL(outfile).href);
+  const { createComposition, createRectangleLayer, TimelineEngine, resolveFrame } = await import(pathToFileURL(outfile).href);
 
-  check('parenting resolves through the cached layer map', () => {
-    const comp = createComposition('c', { ...SETTINGS });
-    const parent = createRectangleLayer('p', 100, 100, 50, 50, [1, 0, 0, 1], 100);
-    const child = createRectangleLayer('ch', 30, 40, 20, 20, [0, 1, 0, 1], 100);
-    child.parentId = parent.id;
-    comp.layers = [parent, child];
-    // If the parent weren't found via the cached _layerById, the child would resolve
-    // at its local (30,40); parenting offsets it by the parent's (100,100).
-    const cp = worldPos(resolveFrame(comp, 0), child.id);
-    assert.ok(cp && near(cp[0], 130) && near(cp[1], 140), `child world ${cp}`);
+  const mkComp = (id, x) => {
+    const c = createComposition(id, { ...SETTINGS });
+    c.layers.push(createRectangleLayer('r', x, 100, 50, 50, [1, 0, 0, 1], 100));
+    return c;
+  };
+  const A = mkComp('A', 0);
+  const B = mkComp('B', 500);
+
+  check('resolveFrame is deterministic (prerequisite for caching)', () => {
+    assert.deepEqual(resolveFrame(A, 0, undefined), resolveFrame(A, 0, undefined));
+    assert.equal(firstX(resolveFrame(A, 0, undefined)), 0);
   });
 
-  check('repeated resolves of a stable composition are identical (cache hit, no corruption)', () => {
-    const comp = createComposition('c', { ...SETTINGS });
-    const parent = createRectangleLayer('p', 100, 100, 50, 50, [1, 0, 0, 1], 100);
-    const child = createRectangleLayer('ch', 30, 40, 20, 20, [0, 1, 0, 1], 100);
-    child.parentId = parent.id;
-    comp.layers = [parent, child];
-    const a = worldPos(resolveFrame(comp, 0), child.id);
-    const b = worldPos(resolveFrame(comp, 0), child.id);
-    const d = worldPos(resolveFrame(comp, 0), child.id);
-    assert.deepEqual(a, b);
-    assert.deepEqual(b, d);
+  check('a cache HIT returns the same object, byte-identical to a fresh resolve', () => {
+    const eng = new TimelineEngine();
+    eng.setComposition(A);
+    const r1 = eng.evaluate(0);
+    const r1again = eng.evaluate(0);
+    assert.ok(r1 === r1again, 'second evaluate(0) must return the cached object');
+    assert.deepEqual(r1, resolveFrame(A, 0, undefined), 'cached frame must equal a fresh resolve');
+    // distinct frames cache independently
+    const r10 = eng.evaluate(10);
+    assert.deepEqual(r10, resolveFrame(A, 10, undefined));
+    assert.ok(eng.evaluate(0) === r1, 'evaluate(0) still cached after evaluate(10)');
   });
 
-  check('track-only edit (same layers array, new tracks array) invalidates the cache — visibility', () => {
-    const comp = createComposition('c', { ...SETTINGS });
-    const r = createRectangleLayer('r', 10, 10, 20, 20, [1, 1, 1, 1], 100);
-    r.trackId = 't1';
-    comp.layers = [r];                 // stable layers array ref across both resolves
-    comp.tracks = [track('t1', 0)];    // visible
-    assert.ok(has(resolveFrame(comp, 0), r.id), 'visible before');
-    comp.tracks = [track('t1', 0, { visible: false })]; // NEW tracks array, layers untouched
-    assert.ok(!has(resolveFrame(comp, 0), r.id), 'hidden after (cache invalidated on tracksRef change)');
+  check('setComposition INVALIDATES the cache (no stale frame after an edit)', () => {
+    const eng = new TimelineEngine();
+    eng.setComposition(A);
+    const r1 = eng.evaluate(0);
+    assert.equal(firstX(r1), 0);
+    eng.setComposition(B); // an "edit": new composition reference
+    const r2 = eng.evaluate(0);
+    assert.ok(r2 !== r1, 'must re-resolve after setComposition, not serve the stale cache');
+    assert.equal(firstX(r2), 500, 'must reflect the NEW composition, not the cached old one');
+    assert.deepEqual(r2, resolveFrame(B, 0, undefined));
   });
 
-  check('track-only edit invalidates the cache — solo', () => {
-    const comp = createComposition('c', { ...SETTINGS });
-    const a = createRectangleLayer('a', 0, 0, 10, 10, [1, 1, 1, 1], 100); a.trackId = 't1';
-    const b = createRectangleLayer('b', 0, 0, 10, 10, [1, 1, 1, 1], 100); b.trackId = 't2';
-    comp.layers = [a, b];
-    comp.tracks = [track('t1', 0), track('t2', 1)];
-    const before = resolveFrame(comp, 0);
-    assert.ok(has(before, a.id) && has(before, b.id), 'both render before solo');
-    comp.tracks = [track('t1', 0, { solo: true }), track('t2', 1)]; // new array
-    const after = resolveFrame(comp, 0);
-    assert.ok(has(after, a.id) && !has(after, b.id), 'only the soloed track renders');
+  check('setResolveContext INVALIDATES the cache', () => {
+    const eng = new TimelineEngine();
+    eng.setComposition(A);
+    const r1 = eng.evaluate(0);
+    eng.setResolveContext(undefined);
+    const r2 = eng.evaluate(0);
+    assert.ok(r2 !== r1, 'must re-resolve after the resolve context changes');
+    assert.deepEqual(r2, resolveFrame(A, 0, undefined));
   });
 
-  check('distinct compositions do not share a cache entry (WeakMap keyed by layers)', () => {
-    const A = createComposition('A', { ...SETTINGS });
-    const pa = createRectangleLayer('pa', 100, 100, 10, 10, [1, 0, 0, 1], 100);
-    const ca = createRectangleLayer('ca', 5, 5, 10, 10, [0, 1, 0, 1], 100); ca.parentId = pa.id;
-    A.layers = [pa, ca];
-    const B = createComposition('B', { ...SETTINGS });
-    const pb = createRectangleLayer('pb', 300, 300, 10, 10, [1, 0, 0, 1], 100);
-    const cb = createRectangleLayer('cb', 7, 7, 10, 10, [0, 1, 0, 1], 100); cb.parentId = pb.id;
-    B.layers = [pb, cb];
-    const a1 = worldPos(resolveFrame(A, 0), ca.id);
-    const b1 = worldPos(resolveFrame(B, 0), cb.id);
-    const a2 = worldPos(resolveFrame(A, 0), ca.id); // A again after B
-    assert.ok(near(a1[0], 105) && near(a1[1], 105), `A child ${a1}`);
-    assert.ok(near(b1[0], 307) && near(b1[1], 307), `B child ${b1}`);
-    assert.deepEqual(a1, a2, 'A stable after resolving B (no cross-contamination)');
-  });
-
-  console.log(`\n✓ all ${passed} checks passed`);
-} catch (err) {
-  console.error(`\n✗ FAILED after ${passed} checks:\n`, err);
-  process.exitCode = 1;
+  console.log(`\nresolve-cache: all ${passed} checks passed`);
 } finally {
   rmSync(tmp, { recursive: true, force: true });
 }
