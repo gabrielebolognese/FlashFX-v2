@@ -91,7 +91,8 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | B32-render | Echo / motion trails / smears - temporal ghosting (transform echo feasible at resolve-time via the cloner staggered-time path; pixel-accurate echo needs a GPU accumulation pass) | ⬜ (browser) | medium |
 | B32-secondary | Secondary motion (lag a child behind a parent) - bake the parent transform at frame-k into child keyframes; needs a cross-layer read (absent from ExpressionContext) + UI | ⬜ | medium |
 | PB1 | Playback: decoded-frame LRU on the mediabunny path (backward/oscillating scrubs hit the cache instead of re-walking the GOP) | ✅ | medium |
-| PB2 | Playback: keyframe-snap-then-refine on far seeks + real half-res CanvasSink proxy (the 4K scrub-freeze fix) | ▶ **next** (browser) | heavy |
+| PB2a | Playback: keyframe-snap-then-refine on far seeks (kills the scrub freeze) | ✅ | medium |
+| PB2b | Playback: real half-res CanvasSink proxy (cuts 4K decode/upload cost during scrub) | ▶ **next** (browser) | heavy |
 | PB3 | Playback: frame-keyed resolve memoization (coarse whole-frame memo shipped; per-layer dirty-skip deferred) | ✅ | heavy |
 | PB4 | Playback: background all-intra/short-GOP proxy transcoded to OPFS (the definitive long-video seek fix) | ⬜ | heavy |
 | PB5 | Playback: adaptive prefetch + drop-to-newest everywhere + global decoder/cursor budget | ⬜ | medium |
@@ -369,14 +370,25 @@ Source: the video/image playback perf audit ([`PLAYBACK-PERF-AUDIT.md`](./PLAYBA
 - **Likely files:** `src/engine/video/mediabunnyController.ts` (cache keyed by exact source index, checked in `decodeFrame` routing before the jump decision; close on evict); reuse `src/engine/cache/lruCache.ts`.
 - **Verification:** gates green; manual browser: scrub backward + oscillate around a point on a long clip and confirm it's instant, no leaked/detached-frame errors in the console, memory stays flat.
 
-### PB2 - Keyframe-snap-then-refine + real half-res CanvasSink proxy ▶ **next** (browser-gated)
-**Build note:** deferred from the current no-browser sessions - both halves are new decode/render
-integration (a parallel CanvasSink decode cursor for the proxy; `getKeyPacket` + an async scheduler
-prefetch + present-distance tuning for the snap) that can't be proven bulletproof by gates alone and
-would ship unverified decode to the live app. Build it in a session where the founder can scrub-test
-each half. mediabunny 1.53 exposes the pieces: `CanvasSink({width,height,fit,poolSize})` (single-shot
-`getCanvas(t)` + `canvases()`/`canvasesAtTimestamps()` iterators) and `EncodedPacketSink.getKeyPacket(t)`
-(nearest key packet <= t). Likely a PB2a/PB2b split (proxy vs snap).
+### PB2a - Keyframe-snap-then-refine on far seeks ✅ (shipped c24b482; browser scrub-test owed)
+**Shipped:** on a far seek/scrub the nearest key frame is shown immediately (~1 decode) instead of
+freezing while the exact frame walks the GOP, then refined to exact. `mediabunnyController`
+`getNearestKeyframeIndex` (read-only `EncodedPacketSink.getKeyPacket`) -> `videoDecoderPool`
+`getNearestKeyframe` -> `frameScheduler` prefetches the key frame while scrubbing (shared `requestDecode`
+helper + `isScrubbingNow()`) -> the renderer's classic drop-to-newest miss branch (PB batch 1) uses an
+unbounded present distance WHILE SCRUBBING so the snapped keyframe shows (playback keeps the tight
+window). Fail-safe: falls back to holding the last frame if nothing suitable is buffered, playback
+untouched. Gates green; runtime verification is a founder scrub-test.
+
+### PB2b - Real half-res CanvasSink proxy ▶ **next** (browser-gated)
+**Build note:** implement the currently-stubbed `setProxyMode(0.5)` (mediabunnyController) with a
+mediabunny `CanvasSink({width,height})` so >1080p footage decodes+uploads at half-res during scrub and
+full-res on settle - cuts the ~33MB/frame 4K upload/convert/texture cost. This SWAPS the decode-return
+path (CanvasSink yields `WrappedCanvas`, not `VideoFrame`s - needs canvas->frame conversion + guarding
+the export/thumbnail paths off proxy), so it carries real regression risk and must be built with the
+browser open. Activation plumbing already works (`activateProxyForLargeAssets` calls `setProxyMode`).
+The legacy `videoWorker.ts` createImageBitmap-resize proxy is the reference. Note: proxy cuts pixel cost
+but NOT the GOP walk - PB2a (snap) already covers the freeze, so these compose.
 - **Delivers:** (a) on a far seek/scrub present the nearest already-decodable keyframe INSTANTLY (one decode) while the exact frame decodes forward, refine on settle - kills the "freeze then snap"; expose keyframe positions (mediabunny `getKeyPacket`; today `getKeyframes` is stubbed to `[]`). (b) implement the real 0.5x downscale decode behind the already-wired `setProxyMode` (currently a no-op stub) via a mediabunny CanvasSink, full-res on settle.
 - **Source:** PLAYBACK-PERF-AUDIT #7 + #8 - together the 4K scrub-freeze fix.
 - **Depends on:** PB1 helps but not required.
