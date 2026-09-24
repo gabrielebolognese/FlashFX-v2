@@ -147,7 +147,7 @@ class MediabunnyController {
     if (cachedBitmap) {
       ctl.frameCache.delete(i); ctl.frameCache.set(i, cachedBitmap); // touch -> most-recently-used
       try {
-        return new VideoFrame(cachedBitmap, { timestamp: Math.max(0, Math.round(this.timeForIndex(ctl, i) * 1_000_000)) });
+        return this.applyProxy(ctl, new VideoFrame(cachedBitmap, { timestamp: Math.max(0, Math.round(this.timeForIndex(ctl, i) * 1_000_000)) }));
       } catch {
         // Bitmap was closed mid-copy (a concurrent evict) or the ctor failed - fall through to decode.
       }
@@ -179,7 +179,32 @@ class MediabunnyController {
     const cur = c;
     const job = cur.chain.then(() => this.runJob(ctl, cur, i, myGen));
     cur.chain = job.catch(() => {}); // keep the chain alive across a failed/superseded job
-    return job;
+    return job.then((frame) => this.applyProxy(ctl, frame));
+  }
+
+  // Half-res (proxy) decode: when setProxyMode has dropped proxyScale below 1 (the scheduler does this
+  // for >1080p assets WHILE SCRUBBING), downscale the decoded frame so the upload/convert/texture cost
+  // is ~scale^2 of full-res (a 4K frame is ~33MB -> ~8MB at 0.5). WebCodecs always decodes at source
+  // resolution, so this is an upload-cost win (the legacy backend does the same via createImageBitmap
+  // resize); PB2a's keyframe-snap is what removes the freeze. The result is a VideoFrame built from the
+  // resized bitmap - same return type (no ripple), holds no decoder slot. FAIL-SAFE: any error returns
+  // the full-res frame, and it is a no-op (returns the frame untouched) during normal playback.
+  private async applyProxy(ctl: AssetCtl, frame: VideoFrame): Promise<VideoFrame> {
+    const scale = ctl.proxyScale;
+    if (!(scale > 0 && scale < 1)) return frame;
+    const w = Math.max(2, Math.round(frame.displayWidth * scale));
+    const h = Math.max(2, Math.round(frame.displayHeight * scale));
+    if (w >= frame.displayWidth || h >= frame.displayHeight) return frame; // not actually smaller
+    try {
+      const bm = await createImageBitmap(frame, { resizeWidth: w, resizeHeight: h, resizeQuality: 'low' });
+      const ts = frame.timestamp;
+      frame.close();
+      const scaled = new VideoFrame(bm, { timestamp: ts }); // ctor copies the bitmap's pixels
+      bm.close();
+      return scaled;
+    } catch {
+      return frame; // fall back to full-res on any failure
+    }
   }
 
   private acquireCursor(ctl: AssetCtl, seq: number): Cursor {
