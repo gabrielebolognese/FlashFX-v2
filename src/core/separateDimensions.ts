@@ -7,17 +7,32 @@ import { segmentProgress } from './keyframeEase';
 // SAME frames + easing (byte-identical motion the instant it separates); "merge" re-couples them by
 // sampling the current per-axis motion at the union of their frames.
 
+/**
+ * Index of the keyframe that STARTS the segment containing `frame`, via binary search. BYTE-IDENTICAL
+ * to the old linear "first i where kf[i].frame <= frame <= kf[i+1].frame" scan: it returns the largest
+ * i with `keyframes[i].frame < frame`, which is exactly the index that first-match scan selects
+ * (including picking the segment that ENDS at an exact interior keyframe), so downstream interpolation
+ * is unchanged. Preconditions: length >= 2 and keyframes[0].frame < frame < keyframes[last].frame -
+ * callers handle the empty/single/endpoint cases first. O(log n) instead of O(n) for dense curves.
+ */
+export function findSegmentIndex(keyframes: Keyframe[], frame: number): number {
+  let lo = 0, hi = keyframes.length - 1, ans = 0;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (keyframes[mid].frame < frame) { ans = mid; lo = mid + 1; } else { hi = mid - 1; }
+  }
+  return ans;
+}
+
 /** Evaluate one scalar keyframe list at a frame (holds before the first key; clamps to endpoints). */
 export function evalScalarKeyframes(keyframes: Keyframe[] | undefined, defaultValue: number, frame: number): number {
   if (!keyframes || keyframes.length === 0) return defaultValue;
   if (keyframes.length === 1) return frame < keyframes[0].frame ? defaultValue : (keyframes[0].value as number);
   if (frame <= keyframes[0].frame) return keyframes[0].value as number;
   if (frame >= keyframes[keyframes.length - 1].frame) return keyframes[keyframes.length - 1].value as number;
-  let prev = keyframes[0];
-  let next = keyframes[1];
-  for (let i = 0; i < keyframes.length - 1; i++) {
-    if (frame >= keyframes[i].frame && frame <= keyframes[i + 1].frame) { prev = keyframes[i]; next = keyframes[i + 1]; break; }
-  }
+  const i = findSegmentIndex(keyframes, frame);
+  const prev = keyframes[i];
+  const next = keyframes[i + 1];
   const dur = next.frame - prev.frame;
   const t = dur === 0 ? 0 : Math.min(1, Math.max(0, (frame - prev.frame) / dur));
   const from = prev.value as number;

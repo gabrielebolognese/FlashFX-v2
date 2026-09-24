@@ -43,6 +43,7 @@
     "verify:easing": "node scripts/verify-easing.mjs",
     "verify:spatial-path": "node scripts/verify-spatial-path.mjs",
     "verify:separate-dims": "node scripts/verify-separate-dims.mjs",
+    "verify:keyframe-search": "node scripts/verify-keyframe-search.mjs",
     "verify:shutter": "node scripts/verify-shutter.mjs",
     "verify:keyframe-assistants": "node scripts/verify-keyframe-assistants.mjs",
     "verify:time-remap": "node scripts/verify-time-remap.mjs",

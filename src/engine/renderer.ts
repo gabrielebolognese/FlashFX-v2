@@ -3857,6 +3857,13 @@ export class WebGPURenderer {
       device.queue.writeBuffer(textUniformBuffer, 0, textBufData, 0, UNIFORM_ALIGN * textLayers.length);
     }
 
+    // Free GPU textures for video layers no longer present this frame (the orphan-on-undo/load/
+    // precompose/split leak - each orphan is a full-res ~8-33 MB texture). Keep both the layer's key
+    // and its frame-blend ':fbw' companion (see tryFlowWarp) so an active blend layer isn't dropped.
+    const liveVideoIds = new Set<string>();
+    for (const v of videoLayers) { liveVideoIds.add(v.layer.id); liveVideoIds.add(`${v.layer.id}:fbw`); }
+    videoTextureCache.retainOnly(liveVideoIds);
+
     const videoBindGroups: (GPUBindGroup | null)[] = [];
     if (videoLayers.length > 0) {
       const videoBufData = new ArrayBuffer(IMAGE_UNIFORM_ALIGN * videoLayers.length);
@@ -3888,12 +3895,23 @@ export class WebGPURenderer {
             videoTextureCache.uploadFrame(vidLayer.id, pick.index, pick.frame);
           }
         } else if (currentIdx !== sourceFrame) {
-          // Classic path: request the EXACT source frame, hold last on a miss.
-          // Only upload when the texture doesn't already hold it - avoids a
-          // redundant GPU copy every render while paused.
+          // Classic path: request the EXACT source frame; only upload when the texture doesn't already
+          // hold it (avoids a redundant GPU copy every render while paused).
           const videoFrame = frameScheduler.getFrame(video.assetId, sourceFrame);
           if (videoFrame) {
             videoTextureCache.uploadFrame(vidLayer.id, sourceFrame, videoFrame);
+          } else {
+            // Exact frame not decoded yet: show the freshest decoded frame <= target (drop-to-newest)
+            // instead of FREEZING on the last texture, then upgrade to the exact frame on a later tick.
+            const pick = frameScheduler.getPresentableFrame(
+              video.assetId,
+              sourceFrame,
+              currentIdx < 0 ? null : currentIdx,
+              WebGPURenderer.PRESENT_MAX_DISTANCE
+            );
+            if (pick && pick.index !== currentIdx) {
+              videoTextureCache.uploadFrame(vidLayer.id, pick.index, pick.frame);
+            }
           }
         }
 
@@ -4014,7 +4032,10 @@ export class WebGPURenderer {
           bitmap = patCanvas;
           sourceWidth = pw;   // bounded texture → the image quad sizes to width×height × transform scale
           sourceHeight = ph;
-          textureKey = `__pattern_${imgLayer.id}_${gp.localFrame}_${pw}x${ph}`;
+          // STABLE per-layer key (re-uploaded in place each frame, like particles). Embedding localFrame
+          // minted a brand-new GPUTexture every frame into the unbounded imageTextures map -> VRAM growth
+          // -> device loss during pattern playback. A size change is handled by getOrCreateImageTexture.
+          textureKey = `__pattern_${imgLayer.id}`;
         } else if (imgLayer.layerType === 'lottieIcon' && imgLayer.lottieIcon) {
           const lottieCanvas = lottieRendererEngine.renderLottieFrame(imgLayer.id, imgLayer.lottieIcon);
           if (!lottieCanvas) {
@@ -4024,7 +4045,9 @@ export class WebGPURenderer {
           bitmap = lottieCanvas;
           sourceWidth = imgLayer.lottieIcon.sourceWidth || lottieCanvas.width;
           sourceHeight = imgLayer.lottieIcon.sourceHeight || lottieCanvas.height;
-          textureKey = `__lottie_${imgLayer.id}_${imgLayer.lottieIcon.localFrame}_${imgLayer.lottieIcon.color}`;
+          // STABLE per-layer key (re-uploaded in place each frame). localFrame+color in the key minted a
+          // new GPUTexture every frame into the unbounded map -> VRAM growth -> device loss.
+          textureKey = `__lottie_${imgLayer.id}`;
         } else if (imgLayer.layerType === 'precomp') {
           const view = precompViews.get(imgLayer.id);
           if (!view || !imgLayer.precomp) {
@@ -4840,7 +4863,10 @@ export class WebGPURenderer {
 
     let entry = this.imageTextures.get(assetId);
 
-    const isParticle = assetId.startsWith('__particle_');
+    // Animated generative layers (particle/pattern/lottie) use a STABLE per-layer key and must
+    // RE-UPLOAD their fresh canvas into the same texture every frame; a static image asset uploads once.
+    const reuploadEachFrame =
+      assetId.startsWith('__particle_') || assetId.startsWith('__pattern_') || assetId.startsWith('__lottie_');
 
     if (entry && (entry.width !== width || entry.height !== height)) {
       entry.texture.destroy();
@@ -4848,7 +4874,7 @@ export class WebGPURenderer {
       entry = undefined;
     }
 
-    if (!entry || isParticle) {
+    if (!entry || reuploadEachFrame) {
       if (!entry) {
         const texture = device.createTexture({
           size: { width, height },

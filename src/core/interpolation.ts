@@ -57,7 +57,7 @@ import type { ChildMeasurement } from '../layout/engine';
 import { computeContainerLayout } from '../layout/containerEngine';
 import { easeSegment, segmentProgress } from './keyframeEase';
 import { positionOnSegment } from './positionPath';
-import { evalScalarKeyframes } from './separateDimensions';
+import { evalScalarKeyframes, findSegmentIndex } from './separateDimensions';
 import { effectiveShutterAngle, shutterPhaseFraction } from './shutter';
 import { linearSourceSeconds, sourceFrameFromSeconds, frameBlendSplit } from './timeRemap';
 import { applyResolvedModifiers, evalPathKeyframes, repeaterTransforms, type ResolvedShapeModifier, type RepeaterCopy } from './shapeModifiers';
@@ -235,16 +235,11 @@ export function evaluateProperty(prop: AnimatableProperty, frame: number): numbe
   } else if (frame >= keyframes[keyframes.length - 1].frame) {
     keyframedValue = keyframes[keyframes.length - 1].value;
   } else {
-    let prevKf = keyframes[0];
-    let nextKf = keyframes[1];
-
-    for (let i = 0; i < keyframes.length - 1; i++) {
-      if (frame >= keyframes[i].frame && frame <= keyframes[i + 1].frame) {
-        prevKf = keyframes[i];
-        nextKf = keyframes[i + 1];
-        break;
-      }
-    }
+    // Binary search for the containing segment (byte-identical to the old linear first-match scan);
+    // O(log n) matters on densely-keyed properties on long timelines.
+    const segIdx = findSegmentIndex(keyframes, frame);
+    const prevKf = keyframes[segIdx];
+    const nextKf = keyframes[segIdx + 1];
 
     const duration = nextKf.frame - prevKf.frame;
     const t = duration === 0 ? 0 : clamp((frame - prevKf.frame) / duration, 0, 1);

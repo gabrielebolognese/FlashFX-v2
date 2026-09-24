@@ -28,6 +28,8 @@ export class PlaybackController {
   private behindSince = 0;
   private _isLagging = false;
   private repaintQueued = false;
+  private scrubQueued = false;
+  private scrubRafId = 0;
 
   constructor(engine: TimelineEngine) {
     this.engine = engine;
@@ -175,11 +177,20 @@ export class PlaybackController {
     const clamped = Math.max(0, Math.min(frame, this._durationFrames - 1));
     if (clamped === this._currentFrame) return;
     this._currentFrame = clamped;
-    frameScheduler.setPlaybackState(clamped, 0, true);
-
     if (this._isPlaying) this.anchorClock();
-    this.renderCurrentFrame();
-    this.notify();
+    this.notify(); // cheap: keep the playhead + time readout tracking the drag synchronously
+
+    // Coalesce the EXPENSIVE work (full-composition resolve + render + the exact-frame decode request)
+    // to ONE per animation frame. A fast drag fires mousemove faster than rAF and crosses several frames
+    // per event; only the newest position matters, so rendering every intermediate (each a full resolve
+    // + a full-GOP decode) just blocks the main thread and multiplies reseeks. Render the latest once.
+    if (this.scrubQueued) return;
+    this.scrubQueued = true;
+    this.scrubRafId = requestAnimationFrame(() => {
+      this.scrubQueued = false;
+      frameScheduler.setPlaybackState(this._currentFrame, 0, true);
+      this.renderCurrentFrame();
+    });
   }
 
   renderCurrentFrame(presentLatest = false): void {
@@ -274,6 +285,7 @@ export class PlaybackController {
 
   destroy(): void {
     cancelAnimationFrame(this.animFrameId);
+    cancelAnimationFrame(this.scrubRafId);
     this._isPlaying = false;
     this.listeners.clear();
     this.lagListeners.clear();
