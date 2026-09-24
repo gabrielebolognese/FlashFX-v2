@@ -91,8 +91,8 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | B32-render | Echo / motion trails / smears - temporal ghosting (transform echo feasible at resolve-time via the cloner staggered-time path; pixel-accurate echo needs a GPU accumulation pass) | ⬜ (browser) | medium |
 | B32-secondary | Secondary motion (lag a child behind a parent) - bake the parent transform at frame-k into child keyframes; needs a cross-layer read (absent from ExpressionContext) + UI | ⬜ | medium |
 | PB1 | Playback: decoded-frame LRU on the mediabunny path (backward/oscillating scrubs hit the cache instead of re-walking the GOP) | ✅ | medium |
-| PB2 | Playback: keyframe-snap-then-refine on far seeks + real half-res CanvasSink proxy (the 4K scrub-freeze fix) | ▶ **next** | heavy |
-| PB3 | Playback: frame-keyed resolve memoization / dirty-layer skip (the long-timeline CPU floor) | ⬜ | heavy |
+| PB2 | Playback: keyframe-snap-then-refine on far seeks + real half-res CanvasSink proxy (the 4K scrub-freeze fix) | ▶ **next** (browser) | heavy |
+| PB3 | Playback: frame-keyed resolve memoization (coarse whole-frame memo shipped; per-layer dirty-skip deferred) | ✅ | heavy |
 | PB4 | Playback: background all-intra/short-GOP proxy transcoded to OPFS (the definitive long-video seek fix) | ⬜ | heavy |
 | PB5 | Playback: adaptive prefetch + drop-to-newest everywhere + global decoder/cursor budget | ⬜ | medium |
 | PB6 | Playback: filmstrip/thumbnail decode lane separation + OPFS sprite-sheet cache | ⬜ | medium |
@@ -369,7 +369,14 @@ Source: the video/image playback perf audit ([`PLAYBACK-PERF-AUDIT.md`](./PLAYBA
 - **Likely files:** `src/engine/video/mediabunnyController.ts` (cache keyed by exact source index, checked in `decodeFrame` routing before the jump decision; close on evict); reuse `src/engine/cache/lruCache.ts`.
 - **Verification:** gates green; manual browser: scrub backward + oscillate around a point on a long clip and confirm it's instant, no leaked/detached-frame errors in the console, memory stays flat.
 
-### PB2 - Keyframe-snap-then-refine + real half-res CanvasSink proxy ▶ **next**
+### PB2 - Keyframe-snap-then-refine + real half-res CanvasSink proxy ▶ **next** (browser-gated)
+**Build note:** deferred from the current no-browser sessions - both halves are new decode/render
+integration (a parallel CanvasSink decode cursor for the proxy; `getKeyPacket` + an async scheduler
+prefetch + present-distance tuning for the snap) that can't be proven bulletproof by gates alone and
+would ship unverified decode to the live app. Build it in a session where the founder can scrub-test
+each half. mediabunny 1.53 exposes the pieces: `CanvasSink({width,height,fit,poolSize})` (single-shot
+`getCanvas(t)` + `canvases()`/`canvasesAtTimestamps()` iterators) and `EncodedPacketSink.getKeyPacket(t)`
+(nearest key packet <= t). Likely a PB2a/PB2b split (proxy vs snap).
 - **Delivers:** (a) on a far seek/scrub present the nearest already-decodable keyframe INSTANTLY (one decode) while the exact frame decodes forward, refine on settle - kills the "freeze then snap"; expose keyframe positions (mediabunny `getKeyPacket`; today `getKeyframes` is stubbed to `[]`). (b) implement the real 0.5x downscale decode behind the already-wired `setProxyMode` (currently a no-op stub) via a mediabunny CanvasSink, full-res on settle.
 - **Source:** PLAYBACK-PERF-AUDIT #7 + #8 - together the 4K scrub-freeze fix.
 - **Depends on:** PB1 helps but not required.
@@ -377,7 +384,14 @@ Source: the video/image playback perf audit ([`PLAYBACK-PERF-AUDIT.md`](./PLAYBA
 - **Likely files:** `src/engine/video/mediabunnyController.ts` (CanvasSink proxy + `getKeyPacket`), `src/engine/video/videoDecoderPool.ts` (`getKeyframes`), `src/engine/video/frameScheduler.ts` (snap request on jump). The proxy activation plumbing (`activateProxyForLargeAssets`) is already wired.
 - **Verification:** gates; manual browser: far-seek a 4K long-GOP clip shows a frame within ~1 decode (no ~1s freeze); scrubbing 4K is smooth at reduced quality then sharpens on pause.
 
-### PB3 - Frame-keyed resolve memoization / dirty-layer skip
+### PB3 - Frame-keyed resolve memoization ✅ (coarse whole-frame memo shipped 9601525; built ahead of PB2 as the safe-to-verify-blind batch)
+**Shipped:** `TimelineEngine` now memoizes resolved frames by frame number (`engine/timeline.ts`), cleared
+whenever `composition` or the resolve context changes (both replaced on every edit via the immutable
+store + the Viewport effect, which now also depends on `styles` - the one resolve input outside
+`composition`). Paused repaints, scrub revisits and loop playback become a map lookup instead of a full
+whole-composition re-resolve. Proven byte-identical + correctly-invalidated by `verify:resolve-cache`.
+**Deferred (finer):** the per-layer dirty-skip repurposing the renderTree dirty-set (a bigger change) -
+revisit only if profiling shows FIRST-pass resolve is still hot.
 - **Delivers:** memoize a layer's `ResolvedLayer` by `(layerId, frame)`, invalidated on edit, and skip re-resolving layers / static sub-comps unchanged since the last frame - so `resolveFrame` stops re-resolving the ENTIRE composition every played frame + every scrub sample. Precomps whose sub-comp is static across many parent frames benefit most.
 - **Source:** PLAYBACK-PERF-AUDIT #6/#13 - the long-TIMELINE CPU floor (many clips, dense keyframes, nested precomps).
 - **Depends on:** nothing; repurposes the existing RenderTree dirty-tracking (`renderTree.ts` `syncFromLayers` builds content signatures, currently discarded via `markAllClean`).
