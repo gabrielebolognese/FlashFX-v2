@@ -94,7 +94,8 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | PB2a | Playback: keyframe-snap-then-refine on far seeks (kills the scrub freeze) | ✅ | medium |
 | PB2b | Playback: real half-res proxy decode (cuts 4K upload/convert cost during scrub) | ✅ | heavy |
 | PB3 | Playback: frame-keyed resolve memoization (coarse whole-frame memo shipped; per-layer dirty-skip deferred) | ✅ | heavy |
-| PB4 | Playback: background all-intra/short-GOP proxy transcoded to OPFS (the definitive long-video seek fix) | ▶ **next** (browser) | heavy |
+| PB4a | Playback: proxy-planning policy (which footage gets a proxy; target dims + GOP) | ✅ | light |
+| PB4b | Playback: background WebCodecs transcode worker + OPFS persistence + decode routing (the definitive long-video seek fix) | ▶ **next** (browser) | heavy |
 | PB5 | Playback: adaptive prefetch + drop-to-newest everywhere + global decoder/cursor budget | ⬜ | medium |
 | PB6 | Playback: filmstrip/thumbnail decode lane separation + OPFS sprite-sheet cache | ⬜ | medium |
 | PB7 | Playback: range-stream URL/chunked assets + optional importExternalTexture zero-copy upload | ⬜ | medium |
@@ -412,7 +413,23 @@ revisit only if profiling shows FIRST-pass resolve is still hot.
 - **Likely files:** `src/core/interpolation.ts` (`resolveFrame`), `src/engine/cache/renderTree.ts`; new `scripts/verify-resolve-memo.mjs`.
 - **Verification:** new harness proving memoized == fresh resolve over random edits/frames; gates; manual browser: a long, keyframe-dense / precomp-heavy timeline scrubs without the per-frame CPU stall.
 
-### PB4 - Background all-intra / short-GOP proxy to OPFS
+### PB4a - Proxy-planning policy ✅ (shipped 2540bf6)
+**Shipped:** `src/engine/video/proxyPlan.ts` `planProxy(sourceMeta)` - pure policy deciding whether a
+source gets a low-res short-GOP proxy and its target dims/GOP: proxy for >1080p OR >60s footage,
+downscaled to <=1280 long edge (aspect-preserved, even), all-intra (keyframeInterval 1) for ~1-decode
+seeks; frame rate + count preserved (1:1 index mapping). Proven by `verify:proxy-plan` (5 checks).
+Unwired until PB4b imports it (the harness is the proof it's intentional).
+
+### PB4b - Background transcode worker + OPFS + decode routing ▶ **next** (browser-gated)
+**Build note:** the browser core of PB4 and the highest-risk item in the queue - a WHOLE new subsystem
+(an import-time WebCodecs decode->encode->mux transcode worker producing the proxy per `planProxy`, OPFS
+persistence keyed by asset, decode routing that uses the proxy for preview + the ORIGINAL for export,
+and reload relink). No clean fail-safe and all real WebCodecs-encode + OPFS I/O that gates cannot verify,
+so it MUST be built with the browser in the loop, and it will likely split further (worker / OPFS /
+routing). Design it fail-open: playback uses the proxy only if present + valid, else the original
+(today's behavior); export never uses the proxy.
+
+### PB4 - Background all-intra / short-GOP proxy to OPFS (original combined spec, now PB4a+PB4b)
 - **Delivers:** on import, transcode originals in a background worker to a low-res, short-keyframe-interval (ideally all-intra) proxy so every seek is ~1 decode; edit against the proxy, relink to full-res only for export. Persist the proxy (+ filmstrip/waveform) to OPFS/IndexedDB so it survives reload.
 - **Source:** PLAYBACK-PERF-AUDIT #14 - the definitive long-video seek fix every desktop NLE ships.
 - **Depends on:** PB2 (proxy routing) conceptually; the `videoDecoderPool` facade already routes per-asset so a proxy source swaps behind it. mediabunny has the WebCodecs encoder/muxer; project-system already persists media to IndexedDB.
