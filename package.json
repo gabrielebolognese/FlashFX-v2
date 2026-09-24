@@ -45,6 +45,7 @@
     "verify:separate-dims": "node scripts/verify-separate-dims.mjs",
     "verify:keyframe-search": "node scripts/verify-keyframe-search.mjs",
     "verify:resolve-cache": "node scripts/verify-resolve-cache.mjs",
+    "verify:proxy-plan": "node scripts/verify-proxy-plan.mjs",
     "verify:shutter": "node scripts/verify-shutter.mjs",
     "verify:keyframe-assistants": "node scripts/verify-keyframe-assistants.mjs",
     "verify:time-remap": "node scripts/verify-time-remap.mjs",
