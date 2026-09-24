@@ -90,8 +90,8 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | B32 | Motion-design principle rigs - anticipation + follow-through/overshoot + squash & stretch + staggered offset as one-click keyframe rigs (harnessed, renders now) | ✅ | light |
 | B32-render | Echo / motion trails / smears - temporal ghosting (transform echo feasible at resolve-time via the cloner staggered-time path; pixel-accurate echo needs a GPU accumulation pass) | ⬜ (browser) | medium |
 | B32-secondary | Secondary motion (lag a child behind a parent) - bake the parent transform at frame-k into child keyframes; needs a cross-layer read (absent from ExpressionContext) + UI | ⬜ | medium |
-| PB1 | Playback: decoded-frame LRU on the mediabunny path (backward/oscillating scrubs hit the cache instead of re-walking the GOP) | ▶ **next** | medium |
-| PB2 | Playback: keyframe-snap-then-refine on far seeks + real half-res CanvasSink proxy (the 4K scrub-freeze fix) | ⬜ | heavy |
+| PB1 | Playback: decoded-frame LRU on the mediabunny path (backward/oscillating scrubs hit the cache instead of re-walking the GOP) | ✅ | medium |
+| PB2 | Playback: keyframe-snap-then-refine on far seeks + real half-res CanvasSink proxy (the 4K scrub-freeze fix) | ▶ **next** | heavy |
 | PB3 | Playback: frame-keyed resolve memoization / dirty-layer skip (the long-timeline CPU floor) | ⬜ | heavy |
 | PB4 | Playback: background all-intra/short-GOP proxy transcoded to OPFS (the definitive long-video seek fix) | ⬜ | heavy |
 | PB5 | Playback: adaptive prefetch + drop-to-newest everywhere + global decoder/cursor budget | ⬜ | medium |
@@ -361,7 +361,7 @@ Six deliverables; the four that are pure keyframe transforms shipped now (harnes
 
 Source: the video/image playback perf audit ([`PLAYBACK-PERF-AUDIT.md`](./PLAYBACK-PERF-AUDIT.md), a 6-agent code+research audit). Batch 1 (the 6 quick wins - scrub coalescing, `retainOnly`, pattern/lottie stable textures, binary keyframe search, classic drop-to-newest) already SHIPPED (commit 404fb33); the deferred quick win + the structural/heavy fixes are queued here. These are the video **hot path** (browser-only WebGPU/WebCodecs), so most need a runtime eyeball the founder runs after each batch; verification is gates + any harnessable pure logic, then a manual browser scenario list. Frame-purity + the scheduler's open-frame cap (`MAX_OPEN_FRAMES_PER_ASSET`) are non-negotiable invariants for every one.
 
-### PB1 - Decoded-frame LRU on the mediabunny path ▶ **next**
+### PB1 - Decoded-frame LRU on the mediabunny path ✅ (shipped da346d9; browser scrub-test owed)
 - **Delivers:** a small (3-4 entry) LRU of recently-decoded frames on the live mediabunny backend so backward / oscillating scrubs BEYOND the scheduler's 8-frame buffer hit the cache instead of tearing down the cursor and re-walking the whole GOP. Ports the legacy worker's 4-frame decoded cache (`videoWorker.ts:472-478`).
 - **Source:** PLAYBACK-PERF-AUDIT recommendation #2 (the deferred quick win).
 - **Depends on:** nothing (additive to `mediabunnyController`).
@@ -369,7 +369,7 @@ Source: the video/image playback perf audit ([`PLAYBACK-PERF-AUDIT.md`](./PLAYBA
 - **Likely files:** `src/engine/video/mediabunnyController.ts` (cache keyed by exact source index, checked in `decodeFrame` routing before the jump decision; close on evict); reuse `src/engine/cache/lruCache.ts`.
 - **Verification:** gates green; manual browser: scrub backward + oscillate around a point on a long clip and confirm it's instant, no leaked/detached-frame errors in the console, memory stays flat.
 
-### PB2 - Keyframe-snap-then-refine + real half-res CanvasSink proxy
+### PB2 - Keyframe-snap-then-refine + real half-res CanvasSink proxy ▶ **next**
 - **Delivers:** (a) on a far seek/scrub present the nearest already-decodable keyframe INSTANTLY (one decode) while the exact frame decodes forward, refine on settle - kills the "freeze then snap"; expose keyframe positions (mediabunny `getKeyPacket`; today `getKeyframes` is stubbed to `[]`). (b) implement the real 0.5x downscale decode behind the already-wired `setProxyMode` (currently a no-op stub) via a mediabunny CanvasSink, full-res on settle.
 - **Source:** PLAYBACK-PERF-AUDIT #7 + #8 - together the 4K scrub-freeze fix.
 - **Depends on:** PB1 helps but not required.
