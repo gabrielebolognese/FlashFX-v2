@@ -92,9 +92,9 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | B32-secondary | Secondary motion (lag a child behind a parent) - bake the parent transform at frame-k into child keyframes; needs a cross-layer read (absent from ExpressionContext) + UI | ⬜ | medium |
 | PB1 | Playback: decoded-frame LRU on the mediabunny path (backward/oscillating scrubs hit the cache instead of re-walking the GOP) | ✅ | medium |
 | PB2a | Playback: keyframe-snap-then-refine on far seeks (kills the scrub freeze) | ✅ | medium |
-| PB2b | Playback: real half-res CanvasSink proxy (cuts 4K decode/upload cost during scrub) | ▶ **next** (browser) | heavy |
+| PB2b | Playback: real half-res proxy decode (cuts 4K upload/convert cost during scrub) | ✅ | heavy |
 | PB3 | Playback: frame-keyed resolve memoization (coarse whole-frame memo shipped; per-layer dirty-skip deferred) | ✅ | heavy |
-| PB4 | Playback: background all-intra/short-GOP proxy transcoded to OPFS (the definitive long-video seek fix) | ⬜ | heavy |
+| PB4 | Playback: background all-intra/short-GOP proxy transcoded to OPFS (the definitive long-video seek fix) | ▶ **next** (browser) | heavy |
 | PB5 | Playback: adaptive prefetch + drop-to-newest everywhere + global decoder/cursor budget | ⬜ | medium |
 | PB6 | Playback: filmstrip/thumbnail decode lane separation + OPFS sprite-sheet cache | ⬜ | medium |
 | PB7 | Playback: range-stream URL/chunked assets + optional importExternalTexture zero-copy upload | ⬜ | medium |
@@ -380,15 +380,16 @@ unbounded present distance WHILE SCRUBBING so the snapped keyframe shows (playba
 window). Fail-safe: falls back to holding the last frame if nothing suitable is buffered, playback
 untouched. Gates green; runtime verification is a founder scrub-test.
 
-### PB2b - Real half-res CanvasSink proxy ▶ **next** (browser-gated)
-**Build note:** implement the currently-stubbed `setProxyMode(0.5)` (mediabunnyController) with a
-mediabunny `CanvasSink({width,height})` so >1080p footage decodes+uploads at half-res during scrub and
-full-res on settle - cuts the ~33MB/frame 4K upload/convert/texture cost. This SWAPS the decode-return
-path (CanvasSink yields `WrappedCanvas`, not `VideoFrame`s - needs canvas->frame conversion + guarding
-the export/thumbnail paths off proxy), so it carries real regression risk and must be built with the
-browser open. Activation plumbing already works (`activateProxyForLargeAssets` calls `setProxyMode`).
-The legacy `videoWorker.ts` createImageBitmap-resize proxy is the reference. Note: proxy cuts pixel cost
-but NOT the GOP walk - PB2a (snap) already covers the freeze, so these compose.
+### PB2b - Real half-res proxy decode ✅ (shipped dc27ca8; browser scrub-test owed)
+**Shipped:** `mediabunnyController.applyProxy` downscales the decoded frame via
+`createImageBitmap({resizeWidth,resizeHeight})` when `proxyScale < 1` (the scheduler sets 0.5 for >1080p
+assets while scrubbing), cutting the ~33MB/frame 4K upload/convert/texture cost to ~scale^2. **Scope
+refinement:** used the legacy createImageBitmap-resize approach rather than a parallel CanvasSink decode
+cursor - far less surface, same win, and decodeFrame keeps returning a `VideoFrame` (built from the
+resized bitmap, no decoder slot) so no return-type ripple. Fail-safe: no-op during normal playback
+(proxyScale === 1), any error returns full-res; export uses a separate full-res path. Gates green;
+runtime verification is a founder scrub-test. (Proxy cuts pixel cost, not the GOP walk - PB2a already
+covers the freeze.)
 - **Delivers:** (a) on a far seek/scrub present the nearest already-decodable keyframe INSTANTLY (one decode) while the exact frame decodes forward, refine on settle - kills the "freeze then snap"; expose keyframe positions (mediabunny `getKeyPacket`; today `getKeyframes` is stubbed to `[]`). (b) implement the real 0.5x downscale decode behind the already-wired `setProxyMode` (currently a no-op stub) via a mediabunny CanvasSink, full-res on settle.
 - **Source:** PLAYBACK-PERF-AUDIT #7 + #8 - together the 4K scrub-freeze fix.
 - **Depends on:** PB1 helps but not required.
