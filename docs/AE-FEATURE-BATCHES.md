@@ -95,7 +95,8 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | PB2b | Playback: real half-res proxy decode (cuts 4K upload/convert cost during scrub) | ✅ | heavy |
 | PB3 | Playback: frame-keyed resolve memoization (coarse whole-frame memo shipped; per-layer dirty-skip deferred) | ✅ | heavy |
 | PB4a | Playback: proxy-planning policy (which footage gets a proxy; target dims + GOP) | ✅ | light |
-| PB4b | Playback: background WebCodecs transcode worker + OPFS persistence + decode routing (the definitive long-video seek fix) | ▶ **next** (browser) | heavy |
+| PB4b | Playback: background low-res proxy transcode + fail-open preview routing (fresh-import, in-session) | ✅ | heavy |
+| PB4c | Playback: persist the proxy to OPFS (survive reload; apply to reloaded projects instead of re-transcoding) | ▶ **next** (browser) | medium |
 | PB5 | Playback: adaptive prefetch + drop-to-newest everywhere + global decoder/cursor budget | ⬜ | medium |
 | PB6 | Playback: filmstrip/thumbnail decode lane separation + OPFS sprite-sheet cache | ⬜ | medium |
 | PB7 | Playback: range-stream URL/chunked assets + optional importExternalTexture zero-copy upload | ⬜ | medium |
@@ -420,14 +421,23 @@ downscaled to <=1280 long edge (aspect-preserved, even), all-intra (keyframeInte
 seeks; frame rate + count preserved (1:1 index mapping). Proven by `verify:proxy-plan` (5 checks).
 Unwired until PB4b imports it (the harness is the proof it's intentional).
 
-### PB4b - Background transcode worker + OPFS + decode routing ▶ **next** (browser-gated)
-**Build note:** the browser core of PB4 and the highest-risk item in the queue - a WHOLE new subsystem
-(an import-time WebCodecs decode->encode->mux transcode worker producing the proxy per `planProxy`, OPFS
-persistence keyed by asset, decode routing that uses the proxy for preview + the ORIGINAL for export,
-and reload relink). No clean fail-safe and all real WebCodecs-encode + OPFS I/O that gates cannot verify,
-so it MUST be built with the browser in the loop, and it will likely split further (worker / OPFS /
-routing). Design it fail-open: playback uses the proxy only if present + valid, else the original
-(today's behavior); export never uses the proxy.
+### PB4b - Background transcode worker + fail-open preview routing ✅ (shipped 6b085f8; browser scrub-test owed)
+**Shipped, FAIL-OPEN (built despite no-browser because it can't regress existing playback/export):**
+`proxyTranscodeWorker.ts` (off-thread mediabunny `Conversion` -> downscaled proxy MP4), `proxyTranscoder.ts`
+(lazy worker, serialized, timeout, returns null on any failure), `videoDecoderPool` proxy registry +
+`registerProxy`/`unregisterProxy` + `decodeFrame` routes to the proxy for PREVIEW and self-heals to the
+original on any proxy decode error (export + metadata always original), and `assetManager.maybeBuildProxy`
+(fire-and-forget on import). Verified: tsc/lint/build (worker chunk emitted)/99 harnesses. The
+transcode + scrub BENEFIT is browser-only (scrub-test a freshly-imported 4K clip). **Limitation:**
+fresh-import + in-session only - the proxy isn't persisted, so a reload re-uses the original (or would
+re-transcode). That's PB4c.
+
+### PB4c - Persist the proxy to OPFS ▶ **next** (browser-gated)
+**Build note:** store the PB4b proxy blob in OPFS keyed by asset, and on project reload
+(`initVideoAssetFromBlob`) load + register the persisted proxy instead of re-transcoding (or transcode
+once + persist). Removes the per-session regeneration cost and makes the proxy benefit apply to reloaded
+projects. Browser I/O (OPFS) - build with the browser open. Fail-open like PB4b (OPFS miss/error ->
+original / rebuild).
 
 ### PB4 - Background all-intra / short-GOP proxy to OPFS (original combined spec, now PB4a+PB4b)
 - **Delivers:** on import, transcode originals in a background worker to a low-res, short-keyframe-interval (ideally all-intra) proxy so every seek is ~1 decode; edit against the proxy, relink to full-res only for export. Persist the proxy (+ filmstrip/waveform) to OPFS/IndexedDB so it survives reload.
