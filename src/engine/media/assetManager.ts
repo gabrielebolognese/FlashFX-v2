@@ -4,6 +4,7 @@ import type { ProjectAsset } from '../../project-system/types';
 import { computeWaveformPeaks } from '../../core/waveform';
 import { videoDecoderPool } from '../video/videoDecoderPool';
 import { proxyTranscoder } from '../video/proxyTranscoder';
+import { loadProxy, saveProxy } from '../video/proxyStore';
 import { frameScheduler } from '../video/frameScheduler';
 import { videoAudioPlayer } from '../video/videoAudioPlayer';
 import { videoTextureCache } from '../video/videoTextureCache';
@@ -262,22 +263,42 @@ class MediaAssetManager {
     }
   }
 
+  /** Init a proxy blob as a hidden asset + register it so preview decodes route to it. Returns whether
+   *  it succeeded. (Export + metadata always stay on the original - see videoDecoderPool.) */
+  private async registerProxyBlob(assetId: string, sourceName: string, proxyBlob: Blob): Promise<boolean> {
+    const proxyId = `${assetId}__proxy`;
+    try {
+      await videoDecoderPool.initAsset(proxyId, new File([proxyBlob], `${sourceName}.proxy.mp4`, { type: 'video/mp4' }));
+      videoDecoderPool.registerProxy(assetId, proxyId);
+      return true;
+    } catch {
+      return false; // leave the original in place
+    }
+  }
+
   /** Background low-res proxy build (PB4b), fully guarded / fire-and-forget. On success the proxy is
-   *  inited as a hidden asset and registered so the decoder pool routes PREVIEW decodes to it (export
-   *  stays on the original). Any failure is a no-op: preview keeps using the original. */
+   *  registered (preview routes to it) and PERSISTED to OPFS (PB4c) for future reloads. Any failure is
+   *  a no-op: preview keeps using the original. */
   private maybeBuildProxy(assetId: string, file: File, metadata: VideoAssetMetadata): void {
     const durationFrames = Math.max(1, Math.round(metadata.duration * metadata.frameRate));
     void proxyTranscoder
       .transcode(file, { width: metadata.width, height: metadata.height, frameRate: metadata.frameRate, durationFrames })
       .then(async (proxyBlob) => {
         if (!proxyBlob) return; // not warranted / transcode failed -> original (fail-open)
-        const proxyId = `${assetId}__proxy`;
-        try {
-          await videoDecoderPool.initAsset(proxyId, new File([proxyBlob], `${file.name}.proxy.mp4`, { type: 'video/mp4' }));
-          videoDecoderPool.registerProxy(assetId, proxyId);
-        } catch {
-          /* proxy init failed - leave the original in place */
+        if (await this.registerProxyBlob(assetId, file.name, proxyBlob)) {
+          void saveProxy(assetId, proxyBlob); // persist for future reloads (PB4c)
         }
+      })
+      .catch(() => {});
+  }
+
+  /** Reload path (PB4c): use the OPFS-persisted proxy if present, else build one (which persists it).
+   *  Fire-and-forget / fail-open - a miss or error just means preview uses the original. */
+  private restoreOrBuildProxy(assetId: string, file: File, metadata: VideoAssetMetadata): void {
+    void loadProxy(assetId)
+      .then((blob) => {
+        if (blob) void this.registerProxyBlob(assetId, file.name, blob);
+        else this.maybeBuildProxy(assetId, file, metadata);
       })
       .catch(() => {});
   }
@@ -539,8 +560,17 @@ class MediaAssetManager {
       }
 
       frameScheduler.registerAsset(assetId, assetId, workerMeta.frameRate, workerMeta.frameCount);
-      // Animated images (GIF/WebP/APNG/AVIF) have no audio track - skip the hidden <video> audio element.
-      if (!isAnimatedImageMime(file.type, fileName)) videoAudioPlayer.initAudio(assetId, file);
+      // Animated images (GIF/WebP/APNG/AVIF) have no audio track - skip the hidden <video> audio element,
+      // and never proxy them (they decode via ImageDecoder, not the video path).
+      if (!isAnimatedImageMime(file.type, fileName)) {
+        videoAudioPlayer.initAudio(assetId, file);
+        // On reload, restore the OPFS-persisted proxy (or rebuild it) so heavy footage still scrubs
+        // smoothly without re-transcoding every open (PB4c). Fire-and-forget / fail-open.
+        this.restoreOrBuildProxy(assetId, file, {
+          assetId, width: workerMeta.width, height: workerMeta.height, duration: workerMeta.duration,
+          frameRate: workerMeta.frameRate, hasAudio: false, codec: workerMeta.codec, fileSize: blob.size,
+        });
+      }
       // Do NOT decode the whole file's audio here. On project OPEN this ran a multi-GB `decodeAudioData`
       // for EVERY stored video just to build a waveform - the dominant open-time OOM. The waveform is
       // now computed lazily (ensureWaveform) the first time a clip's strip needs it, serialized so many
