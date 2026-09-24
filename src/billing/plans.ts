@@ -50,14 +50,25 @@ export function assetWithinLimit(sizeBytes: number, plan: Plan): boolean {
   return sizeBytes <= PLAN_LIMITS[plan].maxAssetBytes;
 }
 
-// ── current plan (billing will drive this later; 'free' for now) ──
+// ── current plan (driven by billing's refreshPlan) ──
+// The last-known plan is cached in localStorage and hydrated at boot so a RETURNING Pro user is Pro
+// immediately, instead of flashing as Free (and being wrongly shown the upgrade modal) during the
+// ~100-500ms async subscription read. refreshPlan() then confirms/corrects it. The cache is a UX
+// convenience only - the server `subscriptions` row (RLS-protected) remains the source of truth.
+const PLAN_CACHE_KEY = 'ffx-plan';
+function loadCachedPlan(): Plan {
+  try { return localStorage.getItem(PLAN_CACHE_KEY) === 'pro' ? 'pro' : 'free'; } catch { return 'free'; }
+}
 interface PlanState {
   plan: Plan;
   setPlan: (p: Plan) => void;
 }
 export const usePlanStore = create<PlanState>((set) => ({
-  plan: 'free',
-  setPlan: (plan) => set({ plan }),
+  plan: loadCachedPlan(),
+  setPlan: (plan) => {
+    try { localStorage.setItem(PLAN_CACHE_KEY, plan); } catch { /* storage unavailable */ }
+    set({ plan });
+  },
 }));
 
 export function currentPlan(): Plan {

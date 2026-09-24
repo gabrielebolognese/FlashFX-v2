@@ -47,7 +47,7 @@ import { buildPrecompose } from '../core/precompose';
 import { createMotionPath } from './motionPath';
 import { useHistoryStore, type Command } from './history';
 import { mediaAssetManager, type ImageAssetMetadata } from '../engine/media/assetManager';
-import { isAnimatedImage } from '../engine/video/imageDecoderController';
+import { isAnimatedImage, isAnimatableImage } from '../engine/video/imageDecoderController';
 import { isProPlan } from '../billing/plans';
 
 // After adding an image, prompt (non-modally) if it doesn't fit the canvas - offering fit-vs-keep.
@@ -3014,8 +3014,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   addImage: async (file: File, projectId: string) => {
     // An animated GIF/WebP/APNG/AVIF becomes a VIDEO layer so it plays; a still image stays an image.
+    // Cheap mime/ext gate first, so a plain PNG/JPEG doesn't pay a full-file ImageDecoder probe.
     // (addVideoFromAsset is its own undoable command, so we return before the image command below.)
-    if (await isAnimatedImage(file)) {
+    if (isAnimatableImage(file) && await isAnimatedImage(file)) {
       const { assetId } = await mediaAssetManager.importAnimatedImage(file, projectId);
       const { composition } = get();
       get().addVideoFromAsset(assetId, composition.settings.width / 2, composition.settings.height / 2);

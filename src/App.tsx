@@ -769,9 +769,11 @@ function App() {
     } catch { return false; }
   });
 
-  // Load the account's plan on sign-in (billing sets it later; stays 'free' until then).
+  // Load the account's plan on sign-in, and RESET it on sign-out. refreshPlan() sets 'free' when there
+  // is no user, so signing out correctly drops Pro - otherwise a signed-out guest keeps the previous
+  // user's Pro (all paid features unlocked) until a manual reload.
   useEffect(() => {
-    if (authStatus === 'signed-in') void refreshPlan();
+    if (authStatus !== 'loading') void refreshPlan();
   }, [authStatus]);
 
   // First run: launch the onboarding wizard once, ever. Mark it seen immediately so a

@@ -116,11 +116,15 @@ export async function refreshPlan(): Promise<void> {
       .select('plan, status, current_period_end')
       .eq('user_id', userId)
       .maybeSingle();
-    if (error || !data) { setPlan('free'); return; }
+    // A transient read failure (network blip / RLS hiccup) must NOT downgrade a paying customer - keep
+    // the current (cached) plan and let the next refresh correct it. Only a SUCCESSFUL read with no row
+    // means the user genuinely has no subscription -> free.
+    if (error) return;
+    if (!data) { setPlan('free'); return; }
     const active = data.status === 'active' || data.status === 'trialing';
     const graceValid = data.current_period_end ? Date.parse(data.current_period_end) > Date.now() : false;
     setPlan(data.plan === 'pro' && (active || graceValid) ? 'pro' : 'free');
   } catch {
-    setPlan('free');
+    /* transient failure: keep the current plan, don't downgrade on a blip */
   }
 }

@@ -1,4 +1,5 @@
 import { setTelemetrySink, type TelemetryContext } from './telemetry';
+import { hasAnalyticsConsent, useConsentStore } from '../legal/consentStore';
 
 // Activates the telemetry seam with real providers, each gated on its own env var so this is INERT
 // until you set keys (no npm dependency added; the vendor scripts load lazily from their CDN only when
@@ -45,15 +46,26 @@ export function installTelemetrySinks(): void {
   }
 
   if (POSTHOG_KEY) {
-    const p = document.createElement('script');
-    p.src = `${POSTHOG_HOST}/static/array.js`;
-    p.async = true;
-    p.onload = () => {
-      try { w.posthog?.init?.(POSTHOG_KEY, { api_host: POSTHOG_HOST, capture_pageview: false, autocapture: false, persistence: 'localStorage+cookie' }); } catch { /* ignore */ }
-    };
-    document.head.appendChild(p);
-    // trackEvent() in telemetry.ts already blocks this until analytics consent is granted.
+    // Event capture is already consent-gated in telemetry.ts's trackEvent().
     sink.trackEvent = (name, props) => { try { w.posthog?.capture?.(name, props); } catch { /* ignore */ } };
+    // Defer LOADING + init until analytics consent is granted: posthog.init() writes a cookie and fires
+    // a /decide request, so loading it before opt-in would leak an identifier/request pre-consent.
+    let loaded = false;
+    const loadPostHog = () => {
+      if (loaded) return;
+      loaded = true;
+      const p = document.createElement('script');
+      p.src = `${POSTHOG_HOST}/static/array.js`;
+      p.async = true;
+      p.onload = () => {
+        try { w.posthog?.init?.(POSTHOG_KEY, { api_host: POSTHOG_HOST, capture_pageview: false, autocapture: false }); } catch { /* ignore */ }
+      };
+      document.head.appendChild(p);
+    };
+    if (hasAnalyticsConsent()) loadPostHog();
+    else {
+      const unsub = useConsentStore.subscribe((s) => { if (s.status === 'granted') { unsub(); loadPostHog(); } });
+    }
   }
 
   setTelemetrySink(sink);

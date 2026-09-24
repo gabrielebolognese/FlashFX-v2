@@ -23,18 +23,33 @@ function guessType(source: File | string): string {
   return 'image/gif';
 }
 
+const ANIMATABLE_IMAGE_EXT = new Set(['gif', 'webp', 'apng', 'avif']);
+
+/** Cheap gate: could this image POSSIBLY be animated (by mime/extension)? Only these get the full
+ *  isAnimatedImage() probe below (which reads the whole file into an ImageDecoder), so a plain jpg/png
+ *  is never probed. Callers should check this before isAnimatedImage() on the hot path. */
+export function isAnimatableImage(file: File): boolean {
+  const t = (file.type || '').toLowerCase();
+  if (/^image\/(gif|webp|apng|avif)$/.test(t)) return true;
+  const ext = (file.name.split('.').pop() || '').toLowerCase();
+  return ANIMATABLE_IMAGE_EXT.has(ext);
+}
+
 /** True if `file` decodes to more than one frame (an animated GIF/WebP/APNG/AVIF). Fast: reads the
- *  track header, not the frames. false when ImageDecoder is unavailable or on any error. */
+ *  track header, not the frames. false when ImageDecoder is unavailable or on any error. The decoder is
+ *  always closed (even on error) so a batch of bad/partial files can't leak decoders. */
 export async function isAnimatedImage(file: File): Promise<boolean> {
   if (!hasImageDecoder()) return false;
+  let decoder: ImageDecoder | undefined;
   try {
-    const decoder = new ImageDecoder({ data: await file.arrayBuffer(), type: guessType(file) });
+    decoder = new ImageDecoder({ data: await file.arrayBuffer(), type: guessType(file) });
     await decoder.tracks.ready;
     const n = decoder.tracks.selectedTrack?.frameCount ?? 1;
-    decoder.close();
     return n > 1;
   } catch {
     return false;
+  } finally {
+    try { decoder?.close(); } catch { /* ignore */ }
   }
 }
 
@@ -58,19 +73,25 @@ class ImageDecoderController {
     if (!hasImageDecoder()) throw new Error('ImageDecoder unavailable');
     const data = typeof source === 'string' ? await (await fetch(source)).arrayBuffer() : await source.arrayBuffer();
     const decoder = new ImageDecoder({ data, type: guessType(source) });
-    await decoder.tracks.ready;
-    const frameCount = Math.max(1, decoder.tracks.selectedTrack?.frameCount ?? 1);
-    // Frame 0 gives dimensions + the per-frame delay. Assume a near-uniform delay for the frame rate
-    // (true for the vast majority of GIFs); exact per-frame timing would need a duration table (later).
-    const first = await decoder.decode({ frameIndex: 0, completeFramesOnly: true });
-    const w = first.image.displayWidth || first.image.codedWidth || 1;
-    const h = first.image.displayHeight || first.image.codedHeight || 1;
-    const perFrameUs = first.image.duration && first.image.duration > 0 ? first.image.duration : 100_000; // 100ms default
-    first.image.close();
-    const fps = Math.max(1, Math.min(60, 1_000_000 / perFrameUs));
-    const metadata: VideoMetadata = { frameCount, frameRate: fps, width: w, height: h, duration: frameCount / fps, codec: 'gif', rotation: 0 };
-    this.assets.set(assetId, { decoder, metadata, frameCount });
-    return metadata;
+    try {
+      await decoder.tracks.ready;
+      const frameCount = Math.max(1, decoder.tracks.selectedTrack?.frameCount ?? 1);
+      // Frame 0 gives dimensions + the per-frame delay. Assume a near-uniform delay for the frame rate
+      // (true for the vast majority of GIFs); exact per-frame timing would need a duration table (later).
+      const first = await decoder.decode({ frameIndex: 0, completeFramesOnly: true });
+      const w = first.image.displayWidth || first.image.codedWidth || 1;
+      const h = first.image.displayHeight || first.image.codedHeight || 1;
+      const perFrameUs = first.image.duration && first.image.duration > 0 ? first.image.duration : 100_000; // 100ms default
+      first.image.close();
+      const fps = Math.max(1, Math.min(60, 1_000_000 / perFrameUs));
+      const metadata: VideoMetadata = { frameCount, frameRate: fps, width: w, height: h, duration: frameCount / fps, codec: 'gif', rotation: 0 };
+      this.assets.set(assetId, { decoder, metadata, frameCount });
+      return metadata;
+    } catch (e) {
+      // Init failed after the decoder was constructed - close it so a full-file ArrayBuffer isn't leaked.
+      try { decoder.close(); } catch { /* ignore */ }
+      throw e;
+    }
   }
 
   getMetadata(assetId: string): VideoMetadata | null {
