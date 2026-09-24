@@ -3,6 +3,7 @@ import { putAsset, getAssetsByProject, deleteAsset } from '../../project-system/
 import type { ProjectAsset } from '../../project-system/types';
 import { computeWaveformPeaks } from '../../core/waveform';
 import { videoDecoderPool } from '../video/videoDecoderPool';
+import { proxyTranscoder } from '../video/proxyTranscoder';
 import { frameScheduler } from '../video/frameScheduler';
 import { videoAudioPlayer } from '../video/videoAudioPlayer';
 import { videoTextureCache } from '../video/videoTextureCache';
@@ -231,6 +232,10 @@ class MediaAssetManager {
       videoAudioPlayer.initAudio(assetId, file);
       // Queue the waveform decode instead of firing it immediately - one full-file decode at a time.
       this._audioExtractChain = this._audioExtractChain.then(() => this.extractVideoAudio(file, assetId)).catch(() => {});
+      // Background: build a low-res proxy for heavy footage so scrubbing is smooth (PB4b). Fire-and-
+      // forget + fail-open - a failed/absent proxy just means preview uses the original. Fresh imports
+      // only for now; reload-persistence (OPFS) is PB4c.
+      this.maybeBuildProxy(assetId, file, metadata);
 
       // Await persistence if still in progress
       try {
@@ -255,6 +260,26 @@ class MediaAssetManager {
 
       throw err;
     }
+  }
+
+  /** Background low-res proxy build (PB4b), fully guarded / fire-and-forget. On success the proxy is
+   *  inited as a hidden asset and registered so the decoder pool routes PREVIEW decodes to it (export
+   *  stays on the original). Any failure is a no-op: preview keeps using the original. */
+  private maybeBuildProxy(assetId: string, file: File, metadata: VideoAssetMetadata): void {
+    const durationFrames = Math.max(1, Math.round(metadata.duration * metadata.frameRate));
+    void proxyTranscoder
+      .transcode(file, { width: metadata.width, height: metadata.height, frameRate: metadata.frameRate, durationFrames })
+      .then(async (proxyBlob) => {
+        if (!proxyBlob) return; // not warranted / transcode failed -> original (fail-open)
+        const proxyId = `${assetId}__proxy`;
+        try {
+          await videoDecoderPool.initAsset(proxyId, new File([proxyBlob], `${file.name}.proxy.mp4`, { type: 'video/mp4' }));
+          videoDecoderPool.registerProxy(assetId, proxyId);
+        } catch {
+          /* proxy init failed - leave the original in place */
+        }
+      })
+      .catch(() => {});
   }
 
   private async persistToVideoStore(projectId: string, assetId: string, file: File): Promise<void> {

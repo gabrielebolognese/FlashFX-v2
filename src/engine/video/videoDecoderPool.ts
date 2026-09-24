@@ -69,6 +69,10 @@ class VideoDecoderPool {
   private sources = new Map<string, File | string>();
   // Assets whose decode backend is the browser ImageDecoder (animated GIF/WebP/APNG/AVIF).
   private gifAssets = new Set<string>();
+  // originalAssetId -> low-res proxy assetId (PB4b). PREVIEW decodes route to the proxy; export +
+  // metadata always use the original. Fail-open: a proxy decode error unregisters the proxy so the
+  // original is used from then on, and an empty map is exactly today's behavior.
+  private proxyOf = new Map<string, string>();
   // Bound the number of live hardware VideoDecoders. Browsers refuse new decoders
   // past a limit (~16 across WebCodecs + media elements) → decode errors → black
   // frames. Keep the N most-recently-used; evict the rest (re-init on demand). Held
@@ -168,8 +172,29 @@ class VideoDecoderPool {
     });
   }
 
+  /** Register a low-res proxy asset (already initAsset'd) to serve this original's PREVIEW decodes. */
+  registerProxy(originalAssetId: string, proxyAssetId: string): void {
+    this.proxyOf.set(originalAssetId, proxyAssetId);
+  }
+
+  /** Stop using a proxy for an original (falls back to the original for preview). */
+  unregisterProxy(originalAssetId: string): void {
+    this.proxyOf.delete(originalAssetId);
+  }
+
   /** Decode a single frame. Returns a transferable VideoFrame. */
   async decodeFrame(assetId: string, frameIndex: number): Promise<VideoFrame> {
+    // Preview proxy (PB4b): decode from the low-res proxy when one is registered. Fail-open - any proxy
+    // decode error unregisters the proxy and falls through to the original, so a bad proxy can never
+    // break playback. Export uses a separate method that never routes here.
+    const proxyId = this.proxyOf.get(assetId);
+    if (proxyId) {
+      try {
+        return await mediabunnyController.decodeFrame(proxyId, frameIndex);
+      } catch {
+        this.proxyOf.delete(assetId); // drop the proxy; use the original from now on
+      }
+    }
     if (this.gifAssets.has(assetId)) return imageDecoderController.decodeFrame(assetId, frameIndex);
     if (USE_MEDIABUNNY) return mediabunnyController.decodeFrame(assetId, frameIndex);
     const state = await this.ensureWorker(assetId);
@@ -272,6 +297,9 @@ class VideoDecoderPool {
   /** Tear down the worker for an asset. */
   async destroyAsset(assetId: string): Promise<void> {
     this.sources.delete(assetId); // also clears an LRU-evicted asset with no live worker
+    // Tear down the low-res proxy alongside its original.
+    const proxyId = this.proxyOf.get(assetId);
+    if (proxyId) { this.proxyOf.delete(assetId); await mediabunnyController.destroyAsset(proxyId).catch(() => {}); }
     if (this.gifAssets.has(assetId)) { this.gifAssets.delete(assetId); await imageDecoderController.destroyAsset(assetId); return; }
     if (USE_MEDIABUNNY) { await mediabunnyController.destroyAsset(assetId); return; }
     const state = this.workers.get(assetId);
