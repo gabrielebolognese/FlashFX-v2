@@ -15,6 +15,13 @@ import type { VideoMetadata } from './videoWorker.types';
 const CURSOR_POOL_SIZE = 2;   // enough for two layers on one asset (split clip / two regions)
 const FORWARD_WINDOW = 16;    // frames a request may sit ahead of a cursor before it counts as a jump
 const BACK_TOL = 1;           // frames a request may sit behind a cursor and still reuse it (1-frame wobble)
+// Small LRU of recently-decoded frames, kept as IMAGE BITMAPS (NOT VideoFrames/VideoSamples): an
+// ImageBitmap does not occupy a WebCodecs decoder output-pool slot, so this cache can never stall the
+// decoder (unlike retaining decoded VideoFrames, which the scheduler's MAX_OPEN_FRAMES cap guards
+// against). A backward / oscillating scrub that lands BEYOND the scheduler's ~8-frame buffer hits this
+// instead of tearing the cursor down and re-walking the whole GOP. Frame content is deterministic per
+// (asset, source index), so caching by index is frame-pure. Kept tiny; bounded memory per asset.
+const FRAME_CACHE_SIZE = 4;
 
 /** Rejected when a newer request supersedes an in-flight pump; the scheduler drops it harmlessly. */
 class SupersededError extends Error {
@@ -33,6 +40,7 @@ interface Cursor {
 }
 
 interface AssetCtl {
+  assetId: string;
   input: Input;
   track: InputVideoTrack;
   sink: VideoSampleSink;
@@ -42,6 +50,7 @@ interface AssetCtl {
   proxyScale: number;
   cursors: Cursor[];
   reqSeq: number;
+  frameCache: Map<number, ImageBitmap>; // recently-decoded frames (index -> bitmap), insertion-order LRU
 }
 
 class MediabunnyController {
@@ -90,7 +99,7 @@ class MediabunnyController {
 
     // optimizeForLatency shortens the decoder pipeline → faster seeks + fewer open frames.
     const sink = new VideoSampleSink(track, { optimizeForLatency: true });
-    this.assets.set(assetId, { input, track, sink, metadata, firstTs, fps, proxyScale: 1, cursors: [], reqSeq: 0 });
+    this.assets.set(assetId, { assetId, input, track, sink, metadata, firstTs, fps, proxyScale: 1, cursors: [], reqSeq: 0, frameCache: new Map() });
     return metadata;
   }
 
@@ -112,6 +121,19 @@ class MediabunnyController {
     const ctl = this.assets.get(assetId);
     if (!ctl) throw new Error(`mediabunny: asset ${assetId} not initialized`);
     const i = Math.max(0, Math.min(Math.round(frameIndex), ctl.metadata.frameCount - 1));
+
+    // Cache hit: return an INDEPENDENT VideoFrame built from the cached bitmap (a copy - closing it
+    // doesn't touch the cache, and it holds no decoder slot). Skips the cursor + any GOP walk entirely.
+    const cachedBitmap = ctl.frameCache.get(i);
+    if (cachedBitmap) {
+      ctl.frameCache.delete(i); ctl.frameCache.set(i, cachedBitmap); // touch -> most-recently-used
+      try {
+        return new VideoFrame(cachedBitmap, { timestamp: Math.max(0, Math.round(this.timeForIndex(ctl, i) * 1_000_000)) });
+      } catch {
+        // Bitmap was closed mid-copy (a concurrent evict) or the ctor failed - fall through to decode.
+      }
+    }
+
     const seq = ++ctl.reqSeq;
 
     // Route synchronously so a same-tick forward burst [F..F+6] binds deterministically to one cursor.
@@ -181,8 +203,35 @@ class MediabunnyController {
       if (c.index >= i) break;
     }
     if (!c.sample) throw new Error(`mediabunny: no frame at index ${i}`);
+    // Populate the backward-scrub cache off the retained sample (async ImageBitmap copy, non-blocking).
+    this.cacheFrame(ctl, i, c.sample);
     // Independent clone → the scheduler owns & closes it; the sample stays retained for continuity.
     return c.sample.toVideoFrame();
+  }
+
+  // Copy the just-decoded frame into the LRU as an ImageBitmap (off the retained sample, so it can't
+  // race the returned frame). The transient VideoFrame is closed as soon as the copy completes, so it
+  // holds a decoder slot only briefly; the cached ImageBitmap holds none. Fully guarded / non-blocking.
+  private cacheFrame(ctl: AssetCtl, i: number, sample: VideoSample): void {
+    if (ctl.frameCache.has(i)) return;
+    let tmp: VideoFrame;
+    try { tmp = sample.toVideoFrame(); } catch { return; }
+    createImageBitmap(tmp).then(
+      (bm) => {
+        try { tmp.close(); } catch { /* ignore */ }
+        // The asset may have been destroyed, or the frame cached by a concurrent decode, while the copy
+        // was in flight - in either case drop this bitmap so it can't leak or double-insert.
+        if (this.assets.get(ctl.assetId) !== ctl || ctl.frameCache.has(i)) { bm.close(); return; }
+        ctl.frameCache.set(i, bm);
+        while (ctl.frameCache.size > FRAME_CACHE_SIZE) {
+          const oldest = ctl.frameCache.keys().next().value as number | undefined;
+          if (oldest === undefined) break;
+          ctl.frameCache.get(oldest)?.close();
+          ctl.frameCache.delete(oldest);
+        }
+      },
+      () => { try { tmp.close(); } catch { /* ignore */ } },
+    );
   }
 
   // Export: deterministic, order-independent exact decode - must NOT share playback cursors (their
@@ -209,6 +258,8 @@ class MediabunnyController {
     const ctl = this.assets.get(assetId);
     if (!ctl) return;
     this.assets.delete(assetId);
+    for (const bm of ctl.frameCache.values()) { try { bm.close(); } catch { /* ignore */ } }
+    ctl.frameCache.clear();
     for (const c of ctl.cursors) {
       try { await c.it?.return(); } catch { /* ignore */ }
       c.sample?.close();
