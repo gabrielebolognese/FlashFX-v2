@@ -96,8 +96,8 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | PB3 | Playback: frame-keyed resolve memoization (coarse whole-frame memo shipped; per-layer dirty-skip deferred) | ✅ | heavy |
 | PB4a | Playback: proxy-planning policy (which footage gets a proxy; target dims + GOP) | ✅ | light |
 | PB4b | Playback: background low-res proxy transcode + fail-open preview routing (fresh-import, in-session) | ✅ | heavy |
-| PB4c | Playback: persist the proxy to OPFS (survive reload; apply to reloaded projects instead of re-transcoding) | ▶ **next** (browser) | medium |
-| PB5 | Playback: adaptive prefetch + drop-to-newest everywhere + global decoder/cursor budget | ⬜ | medium |
+| PB4c | Playback: persist the proxy to OPFS (survive reload; apply to reloaded projects instead of re-transcoding) | ✅ | medium |
+| PB5 | Playback: adaptive prefetch + drop-to-newest everywhere + global decoder/cursor budget | ▶ **next** (browser) | medium |
 | PB6 | Playback: filmstrip/thumbnail decode lane separation + OPFS sprite-sheet cache | ⬜ | medium |
 | PB7 | Playback: range-stream URL/chunked assets + optional importExternalTexture zero-copy upload | ⬜ | medium |
 
@@ -432,12 +432,13 @@ transcode + scrub BENEFIT is browser-only (scrub-test a freshly-imported 4K clip
 fresh-import + in-session only - the proxy isn't persisted, so a reload re-uses the original (or would
 re-transcode). That's PB4c.
 
-### PB4c - Persist the proxy to OPFS ▶ **next** (browser-gated)
-**Build note:** store the PB4b proxy blob in OPFS keyed by asset, and on project reload
-(`initVideoAssetFromBlob`) load + register the persisted proxy instead of re-transcoding (or transcode
-once + persist). Removes the per-session regeneration cost and makes the proxy benefit apply to reloaded
-projects. Browser I/O (OPFS) - build with the browser open. Fail-open like PB4b (OPFS miss/error ->
-original / rebuild).
+### PB4c - Persist the proxy to OPFS ✅ (shipped 959ae41; browser reload-test owed)
+**Shipped:** `proxyStore.ts` (guarded OPFS load/save/delete keyed by a reload-stable asset id);
+`assetManager.maybeBuildProxy` persists the proxy after registering it, and `restoreOrBuildProxy` (wired
+into the reload path) loads the persisted proxy if present else rebuilds it. Removes per-session
+re-transcoding and makes the proxy apply to reloaded projects. Fail-open (OPFS miss/error -> rebuild or
+original). Gates green; runtime substance (OPFS I/O across reload) needs a browser test. **PB4 (a+b+c)
+is now complete.**
 
 ### PB4 - Background all-intra / short-GOP proxy to OPFS (original combined spec, now PB4a+PB4b)
 - **Delivers:** on import, transcode originals in a background worker to a low-res, short-keyframe-interval (ideally all-intra) proxy so every seek is ~1 decode; edit against the proxy, relink to full-res only for export. Persist the proxy (+ filmstrip/waveform) to OPFS/IndexedDB so it survives reload.
