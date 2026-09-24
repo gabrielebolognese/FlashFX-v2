@@ -97,8 +97,9 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | PB4a | Playback: proxy-planning policy (which footage gets a proxy; target dims + GOP) | ✅ | light |
 | PB4b | Playback: background low-res proxy transcode + fail-open preview routing (fresh-import, in-session) | ✅ | heavy |
 | PB4c | Playback: persist the proxy to OPFS (survive reload; apply to reloaded projects instead of re-transcoding) | ✅ | medium |
-| PB5 | Playback: adaptive prefetch + drop-to-newest everywhere + global decoder/cursor budget | ▶ **next** (browser) | medium |
-| PB6 | Playback: filmstrip/thumbnail decode lane separation + OPFS sprite-sheet cache | ⬜ | medium |
+| PB5a | Playback: global decode-cursor budget (fail-open; prevents black frames with many clips) | ✅ | medium |
+| PB5b | Playback: adaptive prefetch lookahead + cursor-pool-sizing (NOT fail-open; invariant-constrained) | ⬜ (browser) | medium |
+| PB6 | Playback: filmstrip/thumbnail decode lane separation + OPFS sprite-sheet cache | ▶ **next** (browser) | medium |
 | PB7 | Playback: range-stream URL/chunked assets + optional importExternalTexture zero-copy upload | ⬜ | medium |
 
 ---
@@ -448,7 +449,20 @@ is now complete.**
 - **Likely files:** new proxy-transcode worker, `src/engine/media/assetManager.ts` (import hook + relink-for-export), `src/engine/video/videoDecoderPool.ts` (proxy vs original source), OPFS persistence in `project-system`.
 - **Verification:** gates; manual browser: import a long 4K clip, confirm background proxy generation + instant scrubbing once ready, correct full-res export, proxy survives reload.
 
-### PB5 - Adaptive prefetch + drop-to-newest everywhere + global decoder/cursor budget
+### PB5a - Global decode-cursor budget ✅ (shipped be61cd0; browser test owed)
+**Shipped, FAIL-OPEN:** `cursorBudget.ts` pure `cursorsToEvict` (harnessed, `verify:cursor-budget`) +
+`mediabunnyController.enforceCursorBudget` cap total open cursors at 12 (under the ~16-decoder ceiling),
+tearing down the LRU cursors when many clips would otherwise black-frame. An evicted cursor just reseeks
+on next use; a `busy` flag + the existing gen-supersede machinery mean a wrong eviction can't break
+playback. Drop-to-newest was already shipped (PB batch 1 + PB2a).
+
+### PB5b - Adaptive prefetch lookahead + cursor-pool-sizing ⬜ (browser-gated, NOT fail-open)
+**Deferred (not safe blind):** adaptive lookahead is constrained by the `LOOKAHEAD < MAX_OPEN_FRAMES_PER_ASSET`
+invariant that prevents the decoder-stall "unplayable" freeze - widening it REGRESSES playback if wrong
+(not fail-open), so it needs browser profiling. Cursor-pool-sizing (fixed 2 -> active layers per asset)
+needs the scheduler's per-asset layer counts threaded in. Build with the browser open.
+
+### PB5 (combined spec, now PB5a + PB5b) - Adaptive prefetch + drop-to-newest + global decoder/cursor budget
 - **Delivers:** widen the prefetch lookahead when decodes are cheap (proxy/all-intra) and keep it narrow for 4K long-GOP, staying under `MAX_OPEN_FRAMES_PER_ASSET`; extend drop-to-newest presentation fully (batch-1 added the classic-path miss fallback); add a global decoder/cursor budget that tears down idle cursors (LRU) near the ~12-14 mark and sizes the per-asset cursor pool to layers-per-asset instead of a fixed 2.
 - **Source:** PLAYBACK-PERF-AUDIT #7(present)/#9/#10.
 - **Depends on:** PB2/PB4 (adaptive window benefits most once proxy exists).
