@@ -1,4 +1,4 @@
-import { Input, BlobSource, ALL_FORMATS, VideoSampleSink, EncodedPacketSink, type InputVideoTrack, type VideoSample } from 'mediabunny';
+import { Input, BlobSource, UrlSource, ALL_FORMATS, VideoSampleSink, EncodedPacketSink, type InputVideoTrack, type VideoSample, type Source } from 'mediabunny';
 import type { VideoMetadata } from './videoWorker.types';
 import { cursorsToEvict } from './cursorBudget';
 
@@ -81,8 +81,22 @@ class MediabunnyController {
   }
 
   private async _init(assetId: string, source: File | string): Promise<VideoMetadata> {
-    const blob: Blob = typeof source === 'string' ? await (await fetch(source)).blob() : source;
-    const input = new Input({ source: new BlobSource(blob), formats: ALL_FORMATS });
+    // Build the mediabunny Source lazily (PB7): a URL streams by HTTP range (UrlSource) instead of being
+    // fully downloaded into a Blob first (the old `fetch().blob()` anti-pattern that buffers the whole
+    // remote file before frame 1); a local File/Blob uses BlobSource, which already reads only the byte
+    // ranges the demuxer needs. Fail-open: if UrlSource can't be constructed, fall back to the old
+    // full-download path so a remote asset still decodes. The Blob path is byte-identical to before.
+    let src: Source;
+    if (typeof source === 'string') {
+      try {
+        src = new UrlSource(source);
+      } catch {
+        src = new BlobSource(await (await fetch(source)).blob());
+      }
+    } else {
+      src = new BlobSource(source);
+    }
+    const input = new Input({ source: src, formats: ALL_FORMATS });
     const track = await input.getPrimaryVideoTrack();
     if (!track) throw new Error(`mediabunny: no video track in asset ${assetId}`);
     if (!(await track.canDecode())) {

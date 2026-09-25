@@ -86,7 +86,7 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | B30 | Practical VFX compositing - curated light-leak/film-burn/atmosphere element catalog + sweep-keyframe generator (harnessed) + one-click add as a screen/add generativePattern (renders now) | ✅ | light |
 | B31 | Audio-reactive - audio->keyframes (RMS envelope + beat pulses) driving a layer property, harnessed + renders now; animated counter already ships (animation-item) | ✅ | medium |
 | B31-viz | Bar/circle spectrum visualiser - needs an offline FFT (nonexistent) + a bar/arc render (new animation-item type or a data-fed cloner) | ⬜ (browser) | medium |
-| B31-data | Data binding (spreadsheet/JSON -> property) - CSV/JSON parser + authoring UI + non-cloner routing (applyOverrides/cloner binding exist but are cloner-only) | ⬜ | medium |
+| B31-data | Data binding (spreadsheet/JSON -> property) - CSV/JSON parser + authoring UI + non-cloner routing (applyOverrides/cloner binding exist but are cloner-only) | ▶ **next** | medium |
 | B32 | Motion-design principle rigs - anticipation + follow-through/overshoot + squash & stretch + staggered offset as one-click keyframe rigs (harnessed, renders now) | ✅ | light |
 | B32-render | Echo / motion trails / smears - temporal ghosting (transform echo feasible at resolve-time via the cloner staggered-time path; pixel-accurate echo needs a GPU accumulation pass) | ⬜ (browser) | medium |
 | B32-secondary | Secondary motion (lag a child behind a parent) - bake the parent transform at frame-k into child keyframes; needs a cross-layer read (absent from ExpressionContext) + UI | ⬜ | medium |
@@ -100,7 +100,9 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | PB5a | Playback: global decode-cursor budget (fail-open; prevents black frames with many clips) | ✅ | medium |
 | PB5b | Playback: adaptive prefetch lookahead + cursor-pool-sizing (NOT fail-open; invariant-constrained) | ⬜ (browser) | medium |
 | PB6 | Playback: filmstrip/thumbnail decode lane separation + OPFS sprite-sheet cache | ✅ (browser scrub-test owed) | medium |
-| PB7 | Playback: range-stream URL/chunked assets + optional importExternalTexture zero-copy upload | ▶ **next** | medium |
+| PB7 | Playback: range-stream URL assets (UrlSource) + pure chunk-range planner | ✅ | medium |
+| PB7-gpu | Playback: zero-copy importExternalTexture upload for playing frames (texture_external pipeline fork) | ⬜ (browser) | **heavy** |
+| PB7-lazy | Playback: lazy CustomSource chunked-local read (wire the chunk-range planner into decode) | ⬜ (browser) | medium |
 
 ---
 
@@ -487,7 +489,19 @@ Gates: tsc 0, lint 125 baseline, build ok, **102 harnesses** (`npm test`). **Bro
 - **Likely files:** thumbnail/filmstrip generation modules, `project-system` OPFS persistence.
 - **Verification:** gates; manual browser: scrubbing while a long timeline builds thumbnails stays smooth; thumbnails persist across reload.
 
-### PB7 - Range-stream URL/chunked assets + zero-copy texture upload
+### PB7 - Range-stream URL assets + chunk-range planner ✅ DONE (SPLIT - browser/invasive halves gated)
+**Audit finding (why this split):** the app is local-first and mediabunny's `BlobSource` **already reads a local File lazily by byte range** (only the moov/cues + requested samples, bounded 8MiB cache) - so a local import was never fully buffered, and even `readChunked`'s reassembled `new Blob(parts)` is read lazily (disk-backed join, not a RAM spike). The two genuinely-wrong things were: (1) a URL source was fully downloaded via `fetch().blob()` before frame 1 - but that branch is **dead** today (every caller passes a File; the Drive/Library path is `LIBRARY_ENABLED=false`); (2) `readChunked` pulls **all** >512MB chunk records from IDB up front. The high-value work (remote streaming, zero-copy upload) is thus either dormant or a heavy unverifiable WGSL fork, so per the batch discipline the verifiable core ships and the rest is gated.
+
+**Shipped (harnessed core + low-risk wiring):**
+- `engine/video/videoChunkPlan.ts` - PURE chunk-range planner (`planChunkRange(fileSize, chunkSize, start, end)` → the ordered `{chunkIndex, startInChunk, endInChunk}` slices covering a byte range; `chunkCount`). The missing primitive a lazy `CustomSource.read(start,end)` needs to replace `readChunked`'s eager join. Mirrors `saveChunked`'s slice arithmetic so a planned read maps onto exactly the stored bytes. Harnessed by `verify:chunk-plan` (8 checks incl. a reassembly round-trip). Unwired-but-intentional (PB4a precedent) - consumed by PB7-lazy.
+- `mediabunnyController._init` now builds the source via **`UrlSource`** for a string/URL (HTTP range streaming, no full download) instead of `fetch().blob()`; a local Blob still uses `BlobSource` (byte-identical). Fail-open: a UrlSource construction failure falls back to the old full-download path. Removes the "buffer the whole remote file before frame 1" anti-pattern so the URL branch is correct if/when a remote asset source is re-enabled.
+
+Gates: tsc 0, lint 125 baseline, build ok, **103 harnesses** (`npm test`), em-dash clean.
+
+**Split out (gated):**
+- **PB7-gpu** - zero-copy `device.importExternalTexture` for PLAYING frames. Heavy: a `texture_external` bind-group-layout + WGSL (`textureSampleBaseClampToEdge`) **pipeline fork** of the shared IMAGE_SHADER (external textures expire per-submit, can't be a render attachment or feed the effects/RTT passes), reserving the pooled owned `copyExternalImageToTexture` texture (videoTextureCache) for the paused/effects/last-frame-hold case. Unverifiable WGSL + risk to the hot render path → browser-gated.
+- **PB7-lazy** - the lazy chunked-local read: a mediabunny `CustomSource` whose `read(start,end)` uses `videoChunkPlan` to pull only the overlapping IDB chunk record(s), replacing `readChunked`'s `new Blob(parts)`. Needs an `initAsset`→Source plumbing change + a real decode to verify; modest win (BlobSource already lazy) so lower priority → browser-gated.
+
 - **Delivers:** (a) feed mediabunny a range-based streaming source for URL/Supabase/Drive assets instead of `fetch().blob()` (which buffers the whole file before frame 1), and lazy range-read >512MB chunked local assets instead of concatenating every chunk up front; (b) optional: draw PLAYING frames via `device.importExternalTexture` (zero-copy `texture_external`), reserving the pooled owned texture for the paused/effects/last-frame-hold case.
 - **Source:** PLAYBACK-PERF-AUDIT #12 + #15.
 - **Depends on:** nothing (local File imports already stream lazily via mediabunny `BlobSource` - extend that to URL/chunked).
