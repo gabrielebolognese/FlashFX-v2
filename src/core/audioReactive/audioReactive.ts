@@ -16,7 +16,7 @@ export interface Track {
   keyframes: { frame: number; value: number | [number, number] }[];
 }
 
-function toValue(v: number, target: ReactTarget, base: [number, number]): number | [number, number] {
+export function toValue(v: number, target: ReactTarget, base: [number, number]): number | [number, number] {
   if (target === 'number') return v;
   if (target === 'vec2-uniform') return [v, v];
   if (target === 'vec2-x') return [v, base[1]];

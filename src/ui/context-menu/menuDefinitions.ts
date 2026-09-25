@@ -5,7 +5,7 @@ import {
   Volume2, VolumeX, Upload, FolderPlus, LayoutGrid, List, Clock, SortAsc,
   RefreshCcw, Play, Pause, SkipForward, SkipBack, Star, Hexagon,
   Eye, EyeOff, Move, Maximize2, Minimize2, Crosshair, Ruler, AlignCenter,
-  FastForward, Rewind, Tag, Palette, Settings, Wand2, ScanLine, Feather, AudioLines,
+  FastForward, Rewind, Tag, Palette, Settings, Wand2, ScanLine, Feather, AudioLines, Database,
   Waves, Activity, Gauge, Ungroup, Group, MousePointer, Columns3, Rows3,
   Zap, ArrowLeftToLine, ArrowRightToLine, Container, Download,
   Combine, Diff, SquareStack, Blend, Captions, Spline,
@@ -36,6 +36,7 @@ import { useColorGradeStore } from '../../store/colorGrade';
 import { useChromaKeyStore } from '../../store/chromaKey';
 import { useRetouchStore } from '../../store/retouch';
 import { useAudioReactStore } from '../../store/audioReact';
+import { useDataBindStore } from '../../store/dataBind';
 import { useInspectorStore } from '../../store/inspector';
 import { addAssetToFavorites, addAssetToFolder } from '../../library/folderService';
 import { processAudioAsset, toMono, toStereo, normalize, amplifyBy } from '../../engine/audio/audioProcessing';
@@ -375,6 +376,7 @@ export function buildClipMenu(layerId: string): MenuEntry[] {
       label: 'Animate',
       items: [
         item('clip-audio-react', 'Audio React…', () => useAudioReactStore.getState().show(layerId), AudioLines),
+        item('clip-data-bind', 'Data Bind…', () => useDataBindStore.getState().show(layerId), Database),
       ],
     },
     {

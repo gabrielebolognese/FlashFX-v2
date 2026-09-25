@@ -49,6 +49,7 @@
     "verify:cursor-budget": "node scripts/verify-cursor-budget.mjs",
     "verify:thumbnail-sprite": "node scripts/verify-thumbnail-sprite.mjs",
     "verify:chunk-plan": "node scripts/verify-chunk-plan.mjs",
+    "verify:data-binding": "node scripts/verify-data-binding.mjs",
     "verify:shutter": "node scripts/verify-shutter.mjs",
     "verify:keyframe-assistants": "node scripts/verify-keyframe-assistants.mjs",
     "verify:time-remap": "node scripts/verify-time-remap.mjs",
