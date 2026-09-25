@@ -55,6 +55,9 @@ export interface AnthropicClientOptions {
   /** Direct browser→Anthropic calls (BYOK) require this opt-in header; the API rejects them
    *  otherwise. Leave off for Node and for a same-origin proxy (which injects the key server-side). */
   dangerousDirectBrowserAccess?: boolean;
+  /** Extra request headers merged in AFTER the defaults (so they can override). Used by the managed
+   *  proxy path to attach `Authorization: Bearer <supabase jwt>` so the proxy can identify the user. */
+  extraHeaders?: Record<string, string>;
 }
 
 export function createAnthropicClient(opts: AnthropicClientOptions): DirectorClient {
@@ -71,6 +74,7 @@ export function createAnthropicClient(opts: AnthropicClientOptions): DirectorCli
         'anthropic-beta': 'prompt-caching-2024-07-31',
       };
       if (opts.dangerousDirectBrowserAccess) headers['anthropic-dangerous-direct-browser-access'] = 'true';
+      if (opts.extraHeaders) Object.assign(headers, opts.extraHeaders);
       const res = await fetchImpl(`${baseUrl}/v1/messages`, {
         method: 'POST',
         headers,

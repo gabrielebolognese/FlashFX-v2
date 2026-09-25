@@ -5,6 +5,11 @@ import { useEditorStore } from '../../store/editor';
 import { useProjectStore } from '../../project-system/hooks/useProjectStore';
 import { useAiChatStore, EMPTY_CONVERSATION, convKey, type AiMsg } from '../../store/aiChat';
 import { useAiSettingsStore, isAiConfigured, makeAiClient } from '../../store/aiSettings';
+import { makeManagedAiClient, managedAiPossible } from '../../ai/managedClient';
+import { useAiUsageStore } from '../../store/aiUsageStore';
+import { useAuthStore } from '../../auth/store';
+import { usePlanStore } from '../../billing/plans';
+import { aiBudget, aiTokensRemaining, hasAiBudget } from '../../billing/aiCredits';
 import { useIslandStore } from '../island/islandStore';
 import { requirePro } from '../../billing/upgradePrompt';
 
@@ -40,6 +45,14 @@ export function AiChatPanel() {
   const proxyUrl = useAiSettingsStore((s) => s.proxyUrl);
   const configured = isAiConfigured({ apiKey, proxyUrl });
 
+  // Managed AI: signed-in Pro users generate through the FlashFX proxy (no key needed). BYOK stays as a
+  // fallback. `ready` = a transport exists either way.
+  const signedIn = useAuthStore((s) => s.status === 'signed-in');
+  const plan = usePlanStore((s) => s.plan);
+  const managed = managedAiPossible() && signedIn;
+  const ready = managed || configured;
+  const usedTokens = useAiUsageStore((s) => s.totalTokens);
+
   // Transient, per-mount generation state - a half-finished generation can't survive an unmount.
   const [generating, setGenerating] = useState(false);
   const [elapsed, setElapsed] = useState(0);
@@ -66,8 +79,14 @@ export function AiChatPanel() {
     const text = draft.trim();
     if (!text || generating) return;
     if (!requirePro('ai')) return; // AI generation is Pro-only
-    if (!configured) { setShowKey(true); return; }
-    const client = makeAiClient({ apiKey, proxyUrl });
+    if (!managed && !configured) { setShowKey(true); return; }
+    // Managed users: pre-flight the monthly token budget (the proxy also enforces it server-side).
+    if (managed && !hasAiBudget(usedTokens, plan)) {
+      setMessages((m) => [...m, { id: nextId(), role: 'assistant', text: `You've used your ${aiBudget(plan).toLocaleString()} monthly AI tokens. They reset at the start of next month.` }]);
+      return;
+    }
+    let client = managed ? await makeManagedAiClient() : null;
+    if (!client) client = makeAiClient({ apiKey, proxyUrl });
     if (!client) { setShowKey(true); return; }
     // Release focus back to the editor so global shortcuts (Space to play, etc.) work again.
     textareaRef.current?.blur();
@@ -89,7 +108,7 @@ export function AiChatPanel() {
 
     try {
       const { generateScene, commitScene } = await import('../../ai/browserGenerate');
-      const result = await generateScene({ description: text, client, canvas, fps, seed });
+      const result = await generateScene({ description: text, client, canvas, fps, seed, tier: plan });
       if (abortedRef.current) return; // user hit Stop - drop the result, commit nothing
       const s = commitScene(result);
       const plural = (n: number) => (n === 1 ? '' : 's');
@@ -100,16 +119,31 @@ export function AiChatPanel() {
       if (s.errors) summary += ` ${s.errors} issue${plural(s.errors)} left in the report.`;
       summary += ` ~$${s.costUsd.toFixed(2)}. Ctrl+Z to undo.`;
       patch((x) => ({ ...x, text: summary, streaming: false, ms: Date.now() - start }));
+      if (managed) void useAiUsageStore.getState().refresh();
     } catch (e) {
       if (abortedRef.current) return;
       const msg = e instanceof Error ? e.message : String(e);
-      const hint = /401|403|api[_-]?key|authentication/i.test(msg) ? ' Check your API key in the key menu.' : '';
-      patch((x) => ({ ...x, text: `Generation failed: ${msg}${hint}`, streaming: false, ms: Date.now() - start }));
+      // Map the proxy's typed errors (surfaced through the client as "…API <status>: <body>") to
+      // friendly copy; fall back to the raw message + a BYOK key hint.
+      let friendly: string;
+      if (/quota-exceeded|\b429\b/.test(msg)) {
+        friendly = "You've reached your monthly AI token limit. It resets at the start of next month.";
+        void useAiUsageStore.getState().refresh();
+      } else if (/not-pro|\b403\b/.test(msg)) {
+        requirePro('ai');
+        friendly = 'AI generation is a Pro feature.';
+      } else if (/not-signed-in|invalid-session|\b401\b/.test(msg)) {
+        friendly = managed ? 'Your session expired. Sign in again to use AI.' : `Generation failed: ${msg} Check your API key in the key menu.`;
+      } else {
+        const hint = !managed && /api[_-]?key|authentication/i.test(msg) ? ' Check your API key in the key menu.' : '';
+        friendly = `Generation failed: ${msg}${hint}`;
+      }
+      patch((x) => ({ ...x, text: friendly, streaming: false, ms: Date.now() - start }));
       useIslandStore.getState().error('AI generation failed');
     } finally {
       stopTick(); setGenerating(false);
     }
-  }, [draft, generating, configured, apiKey, proxyUrl, setMessages, setDraft, stopTick]);
+  }, [draft, generating, configured, managed, usedTokens, plan, apiKey, proxyUrl, setMessages, setDraft, stopTick]);
 
   const newChat = () => { stop(); clearConversation(activeProjectId); };
 
@@ -121,8 +155,8 @@ export function AiChatPanel() {
         <span className="text-[12px] font-semibold text-slate-200">AI Assistant</span>
         <div className="ml-auto flex items-center gap-1">
           <button
-            title={configured ? 'Model connected - manage key' : 'Connect your Anthropic key'}
-            className={`p-1 rounded hover:bg-white/5 ${configured ? 'text-emerald-400' : 'text-amber-400'}`}
+            title={managed ? 'Managed AI (Pro) - key handled for you' : configured ? 'Model connected - manage key' : 'Connect your Anthropic key'}
+            className={`p-1 rounded hover:bg-white/5 ${ready ? 'text-emerald-400' : 'text-amber-400'}`}
             onClick={() => setShowKey((v) => !v)}
           >
             <KeyRound size={13} />
@@ -140,7 +174,7 @@ export function AiChatPanel() {
           <div className="h-full flex flex-col items-center justify-center text-center gap-2 text-slate-600 px-3">
             <Sparkles size={22} />
             <p className="text-[12px] leading-relaxed">Describe a scene and the assistant will build it - layers, motion, and palette - onto the canvas.</p>
-            {!configured && (
+            {!ready && (
               <button onClick={() => setShowKey(true)} className="mt-1 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-surface-3 border border-hairline text-[11px] text-amber-300 hover:bg-white/5">
                 <KeyRound size={12} /> Connect your Anthropic key to start
               </button>
@@ -175,11 +209,13 @@ export function AiChatPanel() {
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); } }}
             rows={2}
-            placeholder={configured ? 'Describe a scene to build…' : 'Connect a key, then describe a scene…'}
+            placeholder={ready ? 'Describe a scene to build…' : 'Connect a key, then describe a scene…'}
             className="w-full bg-transparent resize-none text-[12px] text-slate-200 placeholder:text-slate-600 focus:outline-none px-2.5 py-2 max-h-32"
           />
           <div className="flex items-center gap-0.5 px-1.5 pb-1.5">
-            <span className="text-[10px] text-slate-600 px-1">Opus builds a full scene · one undo step</span>
+            <span className="text-[10px] text-slate-600 px-1">
+              {managed ? `${aiTokensRemaining(usedTokens, plan).toLocaleString()} AI tokens left this month` : 'Opus builds a full scene · one undo step'}
+            </span>
             <div className="ml-auto">
               {generating ? (
                 <button onClick={stop} title="Stop" className="flex items-center justify-center w-7 h-7 rounded-md text-slate-200 bg-surface-4 hover:bg-[#33445e]"><Square size={11} fill="currentColor" /></button>
@@ -204,6 +240,8 @@ function KeyPanel({ onClose }: { onClose: () => void }) {
   const clear = useAiSettingsStore((s) => s.clear);
   const [key, setKey] = useState(apiKey);
   const [proxy, setProxy] = useState(proxyUrl);
+  const signedIn = useAuthStore((s) => s.status === 'signed-in');
+  const managed = managedAiPossible() && signedIn;
 
   const save = () => { setApiKey(key); setProxyUrl(proxy); onClose(); };
 
@@ -212,6 +250,11 @@ function KeyPanel({ onClose }: { onClose: () => void }) {
       <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-300">
         <KeyRound size={12} className="text-amber-400" /> Model access
       </div>
+      {managed && (
+        <p className="text-[9.5px] leading-relaxed text-emerald-400/80">
+          Pro accounts use FlashFX's managed AI automatically - no key needed here. A key or proxy below is an optional override.
+        </p>
+      )}
       <label className="block">
         <span className="text-[10px] text-slate-500">Anthropic API key</span>
         <input

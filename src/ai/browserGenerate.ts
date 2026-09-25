@@ -23,6 +23,9 @@ export interface GenerateSceneOpts {
   canvas: { width: number; height: number };
   fps: number;
   seed: number;
+  /** Per-account cap tier (from the plan). Defaults to 'pro' in generate() when omitted, but the panel
+   *  passes the real plan so free-tier caps apply if AI ever opens to a free trial. */
+  tier?: 'free' | 'pro' | 'max';
 }
 
 export interface GenerateSceneSummary {
@@ -41,6 +44,7 @@ export async function generateScene(o: GenerateSceneOpts): Promise<GenerateResul
     canvas: o.canvas,
     fps: o.fps,
     seed: o.seed,
+    tier: o.tier,
     client: o.client,
     directorSystemPrompt,
     coderSystemPrompt,

@@ -53,6 +53,7 @@ import { SaveReminderModal } from './auth/SaveReminderModal';
 import { SubscriptionSuccess } from './billing/SubscriptionSuccess';
 import { refreshPlan } from './billing/checkout';
 import { UpgradeModalHost } from './billing/UpgradeModal';
+import { useAiUsageStore } from './store/aiUsageStore';
 
 // The Animation Builder is a whole authoring mode whose toggle is hidden from the public UI
 // (workspace is effectively always 'editor'), so lazy-load it: its code stays out of the main
@@ -773,7 +774,10 @@ function App() {
   // is no user, so signing out correctly drops Pro - otherwise a signed-out guest keeps the previous
   // user's Pro (all paid features unlocked) until a manual reload.
   useEffect(() => {
-    if (authStatus !== 'loading') void refreshPlan();
+    if (authStatus !== 'loading') {
+      void refreshPlan();
+      void useAiUsageStore.getState().refresh(); // sync the account's monthly AI token usage (resets on sign-out)
+    }
   }, [authStatus]);
 
   // First run: launch the onboarding wizard once, ever. Mark it seen immediately so a

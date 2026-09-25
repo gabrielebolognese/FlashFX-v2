@@ -59,13 +59,26 @@ the regeneration inputs don't persist, and there's no browser path (the key can'
 - **M3 - `aiMeta` persistence** - whitelist brief/styleContract/panelPlan/seed/digest/tier through
   `src/project-system/services/validation.ts` (it's on the core type but stripped on save/load).
   Round-trip harness. **Needs nothing from you.**
-- **M4 - Key-holding proxy** - a Supabase edge function (Deno, the `drive-assets` pattern) holding
-  `ANTHROPIC_API_KEY` as a secret, proxying Director+Coder calls to Anthropic. **I write it; you set
-  the secret + deploy** (two commands, below). The ONLY milestone that needs you.
-- **M5 - Browser wiring (the feature)** - a browser client hitting the proxy; replace the AiChatPanel
-  mockup with prompt → orchestrator → commit onto the canvas, progress in the Tasks panel. Needs M4.
+- **M4 - Key-holding proxy** BUILT Sep 2026 (code; pending your deploy). `supabase/functions/ai-proxy/`
+  (Deno, the `drive-assets` pattern) holds `ANTHROPIC_API_KEY` as a secret and proxies the Messages
+  calls. It authenticates the caller by their Supabase JWT, enforces **Pro-only** access + a **monthly
+  token budget** (server-authoritative), forwards with the server key, then meters the real token usage
+  into `ai_usage` (migration `20260925090000_ai_usage.sql`, read-own RLS + `add_ai_usage` RPC). Budget
+  math is the pure `src/billing/aiCredits.ts` (`verify:ai-credits`). **To go live, you run two commands:**
+  ```
+  supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
+  supabase functions deploy ai-proxy
+  ```
+  (`SUPABASE_URL`/`SERVICE_ROLE_KEY`/`ANON_KEY` are injected automatically.) Until deployed, the panel
+  falls back to BYOK.
+- **M5 - Browser wiring (the feature)** DONE. `src/ai/managedClient.ts` builds a wire client that routes
+  through the proxy with the user's session token; `AiChatPanel` prefers it for signed-in Pro users (no
+  key needed), pre-flights the budget, shows tokens-left, and maps the proxy's `not-pro`/`quota-exceeded`
+  errors to friendly copy. BYOK remains a power-user fallback. `useAiUsageStore` mirrors usage for the
+  panel + the account panel's AI-tokens bar.
 - **M6 - Edit & assets (polish)** - regenerate/tweak via `aiMeta`; bind real image/video assets;
-  usage/cost + tier UI.
+  per-panel progress steps; a richer usage/cost dashboard. (Token metering + tier are now wired; this is
+  the remaining polish.)
 
 M1–M3 are all buildable and provable here now, with no key. M4 is your two commands. M5 lights it up.
 

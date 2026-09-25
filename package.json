@@ -60,6 +60,7 @@
     "verify:mask-path": "node scripts/verify-mask-path.mjs",
     "verify:effects": "node scripts/verify-effects.mjs",
     "verify:ai-client": "node scripts/verify-ai-client.mjs",
+    "verify:ai-credits": "node scripts/verify-ai-credits.mjs",
     "verify:cloud-sync": "node scripts/verify-cloudsync.mjs",
     "verify:plans": "node scripts/verify-plans.mjs",
     "verify:export-memory": "node scripts/verify-export-memory.mjs",

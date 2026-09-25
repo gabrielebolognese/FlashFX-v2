@@ -8,6 +8,8 @@ import { useProjectStore } from '../project-system/hooks/useProjectStore';
 import { deleteAllProjects, deleteAllAssets, getLocalStorageStats } from '../project-system/services/accountData';
 import { getCloudMediaUsage } from '../project-system/services/cloudSync';
 import { usePlanStore } from '../billing/plans';
+import { aiBudget } from '../billing/aiCredits';
+import { useAiUsageStore } from '../store/aiUsageStore';
 import { UpgradeModal } from '../billing/UpgradeModal';
 import { useIslandStore } from '../ui/island/islandStore';
 
@@ -22,6 +24,12 @@ function formatBytes(n: number): string {
   return `${v < 10 ? v.toFixed(1) : Math.round(v)} ${units[i]}`;
 }
 
+function formatTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n < 10_000_000 ? 1 : 0)}M`;
+  if (n >= 1000) return `${Math.round(n / 1000)}K`;
+  return String(Math.max(0, Math.round(n || 0)));
+}
+
 export function AccountSettingsModal({ onClose }: { onClose: () => void }) {
   const user = useAuthStore((s) => s.user);
   const signOut = useAuthStore((s) => s.signOut);
@@ -33,11 +41,13 @@ export function AccountSettingsModal({ onClose }: { onClose: () => void }) {
   const [dialog, setDialog] = useState<Dialog>(null);
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [busy, setBusy] = useState(false);
+  const aiUsed = useAiUsageStore((s) => s.totalTokens);
 
   useEffect(() => {
     let alive = true;
     getLocalStorageStats().then((s) => { if (alive) setLocal({ used: s.usedBytes, quota: s.estimatedQuota }); }).catch(() => {});
     getCloudMediaUsage().then((u) => { if (alive && u) setCloud({ used: u.usedBytes, limit: u.limitBytes }); }).catch(() => {});
+    void useAiUsageStore.getState().refresh();
     return () => { alive = false; };
   }, []);
 
@@ -111,6 +121,9 @@ export function AccountSettingsModal({ onClose }: { onClose: () => void }) {
         <div className="space-y-2">
           <StorageBar label={`Cloud · ${planLabel}`} used={cloud?.used} total={cloud?.limit} />
           <StorageBar label="Device" used={local?.used} total={local?.quota} />
+          {plan === 'pro' && (
+            <StorageBar label="AI tokens · this month" used={aiUsed} total={aiBudget('pro')} format={formatTokens} />
+          )}
         </div>
 
         {/* Actions grid */}
@@ -143,13 +156,13 @@ export function AccountSettingsModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-function StorageBar({ label, used, total }: { label: string; used?: number; total?: number }) {
+function StorageBar({ label, used, total, format = formatBytes }: { label: string; used?: number; total?: number; format?: (n: number) => string }) {
   const pct = used != null && total && total > 0 ? Math.min(100, (used / total) * 100) : 0;
   return (
     <div>
       <div className="flex items-center justify-between text-[10.5px]">
         <span className="text-slate-400">{label}</span>
-        <span className="text-slate-600">{used != null && total != null ? `${formatBytes(used)} / ${formatBytes(total)}` : '-'}</span>
+        <span className="text-slate-600">{used != null && total != null ? `${format(used)} / ${format(total)}` : '-'}</span>
       </div>
       <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-[#1a2233]">
         <div className="h-full rounded-full bg-[#f7b500]" style={{ width: `${pct}%` }} />
