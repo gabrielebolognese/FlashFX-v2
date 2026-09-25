@@ -1550,6 +1550,15 @@ fn applyColorEffect(color: vec4f, a: vec4f, b: vec4f, uv: vec2f, time: f32) -> v
       let d = clamp(distance(sp, voronoiCenter(sp)), 0.0, 1.0);
       c = mix(c, vec3f(d), p0);
     }
+    // Radial vignette: mirrors core/effects/vignette.ts (verify:vignette). params [amount, radius, softness].
+    case ${EFFECT_TYPE.vignette}: {
+      let vAmount = clamp(a.y, 0.0, 1.0);
+      let vRadius = clamp(a.z, 0.0, 1.5);
+      let vSoft = clamp(a.w, 0.0, 1.0);
+      let vDist = length((uv - vec2f(0.5)) * 2.0); // 0 centre .. ~1.414 corner
+      let vFactor = 1.0 - smoothstep(vRadius - vSoft, vRadius, vDist);
+      c = c * mix(1.0, vFactor, vAmount);
+    }
 
     default: {}
   }

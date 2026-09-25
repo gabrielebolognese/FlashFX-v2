@@ -58,6 +58,7 @@ export const FILTER_CATEGORIES: FilterCategory[] = [
       { id: 'tritone', label: 'Tritone', type: 'slider', min: 0, max: 1, step: 0.01, defaultValue: 0 },
       { id: 'gradientMap', label: 'Gradient Map', type: 'slider', min: 0, max: 1, step: 0.01, defaultValue: 0 },
       { id: 'posterize', label: 'Posterize', type: 'slider', min: 2, max: 32, step: 1, defaultValue: 8 },
+      { id: 'vignette', label: 'Vignette', type: 'slider', min: 0, max: 1, step: 0.01, defaultValue: 0.6 },
       { id: 'solarize', label: 'Solarize', type: 'slider', min: 0, max: 1, step: 0.01, defaultValue: 0 },
       { id: 'threshold', label: 'Threshold', type: 'slider', min: 0, max: 1, step: 0.01, defaultValue: 0.5 },
       { id: 'invert', label: 'Invert', type: 'slider', min: 0, max: 1, step: 0.01, defaultValue: 0 },
