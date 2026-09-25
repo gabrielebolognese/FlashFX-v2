@@ -1082,6 +1082,38 @@ fn hsv2rgb(c: vec3f) -> vec3f {
   return c.z * mix(K.xxx, clamp(p - K.xxx, vec3f(0.0), vec3f(1.0)), c.y);
 }
 
+// RGB<->HSL (lightness), the twin of core/effects/hsl.ts (verify:hsl), used by the hslSecondary effect.
+fn rgb2hsl(c: vec3f) -> vec3f {
+  let mx = max(c.r, max(c.g, c.b));
+  let mn = min(c.r, min(c.g, c.b));
+  let l = (mx + mn) * 0.5;
+  let d = mx - mn;
+  var h = 0.0;
+  var s = 0.0;
+  if (d > 1.0e-6) {
+    s = select(d / (2.0 - mx - mn), d / (mx + mn), l <= 0.5);
+    if (mx == c.r) { h = (c.g - c.b) / d + select(0.0, 6.0, c.g < c.b); }
+    else if (mx == c.g) { h = (c.b - c.r) / d + 2.0; }
+    else { h = (c.r - c.g) / d + 4.0; }
+    h = h / 6.0;
+  }
+  return vec3f(h, s, l);
+}
+fn hslHue2rgb(p: f32, q: f32, tin: f32) -> f32 {
+  let t = fract(tin);
+  if (t < 1.0 / 6.0) { return p + (q - p) * 6.0 * t; }
+  if (t < 0.5) { return q; }
+  if (t < 2.0 / 3.0) { return p + (q - p) * (2.0 / 3.0 - t) * 6.0; }
+  return p;
+}
+fn hsl2rgb(c: vec3f) -> vec3f {
+  let h = c.x; let s = c.y; let l = c.z;
+  if (s <= 0.0) { return vec3f(l); }
+  let q = select(l + s - l * s, l * (1.0 + s), l < 0.5);
+  let p = 2.0 * l - q;
+  return vec3f(hslHue2rgb(p, q, h + 1.0 / 3.0), hslHue2rgb(p, q, h), hslHue2rgb(p, q, h - 1.0 / 3.0));
+}
+
 fn hash21(p: vec2f) -> f32 {
   var p3 = fract(vec3f(p.xyx) * 0.1031);
   p3 = p3 + dot(p3, p3.yzx + 33.33);
@@ -1558,6 +1590,26 @@ fn applyColorEffect(color: vec4f, a: vec4f, b: vec4f, uv: vec2f, time: f32) -> v
       let vDist = length((uv - vec2f(0.5)) * 2.0); // 0 centre .. ~1.414 corner
       let vFactor = 1.0 - smoothstep(vRadius - vSoft, vRadius, vDist);
       c = c * mix(1.0, vFactor, vAmount);
+    }
+    // HSL secondary: hue/sat/lightness adjust, optionally gated to a hue range (rangeWidth<1). Mirrors
+    // core/effects/hsl.ts (verify:hsl). params [hueShiftDeg, satScale, lightAdd, rangeCenter, rangeWidth].
+    case ${EFFECT_TYPE.hslSecondary}: {
+      let hueShift = a.y / 360.0;   // slider is degrees; the pure math is in turns
+      let satScale = a.z;
+      let lightAdd = a.w;
+      let rangeCenter = b.x;        // hue 0..1
+      let rangeWidth = b.y;         // >= 1 -> global
+      let hsl = rgb2hsl(c);
+      var mask = 1.0;
+      if (rangeWidth < 1.0) {
+        let dd = abs(fract(hsl.x) - fract(rangeCenter));
+        let dh = min(dd, 1.0 - dd);
+        mask = 1.0 - smoothstep(rangeWidth, rangeWidth + 0.1, dh);
+      }
+      let h2 = fract(hsl.x + hueShift);
+      let s2 = clamp(hsl.y * satScale, 0.0, 1.0);
+      let l2 = clamp(hsl.z + lightAdd, 0.0, 1.0);
+      c = mix(c, hsl2rgb(vec3f(h2, s2, l2)), mask);
     }
 
     default: {}

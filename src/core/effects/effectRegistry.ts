@@ -74,6 +74,9 @@ export const EFFECT_TYPE = {
   chromaKey: 163,
   // Radial vignette (class A color): darken toward the edges. params: [amount, radius, softness].
   vignette: 164,
+  // HSL secondary (class A color): hue/sat/lightness, optionally hue-range gated. params:
+  // [hueShiftDeg, satScale, lightAdd, rangeCenter, rangeWidth]. rangeWidth>=1 = global.
+  hslSecondary: 165,
   // B1 - geometry & radial distortion (200–218), UV warp (class B)
   rotate: 200, flipH: 201, flipV: 202, scale: 203, crop: 204, perspective: 205,
   shear: 206, skew: 207, affineTransform: 208, offset: 209, lensDistortion: 210,
@@ -167,6 +170,8 @@ export const EFFECT_DEFS: EffectDef[] = [
   { id: 'chromaKey',     type: EFFECT_TYPE.chromaKey,     klass: 'color', paramCount: 5, defaults: [0, 0, 1, 0, 0.1] },
   // [amount, radius, softness] - radial edge darken. Slider drives amount; radius/softness at defaults.
   { id: 'vignette',      type: EFFECT_TYPE.vignette,      klass: 'color', paramCount: 3, defaults: [0.6, 1.1, 0.6] },
+  // [hueShiftDeg, satScale, lightAdd, rangeCenter, rangeWidth]. Slider drives hue; rangeWidth 1 = global.
+  { id: 'hslSecondary',  type: EFFECT_TYPE.hslSecondary,  klass: 'color', paramCount: 5, defaults: [0, 1, 0, 0, 1] },
   { id: 'gradientFill',  type: EFFECT_TYPE.gradientFill,  klass: 'color', paramCount: 1, defaults: [0] },
   { id: 'noiseFill',     type: EFFECT_TYPE.noiseFill,     klass: 'color', paramCount: 1, defaults: [0] },
   { id: 'patternFill',   type: EFFECT_TYPE.patternFill,   klass: 'color', paramCount: 1, defaults: [0] },
