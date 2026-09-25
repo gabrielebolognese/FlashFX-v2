@@ -82,10 +82,13 @@ export const EFFECT_TYPE = {
   shear: 206, skew: 207, affineTransform: 208, offset: 209, lensDistortion: 210,
   barrelDistortion: 211, pincushion: 212, fisheye: 213, spherize: 214, bulge: 215,
   pinch: 216, twirl: 217, polarCoordinates: 218,
-  // B2 - waves, tiling, pixelation, cellular (220–234), UV warp (class B)
+  // B2 - waves, tiling, pixelation, cellular (220–235), UV warp (class B)
   wave: 220, ripple: 221, zigzag: 222, turbulentDisplace: 223, perspectiveWarp: 224,
   mirror: 225, kaleidoscope: 226, pixelate: 227, mosaic: 228, hexPixelate: 229,
   blockPixelation: 230, crystallize: 231, voronoi: 232, facet: 233, pointillize: 234,
+  // Motion tile (B17-gpu): repeat the layer tilesX x tilesY with optional mirror + seamless scroll
+  // (UV remap; mirrors core/effects/tileParams.ts tileUV). params: [tilesX, tilesY, scrollX, scrollY, mirror].
+  motionTile: 235,
   // B3 - chromatic & retro (240–250). Multi-tap: re-sample the texture at per-channel
   // offset UVs. Run in the texture-aware "spatial" stage (class C-single-pass).
   rgbSplit: 240, channelOffset: 241, chromaticAberration: 242, refraction: 243,
@@ -228,6 +231,8 @@ export const EFFECT_DEFS: EffectDef[] = [
   { id: 'voronoi',          type: EFFECT_TYPE.voronoi,          klass: 'warp', paramCount: 1, defaults: [1] },
   { id: 'facet',            type: EFFECT_TYPE.facet,            klass: 'warp', paramCount: 1, defaults: [1] },
   { id: 'pointillize',      type: EFFECT_TYPE.pointillize,      klass: 'warp', paramCount: 1, defaults: [1] },
+  // [tilesX, tilesY, scrollX, scrollY, mirror] - repeat the layer with optional mirror + scroll. Slider drives tilesX.
+  { id: 'motionTile',       type: EFFECT_TYPE.motionTile,       klass: 'warp', paramCount: 5, defaults: [3, 3, 0, 0, 0] },
 
   // ── B3: chromatic & retro (class C single-pass - texture-aware spatial stage) ──
   { id: 'rgbSplit',            type: EFFECT_TYPE.rgbSplit,            klass: 'spatial', paramCount: 1, defaults: [0] },

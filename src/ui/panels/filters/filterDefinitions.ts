@@ -142,6 +142,7 @@ export const FILTER_CATEGORIES: FilterCategory[] = [
     filters: [
       { id: 'pixelate', label: 'Pixelate', type: 'slider', min: 1, max: 100, step: 1, defaultValue: 1 },
       { id: 'mosaic', label: 'Mosaic', type: 'slider', min: 1, max: 100, step: 1, defaultValue: 1 },
+      { id: 'motionTile', label: 'Motion Tile', type: 'slider', min: 1, max: 10, step: 1, defaultValue: 3 },
       { id: 'hexPixelate', label: 'Hexagonal Pixelate', type: 'slider', min: 1, max: 80, step: 1, defaultValue: 1 },
       { id: 'crystallize', label: 'Crystallize', type: 'slider', min: 1, max: 80, step: 1, defaultValue: 1 },
       { id: 'facet', label: 'Facet', type: 'slider', min: 1, max: 50, step: 1, defaultValue: 1 },

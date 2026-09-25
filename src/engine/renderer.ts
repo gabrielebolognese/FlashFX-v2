@@ -1806,6 +1806,23 @@ fn applyWarpEffect(uv: vec2f, a: vec4f, b: vec4f, aspect: f32, time: f32) -> vec
       let cc = voronoiCenter(vec2f(uv.x * aspect, uv.y) * cells);
       w = vec2f((cc.x / cells) / aspect, cc.y / cells);
     }
+    // Motion tile (B17-gpu): repeat the layer tilesX x tilesY with optional mirror + a seamless scroll
+    // phase. Mirrors core/effects/tileParams.ts tileUV (verify:pattern-tile); keeps uv in [0,1) via fract
+    // so the caller's inBounds border test stays 1 (no transparent border for a tiling warp).
+    // params: tilesX=a.y, tilesY=a.z, scrollX=a.w, scrollY=b.x (normalized 0..1 phase), mirror=b.y (0/1).
+    case ${EFFECT_TYPE.motionTile}: {
+      let tilesX = max(a.y, 1.0);
+      let tilesY = max(a.z, 1.0);
+      let su = uv.x * tilesX + a.w;
+      let sv = uv.y * tilesY + b.x;
+      var fu = fract(su);
+      var fv = fract(sv);
+      if (b.y > 0.5) {
+        if ((i32(floor(su)) & 1) != 0) { fu = 1.0 - fu; }
+        if ((i32(floor(sv)) & 1) != 0) { fv = 1.0 - fv; }
+      }
+      w = vec2f(fu, fv);
+    }
     default: {}
   }
   return w;
