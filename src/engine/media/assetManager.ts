@@ -5,6 +5,7 @@ import { computeWaveformPeaks } from '../../core/waveform';
 import { videoDecoderPool } from '../video/videoDecoderPool';
 import { proxyTranscoder } from '../video/proxyTranscoder';
 import { loadProxy, saveProxy } from '../video/proxyStore';
+import { ensureThumbnailSprite } from '../video/thumbnailSpriteManager';
 import { frameScheduler } from '../video/frameScheduler';
 import { videoAudioPlayer } from '../video/videoAudioPlayer';
 import { videoTextureCache } from '../video/videoTextureCache';
@@ -237,6 +238,10 @@ class MediaAssetManager {
       // forget + fail-open - a failed/absent proxy just means preview uses the original. Fresh imports
       // only for now; reload-persistence (OPFS) is PB4c.
       this.maybeBuildProxy(assetId, file, metadata);
+      // Background: pack a timeline thumbnail sprite on a DEDICATED decode lane + persist it to OPFS
+      // (PB6), so the filmstrip stops decoding a frame per cell through the shared playback cursor.
+      // Fire-and-forget / fail-open - a failed/absent sprite just means the strip uses the live decode.
+      ensureThumbnailSprite(assetId, file, metadata.duration);
 
       // Await persistence if still in progress
       try {
@@ -570,6 +575,9 @@ class MediaAssetManager {
           assetId, width: workerMeta.width, height: workerMeta.height, duration: workerMeta.duration,
           frameRate: workerMeta.frameRate, hasAudio: false, codec: workerMeta.codec, fileSize: blob.size,
         });
+        // On reload, load the OPFS-persisted thumbnail sprite (or rebuild it) so the filmstrip renders
+        // without re-decoding (PB6). Fire-and-forget / fail-open.
+        ensureThumbnailSprite(assetId, file, workerMeta.duration);
       }
       // Do NOT decode the whole file's audio here. On project OPEN this ran a multi-GB `decodeAudioData`
       // for EVERY stored video just to build a waveform - the dominant open-time OOM. The waveform is

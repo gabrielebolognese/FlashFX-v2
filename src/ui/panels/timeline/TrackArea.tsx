@@ -10,6 +10,8 @@ import { isTrackCompressed } from '../../../core/trackCompression';
 import { clampGroupResizeDelta, applyResizeDelta } from '../../../core/clipResize';
 import { mediaAssetManager } from '../../../engine/media/assetManager';
 import { videoDecoderPool } from '../../../engine/video/videoDecoderPool';
+import { getThumbnailSprite, useThumbnailSpriteStore } from '../../../engine/video/thumbnailSpriteManager';
+import { cellRect, cellIndexForTime } from '../../../engine/video/thumbnailSprite';
 import { getSettingValue } from '../../../settings/store';
 import {
   buildClipSnapSources,
@@ -1626,6 +1628,7 @@ function VideoThumbnailStrip({
           key={i}
           assetId={assetId}
           sourceFrame={thumb.sourceFrame}
+          sourceFrameRate={sourceFrameRate}
           width={clipWidth / thumbCount}
           height={clipHeight}
         />
@@ -1652,19 +1655,22 @@ function cacheThumb(key: string, bmp: ImageBitmap): void {
   THUMB_CACHE.set(key, bmp);
 }
 
-// Decodes one source frame via the shared video decoder pool and paints it,
-// object-fit: cover. Best-effort: if the asset has no active decoder (not yet
-// loaded) or decode fails, the canvas stays blank. Gated behind the timeline
-// "Show Thumbnails" toggle so this decode traffic is opt-in.
-function VideoThumb({ assetId, sourceFrame, width, height }: {
+// Paints one filmstrip cell. PB6: first try the packed thumbnail SPRITE (built on a dedicated decode
+// lane + persisted to OPFS - no playback-cursor decode); if none is ready yet, fall back to decoding the
+// single source frame via the shared video decoder pool (the pre-PB6 path). Best-effort either way: if
+// nothing is available the canvas stays blank. Gated behind the timeline "Show Thumbnails" toggle.
+function VideoThumb({ assetId, sourceFrame, sourceFrameRate, width, height }: {
   assetId: string;
   sourceFrame: number;
+  sourceFrameRate: number;
   width: number;
   height: number;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const cw = Math.max(1, Math.ceil(width));
   const ch = Math.max(1, Math.ceil(height));
+  // Re-render (and repaint from the atlas) exactly when this asset's sprite becomes ready / rebuilds.
+  const spriteReady = useThumbnailSpriteStore((s) => s.ready[assetId] ?? 0);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -1683,6 +1689,22 @@ function VideoThumb({ assetId, sourceFrame, width, height }: {
       ctx.clearRect(0, 0, cw, ch);
       ctx.drawImage(bmp, (cw - dw) / 2, (ch - dh) / 2, dw, dh);
     };
+
+    // Fast path: draw the right cell out of the persisted atlas - zero decode, no playback-cursor traffic.
+    const sprite = getThumbnailSprite(assetId);
+    if (sprite && sourceFrameRate > 0) {
+      const sec = frameIdx / sourceFrameRate;
+      const r = cellRect(cellIndexForTime(sec, sprite.meta), sprite.meta);
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        const scale = Math.max(cw / r.w, ch / r.h); // cover
+        const dw = r.w * scale;
+        const dh = r.h * scale;
+        ctx.clearRect(0, 0, cw, ch);
+        ctx.drawImage(sprite.bitmap, r.x, r.y, r.w, r.h, (cw - dw) / 2, (ch - dh) / 2, dw, dh);
+      }
+      return;
+    }
 
     const cached = THUMB_CACHE.get(key);
     if (cached) { paint(cached); return; }
@@ -1706,7 +1728,7 @@ function VideoThumb({ assetId, sourceFrame, width, height }: {
     // recomputes cw/ch), which would cancel the in-flight decode a re-render is about to re-request
     // and could keep thumbnails from ever completing. Quantized source frames already bound the work.
     return () => { cancelled = true; };
-  }, [assetId, sourceFrame, cw, ch]);
+  }, [assetId, sourceFrame, sourceFrameRate, cw, ch, spriteReady]);
 
   return (
     <canvas

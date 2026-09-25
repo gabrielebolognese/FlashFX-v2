@@ -99,8 +99,8 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | PB4c | Playback: persist the proxy to OPFS (survive reload; apply to reloaded projects instead of re-transcoding) | ✅ | medium |
 | PB5a | Playback: global decode-cursor budget (fail-open; prevents black frames with many clips) | ✅ | medium |
 | PB5b | Playback: adaptive prefetch lookahead + cursor-pool-sizing (NOT fail-open; invariant-constrained) | ⬜ (browser) | medium |
-| PB6 | Playback: filmstrip/thumbnail decode lane separation + OPFS sprite-sheet cache | ▶ **next** (browser) | medium |
-| PB7 | Playback: range-stream URL/chunked assets + optional importExternalTexture zero-copy upload | ⬜ | medium |
+| PB6 | Playback: filmstrip/thumbnail decode lane separation + OPFS sprite-sheet cache | ✅ (browser scrub-test owed) | medium |
+| PB7 | Playback: range-stream URL/chunked assets + optional importExternalTexture zero-copy upload | ▶ **next** | medium |
 
 ---
 
@@ -470,7 +470,16 @@ needs the scheduler's per-asset layer counts threaded in. Build with the browser
 - **Likely files:** `src/engine/video/frameScheduler.ts`, `src/engine/video/mediabunnyController.ts` (cursor budget/sizing), `src/engine/video/videoDecoderPool.ts` (adapt the existing `MAX_ACTIVE_WORKERS` LRU as the global budget).
 - **Verification:** gates; manual browser: many-clip timeline doesn't hit black frames (decoder ceiling); 4K playback doesn't underrun.
 
-### PB6 - Filmstrip/thumbnail decode lane + OPFS sprite cache
+### PB6 - Filmstrip/thumbnail decode lane + OPFS sprite cache ✅ DONE (browser scrub-test owed)
+**Shipped (harnessed pure core + fail-open browser lane):** the timeline filmstrip no longer decodes a frame per cell through the shared playback cursor (the audit found BOTH thumbnail features - the live strip and the contact-sheet/scene-detect - rode `videoDecoderPool.decodeFrame`). New pieces, all additive:
+- `engine/video/thumbnailSprite.ts` - PURE planning/layout/lookup geometry for a packed atlas (density = 1 thumb/sec capped at MAX_THUMBS=200 with the interval widening to span longer clips; grid bounded to MAX_ATLAS_DIM=4096; `cellRect`/`cellIndexForTime`). Harnessed by `verify:thumbnail-sprite` (9 checks).
+- `engine/video/thumbnailLane.ts` - the DEDICATED lane: its own mediabunny `Input`+`VideoSampleSink` walked forward ONCE, packing frames into an `OffscreenCanvas` atlas. Never touches `AssetCtl.cursors`/`frameCache`/the cursor budget; returns the iterator in `finally` so its one decoder closes promptly. Browser-gated + fail-open (returns null on any failure).
+- `engine/video/thumbnailSpriteStore.ts` - OPFS persistence mirroring `proxyStore` (atlas PNG + JSON meta sidecar, keyed by the reload-stable asset id, fully fail-open).
+- `engine/video/thumbnailSpriteManager.ts` - serializes builds (a tail promise → at most ONE thumbnail decoder open, clear of the ~16 ceiling), LRU-bounds the in-memory atlas cache (24), and exposes a zustand `ready` signal so the strip repaints when a sprite lands.
+- Wired into `assetManager` import + reload (mirrors `maybeBuildProxy`/`restoreOrBuildProxy`). `TrackArea`'s `VideoThumb` draws the right atlas cell (ZERO decode) when a sprite is ready and repaints reactively; **falls back to the existing `decodeFrame` path when it isn't**, so the filmstrip never regresses.
+
+Gates: tsc 0, lint 125 baseline, build ok, **102 harnesses** (`npm test`). **Browser scrub-test owed (founder):** confirm a fresh 4K import builds its filmstrip without stealing the playback cursor (scrub stays smooth during the build), and thumbnails persist across reload (no re-decode storm). **Deferred (non-blocking):** build the sprite from the low-res proxy blob for speed (currently the original), move the pack to a worker, and repoint the contact-sheet/scene-detect one-offs (menu tools) onto the lane too.
+
 - **Delivers:** generate timeline thumbnails/filmstrips on a DEDICATED decode lane (not the playback cursor) via mediabunny `samplesAtTimestamps` / a CanvasSink at target size, snapped to keyframes, and persist packed sprite sheets to OPFS so they aren't re-decoded on reload - prevents the "thumbnail decode storm" starving playback on a long timeline.
 - **Source:** PLAYBACK-PERF-AUDIT #11.
 - **Depends on:** nothing; `thumbnailSheet.ts` (sprite packing) + `sceneDetect.ts` exist - confirm they use a dedicated decoder, not the playback cursor.
