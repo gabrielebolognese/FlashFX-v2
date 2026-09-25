@@ -49,3 +49,20 @@ export function matteFlags(mode: TrackMatteMode): { luma: boolean; invert: boole
     invert: mode === 'alphaInv' || mode === 'lumaInv',
   };
 }
+
+/** Rec.709 luma of a 0..1 rgb triple - the luminance a luma matte keys on. The WGSL composite mirrors it. */
+export function matteLuma(r: number, g: number, b: number): number {
+  return r * 0.2126 + g * 0.7152 + b * 0.0722;
+}
+
+/**
+ * The coverage multiplier a track matte applies to the matted layer's alpha (B10d), from the matte
+ * source pixel's alpha + luma and the mode flags: alpha/luma pick the channel, invert flips it, clamped
+ * to 0..1. keptAlpha = mattedAlpha * matteCoverage(...). This is the exact expression the WGSL composite
+ * shader implements - single source of truth, harnessed by verify:mattes.
+ */
+export function matteCoverage(srcAlpha: number, srcLuma: number, flags: { luma: boolean; invert: boolean }): number {
+  let c = flags.luma ? srcLuma : srcAlpha;
+  if (flags.invert) c = 1 - c;
+  return c < 0 ? 0 : c > 1 ? 1 : c;
+}

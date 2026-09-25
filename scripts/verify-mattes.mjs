@@ -25,7 +25,7 @@ const L = (id, trackMatte) => ({ id, trackMatte });
 
 try {
   const M = await bundle('src/core/trackMatte.ts', 'trackMatte.mjs');
-  const { pairTrackMattes, matteFlags } = M;
+  const { pairTrackMattes, matteFlags, matteLuma, matteCoverage } = M;
 
   check('no track mattes → empty pairing (byte-identical rendering)', () => {
     const r = pairTrackMattes([L('a'), L('b'), L('c')]);
@@ -77,6 +77,33 @@ try {
     assert.deepEqual(matteFlags('alphaInv'), { luma: false, invert: true });
     assert.deepEqual(matteFlags('luma'), { luma: true, invert: false });
     assert.deepEqual(matteFlags('lumaInv'), { luma: true, invert: true });
+  });
+
+  // B10d - the composite math (the WGSL twin).
+  const near = (a, b) => Math.abs(a - b) <= 1e-9;
+
+  check('matteLuma: Rec.709 weights', () => {
+    assert.ok(near(matteLuma(0, 0, 0), 0));
+    assert.ok(near(matteLuma(1, 1, 1), 1));
+    assert.ok(near(matteLuma(1, 0, 0), 0.2126));
+    assert.ok(near(matteLuma(0, 1, 0), 0.7152));
+    assert.ok(near(matteLuma(0, 0, 1), 0.0722));
+  });
+
+  check('matteCoverage: alpha mode keeps the source alpha; alphaInv flips it', () => {
+    const f = matteFlags('alpha'), fi = matteFlags('alphaInv');
+    assert.ok(near(matteCoverage(0.7, 0.3, f), 0.7));
+    assert.ok(near(matteCoverage(0.7, 0.3, fi), 1 - 0.7));
+    assert.ok(near(matteCoverage(0, 0.9, f), 0), 'transparent matte -> hides');
+    assert.ok(near(matteCoverage(1, 0.1, f), 1), 'opaque matte -> shows');
+  });
+
+  check('matteCoverage: luma mode keys on luminance; lumaInv flips it; clamps', () => {
+    const f = matteFlags('luma'), fi = matteFlags('lumaInv');
+    assert.ok(near(matteCoverage(1, 0.42, f), 0.42), 'uses luma, ignores alpha');
+    assert.ok(near(matteCoverage(1, 0.42, fi), 1 - 0.42));
+    assert.ok(near(matteCoverage(1, 1.5, f), 1), 'clamps above 1');
+    assert.ok(near(matteCoverage(1, -0.2, f), 0), 'clamps below 0');
   });
 
   console.log(`\n✓ all ${passed} checks passed`);
