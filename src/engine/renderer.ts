@@ -2048,6 +2048,36 @@ fn applySpatialEffect(color: vec4f, a: vec4f, b: vec4f, uv: vec2f, texel: vec2f,
       let daub = discBlurRGBA(uv + vec2f(cos(ang), sin(ang)) * texel * 4.0, texel * 2.0).rgb;
       c = mix(c, round(daub * 6.0) / 6.0, p0);
     }
+    // Pixel sort (bounded approximation): carry the brightest above-gate pixel forward along the row,
+    // making the characteristic bright horizontal streaks. Fixed 16-tap window (not a full row sort).
+    // Mirrors core/effects/glitchGpu.ts pixelSortLuma. p0 = amount.
+    case ${EFFECT_TYPE.pixelSorting}: {
+      let amt = clamp(p0, 0.0, 1.0);
+      let gate = 0.35;
+      var best = c;
+      var bestL = dot(c, vec3f(0.2126, 0.7152, 0.0722));
+      for (var i = 1; i <= 16; i = i + 1) {
+        let s = sampleTex(uv - vec2f(f32(i) * texel.x, 0.0));
+        let sl = dot(s, vec3f(0.2126, 0.7152, 0.0722));
+        if (sl > gate && sl > bestL) { best = s; bestL = sl; }
+      }
+      c = mix(c, best, amt);
+    }
+    // Datamosh: per-block pseudo-random displacement seeded by discrete time (frame-pure via floor(time)),
+    // gated so only a fraction of blocks "corrupt" (block-drop look). Mirrors glitchGpu.ts moshOffset. p0 = amount.
+    case ${EFFECT_TYPE.datamosh}: {
+      let amt = clamp(p0, 0.0, 1.0);
+      let cell = floor(uv * vec2f(24.0, 14.0));
+      let seed = floor(time * 0.25);
+      let h1 = hash21(cell + seed);
+      let h2 = hash21(cell + seed + 19.0);
+      let hg = hash21(cell + seed + 3.0);
+      let ang = h1 * 6.28318;
+      let mag = amt * 0.15 * h2;
+      let off = vec2f(cos(ang), sin(ang)) * mag;
+      let gate = step(1.0 - amt, hg);
+      c = mix(c, sampleTex(uv + off), gate);
+    }
 
     default: {}
   }

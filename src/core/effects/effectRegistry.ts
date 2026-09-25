@@ -107,6 +107,8 @@ export const EFFECT_TYPE = {
   oilPainting: 300, watercolor: 301, pencilSketch: 302, ink: 303, comic: 304,
   cartoon: 305, posterPaint: 306, chalk: 307, halftone: 308, crossHatch: 309,
   woodcut: 310, stainedGlass: 311, paintDaubs: 312,
+  // Glitch displacement (class-A spatial, multi-tap): true per-row pixel sort + block datamosh (B14-gpu).
+  pixelSorting: 313, datamosh: 314,
 } as const;
 
 export const EFFECT_DEFS: EffectDef[] = [
@@ -285,6 +287,9 @@ export const EFFECT_DEFS: EffectDef[] = [
   { id: 'woodcut',       type: EFFECT_TYPE.woodcut,       klass: 'spatial', paramCount: 1, defaults: [0] },
   { id: 'stainedGlass',  type: EFFECT_TYPE.stainedGlass,  klass: 'spatial', paramCount: 1, defaults: [0] },
   { id: 'paintDaubs',    type: EFFECT_TYPE.paintDaubs,    klass: 'spatial', paramCount: 1, defaults: [0] },
+  // B14-gpu: ids match the (previously inert) filterDefinitions sliders so they light up. p0 = amount.
+  { id: 'pixelSorting',  type: EFFECT_TYPE.pixelSorting,  klass: 'spatial', paramCount: 1, defaults: [0] },
+  { id: 'datamosh',      type: EFFECT_TYPE.datamosh,      klass: 'spatial', paramCount: 1, defaults: [0] },
 ];
 
 const BY_ID = new Map(EFFECT_DEFS.map((d) => [d.id, d]));

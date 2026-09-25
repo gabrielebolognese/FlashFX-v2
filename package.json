@@ -51,6 +51,7 @@
     "verify:chunk-plan": "node scripts/verify-chunk-plan.mjs",
     "verify:data-binding": "node scripts/verify-data-binding.mjs",
     "verify:vignette": "node scripts/verify-vignette.mjs",
+    "verify:glitch-gpu": "node scripts/verify-glitch-gpu.mjs",
     "verify:shutter": "node scripts/verify-shutter.mjs",
     "verify:keyframe-assistants": "node scripts/verify-keyframe-assistants.mjs",
     "verify:time-remap": "node scripts/verify-time-remap.mjs",
