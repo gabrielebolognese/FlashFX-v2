@@ -47,3 +47,45 @@ export function isExportKeyframe(frame: number, frameRate: number): boolean {
   const interval = Math.max(1, Math.round(frameRate * 2));
   return frame % interval === 0;
 }
+
+/** One source frame the exporter must decode before rendering a composition frame. */
+export interface VideoDecodeReq {
+  assetId: string;
+  frame: number;
+}
+
+/** Minimal shape of a resolved layer the decode selector reads (keeps this pure/testable). */
+interface ExportDecodeLayer {
+  layerType?: string;
+  video?: {
+    assetId: string;
+    sourceFrame: number;
+    sourceFrameB?: number;
+    blendMix?: number;
+  } | null;
+}
+
+/**
+ * Which source frames must be decoded (full-res) for a resolved composition frame, deduped.
+ * Includes the frame-blend / optical-flow B frame (`sourceFrameB`) ONLY when a blend is active
+ * (`blendMix` truthy) - matching the renderer's flow-warp gate, so the export decodes exactly what the
+ * renderer will sample and no more. Pure so `scripts/verify-export-math.mjs` can assert it.
+ */
+export function collectExportVideoDecodes(layers: ExportDecodeLayer[]): VideoDecodeReq[] {
+  const reqs: VideoDecodeReq[] = [];
+  const seen = new Set<string>();
+  const add = (assetId: string, frame: number) => {
+    const key = `${assetId}:${frame}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    reqs.push({ assetId, frame });
+  };
+  for (const layer of layers) {
+    if (layer.layerType === 'video' && layer.video) {
+      const { assetId, sourceFrame, sourceFrameB, blendMix } = layer.video;
+      add(assetId, sourceFrame);
+      if (sourceFrameB != null && blendMix) add(assetId, sourceFrameB);
+    }
+  }
+  return reqs;
+}

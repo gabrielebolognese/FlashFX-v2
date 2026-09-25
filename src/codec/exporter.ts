@@ -8,6 +8,7 @@ import { exportCompositionAudio, type EncodedAudio } from './audioMixer';
 import {
   normalizeExportDimensions, validateExportTiming,
   frameTimestampUs, frameDurationUs, isExportKeyframe,
+  collectExportVideoDecodes,
 } from './exportMath';
 
 export interface ExportSettings {
@@ -138,6 +139,13 @@ export async function exportToMp4(
   // Everything from here can throw (decode/render/encode/GPU-loss); the finally guarantees the
   // offscreen GPU device + buffered VideoFrames are always released, so a failed export can't leak a
   // GPU device or frame memory (repeated failed exports used to accumulate both).
+  // Drop any frames the shared scheduler buffered during preview BEFORE the loop. Preview scrubbing of
+  // a >1080p asset leaves half-res PROXY frames buffered; the per-frame reuse guard below would then
+  // composite those soft frames into the export. Clearing once here forces every export frame to be
+  // decoded fresh at full resolution via decodeFrameForExport (which bypasses proxy). Injected export
+  // frames still accumulate and are reused across comp frames that share a source index.
+  frameScheduler.releaseBufferedFrames();
+
   try {
     for (let frame = 0; frame < totalFrames; frame++) {
       if (signal?.aborted) throw new Error('Export cancelled');
@@ -145,20 +153,18 @@ export async function exportToMp4(
 
       const renderData = resolveFrame(composition, frame, { getComposition, depth: 0, visited: new Set() });
 
-      // Pre-decode video frames at full resolution for this composition frame
+      // Pre-decode video frames at full resolution for this composition frame. A frame-blended /
+      // optical-flow-retimed clip also needs its B frame (sourceFrameB): the renderer's flow-warp pass
+      // reads it via frameScheduler.getFrame and silently falls back to the crisp A frame when it's
+      // missing, so without decoding B here the export would drop the blend the preview shows.
       const videoDecodePromises: Promise<void>[] = [];
-      for (const layer of renderData.layers) {
-        if (layer.layerType === 'video' && layer.video) {
-          const { assetId, sourceFrame } = layer.video;
-          const existing = frameScheduler.getFrame(assetId, sourceFrame);
-          if (!existing) {
-            videoDecodePromises.push(
-              videoDecoderPool.decodeFrameForExport(assetId, sourceFrame).then((decoded) => {
-                frameScheduler.injectFrame(assetId, sourceFrame, decoded);
-              })
-            );
-          }
-        }
+      for (const { assetId, frame: sourceFrame } of collectExportVideoDecodes(renderData.layers)) {
+        if (frameScheduler.getFrame(assetId, sourceFrame)) continue;
+        videoDecodePromises.push(
+          videoDecoderPool.decodeFrameForExport(assetId, sourceFrame).then((decoded) => {
+            frameScheduler.injectFrame(assetId, sourceFrame, decoded);
+          })
+        );
       }
       if (videoDecodePromises.length > 0) {
         await Promise.all(videoDecodePromises);

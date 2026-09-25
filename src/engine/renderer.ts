@@ -25,7 +25,7 @@ import { patternRenderer } from '../patterns/renderer';
 import { parsePatternConfig } from '../patterns/config';
 import { PATTERN_TYPE } from '../patterns/types';
 import { lottieRendererEngine } from './lottieRenderer';
-import { videoTextureCache } from './video/videoTextureCache';
+import { videoTextureCache, VideoTextureCache } from './video/videoTextureCache';
 import { frameScheduler } from './video/frameScheduler';
 import { FLOW_WARP_SHADER, FLOW_UNIFORM_SIZE } from './video/opticalFlow';
 
@@ -2981,6 +2981,13 @@ export class WebGPURenderer {
   // "Disable camera" preview toggle: render the SCREEN as if no camera exists (flat 2D), so a
   // 3D/2.5D comp can be edited normally. Never affects the offscreen (export) render.
   private cameraDisabled = false;
+  // The video-texture cache this renderer draws through. The SCREEN renderer uses the shared
+  // module singleton (so asset/editor lifecycle events - destroyLayer/destroyAll - reach the live
+  // preview cache). The OFFSCREEN (export) renderer gets its OWN instance bound to its OWN device in
+  // initializeOffscreen: video textures MUST live on the device that builds the bind group, and a
+  // separate instance also stops export teardown (destroy -> destroyAll) from wiping the preview
+  // cache. Defaults to the singleton so any pre-init use is safe.
+  private videoTex: VideoTextureCache = videoTextureCache;
 
   setMotionBlurSamples(n: number): void {
     this.motionBlurSamples = Math.max(2, Math.round(n));
@@ -3022,7 +3029,7 @@ export class WebGPURenderer {
       if (info.reason === 'destroyed') return;
       this.deviceLost = true;
       this.ready = false;
-      videoTextureCache.destroyAll();
+      this.videoTex.destroyAll();
       const reason = info.message || info.reason || 'unknown';
       for (const cb of this.deviceLostCallbacks) {
         try { cb(reason); } catch { /* listener errors must not break recovery */ }
@@ -3069,7 +3076,7 @@ export class WebGPURenderer {
       try { entry.texture.destroy(); } catch { /* already gone */ }
     }
     this.imageTextures.clear();
-    videoTextureCache.flush();
+    this.videoTex.flush();
   }
 
   async initializeOffscreen(width: number, height: number): Promise<boolean> {
@@ -3089,6 +3096,12 @@ export class WebGPURenderer {
 
     this.offscreenGpu = this.createPipeline(device, context as GPUCanvasContext, format);
     this.offscreenReady = true;
+    // Bind an OWN video-texture cache to THIS device. Without it the export renderer drew video
+    // through the singleton (whose device is the screen's, or null) - textures on the wrong device
+    // meant cross-device bind groups (throw) or no device at all (black video). Its own instance also
+    // means destroy()->destroyAll() only tears down the export cache, never the live preview one.
+    this.videoTex = new VideoTextureCache();
+    this.videoTex.init(device);
     return true;
   }
 
@@ -3614,12 +3627,12 @@ export class WebGPURenderer {
     try {
       const bId = `${layerId}:fbw`;
       frameScheduler.reportVideoRequirement(bId, video.assetId, video.sourceFrameB, video.playbackRate);
-      if (videoTextureCache.getCurrentFrameIndex(bId) !== video.sourceFrameB) {
+      if (this.videoTex.getCurrentFrameIndex(bId) !== video.sourceFrameB) {
         const bFrame = frameScheduler.getFrame(video.assetId, video.sourceFrameB);
-        if (bFrame) videoTextureCache.uploadFrame(bId, video.sourceFrameB, bFrame);
+        if (bFrame) this.videoTex.uploadFrame(bId, video.sourceFrameB, bFrame);
       }
-      const texA = videoTextureCache.getTexture(layerId);
-      const texB = videoTextureCache.getTexture(bId);
+      const texA = this.videoTex.getTexture(layerId);
+      const texB = this.videoTex.getTexture(bId);
       const fw = this.ensureFlowWarp(device, format);
       if (!texA || !texB || !fw || !this.flowUniformBuf) return null;
       // Size the warp target to texA's ACTUAL pixel dims - the shader maps uv = pos.xy / dims(texA),
@@ -4073,7 +4086,7 @@ export class WebGPURenderer {
     // and its frame-blend ':fbw' companion (see tryFlowWarp) so an active blend layer isn't dropped.
     const liveVideoIds = new Set<string>();
     for (const v of videoLayers) { liveVideoIds.add(v.layer.id); liveVideoIds.add(`${v.layer.id}:fbw`); }
-    videoTextureCache.retainOnly(liveVideoIds);
+    this.videoTex.retainOnly(liveVideoIds);
 
     const videoBindGroups: (GPUBindGroup | null)[] = [];
     if (videoLayers.length > 0) {
@@ -4091,7 +4104,7 @@ export class WebGPURenderer {
         // the same trim/offset/rate the renderer draws (single mapping source).
         frameScheduler.reportVideoRequirement(vidLayer.id, video.assetId, sourceFrame, video.playbackRate);
 
-        const currentIdx = videoTextureCache.getCurrentFrameIndex(vidLayer.id);
+        const currentIdx = this.videoTex.getCurrentFrameIndex(vidLayer.id);
         if (this.presentLatest) {
           // Audio-master: display the newest decoded frame ≤ target and drop the
           // rest; hold the current texture on a miss - never block. Selection is
@@ -4103,14 +4116,14 @@ export class WebGPURenderer {
             WebGPURenderer.PRESENT_MAX_DISTANCE
           );
           if (pick && pick.index !== currentIdx) {
-            videoTextureCache.uploadFrame(vidLayer.id, pick.index, pick.frame);
+            this.videoTex.uploadFrame(vidLayer.id, pick.index, pick.frame);
           }
         } else if (currentIdx !== sourceFrame) {
           // Classic path: request the EXACT source frame; only upload when the texture doesn't already
           // hold it (avoids a redundant GPU copy every render while paused).
           const videoFrame = frameScheduler.getFrame(video.assetId, sourceFrame);
           if (videoFrame) {
-            videoTextureCache.uploadFrame(vidLayer.id, sourceFrame, videoFrame);
+            this.videoTex.uploadFrame(vidLayer.id, sourceFrame, videoFrame);
           } else {
             // Exact frame not decoded yet: show the freshest decoded frame <= target (drop-to-newest)
             // instead of FREEZING, then upgrade to exact on a later tick. During a SCRUB allow ANY
@@ -4127,12 +4140,12 @@ export class WebGPURenderer {
               maxDist
             );
             if (pick && pick.index !== currentIdx) {
-              videoTextureCache.uploadFrame(vidLayer.id, pick.index, pick.frame);
+              this.videoTex.uploadFrame(vidLayer.id, pick.index, pick.frame);
             }
           }
         }
 
-        const gpuTexture = videoTextureCache.getTexture(vidLayer.id);
+        const gpuTexture = this.videoTex.getTexture(vidLayer.id);
         if (!gpuTexture) {
           videoBindGroups.push(null);
           continue;
@@ -5425,7 +5438,7 @@ export class WebGPURenderer {
       entry.texture.destroy();
     }
     this.imageTextures.clear();
-    videoTextureCache.destroyAll();
+    this.videoTex.destroyAll();
     this.gpu?.device.destroy();
     this.offscreenGpu?.device.destroy();
     this.gpu = null;

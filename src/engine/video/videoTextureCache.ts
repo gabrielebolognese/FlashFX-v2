@@ -12,7 +12,7 @@ interface TextureRecord {
 // (least-recently drawn) texture is evicted past the cap, so memory is bounded regardless of edits.
 const MAX_TEXTURES = 24;
 
-class VideoTextureCache {
+export class VideoTextureCache {
   private device: GPUDevice | null = null;
   private textures = new Map<string, TextureRecord>();
   private usedDirectUpload: boolean | null = null;

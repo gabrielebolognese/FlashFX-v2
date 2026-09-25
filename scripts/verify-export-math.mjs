@@ -27,6 +27,7 @@ try {
   const {
     MIN_EXPORT_DIM, normalizeExportDimensions, validateExportTiming,
     frameTimestampUs, frameDurationUs, isExportKeyframe,
+    collectExportVideoDecodes,
   } = await import(pathToFileURL(outfile).href);
 
   check('rounds odd dimensions down to even', () => {
@@ -69,6 +70,46 @@ try {
     assert.equal(isExportKeyframe(1, 30), false);
     assert.equal(isExportKeyframe(120, 60), true); // 2s @ 60fps
     assert.equal(isExportKeyframe(0, 29.97), true); // fractional fps still yields a sane modulus
+  });
+
+  const vid = (assetId, sourceFrame, extra = {}) => ({ layerType: 'video', video: { assetId, sourceFrame, ...extra } });
+
+  check('collectExportVideoDecodes: picks each video layer source frame', () => {
+    const reqs = collectExportVideoDecodes([vid('a', 5), vid('b', 12)]);
+    assert.deepEqual(reqs, [{ assetId: 'a', frame: 5 }, { assetId: 'b', frame: 12 }]);
+  });
+
+  check('collectExportVideoDecodes: ignores non-video and video-less layers', () => {
+    const reqs = collectExportVideoDecodes([
+      { layerType: 'shape' }, { layerType: 'text' },
+      { layerType: 'video', video: null }, vid('a', 3),
+    ]);
+    assert.deepEqual(reqs, [{ assetId: 'a', frame: 3 }]);
+  });
+
+  check('collectExportVideoDecodes: includes the B frame only when a blend is active', () => {
+    // blend active -> both A and B
+    assert.deepEqual(
+      collectExportVideoDecodes([vid('a', 5, { sourceFrameB: 6, blendMix: 0.5 })]),
+      [{ assetId: 'a', frame: 5 }, { assetId: 'a', frame: 6 }],
+    );
+    // B present but blendMix 0 / missing -> A only (matches the renderer's flow-warp gate)
+    assert.deepEqual(collectExportVideoDecodes([vid('a', 5, { sourceFrameB: 6, blendMix: 0 })]), [{ assetId: 'a', frame: 5 }]);
+    assert.deepEqual(collectExportVideoDecodes([vid('a', 5, { sourceFrameB: 6 })]), [{ assetId: 'a', frame: 5 }]);
+    // blendMix set but no B frame -> A only
+    assert.deepEqual(collectExportVideoDecodes([vid('a', 5, { blendMix: 0.5 })]), [{ assetId: 'a', frame: 5 }]);
+  });
+
+  check('collectExportVideoDecodes: dedupes repeated (asset, frame) pairs incl. A/B overlap', () => {
+    // two layers on the same asset+frame collapse to one decode
+    assert.deepEqual(collectExportVideoDecodes([vid('a', 5), vid('a', 5)]), [{ assetId: 'a', frame: 5 }]);
+    // B frame equal to another layer's A frame is not decoded twice
+    assert.deepEqual(
+      collectExportVideoDecodes([vid('a', 5, { sourceFrameB: 8, blendMix: 0.5 }), vid('a', 8)]),
+      [{ assetId: 'a', frame: 5 }, { assetId: 'a', frame: 8 }],
+    );
+    // frame 0 (falsy) is still a valid distinct frame
+    assert.deepEqual(collectExportVideoDecodes([vid('a', 0), vid('a', 0)]), [{ assetId: 'a', frame: 0 }]);
   });
 
   console.log(`\nexport-math: all ${passed} checks passed`);
