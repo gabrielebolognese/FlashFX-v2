@@ -25,7 +25,7 @@ import { serializePatternConfig, parsePatternConfig } from '../patterns/config';
 import { DEFAULT_PATTERN } from '../patterns/presets';
 import { getVfxElement, buildVfxSweep } from '../core/vfx/vfxElements';
 import type { GenerativePatternLayer } from '../core/types';
-import { addAnticipation, addFollowThrough, buildSquashStretch, shiftKeyframes, type OvershootEase } from '../core/motionRigs/motionRigs';
+import { addAnticipation, addFollowThrough, buildSquashStretch, shiftKeyframes, buildSecondaryTracks, springParamsFromControls, type OvershootEase } from '../core/motionRigs/motionRigs';
 import { computeStaggerOffsets } from '../stagger/timing';
 import { DEFAULT_STAGGER_CONFIG } from '../stagger/types';
 import { getTemplate as getAnimationTemplate, ANIMATION_TEMPLATES } from '../animation-templates/catalog';
@@ -142,6 +142,9 @@ function mapKeyframesByPath(
 // (core/motionRigs); this picks the target property + applies to the selection in one undoable command.
 export type MotionPrinciple = 'anticipation' | 'follow-through' | 'squash-stretch' | 'stagger';
 export interface MotionPrincipleOptions { amount?: number; ease?: OvershootEase; gapFrames?: number }
+/** Secondary-motion (follow-lag) controls, both 0..1: `lag` = how far the child trails, `bounce` = how
+ *  much it overshoots before settling (0 = critically damped). */
+export interface SecondaryMotionParams { lag?: number; bounce?: number }
 
 const TRANSFORM_PROP_PATHS = ['transform.position', 'transform.scale', 'transform.rotation', 'transform.opacity'];
 
@@ -587,6 +590,9 @@ interface EditorState {
   /** B32 - apply a motion-design principle rig (anticipation / follow-through / squash & stretch /
    *  stagger) to the given layers (or the selection), rewriting keyframes in one undoable command. */
   applyMotionPrinciple: (layerIds: string[], principle: MotionPrinciple, opts?: MotionPrincipleOptions) => void;
+  /** Secondary motion: bake `childId`'s position (+ rotation, if the followed layer rotates) so it trails
+   *  `parentId`'s animated motion with a spring-damped lag. One undoable command. */
+  applySecondaryMotion: (childId: string, parentId: string, opts?: SecondaryMotionParams) => void;
   setCompositionSetting: (key: string, value: number) => void;
   /** M14 - resize the composition frame and reflow every top-level layer per its constraints (one undo). */
   setCompositionSize: (width: number, height: number) => void;
@@ -4812,6 +4818,53 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const label = principle === 'squash-stretch' ? 'Squash & Stretch' : principle === 'follow-through' ? 'Follow-Through' : principle === 'anticipation' ? 'Anticipation' : 'Stagger';
     exec({
       label: `Apply ${label}`,
+      execute: () => { set({ composition: newComp }); },
+      undo: () => { set({ composition: oldComp }); },
+    });
+  },
+
+  applySecondaryMotion: (childId, parentId, opts = {}) => {
+    const state = get();
+    if (!childId || !parentId || childId === parentId) return;
+    const oldComp = state.composition;
+    const child = oldComp.layers.find((l) => l.id === childId);
+    const followed = oldComp.layers.find((l) => l.id === parentId);
+    if (!child || !followed || !('transform' in child) || !('transform' in followed)) return;
+
+    // Bake across the child's active span (half-open [inPoint, outPoint), matching the render rule),
+    // clamped to the composition. Need >= 2 frames to make a track.
+    const lo = Math.max(0, Math.round(child.inPoint));
+    const hi = Math.min(oldComp.settings.durationFrames, Math.round(child.outPoint));
+    if (hi - lo < 2) return;
+
+    // Sample the followed layer's OWN LOCAL animated transform per frame (evaluate* ignore the scene
+    // graph, so this is its own motion, not a parent-composed world value).
+    const parentPos: [number, number][] = [];
+    const parentRot: number[] = [];
+    for (let f = lo; f < hi; f++) {
+      parentPos.push(evaluateVec2(followed.transform.position, f));
+      parentRot.push(evaluateNumber(followed.transform.rotation, f));
+    }
+    // Preserve the child's current offset from the followed layer so it trails in place (doesn't snap on).
+    const childStart = evaluateVec2(child.transform.position, lo);
+    const rotStart = evaluateNumber(child.transform.rotation, lo);
+    const offset: [number, number] = [childStart[0] - parentPos[0][0], childStart[1] - parentPos[0][1]];
+    const rotOffset = rotStart - parentRot[0];
+
+    const params = springParamsFromControls(opts.lag ?? 0.5, opts.bounce ?? 0.2);
+    const tracks = buildSecondaryTracks(parentPos, parentRot, lo, { ...params, offset, rotOffset });
+
+    // Bake position; drop any separated-dims split so the combined keyframes drive the curve.
+    let newChild = deepSet(child, 'transform.position.keyframes', tracks.position) as Layer;
+    newChild = deepSet(newChild, 'transform.position.separated', false) as Layer;
+    // Only drive rotation when the followed layer actually rotates; otherwise leave the child's rotation.
+    const rotKfs = (followed.transform.rotation.keyframes ?? []).length;
+    if (rotKfs >= 2) newChild = deepSet(newChild, 'transform.rotation.keyframes', tracks.rotation) as Layer;
+
+    const newLayers = oldComp.layers.map((l) => (l.id === childId ? newChild : l));
+    const newComp = settleComposition({ ...oldComp, layers: newLayers });
+    exec({
+      label: 'Secondary Motion',
       execute: () => { set({ composition: newComp }); },
       undo: () => { set({ composition: oldComp }); },
     });

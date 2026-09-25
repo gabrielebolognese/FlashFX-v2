@@ -15,12 +15,20 @@ const PRINCIPLES: { id: MotionPrinciple; label: string; desc: string }[] = [
 export function AnimatePanel({ layerId }: { layerId: string }) {
   const applyAnimationPresetBatch = useEditorStore((s) => s.applyAnimationPresetBatch);
   const applyMotionPrinciple = useEditorStore((s) => s.applyMotionPrinciple);
+  const applySecondaryMotion = useEditorStore((s) => s.applySecondaryMotion);
+  const layers = useEditorStore((s) => s.composition.layers);
   const frameRate = useEditorStore((s) => s.composition.settings.frameRate);
   const selectedIds = useEditorStore((s) => s.selection.selectedIds);
   const currentFrame = useTimelineStore((s) => s.currentFrame);
 
   const [durationSeconds, setDurationSeconds] = useState(1);
   const [atStart, setAtStart] = useState(true);
+  const [followId, setFollowId] = useState('');
+  const [lag, setLag] = useState(0.5);
+  const [bounce, setBounce] = useState(0.2);
+
+  // Any other layer with a transform can be the follow target (it's a bake, not a scene-graph link).
+  const followCandidates = layers.filter((l) => l.id !== layerId && 'transform' in l);
 
   const targetIds = selectedIds.length > 0 ? selectedIds : [layerId];
   const grouped = getPresetsByCategory();
@@ -124,6 +132,38 @@ export function AnimatePanel({ layerId }: { layerId: string }) {
             </button>
           ))}
         </div>
+      </div>
+
+      {/* Secondary motion: bake this layer to trail another layer's motion with a spring lag */}
+      <div className="border-b border-[#13182370] px-3 py-3">
+        <div className="pb-1.5 text-[10px] uppercase tracking-wider text-slate-500 font-semibold">Secondary Motion</div>
+        <p className="text-[9.5px] text-slate-500 leading-tight mb-2">Make this layer trail another layer with a spring lag (overlapping action).</p>
+        <label className="block mb-2">
+          <span className="text-[10px] text-slate-500">Follow</span>
+          <select
+            value={followId}
+            onChange={(e) => setFollowId(e.target.value)}
+            className="mt-0.5 w-full h-7 px-1.5 rounded bg-[#11151f] border border-[#1c2230] text-[11px] text-slate-200 focus:outline-none focus:border-accent-dim"
+          >
+            <option value="">Pick a layer…</option>
+            {followCandidates.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+          </select>
+        </label>
+        <div className="mb-1.5">
+          <div className="flex justify-between text-[9.5px] text-slate-500"><span>Lag</span><span>{Math.round(lag * 100)}</span></div>
+          <input type="range" min={0} max={100} value={Math.round(lag * 100)} onChange={(e) => setLag(+e.target.value / 100)} className="w-full accent-[#f7b500]" />
+        </div>
+        <div className="mb-2">
+          <div className="flex justify-between text-[9.5px] text-slate-500"><span>Bounce</span><span>{Math.round(bounce * 100)}</span></div>
+          <input type="range" min={0} max={100} value={Math.round(bounce * 100)} onChange={(e) => setBounce(+e.target.value / 100)} className="w-full accent-[#f7b500]" />
+        </div>
+        <button
+          onClick={() => { if (followId) applySecondaryMotion(layerId, followId, { lag, bounce }); }}
+          disabled={!followId}
+          className="w-full px-2.5 py-1.5 rounded-lg bg-[#11151f] border border-[#1c2230] hover:border-accent-dim hover:bg-accent/[0.06] text-[11px] font-medium text-slate-200 disabled:opacity-40 transition-colors"
+        >
+          Apply Secondary Motion
+        </button>
       </div>
 
       {/* Preset grid */}

@@ -141,3 +141,93 @@ export function shiftKeyframes(kfs: Keyframe[], delta: number): Keyframe[] {
   }
   return [...byFrame.values()].sort((a, b) => a.frame - b.frame);
 }
+
+// ── B32-secondary: secondary motion / follow-lag ─────────────────────────────
+// A child follows a parent's motion with a spring-damped LAG: attached parts drag behind and settle
+// (overlapping action). The store samples the followed layer's transform per frame into plain number
+// series and calls these pure helpers; the output is ordinary child keyframes (bake), frame-pure.
+
+export interface SpringOptions {
+  /** Spring constant (pull toward the target). Larger = snappier, less lag. */
+  stiffness: number;
+  /** Velocity damping. c = 2*zeta*sqrt(k): zeta=1 is critically damped (no overshoot), <1 overshoots. */
+  damping: number;
+  /** Time step per frame (default 1 - integrate in frame units). */
+  dt?: number;
+  /** Starting value (default: the first target sample, so there's no initial snap). */
+  initial?: number;
+}
+
+/**
+ * Integrate a critically-dampable spring that FOLLOWS the `target` series, producing a lagged (and,
+ * with low damping, overshooting) follower. Semi-implicit Euler (update velocity, then position) for
+ * stability across the useful parameter range. Deterministic and pure. A constant target settles to the
+ * constant; a step is trailed then converged.
+ */
+export function springFollow(target: number[], opts: SpringOptions): number[] {
+  const n = target.length;
+  if (n === 0) return [];
+  const k = Math.max(1e-4, opts.stiffness);
+  const c = Math.max(0, opts.damping);
+  const dt = opts.dt ?? 1;
+  let y = opts.initial ?? target[0];
+  let v = 0;
+  const out = new Array<number>(n);
+  for (let f = 0; f < n; f++) {
+    const a = k * (target[f] - y) - c * v;
+    v += a * dt;
+    y += v * dt;
+    out[f] = y;
+  }
+  return out;
+}
+
+/**
+ * Map intuitive 0..1 UI controls to spring params. `lag` grows the trail (smaller stiffness); `bounce`
+ * lowers the damping ratio from critically-damped (no overshoot) toward springy (overshoot). Stable for
+ * dt=1 across the whole range.
+ */
+export function springParamsFromControls(lag: number, bounce: number): { stiffness: number; damping: number } {
+  const L = clamp(lag, 0, 1);
+  const B = clamp(bounce, 0, 1);
+  const stiffness = 0.5 - 0.46 * L;              // 0.5 (snappy) -> 0.04 (heavy lag)
+  const zeta = 1 - 0.75 * B;                     // 1 (critically damped) -> 0.25 (bouncy)
+  const damping = 2 * zeta * Math.sqrt(stiffness);
+  return { stiffness, damping };
+}
+
+export interface SecondaryMotionOptions extends SpringOptions {
+  /** Added to the followed position each frame (the child's initial offset from the parent, so it trails
+   *  at its current relative spot instead of snapping onto the parent). */
+  offset?: Vec2;
+  /** Added to the followed rotation each frame (the child's initial rotation offset). */
+  rotOffset?: number;
+}
+
+/**
+ * Build a child's lagged position + rotation keyframes from the parent's PER-FRAME samples (one entry per
+ * frame from `startFrame`). Each channel is spring-followed independently, then the child's constant
+ * offset is added. Pure - the store does the sampling (respecting the parent's real animation) and passes
+ * the arrays in, mirroring buildSquashStretch's "samples in, keyframes out" shape.
+ */
+export function buildSecondaryTracks(
+  parentPos: Vec2[],
+  parentRot: number[],
+  startFrame: number,
+  opts: SecondaryMotionOptions,
+): { position: Keyframe[]; rotation: Keyframe[] } {
+  const n = parentPos.length;
+  const off = opts.offset ?? [0, 0];
+  const rotOff = opts.rotOffset ?? 0;
+  const fx = springFollow(parentPos.map((p) => p[0]), opts);
+  const fy = springFollow(parentPos.map((p) => p[1]), opts);
+  const fr = springFollow(parentRot.length === n ? parentRot : new Array(n).fill(0), opts);
+  const position: Keyframe[] = [];
+  const rotation: Keyframe[] = [];
+  const start = Math.round(startFrame);
+  for (let i = 0; i < n; i++) {
+    position.push(mkKf(start + i, [fx[i] + off[0], fy[i] + off[1]]));
+    rotation.push(mkKf(start + i, fr[i] + rotOff));
+  }
+  return { position, rotation };
+}

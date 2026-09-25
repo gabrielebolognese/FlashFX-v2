@@ -23,7 +23,8 @@ try {
   const outfile = join(tmp, 'motionRigs.mjs');
   await build({ entryPoints: ['src/core/motionRigs/motionRigs.ts'], bundle: true, format: 'esm', platform: 'node', outfile, logLevel: 'silent' });
   const M = await import(pathToFileURL(outfile).href);
-  const { addAnticipation, addFollowThrough, buildSquashStretch, shiftKeyframes } = M;
+  const { addAnticipation, addFollowThrough, buildSquashStretch, shiftKeyframes,
+    springFollow, springParamsFromControls, buildSecondaryTracks } = M;
 
   check('addAnticipation: inserts a windup OPPOSITE the first move; <2 kfs unchanged', () => {
     assert.equal(addAnticipation([K(0, 0)]).length, 1, '<2 keyframes unchanged');
@@ -85,6 +86,63 @@ try {
     const kfs = [K(0, [0, 0]), K(12, [200, 50]), K(24, [200, 50])];
     assert.deepEqual(addAnticipation(kfs, { amount: 0.3 }), addAnticipation(kfs, { amount: 0.3 }));
     assert.deepEqual(buildSquashStretch(kfs, 0, 24, { amount: 0.4 }), buildSquashStretch(kfs, 0, 24, { amount: 0.4 }));
+  });
+
+  // ── B32-secondary: spring-follow / secondary motion ──
+  check('springFollow: constant target settles to and holds the constant', () => {
+    const p = springParamsFromControls(0.5, 0.2);
+    const out = springFollow(new Array(60).fill(5), p);
+    assert.equal(out.length, 60);
+    assert.ok(near(out[0], 5, 1e-9), 'starts at the target (no initial snap)');
+    assert.ok(near(out[59], 5, 1e-6), 'holds the constant');
+  });
+
+  check('springFollow: a step is LAGGED then converges to the step value', () => {
+    const p = springParamsFromControls(0.5, 0); // critically damped
+    const target = [...new Array(5).fill(0), ...new Array(120).fill(100)];
+    const out = springFollow(target, p);
+    // right after the step it hasn't arrived yet (lag)
+    assert.ok(out[6] < 100 && out[6] > 0, `lags right after the step (${out[6].toFixed(2)})`);
+    // it converges by the end
+    assert.ok(near(out[out.length - 1], 100, 0.5), `converges to the step (${out[out.length - 1].toFixed(2)})`);
+  });
+
+  check('springFollow: critically damped does NOT overshoot; bouncy DOES', () => {
+    const step = [...new Array(3).fill(0), ...new Array(160).fill(100)];
+    const crit = springFollow(step, springParamsFromControls(0.5, 0));   // zeta=1
+    const bouncy = springFollow(step, springParamsFromControls(0.5, 1));  // zeta=0.25
+    assert.ok(Math.max(...crit) <= 100 + 1e-6, `critically damped stays <= target (max ${Math.max(...crit).toFixed(2)})`);
+    assert.ok(Math.max(...bouncy) > 100 + 1, `bouncy overshoots (max ${Math.max(...bouncy).toFixed(2)})`);
+    // never diverges
+    assert.ok(bouncy.every((v) => Number.isFinite(v) && v < 1000), 'stable, no blow-up');
+  });
+
+  check('springFollow: more lag = slower approach; empty -> []', () => {
+    const step = [...new Array(3).fill(0), ...new Array(40).fill(100)];
+    const low = springFollow(step, springParamsFromControls(0.0, 0));  // snappy
+    const high = springFollow(step, springParamsFromControls(1.0, 0)); // heavy lag
+    assert.ok(low[10] > high[10], `less lag arrives sooner (${low[10].toFixed(1)} > ${high[10].toFixed(1)})`);
+    assert.deepEqual(springFollow([], springParamsFromControls(0.5, 0)), []);
+  });
+
+  check('springParamsFromControls: more lag -> smaller stiffness; damping = 2*zeta*sqrt(k)', () => {
+    const a = springParamsFromControls(0, 0), b = springParamsFromControls(1, 0);
+    assert.ok(a.stiffness > b.stiffness, 'more lag lowers stiffness');
+    assert.ok(a.stiffness > 0 && b.stiffness > 0, 'stiffness stays positive');
+    assert.ok(near(a.damping, 2 * 1 * Math.sqrt(a.stiffness), 1e-9), 'critically damped at bounce=0');
+  });
+
+  check('buildSecondaryTracks: n samples -> n pos+rot keyframes at startFrame+i, offset applied', () => {
+    const parentPos = new Array(20).fill([10, 20]); // static parent
+    const parentRot = new Array(20).fill(30);
+    const { position, rotation } = buildSecondaryTracks(parentPos, parentRot, 100, {
+      ...springParamsFromControls(0.5, 0), offset: [3, -4], rotOffset: 5,
+    });
+    assert.equal(position.length, 20); assert.equal(rotation.length, 20);
+    assert.equal(position[0].frame, 100); assert.equal(position[19].frame, 119);
+    // static parent -> child sits at parent+offset every frame
+    assert.deepEqual(position[10].value, [13, 16], 'position = followed + offset');
+    assert.ok(near(rotation[10].value, 35, 1e-6), 'rotation = followed + rotOffset');
   });
 
   console.log(`\n✓ all ${passed} checks passed`);
