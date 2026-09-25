@@ -3862,6 +3862,10 @@ export class WebGPURenderer {
       // which keeps frames with no adjustment byte-identical. `layer.adjustment` carries the resolved
       // stack + coverage for that pass. This is the hook point.
       if (layer.layerType === 'adjustment') continue;
+      // Beam / lightning (B16): drawn by the isolated fragment-SDF beam pipeline (B16-gpu-render,
+      // browser-gated). Until it lands the layer resolves + persists but draws nothing here, keeping
+      // frames with no beam byte-identical. `layer.beam` carries the resolved centreline + params.
+      if (layer.layerType === 'beam') continue;
       if (layer.layerType === 'text') {
         // Skip the layer being edited on-canvas - the textarea overlay renders its text.
         if (layer.id === this.editingTextLayerId) continue;

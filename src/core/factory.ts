@@ -18,6 +18,7 @@ import type {
   LayoutObjectLayer,
   LayoutContainerLayer,
   PrecompLayer,
+  BeamLayer,
   AdjustmentLayer,
   CameraLayer,
   LayoutParams,
@@ -166,6 +167,42 @@ export function createAdjustmentLayer(name: string, durationFrames: number): Adj
     outPoint: durationFrames,
     effects: [],
     effectsEnabled: true,
+  };
+}
+
+/** A glowing beam / lightning layer (B16) between two endpoints, spanning ~30%..70% of the canvas
+ *  width at mid-height. Straight cyan beam by default; switch `style` to 'lightning' for a bolt. */
+export function createBeamLayer(
+  name: string,
+  compW: number,
+  compH: number,
+  durationFrames: number,
+): BeamLayer {
+  const cy = compH / 2;
+  return {
+    id: uid(),
+    type: 'beam',
+    name,
+    parentId: null,
+    trackId: null,
+    visible: true,
+    locked: false,
+    blendMode: 'normal',
+    transform: createTransform(0, 0),
+    inPoint: 0,
+    outPoint: durationFrames,
+    p1: createProperty('Start', 'vec2', [compW * 0.3, cy]),
+    p2: createProperty('End', 'vec2', [compW * 0.7, cy]),
+    style: 'beam',
+    width: createProperty('Width', 'number', 8),
+    intensity: createProperty('Intensity', 'number', 1),
+    iterations: 5,
+    amplitude: 24,
+    seed: 1,
+    taper: 0.3,
+    coreColor: [1, 1, 1, 1],
+    glowColor: [0.3, 0.6, 1, 1],
+    glowFalloff: 4,
   };
 }
 

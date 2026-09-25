@@ -45,7 +45,8 @@ import type { Mat4, Vec3 } from './mat4';
 import type { CameraLayer } from './types';
 import { defaultCamera, cameraFromParams, localModelMatrix, composeWorldMatrix, forwardVector, cubicBezierVec3, type ResolvedCamera } from './camera3d';
 import { resolveStyleColor, type StyleLookup } from './styles';
-import type { PrecompLayer } from './types';
+import type { PrecompLayer, BeamLayer } from './types';
+import { straightBeam, lightningPath } from './beam/beamGeometry';
 import { resolveDominantColor, resolveShapeFill, resolveShapePattern, hexToVec4 } from './material';
 import { getMotionBlur } from './layerSwitches';
 import { evaluateBinding as evaluateProceduralBinding } from '../procedural/engine';
@@ -1612,6 +1613,38 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
             height: sub?.settings.height ?? settings.height,
           },
           layerType: 'precomp',
+        });
+      } else if (layer.type === 'beam') {
+        // Beam / lightning (B16): resolve the endpoints + params and regenerate the centreline polyline
+        // this frame via the pure beamGeometry. FRAME-PURE: the lightning seed mixes in the frame number,
+        // so a scrub is byte-identical. The renderer draws it through the isolated beam SDF pipeline
+        // (B16-gpu-render, browser-gated); until that lands the renderer skips beam layers (byte-identical).
+        const beam = layer as BeamLayer;
+        const p1 = evaluateVec2(beam.p1, frame);
+        const p2 = evaluateVec2(beam.p2, frame);
+        const points = beam.style === 'lightning'
+          ? lightningPath(p1, p2, { iterations: beam.iterations, amplitude: beam.amplitude, seed: (beam.seed ^ frame) >>> 0 })
+          : straightBeam(p1, p2);
+        resolvedLayers.push({
+          id: layer.id,
+          visible: true,
+          blendMode: layer.blendMode,
+          transform: worldTransform,
+          motionBlur,
+          shadow,
+          glow,
+          blur,
+          beam: {
+            points,
+            style: beam.style,
+            width: evaluateNumber(beam.width, frame),
+            intensity: evaluateNumber(beam.intensity, frame),
+            taper: beam.taper,
+            coreColor: beam.coreColor,
+            glowColor: beam.glowColor,
+            glowFalloff: beam.glowFalloff,
+          },
+          layerType: 'beam',
         });
       } else if (layer.type === 'adjustment') {
         // Adjustment layer (B11b): draws nothing itself - it carries its resolved effect stack so the

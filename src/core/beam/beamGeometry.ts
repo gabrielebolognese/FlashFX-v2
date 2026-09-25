@@ -2,8 +2,9 @@
 // beam or a jagged lightning bolt between two points as a polyline, and offsets a polyline into a
 // ribbon (for a glowing quad strip). Lightning uses seeded midpoint displacement (house mulberry32),
 // so it is FRAME-PURE: pass frameNumber into the seed and the bolt is identical every time that frame
-// resolves (the timeline scrubs byte-identically). Deterministic + unit-tested (verify:beam-geometry).
-// The GPU/layer rendering of the ribbon (glow beam) is B16-gpu.
+// resolves (the timeline scrubs byte-identically). Deterministic + unit-tested (verify:light). The SDF
+// shading math is the sibling pure module beamShading.ts (verify:beam); the isolated GPU beam render
+// pipeline that draws the resolved centreline is B16-gpu-render (browser-gated).
 
 export type Pt = [number, number];
 

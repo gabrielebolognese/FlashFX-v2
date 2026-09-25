@@ -7,7 +7,7 @@ import type { LayerEffect } from '../core/types';
 import { cloneEffectStack } from '../core/effects/effectStack';
 import { autoSpatialTangents, segmentArcLength, framesFromCumLengths } from '../core/positionPath';
 import { splitDimensions, mergeDimensions } from '../core/separateDimensions';
-import { createComposition, createRectangleLayer, createCircleLayer, createStarLayer, createPolygonLayer, createDefaultPolygonVertices, createTextLayer, createDefaultTextContent, createVideoLayer, createImageLayer, createAudioLayer, createGroupLayer, createKeyframe, createBackgroundLayer, createMask, createParticleLayer, createAnimationItemLayer, createFieldSampledLayer, createGenerativePatternLayer, createCameraLayer, createAdjustmentLayer, createLottieIconLayer, createLayoutObjectLayer, createLayoutContainerLayer, createDefaultChildOverride, createProperty, createShapeModifier, createShapeRepeater, uid } from '../core/factory';
+import { createComposition, createRectangleLayer, createCircleLayer, createStarLayer, createPolygonLayer, createDefaultPolygonVertices, createTextLayer, createDefaultTextContent, createVideoLayer, createImageLayer, createAudioLayer, createGroupLayer, createKeyframe, createBackgroundLayer, createMask, createParticleLayer, createAnimationItemLayer, createFieldSampledLayer, createGenerativePatternLayer, createCameraLayer, createAdjustmentLayer, createBeamLayer, createLottieIconLayer, createLayoutObjectLayer, createLayoutContainerLayer, createDefaultChildOverride, createProperty, createShapeModifier, createShapeRepeater, uid } from '../core/factory';
 import { outlineText, canOutlineFont } from '../text/outlineText';
 import { computeBatchNames, type RenamePattern } from '../core/batchRename';
 import { detachStyleValue, type SharedStyle } from '../core/styles';
@@ -409,6 +409,7 @@ interface EditorState {
   addVfxElement: (elementId: string) => void;
   addCameraLayer: () => void;
   addAdjustmentLayer: () => void;
+  addBeamLayer: () => void;
   /** M16 - add a Cloner. Clones the single selected eligible layer, or a placeholder circle. */
   addCloner: () => void;
   /** M16 - wrap the active selected layer as a Cloner's source. */
@@ -2354,6 +2355,28 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const newSel: SelectionState = sel([layer.id], layer.id);
     exec({
       label: 'Add Adjustment Layer',
+      execute: () => { set({ composition: newComp, selection: newSel }); },
+      undo: () => { set({ composition: oldComp, selection: oldSel }); },
+    });
+  },
+
+  addBeamLayer: () => {
+    // B16: a glowing beam / lightning layer between two endpoints. Renderer draws it via the isolated
+    // beam SDF pipeline (B16-gpu-render, browser-gated); until then it resolves + persists but draws nothing.
+    const { composition, selection } = get();
+    const oldComp = composition;
+    const oldSel = selection;
+    const count = composition.layers.filter((l) => l.type === 'beam').length;
+    const layer = createBeamLayer(
+      count === 0 ? 'Beam' : `Beam ${count + 1}`,
+      composition.settings.width,
+      composition.settings.height,
+      defaultClipFrames(composition),
+    );
+    const newComp = settleComposition(ensureLayerHasTrack({ ...composition, layers: [...composition.layers, layer] }, layer));
+    const newSel: SelectionState = sel([layer.id], layer.id);
+    exec({
+      label: 'Add Beam',
       execute: () => { set({ composition: newComp, selection: newSel }); },
       undo: () => { set({ composition: oldComp, selection: oldSel }); },
     });

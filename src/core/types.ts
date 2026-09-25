@@ -1226,6 +1226,56 @@ export interface PrecompLayer {
 }
 
 /**
+ * Beam / lightning layer (B16): a glowing energy beam or electric bolt between two keyframable
+ * endpoints, rendered by the isolated fragment-SDF beam pipeline (B16-gpu-render). Lightning is the
+ * same layer fed a seeded midpoint-displacement polyline (frame-pure - the seed mixes in the frame).
+ */
+export interface BeamLayer {
+  id: string;
+  type: 'beam';
+  name: string;
+  parentId: string | null;
+  trackId: string | null;
+  visible: boolean;
+  locked: boolean;
+  blendMode: BlendMode;
+  transform: Transform;
+  inPoint: number;
+  outPoint: number;
+  // Optional common-layer effect fields (so Layer-union accesses type-check).
+  effectsEnabled?: boolean;
+  motionBlur?: boolean;
+  motionBlurShutter?: number;
+  shadow?: LayerShadow;
+  glow?: LayerGlow;
+  blur?: LayerBlur;
+  is3D?: boolean;
+  masks?: Mask[];
+  trackMatte?: TrackMatteMode;
+  // Beam-specific:
+  /** Endpoints in composition space (animatable vec2). */
+  p1: AnimatableProperty;
+  p2: AnimatableProperty;
+  /** 'beam' = straight; 'lightning' = jagged seeded bolt. */
+  style: 'beam' | 'lightning';
+  /** Full beam width, px (animatable). */
+  width: AnimatableProperty;
+  /** Brightness multiplier feeding the HDR tonemap (animatable). */
+  intensity: AnimatableProperty;
+  /** Lightning generation (ignored for 'beam'). */
+  iterations: number;
+  amplitude: number;
+  seed: number;
+  /** End taper 0..1 (narrow toward the endpoints). */
+  taper: number;
+  /** Hot core + colored spread, rgba 0..1. */
+  coreColor: Vec4;
+  glowColor: Vec4;
+  /** Glow tightness (higher = tighter halo). */
+  glowFalloff: number;
+}
+
+/**
  * Adjustment layer (B11b): a content-less, full-frame layer whose effect stack applies to everything
  * rendered BELOW it. It draws nothing itself - its `effects` are composited over the accumulated
  * result of the layers beneath it (see core/effects/adjustmentCoverage for which layers each one
@@ -1267,10 +1317,10 @@ export interface LayerDecorations {
   constraints?: LayerConstraints;
 }
 
-export type Layer = (ShapeLayer | TextLayer | GroupLayer | VideoLayer | ImageLayer | AudioLayer | ParticleLayer | AnimationItemLayer | FieldSampledLayer | GenerativePatternLayer | LottieIconLayer | LayoutObjectLayer | LayoutContainerLayer | ClonerLayer | PrecompLayer | CameraLayer | AdjustmentLayer) & LayerDecorations;
+export type Layer = (ShapeLayer | TextLayer | GroupLayer | VideoLayer | ImageLayer | AudioLayer | ParticleLayer | AnimationItemLayer | FieldSampledLayer | GenerativePatternLayer | LottieIconLayer | LayoutObjectLayer | LayoutContainerLayer | ClonerLayer | PrecompLayer | BeamLayer | CameraLayer | AdjustmentLayer) & LayerDecorations;
 
 // Track system
-export type TrackType = 'video' | 'image' | 'text' | 'shape' | 'group' | 'audio' | 'particle' | 'animationItem' | 'fieldSampled' | 'generativePattern' | 'lottieIcon' | 'hbox' | 'vbox' | 'grid' | 'layoutContainer' | 'cloner' | 'precomp' | 'camera' | 'adjustment' | 'mixed';
+export type TrackType = 'video' | 'image' | 'text' | 'shape' | 'group' | 'audio' | 'particle' | 'animationItem' | 'fieldSampled' | 'generativePattern' | 'lottieIcon' | 'hbox' | 'vbox' | 'grid' | 'layoutContainer' | 'cloner' | 'precomp' | 'beam' | 'camera' | 'adjustment' | 'mixed';
 
 export interface Track {
   id: string;
@@ -1863,6 +1913,9 @@ export interface ResolvedLayer {
   blur?: ResolvedBlur;
   cloner?: ResolvedCloner;
   precomp?: ResolvedPrecomp;
+  // Beam / lightning (B16): the resolved centreline + shading params. The isolated beam SDF pipeline
+  // (B16-gpu-render, browser-gated) consumes this; until it lands the renderer skips beam layers.
+  beam?: ResolvedBeam;
   // Adjustment layer (B11b): its resolved effect stack + which layers below it covers. The renderer's
   // apply-below composite (browser-gated) consumes this; the layer itself draws nothing.
   adjustment?: ResolvedAdjustment;
@@ -1878,7 +1931,7 @@ export interface ResolvedLayer {
   // True when this layer is consumed AS a matte source (drawn into the matte, not composited on its
   // own). Resolve marks it not visible so the standalone draw is skipped until the composite lands.
   consumedAsMatte?: boolean;
-  layerType: 'shape' | 'text' | 'video' | 'image' | 'audio' | 'particle' | 'fieldSampled' | 'generativePattern' | 'lottieIcon' | 'cloner' | 'precomp' | 'adjustment';
+  layerType: 'shape' | 'text' | 'video' | 'image' | 'audio' | 'particle' | 'fieldSampled' | 'generativePattern' | 'lottieIcon' | 'cloner' | 'precomp' | 'beam' | 'adjustment';
 }
 
 /**
@@ -1921,4 +1974,20 @@ export interface ResolvedPrecomp {
   renderFrame: RenderFrame | null;
   width: number;
   height: number;
+}
+
+/**
+ * A resolved beam (B16): the centreline polyline in composition space (2 points for a straight beam;
+ * a jagged chain for lightning) plus the shading params the fragment-SDF pipeline needs. Regenerated
+ * each frame in resolveFrame (frame-pure: the lightning seed mixes in the frame number).
+ */
+export interface ResolvedBeam {
+  points: Vec2[];
+  style: 'beam' | 'lightning';
+  width: number;
+  intensity: number;
+  taper: number;
+  coreColor: Vec4;
+  glowColor: Vec4;
+  glowFalloff: number;
 }

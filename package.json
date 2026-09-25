@@ -53,6 +53,7 @@
     "verify:vignette": "node scripts/verify-vignette.mjs",
     "verify:glitch-gpu": "node scripts/verify-glitch-gpu.mjs",
     "verify:hsl": "node scripts/verify-hsl.mjs",
+    "verify:beam": "node scripts/verify-beam.mjs",
     "verify:shutter": "node scripts/verify-shutter.mjs",
     "verify:keyframe-assistants": "node scripts/verify-keyframe-assistants.mjs",
     "verify:time-remap": "node scripts/verify-time-remap.mjs",

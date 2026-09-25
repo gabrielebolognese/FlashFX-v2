@@ -709,6 +709,26 @@ function validateLayer(raw: unknown): Layer | null {
         },
       } as unknown as Layer;
     }
+    case 'beam': {
+      // B16: a glowing beam / lightning layer. Round-trip endpoints + params (else stripped on load,
+      // the cloner/precomp data-loss class).
+      return {
+        ...baseFields,
+        type: 'beam',
+        p1: ensureAnimatableProperty(r.p1, 'Start', 'vec2', [0, 0]),
+        p2: ensureAnimatableProperty(r.p2, 'End', 'vec2', [0, 0]),
+        style: r.style === 'lightning' ? 'lightning' : 'beam',
+        width: ensureAnimatableProperty(r.width, 'Width', 'number', 8),
+        intensity: ensureAnimatableProperty(r.intensity, 'Intensity', 'number', 1),
+        iterations: typeof r.iterations === 'number' ? r.iterations : 5,
+        amplitude: typeof r.amplitude === 'number' ? r.amplitude : 24,
+        seed: typeof r.seed === 'number' ? r.seed : 1,
+        taper: typeof r.taper === 'number' ? r.taper : 0.3,
+        coreColor: ensureVec4(r.coreColor, [1, 1, 1, 1]),
+        glowColor: ensureVec4(r.glowColor, [0.3, 0.6, 1, 1]),
+        glowFalloff: typeof r.glowFalloff === 'number' ? r.glowFalloff : 4,
+      } as unknown as Layer;
+    }
     case 'hbox':
     case 'vbox':
     case 'grid': {
