@@ -13,6 +13,7 @@ interface PrecompRenderOpts {
   clearAlpha?: number;
 }
 import { EFFECT_TYPE } from '../core/effects/effectRegistry';
+import { matteFlags } from '../core/trackMatte';
 import { renderTextToCanvas, textCacheKey } from './textAtlas';
 import { mediaAssetManager } from './media/assetManager';
 import { tessellatePathCached, PATH_FLOATS_PER_VERTEX, getPathTessellationStats } from './pathTessellation';
@@ -2778,6 +2779,48 @@ fn fs(in: VO) -> @location(0) vec4f {
 }
 `;
 
+// Track-matte composite (B10d): fullscreen pass that multiplies the matted layer's alpha by the matte
+// source's coverage (alpha, or Rec.709 luma; optionally inverted). Both inputs are premultiplied (the
+// isolated-layer textures), so the output `m * cov` scales rgb + alpha together and composites
+// premultiplied-over the scene. Mirrors core/trackMatte.ts matteCoverage/matteLuma (verify:mattes).
+const MATTE_UNIFORM_SIZE = 16;
+const MATTE_SHADER = /* wgsl */ `
+struct MatteU { luma: f32, invert: f32, pad0: f32, pad1: f32 }
+@group(0) @binding(0) var samp: sampler;
+@group(0) @binding(1) var mattedTex: texture_2d<f32>;
+@group(0) @binding(2) var srcTex: texture_2d<f32>;
+@group(0) @binding(3) var<uniform> mu: MatteU;
+
+struct VO { @builtin(position) position: vec4f }
+
+@vertex
+fn vs(@builtin(vertex_index) vi: u32) -> VO {
+  var p = array<vec2f, 3>(vec2f(-1.0, -1.0), vec2f(3.0, -1.0), vec2f(-1.0, 3.0));
+  var out: VO;
+  out.position = vec4f(p[vi], 0.0, 1.0);
+  return out;
+}
+
+@fragment
+fn fs(in: VO) -> @location(0) vec4f {
+  let uv = in.position.xy / vec2f(textureDimensions(mattedTex));
+  let m = textureSampleLevel(mattedTex, samp, uv, 0.0);  // matted layer, premultiplied
+  let s = textureSampleLevel(srcTex, samp, uv, 0.0);      // matte source, premultiplied
+  var base: f32;
+  if (mu.luma > 0.5) {
+    // un-premultiply to recover straight rgb before taking luma
+    let straight = select(s.rgb, s.rgb / max(s.a, 0.001), s.a > 0.001);
+    base = dot(straight, vec3f(0.2126, 0.7152, 0.0722));
+  } else {
+    base = s.a;
+  }
+  var cov = base;
+  if (mu.invert > 0.5) { cov = 1.0 - cov; }
+  cov = clamp(cov, 0.0, 1.0);
+  return m * cov;
+}
+`;
+
 interface GPUState {
   device: GPUDevice;
   context: GPUCanvasContext;
@@ -2822,6 +2865,16 @@ interface GPUState {
   layerTexView: GPUTextureView | null;
   blurBindGroup: GPUBindGroup | null;
   blitBindGroup: GPUBindGroup | null;
+  // Track-matte composite (B10d): pipeline + a per-matte flags uniform (dynamic offset) + an isolated
+  // texture for the matte source; the matted layer reuses layerTex. Bind group (re)built in ensureBlurTextures.
+  // Nullable + guarded: if MATTE_SHADER fails to compile, these stay null and matted layers fall back to
+  // normal drawing (no matte) - a shader error can NEVER break the rest of the renderer.
+  matteCompositePipeline: GPURenderPipeline | null;
+  matteBindGroupLayout: GPUBindGroupLayout | null;
+  matteUniformBuffer: GPUBuffer | null;
+  matteSrcTex: GPUTexture | null;
+  matteSrcTexView: GPUTextureView | null;
+  matteBindGroup: GPUBindGroup | null;
   blurTexW: number;
   blurTexH: number;
 
@@ -3421,6 +3474,34 @@ export class WebGPURenderer {
       primitive: { topology: 'triangle-list' },
     });
 
+    // Track-matte composite (B10d): samples the matted layer + the matte source (both premultiplied),
+    // multiplies alpha by matteCoverage, composites premultiplied-over the scene. Flags via a dynamic-offset
+    // uniform (one slot per matted layer). Additive - only used when a frame has a track matte.
+    let matteCompositePipeline: GPURenderPipeline | null = null;
+    let matteBindGroupLayout: GPUBindGroupLayout | null = null;
+    let matteUniformBuffer: GPUBuffer | null = null;
+    try {
+      const matteShaderModule = device.createShaderModule({ code: MATTE_SHADER });
+      matteBindGroupLayout = device.createBindGroupLayout({
+        entries: [
+          { binding: 0, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'filtering' } },
+          { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
+          { binding: 2, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
+          { binding: 3, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform', hasDynamicOffset: true, minBindingSize: MATTE_UNIFORM_SIZE } },
+        ],
+      });
+      matteUniformBuffer = device.createBuffer({ size: UNIFORM_ALIGN * MAX_LAYERS, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+      matteCompositePipeline = device.createRenderPipeline({
+        layout: device.createPipelineLayout({ bindGroupLayouts: [matteBindGroupLayout] }),
+        vertex: { module: matteShaderModule, entryPoint: 'vs' },
+        fragment: { module: matteShaderModule, entryPoint: 'fs', targets: [{ format, blend: premultipliedOver }] },
+        primitive: { topology: 'triangle-list' },
+      });
+    } catch (err) {
+      console.warn('[renderer] track-matte composite pipeline unavailable - matted layers draw normally', err);
+      matteCompositePipeline = null; matteBindGroupLayout = null; matteUniformBuffer = null;
+    }
+
     // Procedural pattern pipelines - one per blend mode (blend-with-below). Guarded so a shader failure
     // only disables the GPU pattern path (falls back to the CPU renderer), never the whole renderer.
     let patternPipelines: Record<PatternBlendKey, GPURenderPipeline> | null = null;
@@ -3455,6 +3536,8 @@ export class WebGPURenderer {
       blurPipeline, blitPipeline, blurUniformBuffer, blurBindGroupLayout, blitBindGroupLayout,
       sceneTex: null, layerTex: null, sceneTexView: null, layerTexView: null,
       blurBindGroup: null, blitBindGroup: null, blurTexW: 0, blurTexH: 0,
+      matteCompositePipeline, matteBindGroupLayout, matteUniformBuffer,
+      matteSrcTex: null, matteSrcTexView: null, matteBindGroup: null,
       shadowHPipeline, shadowVPipeline, shadowUniformBuffer, shadowBindGroupLayout,
       shadowTex: null, shadowTexView: null, shadowBindGroupH: null, shadowBindGroupV: null,
       glowExtractPipeline, glowHPipeline, glowVPipeline, glowUniformBuffer, glowBindGroupLayout,
@@ -3603,6 +3686,7 @@ export class WebGPURenderer {
     gpu.shadowTex?.destroy();
     gpu.glowExtractTex?.destroy();
     gpu.glowBlurTex?.destroy();
+    gpu.matteSrcTex?.destroy();
 
     const usage = GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING;
     gpu.sceneTex = gpu.device.createTexture({ size: { width, height }, format: gpu.format, usage });
@@ -3610,11 +3694,13 @@ export class WebGPURenderer {
     gpu.shadowTex = gpu.device.createTexture({ size: { width, height }, format: gpu.format, usage });
     gpu.glowExtractTex = gpu.device.createTexture({ size: { width, height }, format: gpu.format, usage });
     gpu.glowBlurTex = gpu.device.createTexture({ size: { width, height }, format: gpu.format, usage });
+    gpu.matteSrcTex = gpu.device.createTexture({ size: { width, height }, format: gpu.format, usage });
     gpu.sceneTexView = gpu.sceneTex.createView();
     gpu.layerTexView = gpu.layerTex.createView();
     gpu.shadowTexView = gpu.shadowTex.createView();
     gpu.glowExtractTexView = gpu.glowExtractTex.createView();
     gpu.glowBlurTexView = gpu.glowBlurTex.createView();
+    gpu.matteSrcTexView = gpu.matteSrcTex.createView();
     gpu.blurTexW = width;
     gpu.blurTexH = height;
 
@@ -3633,6 +3719,19 @@ export class WebGPURenderer {
         { binding: 1, resource: gpu.sceneTexView },
       ],
     });
+    // Track-matte composite (B10d): matted layer = layerTex, matte source = matteSrcTex, flags via the
+    // dynamic-offset matte uniform. Rebuilt here so the views stay current on resize.
+    gpu.matteBindGroup = (gpu.matteBindGroupLayout && gpu.matteUniformBuffer)
+      ? gpu.device.createBindGroup({
+        layout: gpu.matteBindGroupLayout,
+        entries: [
+          { binding: 0, resource: gpu.textSampler },
+          { binding: 1, resource: gpu.layerTexView },
+          { binding: 2, resource: gpu.matteSrcTexView },
+          { binding: 3, resource: { buffer: gpu.matteUniformBuffer, size: MATTE_UNIFORM_SIZE } },
+        ],
+      })
+      : null;
 
     // H pass reads the isolated layer texture; V pass reads the H result.
     gpu.shadowBindGroupH = gpu.device.createBindGroup({
@@ -4367,7 +4466,7 @@ export class WebGPURenderer {
     // motion-blur descriptor (if any) so the render path below can decide
     // between the single-pass fast path and the per-layer blur path. Bind
     // groups and dynamic offsets are identical regardless of the target pass.
-    type Draw = { blur?: ResolvedLayer['motionBlur']; shadow?: ResolvedLayer['shadow']; glow?: ResolvedLayer['glow']; blurFx?: ResolvedLayer['blur']; is3D?: boolean; depth?: number; fn: (p: GPURenderPassEncoder) => void };
+    type Draw = { blur?: ResolvedLayer['motionBlur']; shadow?: ResolvedLayer['shadow']; glow?: ResolvedLayer['glow']; blurFx?: ResolvedLayer['blur']; is3D?: boolean; depth?: number; layerId?: string; matte?: ResolvedLayer['matte']; consumedAsMatte?: boolean; fn: (p: GPURenderPassEncoder) => void };
     const draws: Draw[] = [];
     {
       let shapeIdx = 0, textIdx = 0, videoIdx = 0, imageIdx = 0, pathIdx = 0, patternIdx = 0;
@@ -4466,6 +4565,11 @@ export class WebGPURenderer {
         for (let k = drawStart; k < draws.length; k++) {
           draws[k].is3D = is3DLayer;
           draws[k].depth = layerDepth;
+          // Track matte (B10d): carry the pairing metadata so the compositor can matte this draw (or skip
+          // it when it is consumed AS a matte source).
+          draws[k].layerId = expandedLayers[i].id;
+          draws[k].matte = expandedLayers[i].matte;
+          draws[k].consumedAsMatte = expandedLayers[i].consumedAsMatte;
           if (dofBlurFx && !draws[k].blurFx) draws[k].blurFx = dofBlurFx; // camera depth of field
         }
       }
@@ -4489,7 +4593,12 @@ export class WebGPURenderer {
     const hasShadow = shadowDraws.length > 0;
     const hasGlow = glowDraws.length > 0;
     const hasBlurFx = blurFxDraws.length > 0;
-    const hasMultipass = hasBlur || hasShadow || hasGlow || hasBlurFx;
+    // Track matte (B10d): any matted layer forces the multipass path (a matte can't composite in the
+    // single scene pass). `matteDraws` are the matted layers, in composite order, for the flags uniform.
+    const matteDraws = draws.filter((d) => d.matte && !d.consumedAsMatte);
+    // Requires the (guarded) composite pipeline; if it failed to build, matted layers just draw normally.
+    const hasMatte = matteDraws.length > 0 && !!gpu.matteCompositePipeline && !!gpu.matteBindGroup && !!gpu.matteUniformBuffer;
+    const hasMultipass = hasBlur || hasShadow || hasGlow || hasBlurFx || hasMatte;
 
     // Render target: the swapchain at the top level, or a precomp's offscreen
     // texture when rendering a nested composition (clearAlpha 0 → transparent).
@@ -4613,11 +4722,28 @@ export class WebGPURenderer {
         device.queue.writeBuffer(gpu.blurFxUniformBuffer, 0, blurFxBufData, 0, UNIFORM_ALIGN * blurFxDraws.length);
       }
 
+      // Track matte (B10d): write one flags slot (luma, invert) per matted layer + a layerId->draw map so
+      // the composite can fetch the matte SOURCE's draw. No-op when no frame has a matte.
+      const drawByLayerId = new Map<string, Draw>();
+      if (hasMatte && gpu.matteUniformBuffer) {
+        for (const d of draws) if (d.layerId) drawByLayerId.set(d.layerId, d);
+        const matteBuf = new ArrayBuffer(UNIFORM_ALIGN * matteDraws.length);
+        for (let k = 0; k < matteDraws.length; k++) {
+          const fl = matteFlags(matteDraws[k].matte!.mode);
+          const f = new Float32Array(matteBuf, UNIFORM_ALIGN * k, 4);
+          f[0] = fl.luma ? 1 : 0;
+          f[1] = fl.invert ? 1 : 0;
+        }
+        device.queue.writeBuffer(gpu.matteUniformBuffer, 0, matteBuf, 0, UNIFORM_ALIGN * matteDraws.length);
+      }
+      let matteSlot = 0;
+
       const sceneView = gpu.sceneTexView!;
       const layerView = gpu.layerTexView!;
       const shadowView = gpu.shadowTexView!;
       const glowExtractView = gpu.glowExtractTexView!;
       const glowBlurView = gpu.glowBlurTexView!;
+      const matteSrcView = gpu.matteSrcTexView!;
 
       let scenePass = encoder.beginRenderPass({
         colorAttachments: [{ view: sceneView, loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 0 } }],
@@ -4631,6 +4757,33 @@ export class WebGPURenderer {
       let glowSlot = 0;
       let blurFxSlot = 0;
       for (const d of draws) {
+        // Track matte (B10d): a layer consumed AS a matte source draws only INTO the matte, never on its
+        // own; skip its standalone composite here.
+        // Only active when the composite pipeline built (hasMatte); otherwise matted/source layers draw
+        // normally below - a shader-compile failure degrades to "no matte", never a broken renderer.
+        if (d.consumedAsMatte && hasMatte) continue;
+        // A matted layer: render the matte source + the matted layer into isolated textures, then a small
+        // composite pass multiplies the matted alpha by the source's coverage (matteCoverage) and draws it
+        // premultiplied-over the scene at this layer's slot. (v1: applies to the matted layer's base -
+        // its own blur/glow are not combined with the matte yet.)
+        if (d.matte && hasMatte) {
+          const src = drawByLayerId.get(d.matte.sourceId);
+          const mySlot = matteSlot++;
+          scenePass.end();
+          const srcPass = encoder.beginRenderPass({ colorAttachments: [{ view: matteSrcView, loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 0 } }] });
+          if (src) src.fn(srcPass);
+          srcPass.end();
+          const mattedPass = encoder.beginRenderPass({ colorAttachments: [{ view: layerView, loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 0 } }] });
+          d.fn(mattedPass);
+          mattedPass.end();
+          const compPass = encoder.beginRenderPass({ colorAttachments: [{ view: sceneView, loadOp: 'load', storeOp: 'store' }] });
+          compPass.setPipeline(gpu.matteCompositePipeline!);
+          compPass.setBindGroup(0, gpu.matteBindGroup!, [UNIFORM_ALIGN * mySlot]);
+          compPass.draw(3);
+          compPass.end();
+          scenePass = encoder.beginRenderPass({ colorAttachments: [{ view: sceneView, loadOp: 'load', storeOp: 'store' }] });
+          continue;
+        }
         const needsBlur = hasBlur && !!d.blur;
         const needsShadow = !!d.shadow;
         const needsGlow = !!d.glow;

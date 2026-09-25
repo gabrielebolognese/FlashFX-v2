@@ -45,7 +45,7 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | B10a | Mask reveal wipes (iris + directional, pure - existing mask render) | ✅ | light |
 | B10b | Track mattes - model + pure resolver pairing + UI + persist (composite pass browser-gated) | ✅ | medium |
 | B10c | Freeform mask paths + per-vertex feather - model + pure resolver (coverage shader browser-gated) | ✅ | medium |
-| B10d | Track-matte RTT composite pass (pure coverage math ✅; multipass render browser-gated) | ▶ **next** (browser) | **heavy** |
+| B10d | Track-matte RTT composite (coverage math + guarded multipass composite pass) | ✅ (browser-verify-pending) | **heavy** |
 | B10d-mask | Freeform-polygon mask coverage shader + path-mask authoring UI | ⬜ (browser) | **heavy** |
 | B10e | Basic roto / refine-edge (keying/edge pass) | ⬜ | **heavy** |
 | B11a | Effect presets (save/apply stack) + effectsEnabled master-switch fix (pure) | ✅ | light |
