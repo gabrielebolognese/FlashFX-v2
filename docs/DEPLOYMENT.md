@@ -3,7 +3,7 @@
 How to put FlashFX on a public URL. The app is a **static single-page app** (Vite build to `dist/`);
 the only backend is Supabase (Postgres + Auth + Storage + the edge functions, already deployed to
 Supabase). So "deploying" = hosting the static build + pointing the production env at your Supabase and
-Lemon Squeezy. No server to run.
+Paddle. No server to run.
 
 Replace `<PROD_ORIGIN>` with your real URL (e.g. `https://editor.flashfx.app`) throughout.
 
@@ -11,8 +11,8 @@ Replace `<PROD_ORIGIN>` with your real URL (e.g. `https://editor.flashfx.app`) t
 
 ## 0. Prerequisites (already done, confirm)
 
-- Supabase edge functions deployed (`lemon-webhook`, and `drive-assets` if used) and secrets set
-  (`LEMON_SQUEEZY_SIGNING_SECRET`). See [`LEMON-SQUEEZY-SETUP.md`](./LEMON-SQUEEZY-SETUP.md).
+- Supabase edge functions deployed (`paddle-webhook`, and `drive-assets` if used) and secrets set
+  (`PADDLE_WEBHOOK_SECRET`). See [`PADDLE-SETUP.md`](./PADDLE-SETUP.md).
 - The `subscriptions` migration is applied (`supabase db push`).
 - **Supabase project is on a paid tier so it does NOT auto-pause.** The free tier pauses after ~a week
   idle; a paused project breaks sign-in, the Pro check and cloud sync for everyone. This is the one
@@ -63,15 +63,18 @@ environment (not just your local `.env`). Set:
 ```
 VITE_SUPABASE_URL=https://bmqjuirylayevygjqxxj.supabase.co
 VITE_SUPABASE_ANON_KEY=<the anon public key>
-VITE_LEMON_CHECKOUT_URL=https://flashfx.lemonsqueezy.com/checkout/buy/a6be9a6a-56df-4756-91b7-9250c79a819d
-VITE_LEMON_PRICE_LABEL=$29.99/mo
+VITE_PADDLE_CLIENT_TOKEN=<live_ client-side token>
+VITE_PADDLE_PRICE_ID=<the live pri_... for FlashFX Pro>
+VITE_PADDLE_ENV=production
+VITE_PADDLE_PRICE_LABEL=$29.99/mo
 VITE_OAUTH_GOOGLE=true
 # optional observability (see MONITORING below):
 # VITE_SENTRY_DSN=...
 # VITE_POSTHOG_KEY=...
 ```
 The anon key is public/publishable (safe in the bundle). NEVER put the Supabase service-role key or the
-Lemon Squeezy signing secret in a `VITE_` var - those live only in Supabase edge-function secrets.
+Paddle webhook secret in a `VITE_` var - those live only in Supabase edge-function secrets. (The Paddle
+CLIENT token IS public/publishable, like a Stripe publishable key, so it is fine in a `VITE_` var.)
 
 ---
 
@@ -92,8 +95,10 @@ use a different domain.
      sign-in, email confirmation, and password reset all fail on prod.
 2. **Google OAuth**: no change needed on Google's side - the provider callback is Supabase's URL
    (`https://<ref>.supabase.co/auth/v1/callback`), already configured. Step 1 is what makes prod work.
-3. **Lemon Squeezy**: set the product's **after-purchase redirect** to `<PROD_ORIGIN>/subscription-success`
-   so the celebration page shows post-payment. The LS webhook already targets Supabase - unchanged.
+3. **Paddle**: submit `<PROD_ORIGIN>` for **domain approval** (Checkout > Website approval) - live checkout
+   will not run on an unapproved domain. Set the checkout **success URL** / default payment link to
+   `<PROD_ORIGIN>/subscription-success` so the celebration page shows post-payment. The Paddle
+   notification destination already targets the Supabase `paddle-webhook` - unchanged. See PADDLE-SETUP.md.
 
 ---
 

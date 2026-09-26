@@ -1,7 +1,7 @@
 import { Crown, PlayCircle, ArrowRight } from 'lucide-react';
 
 // Hidden post-checkout landing at /subscription-success (no nav links to it; reached only by the
-// Lemon Squeezy after-purchase redirect or a direct link). One-page, minimalist Pro celebration: the benefits list
+// Paddle checkout success callback or a direct link). One-page, minimalist Pro celebration: the benefits list
 // on the center-left (big yellow titles, short white descriptions) and a thank-you video placeholder on
 // the right with a "Show me everything" CTA. Pure CSS animations, self-contained (no engine).
 
