@@ -34,7 +34,7 @@ export function totalTokens(u: AiTokenUsage): number {
 }
 
 // Monthly token budget per plan. Free gets ZERO (AI is a Pro perk - the panel gate keeps free users
-// out entirely; this is defense-in-depth). Pro's budget is a placeholder tuned against the $29.99/mo
+// out entirely; this is defense-in-depth). Pro's budget is a placeholder tuned against the €29.99/mo
 // price: at the Opus estimate a typical prompt-to-scene run (Director + a handful of Coder calls, most
 // input cached) lands well under 100k tokens, so ~6M covers dozens of generations a month. TUNE after
 // watching real usage/cost in the ai_usage table.

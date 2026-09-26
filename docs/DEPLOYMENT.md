@@ -66,7 +66,7 @@ VITE_SUPABASE_ANON_KEY=<the anon public key>
 VITE_PADDLE_CLIENT_TOKEN=<live_ client-side token>
 VITE_PADDLE_PRICE_ID=<the live pri_... for FlashFX Pro>
 VITE_PADDLE_ENV=production
-VITE_PADDLE_PRICE_LABEL=$29.99/mo
+VITE_PADDLE_PRICE_LABEL=€29.99/mo
 VITE_OAUTH_GOOGLE=true
 # optional observability (see MONITORING below):
 # VITE_SENTRY_DSN=...

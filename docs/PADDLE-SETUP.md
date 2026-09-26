@@ -36,7 +36,8 @@ The pipeline is provider-agnostic except for the checkout call, the webhook, and
 
 1. **Storage**: Pro = 20 GB everywhere (`plans.ts`).
 2. **Grace window**: 3 days max after a sub leaves active/trialing, then Free (in the webhook).
-3. **Price**: $29.99/mo. The Paddle price must be created at this amount; set `VITE_PADDLE_PRICE_LABEL`.
+3. **Price**: €29.99/mo. The Paddle price must be created at this amount **in EUR** (set the price's
+   currency to EUR in the Paddle catalog); set `VITE_PADDLE_PRICE_LABEL=€29.99/mo`.
 
 ---
 
@@ -47,7 +48,8 @@ steps in the **live** account (paddle.com) at go-live. Sandbox and live are full
 catalog ids, separate client tokens, separate notification-destination secrets.
 
 1. **Create the Pro product + price.** Catalog > Products > New: name `FlashFX Pro`. Add a **recurring
-   price**, monthly, **$29.99**. Save and copy the price id (`pri_...`) - this is `VITE_PADDLE_PRICE_ID`.
+   price**, monthly, **€29.99 (currency: EUR)**. Save and copy the price id (`pri_...`) - this is
+   `VITE_PADDLE_PRICE_ID`. All FlashFX pricing is in EUR; create every price with EUR as its currency.
 2. **Create a client-side token.** Developer tools > Authentication > Client-side tokens. Sandbox tokens
    start `test_`, live tokens `live_`. This is `VITE_PADDLE_CLIENT_TOKEN` (public; safe in the bundle).
 3. **Create a notification destination (webhook).** Developer tools > Notifications > New destination:
@@ -74,7 +76,7 @@ supabase functions deploy paddle-webhook --no-verify-jwt
 VITE_PADDLE_CLIENT_TOKEN=test_...   # live_... in production
 VITE_PADDLE_PRICE_ID=pri_...
 VITE_PADDLE_ENV=sandbox             # production at go-live
-VITE_PADDLE_PRICE_LABEL=$29.99/mo
+VITE_PADDLE_PRICE_LABEL=€29.99/mo
 ```
 
 ## Part 3: push the migration + sandbox test
