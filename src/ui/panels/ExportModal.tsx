@@ -37,6 +37,7 @@ export function ExportModal({ onClose }: ExportModalProps) {
   const [exporting, setExporting] = useState(false);
   const [progress, setProgress] = useState<ExportProgress | null>(null);
   const [exportedBlob, setExportedBlob] = useState<Blob | null>(null);
+  const [audioDropped, setAudioDropped] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -51,6 +52,7 @@ export function ExportModal({ onClose }: ExportModalProps) {
     setProgress(null);
     setError(null);
     setExportedBlob(null);
+    setAudioDropped(false);
 
     const controller = new AbortController();
     abortRef.current = controller;
@@ -100,9 +102,10 @@ export function ExportModal({ onClose }: ExportModalProps) {
     trackEvent('export_started', { width: resolution.width, height: resolution.height, frameRate, quality });
 
     try {
-      const blob = await exportToMp4(composition, settings, setProgress, controller.signal, useEditorStore.getState().getComposition);
+      const { blob, audioDropped: dropped } = await exportToMp4(composition, settings, setProgress, controller.signal, useEditorStore.getState().getComposition);
       setExportedBlob(blob);
-      trackEvent('export_completed', { width: resolution.width, height: resolution.height, frameRate, bytes: blob.size });
+      setAudioDropped(dropped);
+      trackEvent('export_completed', { width: resolution.width, height: resolution.height, frameRate, bytes: blob.size, audioDropped: dropped });
     } catch (e) {
       if ((e as Error).message !== 'Export cancelled') {
         setError((e as Error).message);
@@ -341,9 +344,18 @@ export function ExportModal({ onClose }: ExportModalProps) {
               </div>
               <p className="text-[13px] text-slate-200 font-medium mb-1">Export Complete</p>
               <p className="text-[11px] text-slate-500">
-                {resolution.width}x{resolution.height} at {frameRate}fps -- {formatFileSize(exportedBlob.size)}
+                {resolution.width}x{resolution.height} at {frameRate}fps - {formatFileSize(exportedBlob.size)}
               </p>
             </div>
+
+            {audioDropped && (
+              <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/30">
+                <VolumeX size={14} className="text-amber-400 mt-0.5 shrink-0" />
+                <p className="text-[11px] text-amber-300/90 leading-snug">
+                  Exported <span className="font-semibold">without audio</span>. This browser could not encode AAC audio, so the video is silent. Try a recent Chromium-based browser to include sound.
+                </p>
+              </div>
+            )}
 
             <button
               onClick={handleDownload}
@@ -354,7 +366,7 @@ export function ExportModal({ onClose }: ExportModalProps) {
             </button>
 
             <button
-              onClick={() => { setExportedBlob(null); setProgress(null); }}
+              onClick={() => { setExportedBlob(null); setProgress(null); setAudioDropped(false); }}
               className="w-full py-2 bg-surface-3 hover:bg-surface-4 text-slate-400 hover:text-slate-300 rounded-lg text-[11px] font-medium transition-colors"
             >
               Export Again

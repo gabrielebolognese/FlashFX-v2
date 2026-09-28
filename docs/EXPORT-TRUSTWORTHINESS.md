@@ -22,8 +22,9 @@ Line refs below come from the audits and MUST be re-verified against code before
 | EX1 | Video layers export correctly: offscreen `videoTextureCache` device init (black/error blocker) + no stale proxy + frame-blend B-frame | ✅ (browser-verify-pending) | medium |
 | EX2 | Timing honesty: fps resample (preserve duration/speed) wired end-to-end + pure aspect-fit viewport math | ✅ | medium |
 | EX2b | Aspect-fit RENDER: apply the letterbox viewport in the renderer (multipass + effect passes, premult bars) | ⬜ (browser) | medium |
-| EX3 | Audio actually reaches the file: reload/import hasAudio-race fix + AAC-unsupported warn + precomp audio + decode-fail warn + persisted "no audio" notice | ▶ **next** | medium |
-| EX4 | Preview parity: pass `getStyle` (linked styles) + comp-level motion-blur honor + font-ready await + solo/limiter parity | ⬜ | light |
+| EX3 | Audio reaches the file (common flow): reload/import hasAudio-race fix + AAC-unsupported warn + persisted "no audio" completion banner | ✅ | medium |
+| EX3b | Precomp audio mixed (recurse getComposition, time-remapped) + per-container decode-fail warn | ⬜ | medium |
+| EX4 | Preview parity: pass `getStyle` (linked styles) + comp-level motion-blur honor + font-ready await + solo/limiter parity | ▶ **next** | light |
 | EX5 | Expressions deterministic in export: synchronous per-frame evaluation (no stale worker cache) | ⬜ (browser) | **heavy** |
 | EX6 | Export range: work-area / in-out sub-range (settings + UI + frame loop + audio anchor) | ⬜ | medium |
 | EX7 | Robustness + polish: chunked long-comp audio, AAC priming edit-list, color-space tag, filename/normalize, cancel-race, hw-accel hints | ⬜ | light |
@@ -62,7 +63,35 @@ Line refs below come from the audits and MUST be re-verified against code before
 
 **Verification:** `verify:export-timing` (frame count + comp-frame mapping across up/down/equal fps, duration preserved) and `verify:export-fit` (viewport rect math, all aspect combos). Renderer viewport = browser-gated.
 
-## EX3 - Audio actually reaches the file (the silent-export cluster)
+## EX3 - Audio reaches the file (the common-flow silent-export fixes) - DONE
+
+**Shipped (2026-09-28):** the three common-flow fixes below (#1/#2/#3). Precomp audio (#4) and the
+per-container decode-fail warning (#5) are split to **EX3b**.
+- **#1 reload/import hasAudio race (the HIGH one):** `compositionHasAudio` no longer gates a video layer
+  on the lazily-set `getMetadata().hasAudio` flag (false right after a reload until `extractVideoAudio`
+  runs) - a non-muted video is now treated as possibly-audible. The mixer already decodes each video's
+  audio on demand (`ensureAudioBuffer`) and contributes nothing when a clip is truly silent, so this
+  never adds phantom audio; it only stops the race from dropping a real soundtrack on "reopen + export".
+- **#2 AAC-unsupported warn:** `exportCompositionAudio` now returns `AudioMixResult {audio,
+  droppedForEncoding}`, distinguishing "no audio to include" (null, not a drop) from "had sources but no
+  AAC could be produced" (`droppedForEncoding`). The exporter sets `audioDropped` on that signal (and on
+  a thrown mix error), so a browser without AAC encode no longer reports a clean success.
+- **#3 persisted "no audio" notice:** `exportToMp4` now returns `{ blob, audioDropped }` (was a bare
+  Blob); `ExportModal` stores it and renders an amber "Exported without audio" banner on the completion
+  screen (the notice used to live only in a transient progress string the completion screen never showed).
+
+No new pure logic to harness (audio mix is OfflineAudioContext I/O, browser-runtime like the webhook);
+verified by tsc/lint/build + the existing 108 harnesses. The actual audio render still needs a founder
+browser export to confirm sound is present.
+
+**EX3b (deferred):** recurse precomp audio into the mix + `compositionHasAudio` (time-remapped by the
+precomp inPoint/fps/timeStretch, mirroring `precompLocalFrame`; a pure remap helper is harnessable even
+though the mix runs in-browser). Also flag per-container audio-decode failures (a video whose picture
+exports but whose audio `decodeAudioData` rejected). Precomp audio is currently dropped in BOTH preview
+and export, so deferring it keeps parity (not a new divergence). Proper WebCodecs audio DECODE stays
+EX-future.
+
+## EX3 findings (reference)
 
 **Delivers / findings (audio audit, ranked #1/#2/#4 + UI #3):**
 1. **Video audio silently dropped after project reload / import race (HIGH, common flow).** `compositionHasAudio` gates a video layer's audio on `getMetadata(assetId)?.hasAudio`, but on reload `initVideoAssetFromBlob` sets `hasAudio:false` and defers `extractVideoAudio` to a lazy waveform trigger. Export before the strip mounts -> `hasAudio=false` -> `includeAudio:false` -> mixing skipped -> SILENT file, no warning. Same race on fresh import (queued `_audioExtractChain`). The mixer would have decoded fine via `ensureAudioBuffer` had it been asked. **Fix:** stop gating export audio on the racy flag - detect audio from the actual asset (or force-resolve audio buffers for all video layers before export), and/or await extraction.

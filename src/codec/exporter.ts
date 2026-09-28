@@ -28,6 +28,13 @@ export interface ExportProgress {
   message: string;
 }
 
+export interface ExportResult {
+  blob: Blob;
+  /** Audio was requested but the file has NONE (mixing/AAC-encoding failed or was unavailable). The UI
+   *  should tell the user the export is silent rather than presenting a clean success. */
+  audioDropped: boolean;
+}
+
 export async function exportToMp4(
   composition: Composition,
   settings: Partial<ExportSettings> = {},
@@ -36,7 +43,7 @@ export async function exportToMp4(
   // Registry lookup so precomp layers resolve their sub-compositions during export.
   // Without it, resolveFrame gets no ResolveContext and every precomp renders blank.
   getComposition?: (id: string) => Composition | undefined,
-): Promise<Blob> {
+): Promise<ExportResult> {
   // H.264 requires even dimensions; round down (and reject a blank/degenerate size). Pure + validated.
   const { width, height } = normalizeExportDimensions(
     settings.width ?? composition.settings.width,
@@ -109,7 +116,11 @@ export async function exportToMp4(
       // Audio is continuous, so it is mixed in REAL time at the composition fps (not the export fps and
       // not the resampled output-frame count); durationFrames/compFps = the true duration the video also
       // spans, so A/V stay in sync regardless of the export fps.
-      audio = await exportCompositionAudio(composition, { frameRate: compFps, durationFrames }, signal);
+      const mix = await exportCompositionAudio(composition, { frameRate: compFps, durationFrames }, signal);
+      audio = mix.audio;
+      // Audible sources existed but no AAC track could be produced (e.g. a browser without AAC encode):
+      // the file will be silent DESPITE having audio, so flag it rather than reporting a clean success.
+      if (mix.droppedForEncoding) audioDropped = true;
     } catch (e) {
       if ((e as Error).message === 'Export cancelled') {
         renderer.destroy();
@@ -270,7 +281,7 @@ export async function exportToMp4(
         : `Export complete - ${formatFileSize(blob.size)}`,
     });
 
-    return blob;
+    return { blob, audioDropped };
   } finally {
     try { if (encoder.state !== 'closed') encoder.close(); } catch { /* already closed */ }
     renderer.destroy();

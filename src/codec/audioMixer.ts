@@ -16,6 +16,15 @@ export interface EncodedAudio {
   numberOfChannels: number;
 }
 
+export interface AudioMixResult {
+  /** The encoded AAC track, or null when there was nothing to encode OR encoding was unavailable. */
+  audio: EncodedAudio | null;
+  /** True ONLY when audible sources existed but no AAC could be produced (encoder missing/unsupported/
+   *  empty) - i.e. the export is silent DESPITE having audio, so the caller should warn the user.
+   *  Stays false when the composition simply had no audio (nothing was dropped). */
+  droppedForEncoding: boolean;
+}
+
 /**
  * A single audible clip resolved to Web Audio scheduling parameters. This is the
  * pure, testable core of the mixer - it mirrors the preview scheduling math in
@@ -67,9 +76,13 @@ export function compositionHasAudio(composition: Composition): boolean {
     if (layer.trackId && muted.has(layer.trackId)) return false;
     if (layer.type === 'audio') return !layer.audio.muted;
     if (layer.type === 'video') {
-      // Video PCM isn't retained (decoded on demand for the mix); use the metadata
-      // audio flag set during import/load instead of the resident buffer.
-      return !layer.video.muted && !!mediaAssetManager.getMetadata(layer.video.assetId)?.hasAudio;
+      // Optimistic: a non-muted video MIGHT carry an audio track. We deliberately do NOT gate on the
+      // metadata `hasAudio` flag - it is set lazily (only once extractVideoAudio has run), so right after
+      // a project RELOAD it is still false, which would hide the "Include audio" toggle and make the
+      // exporter skip mixing, silently dropping the soundtrack. The mixer decodes each video's audio on
+      // demand (ensureAudioBuffer) and contributes nothing when a clip is truly silent, so being
+      // optimistic never adds phantom audio - it only stops the race from dropping real audio.
+      return !layer.video.muted;
     }
     return false;
   });
@@ -162,13 +175,14 @@ export async function exportCompositionAudio(
   composition: Composition,
   opts: { frameRate: number; durationFrames: number },
   signal?: AbortSignal
-): Promise<EncodedAudio | null> {
+): Promise<AudioMixResult> {
   const { frameRate, durationFrames } = opts;
   const durationSec = durationFrames / frameRate;
-  if (durationSec <= 0) return null;
+  // Nothing to mix (degenerate duration or no audible clips) - not a "drop", there was never any audio.
+  if (durationSec <= 0) return { audio: null, droppedForEncoding: false };
 
   const sources = await collectSources(composition, frameRate);
-  if (sources.length === 0) return null;
+  if (sources.length === 0) return { audio: null, droppedForEncoding: false };
 
   if (signal?.aborted) throw new Error('Export cancelled');
 
@@ -208,7 +222,10 @@ export async function exportCompositionAudio(
 
   if (signal?.aborted) throw new Error('Export cancelled');
 
-  return encodeToAac(mix, signal);
+  // Sources existed, so a null here means AAC encoding was unavailable/unsupported/empty - a genuine
+  // drop the caller must surface (the export will be silent despite the comp having audio).
+  const audio = await encodeToAac(mix, signal);
+  return { audio, droppedForEncoding: audio === null };
 }
 
 /** Encode a rendered stereo mix to AAC via WebCodecs. Null if AAC is unavailable. */
