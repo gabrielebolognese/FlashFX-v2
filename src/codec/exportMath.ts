@@ -89,3 +89,48 @@ export function collectExportVideoDecodes(layers: ExportDecodeLayer[]): VideoDec
   }
   return reqs;
 }
+
+// ---- FPS resample (preserve real duration when export fps != composition fps) ----
+// The composition is authored at compFps; the user may export at a different fps. Rendering the SAME
+// frame count at a different rate silently changes speed + duration (a 30fps/150-frame 5s comp exported
+// at 60fps would become 2.5s at 2x). Instead we resample: emit round(durationSec * exportFps) frames and,
+// for each output frame, render the composition frame nearest that output frame's real time. Equal fps
+// is the identity (same count, output frame == comp frame), so a matching export is byte-identical.
+
+/** How many frames to EMIT when re-timing durationFrames@compFps to exportFps, preserving real duration.
+ *  Always at least 1. Equal fps -> durationFrames. */
+export function exportOutputFrameCount(durationFrames: number, compFps: number, exportFps: number): number {
+  const durationSec = durationFrames / compFps;
+  return Math.max(1, Math.round(durationSec * exportFps));
+}
+
+/** The composition frame to RENDER for a given output frame, resampling by real time and clamped to
+ *  [0, durationFrames-1]. Equal fps -> identity (returns outputFrame, clamped). */
+export function exportCompFrame(outputFrame: number, durationFrames: number, compFps: number, exportFps: number): number {
+  const seconds = outputFrame / exportFps;
+  const compFrame = Math.round(seconds * compFps);
+  return Math.min(durationFrames - 1, Math.max(0, compFrame));
+}
+
+// ---- Aspect-fit viewport (stop the silent stretch when export aspect != comp aspect) ----
+
+export type ExportFitMode = 'fit' | 'fill' | 'stretch';
+export interface ExportViewport { x: number; y: number; width: number; height: number }
+
+/** Destination rect (in export pixels) for drawing a comp-aspect image into an export canvas:
+ *  - 'fit'    : letterbox/pillarbox - whole comp visible, centered, bars fill the remainder (default;
+ *               no distortion, no crop).
+ *  - 'fill'   : cover - fills the canvas and crops the overflow (x/y go negative).
+ *  - 'stretch': legacy - fills the canvas, distorting to the export aspect.
+ *  Equal aspect -> the full canvas for every mode. */
+export function computeExportViewport(
+  compW: number, compH: number, exportW: number, exportH: number, mode: ExportFitMode = 'fit',
+): ExportViewport {
+  if (mode === 'stretch') return { x: 0, y: 0, width: exportW, height: exportH };
+  const sx = exportW / compW;
+  const sy = exportH / compH;
+  const scale = mode === 'fill' ? Math.max(sx, sy) : Math.min(sx, sy);
+  const width = compW * scale;
+  const height = compH * scale;
+  return { x: (exportW - width) / 2, y: (exportH - height) / 2, width, height };
+}

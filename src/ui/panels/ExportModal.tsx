@@ -2,6 +2,7 @@ import { useState, useRef, useMemo } from 'react';
 import { X, Download, Film, Zap, Crown, Check, Volume2, VolumeX } from 'lucide-react';
 import { useEditorStore } from '../../store/editor';
 import { exportToMp4, downloadBlob, formatFileSize, estimateDuration, type ExportProgress, type ExportSettings } from '../../codec/exporter';
+import { exportOutputFrameCount } from '../../codec/exportMath';
 import { compositionHasAudio } from '../../codec/audioMixer';
 import { trackEvent, captureError } from '../../lib/telemetry';
 import { classifyExportMemory, readDeviceMemoryGB } from '../../codec/exportMemory';
@@ -40,7 +41,9 @@ export function ExportModal({ onClose }: ExportModalProps) {
   const abortRef = useRef<AbortController | null>(null);
 
   const preset = QUALITY_PRESETS[quality];
-  const totalFrames = composition.settings.durationFrames;
+  // The exporter resamples comp frames to the chosen export fps, so the ACTUAL emitted frame count (and
+  // thus the duration/size/memory estimates) is the resampled count, not the comp's durationFrames.
+  const totalFrames = exportOutputFrameCount(composition.settings.durationFrames, composition.settings.frameRate, frameRate);
   const duration = estimateDuration(frameRate, totalFrames);
 
   const handleExport = async () => {

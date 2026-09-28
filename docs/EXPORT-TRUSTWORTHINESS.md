@@ -20,8 +20,9 @@ Line refs below come from the audits and MUST be re-verified against code before
 | Batch | Delivers | Status | Weight |
 |-------|----------|--------|--------|
 | EX1 | Video layers export correctly: offscreen `videoTextureCache` device init (black/error blocker) + no stale proxy + frame-blend B-frame | ✅ (browser-verify-pending) | medium |
-| EX2 | Timing + geometry honesty: fps resample (preserve duration/speed) + aspect-fit letterbox (no stretch) | ▶ **next** | medium |
-| EX3 | Audio actually reaches the file: reload/import hasAudio-race fix + AAC-unsupported warn + precomp audio + decode-fail warn + persisted "no audio" notice | ⬜ | medium |
+| EX2 | Timing honesty: fps resample (preserve duration/speed) wired end-to-end + pure aspect-fit viewport math | ✅ | medium |
+| EX2b | Aspect-fit RENDER: apply the letterbox viewport in the renderer (multipass + effect passes, premult bars) | ⬜ (browser) | medium |
+| EX3 | Audio actually reaches the file: reload/import hasAudio-race fix + AAC-unsupported warn + precomp audio + decode-fail warn + persisted "no audio" notice | ▶ **next** | medium |
 | EX4 | Preview parity: pass `getStyle` (linked styles) + comp-level motion-blur honor + font-ready await + solo/limiter parity | ⬜ | light |
 | EX5 | Expressions deterministic in export: synchronous per-frame evaluation (no stale worker cache) | ⬜ (browser) | **heavy** |
 | EX6 | Export range: work-area / in-out sub-range (settings + UI + frame loop + audio anchor) | ⬜ | medium |
@@ -45,7 +46,13 @@ Line refs below come from the audits and MUST be re-verified against code before
 
 **Verification:** mostly GPU/WebCodecs wiring, so browser-gated to VERIFY (founder exports a comp with a video: not black, full-res, frame-blend present). Harness what is pure: if the pre-decode selection is extracted (which source indices to decode per resolved frame, incl. B), a `verify:export-video-frames` can assert the index set. Gates green regardless.
 
-## EX2 - Timing + geometry honesty (stop the two silent "wrong file" lies)
+## EX2 - Timing + geometry honesty (stop the two silent "wrong file" lies) - DONE (fps) + math (aspect)
+
+**Shipped (2026-09-28):** the **fps resample is wired end-to-end** and the **aspect-fit math is built + harnessed**; the aspect-fit RENDER is split to EX2b (browser-gated).
+- **FPS resample (fully done, verifiable):** `exporter.ts` now emits `exportOutputFrameCount(durationFrames, compFps, exportFps)` frames and renders `exportCompFrame(outputFrame, ...)` for each (nearest real time, clamped), stamping at exportFps. Equal fps is the identity (byte-identical export). Audio is mixed in REAL time at compFps (`exportCompositionAudio({ frameRate: compFps, durationFrames })`) so A/V stay in sync across a re-time. `ExportModal` computes the same output-frame count so the duration / file-size / memory-guard / frame-count estimates are all correct under an fps change (were the mismatch too). Pure `exportOutputFrameCount` + `exportCompFrame` in `exportMath.ts`, `verify:export-math` now 13 checks.
+- **Aspect-fit math (built, ready for EX2b):** `computeExportViewport(compW, compH, exportW, exportH, mode)` (`fit` letterbox default / `fill` cover / `stretch` legacy), harnessed. NOT yet applied in the renderer.
+
+**EX2b (browser-gated):** apply the viewport in `renderer.ts`. The geometry draws fill the whole target in BOTH the fast single-pass and the multipass scene pass, and effect passes (blur/glow/matte) sample full textures - so letterboxing means setting the viewport on every geometry pass, clearing the bars to black, and getting premultiplied-alpha right at the bar edges. That is shared-compositor surgery that needs a live browser to verify (painter order + premult), so it is deferred like the other GPU-render splits. Wire it with a browser session; the pure `computeExportViewport` is the source of truth for the rect.
 
 **Delivers / findings (codec #2/#3, UI #1/#2):**
 1. **FPS control silently rescales speed + duration.** Loop renders exactly `durationFrames` comp frames (`exporter.ts:47,142`) but stamps them at the user-selected `frameRate` (`frameTimestampUs(frame, frameRate)`), and audio mixes at the same export fps. No resampling. A 30fps/150-frame (5s) comp exported at 60fps becomes 2.5s at 2x speed (audio matches the wrong duration). **Fix (preferred):** resample - preserve real duration `durationFrames/compFps` seconds; output `round(durationSec*exportFps)` frames; for output frame `o`, render comp frame `round((o/exportFps)*compFps)` (clamped). Audio mix stays in real seconds. **Fallback if risky:** lock the export-fps control to comp fps (remove the lie). Pure core `planExportTimeline(durationFrames, compFps, exportFps)` -> harnessed.

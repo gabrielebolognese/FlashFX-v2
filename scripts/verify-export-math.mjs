@@ -27,7 +27,7 @@ try {
   const {
     MIN_EXPORT_DIM, normalizeExportDimensions, validateExportTiming,
     frameTimestampUs, frameDurationUs, isExportKeyframe,
-    collectExportVideoDecodes,
+    collectExportVideoDecodes, exportOutputFrameCount, exportCompFrame, computeExportViewport,
   } = await import(pathToFileURL(outfile).href);
 
   check('rounds odd dimensions down to even', () => {
@@ -110,6 +110,40 @@ try {
     );
     // frame 0 (falsy) is still a valid distinct frame
     assert.deepEqual(collectExportVideoDecodes([vid('a', 0), vid('a', 0)]), [{ assetId: 'a', frame: 0 }]);
+  });
+
+  check('exportOutputFrameCount: equal fps is identity; up/down-sample preserves real duration', () => {
+    assert.equal(exportOutputFrameCount(150, 30, 30), 150);        // identity
+    assert.equal(exportOutputFrameCount(150, 30, 60), 300);        // 5s -> 300 @ 60
+    assert.equal(exportOutputFrameCount(150, 30, 15), 75);         // 5s -> 75 @ 15
+    assert.equal(exportOutputFrameCount(150, 30, 24), 120);        // 5s -> 120 @ 24
+    assert.equal(exportOutputFrameCount(1, 30, 1), 1);             // never rounds to 0
+  });
+
+  check('exportCompFrame: identity at equal fps, nearest-time resample, clamped to last frame', () => {
+    assert.equal(exportCompFrame(10, 150, 30, 30), 10);            // identity
+    assert.equal(exportCompFrame(0, 150, 30, 60), 0);
+    assert.equal(exportCompFrame(2, 150, 30, 60), 1);             // 2/60s * 30 = 1
+    assert.equal(exportCompFrame(4, 150, 30, 60), 2);             // 4/60s * 30 = 2 (upsample duplicates)
+    assert.equal(exportCompFrame(1, 150, 30, 15), 2);             // 1/15s * 30 = 2 (downsample skips)
+    assert.equal(exportCompFrame(999, 150, 30, 30), 149);        // clamp to durationFrames-1
+    assert.equal(exportCompFrame(0, 150, 30, 30), 0);
+  });
+
+  check('computeExportViewport: equal aspect fills; fit letterboxes; fill crops; stretch fills', () => {
+    // equal aspect -> full canvas
+    assert.deepEqual(computeExportViewport(1920, 1080, 1280, 720, 'fit'), { x: 0, y: 0, width: 1280, height: 720 });
+    // portrait comp into 16:9 -> pillarbox (bars left/right), centered, no distortion
+    const fit = computeExportViewport(1080, 1920, 1920, 1080, 'fit');
+    assert.equal(Math.round(fit.height), 1080);
+    assert.equal(Math.round(fit.width), 608);
+    assert.ok(fit.x > 0 && Math.abs(fit.y) < 1e-9);
+    // fill -> covers the canvas, crops overflow (y negative)
+    const fill = computeExportViewport(1080, 1920, 1920, 1080, 'fill');
+    assert.equal(Math.round(fill.width), 1920);
+    assert.ok(fill.height > 1080 && fill.y < 0 && Math.abs(fill.x) < 1e-9);
+    // stretch -> exact canvas
+    assert.deepEqual(computeExportViewport(1080, 1920, 1920, 1080, 'stretch'), { x: 0, y: 0, width: 1920, height: 1080 });
   });
 
   console.log(`\nexport-math: all ${passed} checks passed`);

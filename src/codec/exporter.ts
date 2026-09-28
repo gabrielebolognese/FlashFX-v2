@@ -8,7 +8,7 @@ import { exportCompositionAudio, type EncodedAudio } from './audioMixer';
 import {
   normalizeExportDimensions, validateExportTiming,
   frameTimestampUs, frameDurationUs, isExportKeyframe,
-  collectExportVideoDecodes,
+  collectExportVideoDecodes, exportOutputFrameCount, exportCompFrame,
 } from './exportMath';
 
 export interface ExportSettings {
@@ -42,14 +42,24 @@ export async function exportToMp4(
     settings.width ?? composition.settings.width,
     settings.height ?? composition.settings.height,
   );
-  const frameRate = settings.frameRate ?? composition.settings.frameRate;
+  // The composition is authored at compFps; the user may export at a different fps. We RESAMPLE (below)
+  // so real duration + speed are preserved - rendering the comp's frame count at a different rate would
+  // silently re-time the video. exportFps drives the emitted frames + timestamps; compFps drives which
+  // comp frame each output frame samples, and the (continuous) audio mix.
+  const exportFps = settings.frameRate ?? composition.settings.frameRate;
+  const compFps = composition.settings.frameRate;
+  const durationFrames = composition.settings.durationFrames;
   const bitrate = settings.bitrate ?? 8_000_000;
   const codec = settings.codec ?? 'avc1.42001f';
-  const totalFrames = composition.settings.durationFrames;
 
   // Pre-flight: fail fast and clearly on an empty/invalid composition rather than spinning up the
-  // renderer + encoder only to produce a broken file.
-  validateExportTiming(totalFrames, frameRate);
+  // renderer + encoder only to produce a broken file. Both fps matter (compFps for resampling).
+  validateExportTiming(durationFrames, exportFps);
+  if (!Number.isFinite(compFps) || compFps <= 0) {
+    throw new Error('Nothing to export - the composition has an invalid frame rate.');
+  }
+  // Number of frames to EMIT at exportFps, preserving real duration (equal fps -> durationFrames).
+  const totalFrames = exportOutputFrameCount(durationFrames, compFps, exportFps);
 
   // WebCodecs + codec preflight BEFORE any renderer/audio work, so an unsupported browser or an
   // unsupported H.264 profile (e.g. 4K High profile on some GPUs) fails fast with a clear message
@@ -57,7 +67,7 @@ export async function exportToMp4(
   if (typeof VideoEncoder === 'undefined') {
     throw new Error('Video export needs WebCodecs, which this browser does not support. Use a recent Chromium-based browser.');
   }
-  const support = await VideoEncoder.isConfigSupported({ codec, width, height, bitrate, framerate: frameRate });
+  const support = await VideoEncoder.isConfigSupported({ codec, width, height, bitrate, framerate: exportFps });
   if (support.supported === false) {
     throw new Error(`This browser or GPU does not support the selected export quality (${codec} at ${width}x${height}). Try a lower quality or resolution.`);
   }
@@ -96,7 +106,10 @@ export async function exportToMp4(
       message: 'Mixing audio...',
     });
     try {
-      audio = await exportCompositionAudio(composition, { frameRate, durationFrames: totalFrames }, signal);
+      // Audio is continuous, so it is mixed in REAL time at the composition fps (not the export fps and
+      // not the resampled output-frame count); durationFrames/compFps = the true duration the video also
+      // spans, so A/V stay in sync regardless of the export fps.
+      audio = await exportCompositionAudio(composition, { frameRate: compFps, durationFrames }, signal);
     } catch (e) {
       if ((e as Error).message === 'Export cancelled') {
         renderer.destroy();
@@ -133,7 +146,7 @@ export async function exportToMp4(
     width,
     height,
     bitrate,
-    framerate: frameRate,
+    framerate: exportFps,
   });
 
   // Everything from here can throw (decode/render/encode/GPU-loss); the finally guarantees the
@@ -151,7 +164,10 @@ export async function exportToMp4(
       if (signal?.aborted) throw new Error('Export cancelled');
       if (encodeError) throw encodeError;
 
-      const renderData = resolveFrame(composition, frame, { getComposition, depth: 0, visited: new Set() });
+      // `frame` is the OUTPUT frame index (at exportFps). Resolve the composition frame it samples in real
+      // time; identity when exportFps == compFps, so a matching export renders exactly the comp's frames.
+      const compFrame = exportCompFrame(frame, durationFrames, compFps, exportFps);
+      const renderData = resolveFrame(composition, compFrame, { getComposition, depth: 0, visited: new Set() });
 
       // Pre-decode video frames at full resolution for this composition frame. A frame-blended /
       // optical-flow-retimed clip also needs its B frame (sourceFrameB): the renderer's flow-warp pass
@@ -173,10 +189,10 @@ export async function exportToMp4(
       await renderer.renderFrameAsync(renderData, 'offscreen');
 
       const videoFrame = new VideoFrame(canvas, {
-        timestamp: frameTimestampUs(frame, frameRate),
-        duration: frameDurationUs(frameRate),
+        timestamp: frameTimestampUs(frame, exportFps),
+        duration: frameDurationUs(exportFps),
       });
-      encoder.encode(videoFrame, { keyFrame: isExportKeyframe(frame, frameRate) });
+      encoder.encode(videoFrame, { keyFrame: isExportKeyframe(frame, exportFps) });
       videoFrame.close();
 
       // Backpressure: let the encoder drain, but honour cancellation + encode errors while we wait
