@@ -11,6 +11,7 @@ import { useAnimationBuilderStore } from './animation-builder';
 import { ArrowLeft, ArrowRight, LayoutGrid, Settings2, Sparkles, Download, ListChecks, Maximize2, UserRound, LogOut, LogIn } from 'lucide-react';
 import { ExportModal } from './ui/panels/ExportModal';
 import { AiChatPanel } from './ui/panels/AiChatPanel';
+import { FlashCharacter } from './ui/FlashCharacter';
 import { TasksPanel } from './ui/panels/TasksPanel';
 import { ResetEditorDialog } from './ui/recovery/ResetEditorDialog';
 import { EmergencyRecoveryOverlay } from './ui/recovery/EmergencyRecoveryOverlay';
@@ -504,10 +505,10 @@ function Editor() {
               ? 'bg-surface-4 text-primary border-b-2 border-b-accent'
               : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.03]'
           }`}
-          title="Toggle AI Assistant"
+          title="Toggle Flash"
         >
           <Sparkles size={13} />
-          <span className="text-[11px] font-medium">AI</span>
+          <span className="text-[11px] font-medium">Flash</span>
         </button>
         {uiMode === 'pro' && (
           <button
@@ -565,6 +566,7 @@ function Editor() {
       <ConsentBanner />
       <SaveReminderModal />
       <AgentBuildOverlay />
+      {workspace === 'editor' && <FlashCharacter />}
     </div>
   );
 }
