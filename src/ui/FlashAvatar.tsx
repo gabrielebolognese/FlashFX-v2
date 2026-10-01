@@ -179,12 +179,12 @@ export function FlashAvatar({ expression = 'idle', height = 200 }: { expression?
       {/* BODY (scaled ~2x around the neck so Flash is not head-heavy): pinstriped suit, lapels, white
           collar, gold tie + knot, buttons, the arms, and any hand-tied accents. */}
       <g transform={BODY_SCALE}>
-        <path d="M38 146 C34 112 40 90 60 90 C80 90 86 112 82 146 Z" fill="url(#ffxSuit)" />
-        <path d="M38 146 C34 112 40 90 60 90 C80 90 86 112 82 146 Z" fill="url(#ffxPin)" />
-        <path d="M38 146 C34 112 40 90 60 90 C80 90 86 112 82 146 Z" fill="none" stroke="#0b1119" strokeOpacity="0.35" strokeWidth="2" />
-        <path d="M57 92 L48 118" stroke="#1a2635" strokeWidth="3.5" strokeLinecap="round" />
-        <path d="M63 92 L72 118" stroke="#1a2635" strokeWidth="3.5" strokeLinecap="round" />
-        <path d="M57.4 93 L49 116" stroke="#46608a" strokeWidth="1" strokeLinecap="round" opacity="0.5" />
+        <path d="M49 148 L34 99 Q35 90 54 90 L66 90 Q85 90 86 99 L71 148 Z" fill="url(#ffxSuit)" />
+        <path d="M49 148 L34 99 Q35 90 54 90 L66 90 Q85 90 86 99 L71 148 Z" fill="url(#ffxPin)" />
+        <path d="M49 148 L34 99 Q35 90 54 90 L66 90 Q85 90 86 99 L71 148 Z" fill="none" stroke="#0b1119" strokeOpacity="0.35" strokeWidth="2" />
+        <path d="M56 91 L44 126" stroke="#1a2635" strokeWidth="3.5" strokeLinecap="round" />
+        <path d="M64 91 L76 126" stroke="#1a2635" strokeWidth="3.5" strokeLinecap="round" />
+        <path d="M56.5 92 L45.5 123" stroke="#46608a" strokeWidth="1" strokeLinecap="round" opacity="0.5" />
         <path d="M54 90 L60 104 L66 90 Z" fill="#eef3f8" />
         <path d="M54 90 L60 104 L66 90" fill="none" stroke="#c7d2de" strokeWidth="0.8" opacity="0.7" />
         <path d="M57 103 L63 103 L62 108 L58 108 Z" fill="url(#ffxTie)" />
