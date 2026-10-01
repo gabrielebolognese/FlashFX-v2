@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Sparkles, X, Plus, Send, Square, KeyRound, Check, Trash2 } from 'lucide-react';
+import { Sparkles, X, Plus, Send, Square, KeyRound, Check, Trash2, Eye, EyeOff } from 'lucide-react';
 import { usePanelStore } from '../../store/panels';
 import { useEditorStore } from '../../store/editor';
 import { useProjectStore } from '../../project-system/hooks/useProjectStore';
@@ -12,6 +12,7 @@ import { usePlanStore } from '../../billing/plans';
 import { aiBudget, aiTokensRemaining, hasAiBudget } from '../../billing/aiCredits';
 import { useIslandStore } from '../island/islandStore';
 import { requirePro } from '../../billing/upgradePrompt';
+import { useFlashStore } from '../../store/flash';
 
 // AI assistant, wired to the REAL pipeline (Director → Coder → assemble → auto-fix). A prompt
 // generates a whole scene and commits it as ONE undo step (Ctrl+Z reverts). The heavy engine (+zod
@@ -29,6 +30,8 @@ const fmt = (ms: number) => `${(ms / 1000).toFixed(1)}s`;
 
 export function AiChatPanel() {
   const toggleAiChat = usePanelStore((s) => s.toggleAiChat);
+  const flashHidden = useFlashStore((s) => s.hidden);
+  const setFlashHidden = useFlashStore((s) => s.setHidden);
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
 
   // Conversation is stored per project and persisted to localStorage; the panel reads its slice.
@@ -152,8 +155,15 @@ export function AiChatPanel() {
       {/* Header */}
       <div className="h-9 flex-shrink-0 flex items-center gap-2 px-3 border-b border-hairline">
         <Sparkles size={14} className="text-accent" />
-        <span className="text-[12px] font-semibold text-slate-200">AI Assistant</span>
+        <span className="text-[12px] font-semibold text-slate-200">Flash</span>
         <div className="ml-auto flex items-center gap-1">
+          <button
+            title={flashHidden ? 'Show Flash in the editor' : 'Hide Flash from the editor'}
+            className={`p-1 rounded hover:bg-white/5 ${flashHidden ? 'text-slate-500' : 'text-accent'}`}
+            onClick={() => setFlashHidden(!flashHidden)}
+          >
+            {flashHidden ? <EyeOff size={13} /> : <Eye size={13} />}
+          </button>
           <button
             title={managed ? 'Managed AI (Pro) - key handled for you' : configured ? 'Model connected - manage key' : 'Connect your Anthropic key'}
             className={`p-1 rounded hover:bg-white/5 ${ready ? 'text-emerald-400' : 'text-amber-400'}`}
