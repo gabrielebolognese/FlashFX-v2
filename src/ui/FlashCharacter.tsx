@@ -46,9 +46,11 @@ export function FlashCharacter() {
   const lastSpot = useRef(0);
   const lastExpr = useRef<FlashExpression>('wave');
   const reduce = useRef(false);
+  // The avatar viewBox is 120x205 (a tall body). These bounds keep the HEAD at roughly the same
+  // on-screen size as before the body was enlarged (scaled by 205/150 vs the old 120x150 box).
   const [height] = useState(() => {
-    if (typeof window === 'undefined') return 150;
-    return Math.round(Math.min(182, Math.max(118, window.innerHeight * 0.18)));
+    if (typeof window === 'undefined') return 205;
+    return Math.round(Math.min(249, Math.max(161, window.innerHeight * 0.246)));
   });
 
   useEffect(() => {
