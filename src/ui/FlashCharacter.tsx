@@ -36,6 +36,16 @@ const FLASH_LINES = [
   'Take a break, you earned it.',
 ];
 
+// Lines Flash cycles through while he is building a scene for you (status === 'building').
+const BUILD_LINES = [
+  'On it. Taking the wheel...',
+  'Building your scene...',
+  'Sit back, I got this.',
+  'Cooking something up...',
+  'Laying down keyframes...',
+  'Almost there...',
+];
+
 const JUMP_MIN_MS = 7000;
 const JUMP_MAX_MS = 13000;
 const DESK_MIN_MS = 12000;
@@ -55,6 +65,7 @@ const rand = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
 export function FlashCharacter() {
   const hidden = useFlashStore((s) => s.hidden);
   const setHidden = useFlashStore((s) => s.setHidden);
+  const status = useFlashStore((s) => s.status);
 
   const [spotIndex, setSpotIndex] = useState(0);
   const [expr, setExpr] = useState<FlashExpression>('wave');
@@ -68,18 +79,36 @@ export function FlashCharacter() {
   const sceneRef = useRef<'free' | 'desk'>('free');
   const reduce = useRef(false);
   const timerRef = useRef<number | undefined>(undefined);
-  const hopRef = useRef<() => void>(() => {});
 
   const [height] = useState(() => {
     if (typeof window === 'undefined') return 205;
     return Math.round(Math.min(249, Math.max(161, window.innerHeight * 0.246)));
   });
 
+  // Appearance driven by the AI status: while Flash is BUILDING, he docks bottom-right and works at the
+  // laptop with a rotating "on it" line (he has taken the wheel). Back to idle hands it to the hop loop.
+  useEffect(() => {
+    if (reduce.current) return;
+    if (status === 'building') {
+      sceneRef.current = 'desk'; setScene('desk');
+      setSpotIndex(0); lastSpot.current = 0;
+      setExpr('working');
+      setBubble(rand(BUILD_LINES));
+      setJump((j) => j + 1);
+      const id = window.setInterval(() => setBubble(rand(BUILD_LINES)), 4200);
+      return () => window.clearInterval(id);
+    }
+    sceneRef.current = 'free'; setScene('free'); setBubble(null);
+  }, [status]);
+
+  // The hop loop. Paused while hidden, reduced-motion, the menu is open, or Flash is building.
   useEffect(() => {
     reduce.current = typeof window !== 'undefined'
       && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
-    if (reduce.current || hidden) return;
-
+    if (hidden || reduce.current || menuOpen || status === 'building') {
+      window.clearTimeout(timerRef.current);
+      return;
+    }
     const hop = () => {
       // ~1 in 5 free->desk transitions: Flash docks bottom-right and "works in FlashFX" for a longer beat.
       if (sceneRef.current === 'free' && Math.random() < 0.22) {
@@ -104,21 +133,9 @@ export function FlashCharacter() {
       setJump((j) => j + 1);
       timerRef.current = window.setTimeout(hop, JUMP_MIN_MS + Math.random() * (JUMP_MAX_MS - JUMP_MIN_MS));
     };
-    hopRef.current = hop;
     timerRef.current = window.setTimeout(hop, 3500 + Math.random() * 3000);
     return () => window.clearTimeout(timerRef.current);
-  }, [hidden]);
-
-  // Pause hopping while the menu is open so Flash does not wander off mid-interaction.
-  useEffect(() => {
-    if (reduce.current || hidden) return;
-    if (menuOpen) {
-      window.clearTimeout(timerRef.current);
-    } else {
-      timerRef.current = window.setTimeout(() => hopRef.current(), 4000);
-      return () => window.clearTimeout(timerRef.current);
-    }
-  }, [menuOpen, hidden]);
+  }, [hidden, menuOpen, status]);
 
   if (hidden) return null;
 

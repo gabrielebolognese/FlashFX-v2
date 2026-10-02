@@ -13,6 +13,7 @@ import { aiBudget, aiTokensRemaining, hasAiBudget } from '../../billing/aiCredit
 import { useIslandStore } from '../island/islandStore';
 import { requirePro } from '../../billing/upgradePrompt';
 import { useFlashStore } from '../../store/flash';
+import { FlashBuildModal } from '../FlashBuildModal';
 
 // AI assistant, wired to the REAL pipeline (Director → Coder → assemble → auto-fix). A prompt
 // generates a whole scene and commits it as ONE undo step (Ctrl+Z reverts). The heavy engine (+zod
@@ -32,6 +33,7 @@ export function AiChatPanel() {
   const toggleAiChat = usePanelStore((s) => s.toggleAiChat);
   const flashHidden = useFlashStore((s) => s.hidden);
   const setFlashHidden = useFlashStore((s) => s.setHidden);
+  const setFlashStatus = useFlashStore((s) => s.setStatus);
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
 
   // Conversation is stored per project and persisted to localStorage; the panel reads its slice.
@@ -58,6 +60,8 @@ export function AiChatPanel() {
 
   // Transient, per-mount generation state - a half-finished generation can't survive an unmount.
   const [generating, setGenerating] = useState(false);
+  // A build staged behind Flash's "take the wheel" confirmation; its `run` fires on confirm.
+  const [pendingBuild, setPendingBuild] = useState<{ text: string; run: () => Promise<void> } | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [showKey, setShowKey] = useState(false);
   const abortedRef = useRef(false);
@@ -80,7 +84,7 @@ export function AiChatPanel() {
 
   const send = useCallback(async () => {
     const text = draft.trim();
-    if (!text || generating) return;
+    if (!text || generating || pendingBuild) return;
     if (!requirePro('ai')) return; // AI generation is Pro-only
     if (!managed && !configured) { setShowKey(true); return; }
     // Managed users: pre-flight the monthly token budget (the proxy also enforces it server-side).
@@ -91,62 +95,69 @@ export function AiChatPanel() {
     let client = managed ? await makeManagedAiClient() : null;
     if (!client) client = makeAiClient({ apiKey, proxyUrl });
     if (!client) { setShowKey(true); return; }
+    const aiClient = client;
     // Release focus back to the editor so global shortcuts (Space to play, etc.) work again.
     textareaRef.current?.blur();
 
-    const comp = useEditorStore.getState().composition;
-    const canvas = { width: comp.settings.width, height: comp.settings.height };
-    const fps = comp.settings.frameRate;
-    const seed = (Date.now() >>> 0) % 100000; // runtime UI seed → variety across regenerations
+    // The actual build. It runs only after Flash's "take the wheel" confirmation (the FlashBuildModal).
+    const run = async () => {
+      const comp = useEditorStore.getState().composition;
+      const canvas = { width: comp.settings.width, height: comp.settings.height };
+      const fps = comp.settings.frameRate;
+      const seed = (Date.now() >>> 0) % 100000; // runtime UI seed → variety across regenerations
 
-    const userMsg: Msg = { id: nextId(), role: 'user', text };
-    const asstId = nextId();
-    setMessages((m) => [...m, userMsg, { id: asstId, role: 'assistant', text: '', streaming: true }]);
-    setDraft('');
-    setGenerating(true); setElapsed(0);
-    abortedRef.current = false;
-    const start = Date.now();
-    tickRef.current = window.setInterval(() => setElapsed(Date.now() - start), 100);
-    const patch = (fn: (x: Msg) => Msg) => setMessages((m) => m.map((x) => (x.id === asstId ? fn(x) : x)));
+      const userMsg: Msg = { id: nextId(), role: 'user', text };
+      const asstId = nextId();
+      setMessages((m) => [...m, userMsg, { id: asstId, role: 'assistant', text: '', streaming: true }]);
+      setDraft('');
+      setGenerating(true); setElapsed(0);
+      setFlashStatus('building'); // Flash takes the wheel: the character docks + works while building
+      abortedRef.current = false;
+      const start = Date.now();
+      tickRef.current = window.setInterval(() => setElapsed(Date.now() - start), 100);
+      const patch = (fn: (x: Msg) => Msg) => setMessages((m) => m.map((x) => (x.id === asstId ? fn(x) : x)));
 
-    try {
-      const { generateScene, commitScene } = await import('../../ai/browserGenerate');
-      const result = await generateScene({ description: text, client, canvas, fps, seed, tier: plan });
-      if (abortedRef.current) return; // user hit Stop - drop the result, commit nothing
-      const s = commitScene(result);
-      const plural = (n: number) => (n === 1 ? '' : 's');
-      const parts = [`Built ${s.layers} layer${plural(s.layers)} across ${s.panels} panel${plural(s.panels)}`];
-      if (s.clonersBuilt) parts.push(`${s.clonersBuilt} cloner${plural(s.clonersBuilt)}`);
-      let summary = parts.join(', ') + '.';
-      if (s.repairs) summary += ` ${s.repairs} auto-fix round${plural(s.repairs)}.`;
-      if (s.errors) summary += ` ${s.errors} issue${plural(s.errors)} left in the report.`;
-      summary += ` ~$${s.costUsd.toFixed(2)}. Ctrl+Z to undo.`;
-      patch((x) => ({ ...x, text: summary, streaming: false, ms: Date.now() - start }));
-      if (managed) void useAiUsageStore.getState().refresh();
-    } catch (e) {
-      if (abortedRef.current) return;
-      const msg = e instanceof Error ? e.message : String(e);
-      // Map the proxy's typed errors (surfaced through the client as "…API <status>: <body>") to
-      // friendly copy; fall back to the raw message + a BYOK key hint.
-      let friendly: string;
-      if (/quota-exceeded|\b429\b/.test(msg)) {
-        friendly = "You've reached your monthly AI token limit. It resets at the start of next month.";
-        void useAiUsageStore.getState().refresh();
-      } else if (/not-pro|\b403\b/.test(msg)) {
-        requirePro('ai');
-        friendly = 'AI generation is a Pro feature.';
-      } else if (/not-signed-in|invalid-session|\b401\b/.test(msg)) {
-        friendly = managed ? 'Your session expired. Sign in again to use AI.' : `Generation failed: ${msg} Check your API key in the key menu.`;
-      } else {
-        const hint = !managed && /api[_-]?key|authentication/i.test(msg) ? ' Check your API key in the key menu.' : '';
-        friendly = `Generation failed: ${msg}${hint}`;
+      try {
+        const { generateScene, commitScene } = await import('../../ai/browserGenerate');
+        const result = await generateScene({ description: text, client: aiClient, canvas, fps, seed, tier: plan });
+        if (abortedRef.current) return; // user hit Stop - drop the result, commit nothing
+        const s = commitScene(result);
+        const plural = (n: number) => (n === 1 ? '' : 's');
+        const parts = [`Built ${s.layers} layer${plural(s.layers)} across ${s.panels} panel${plural(s.panels)}`];
+        if (s.clonersBuilt) parts.push(`${s.clonersBuilt} cloner${plural(s.clonersBuilt)}`);
+        let summary = parts.join(', ') + '.';
+        if (s.repairs) summary += ` ${s.repairs} auto-fix round${plural(s.repairs)}.`;
+        if (s.errors) summary += ` ${s.errors} issue${plural(s.errors)} left in the report.`;
+        summary += ` ~$${s.costUsd.toFixed(2)}. Ctrl+Z to undo.`;
+        patch((x) => ({ ...x, text: summary, streaming: false, ms: Date.now() - start }));
+        if (managed) void useAiUsageStore.getState().refresh();
+      } catch (e) {
+        if (abortedRef.current) return;
+        const msg = e instanceof Error ? e.message : String(e);
+        // Map the proxy's typed errors (surfaced through the client as "…API <status>: <body>") to
+        // friendly copy; fall back to the raw message + a BYOK key hint.
+        let friendly: string;
+        if (/quota-exceeded|\b429\b/.test(msg)) {
+          friendly = "You've reached your monthly AI token limit. It resets at the start of next month.";
+          void useAiUsageStore.getState().refresh();
+        } else if (/not-pro|\b403\b/.test(msg)) {
+          requirePro('ai');
+          friendly = 'AI generation is a Pro feature.';
+        } else if (/not-signed-in|invalid-session|\b401\b/.test(msg)) {
+          friendly = managed ? 'Your session expired. Sign in again to use AI.' : `Generation failed: ${msg} Check your API key in the key menu.`;
+        } else {
+          const hint = !managed && /api[_-]?key|authentication/i.test(msg) ? ' Check your API key in the key menu.' : '';
+          friendly = `Generation failed: ${msg}${hint}`;
+        }
+        patch((x) => ({ ...x, text: friendly, streaming: false, ms: Date.now() - start }));
+        useIslandStore.getState().error('AI generation failed');
+      } finally {
+        stopTick(); setGenerating(false); setFlashStatus('idle');
       }
-      patch((x) => ({ ...x, text: friendly, streaming: false, ms: Date.now() - start }));
-      useIslandStore.getState().error('AI generation failed');
-    } finally {
-      stopTick(); setGenerating(false);
-    }
-  }, [draft, generating, configured, managed, usedTokens, plan, apiKey, proxyUrl, setMessages, setDraft, stopTick]);
+    };
+
+    setPendingBuild({ text, run });
+  }, [draft, generating, pendingBuild, configured, managed, usedTokens, plan, apiKey, proxyUrl, setMessages, setDraft, setFlashStatus, stopTick]);
 
   const newChat = () => { stop(); clearConversation(activeProjectId); };
 
@@ -237,6 +248,13 @@ export function AiChatPanel() {
         </div>
         <p className="mt-1 text-[9px] text-slate-600 text-center">Enter to send · Shift+Enter for newline</p>
       </div>
+      {pendingBuild && (
+        <FlashBuildModal
+          prompt={pendingBuild.text}
+          onCancel={() => setPendingBuild(null)}
+          onConfirm={() => { const pb = pendingBuild; setPendingBuild(null); void pb.run(); }}
+        />
+      )}
     </aside>
   );
 }
