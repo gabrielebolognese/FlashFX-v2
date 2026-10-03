@@ -1,7 +1,27 @@
 {
-  "name": "vite-react-typescript-starter",
+  "name": "flashfx",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
+  "description": "A WebGPU motion-graphics studio in the browser: keyframes, expressions, MoGraph cloner, 2D physics, and AI that generates editable scenes.",
+  "homepage": "https://editor.flashfx.app",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/gabrielebolognese/FlashFX-v2.git"
+  },
+  "bugs": {
+    "url": "https://github.com/gabrielebolognese/FlashFX-v2/issues"
+  },
+  "keywords": [
+    "webgpu",
+    "motion-graphics",
+    "animation",
+    "video-editor",
+    "webcodecs",
+    "mograph",
+    "offscreencanvas",
+    "typescript",
+    "react"
+  ],
   "type": "module",
   "scripts": {
     "dev": "vite",
