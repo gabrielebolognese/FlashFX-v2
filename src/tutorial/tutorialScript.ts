@@ -8,8 +8,12 @@ export interface TourStep {
   /** data-tutorial-id target for the spotlight (or 'canvas'). */
   spotlight: string;
   text: string;
-  /** 'next' = advance on the Next button; 'select' = advance when the user selects a layer. */
-  advance: 'next' | 'select';
+  /** How the step advances: 'next' = the Next button; 'select' = the user selects a layer;
+   *  'tool' = the user picks a shape tool; 'shape' = the user draws a shape (a layer appears). */
+  advance: 'next' | 'select' | 'tool' | 'shape';
+  /** "Create a shape first" steps - skipped automatically when the canvas already has a layer to
+   *  select, so the forest/example tour is unaffected and only the empty-canvas case is guided. */
+  requiresEmptyCanvas?: boolean;
 }
 
 export const TOUR_STEPS: TourStep[] = [
@@ -24,6 +28,20 @@ export const TOUR_STEPS: TourStep[] = [
     spotlight: 'timeline',
     advance: 'next',
     text: 'Here you can see all layers in chronological order (horizontally) and in view order (vertically). The layers on TOP have priority on the canvas.',
+  },
+  {
+    id: 'pick-shape',
+    spotlight: 'shape-tools',
+    advance: 'tool',
+    requiresEmptyCanvas: true,
+    text: "The canvas is empty, so let's make something first. Pick a shape tool here - the rectangle is a great start.",
+  },
+  {
+    id: 'draw-shape',
+    spotlight: 'canvas',
+    advance: 'shape',
+    requiresEmptyCanvas: true,
+    text: 'Now click and drag on the canvas to draw your shape.',
   },
   {
     id: 'select',
