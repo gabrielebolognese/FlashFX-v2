@@ -160,11 +160,10 @@ function ModeSwitchConfirm({ current, target, onCancel, onConfirm }: {
   return (
     <div className="fixed inset-0 z-[10000] flex items-center justify-center">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onCancel} />
-      <div className="relative bg-[#0e1c32] border border-[#1a2a42] rounded-xl shadow-2xl p-5 w-[380px] max-w-[90vw]">
-        <h3 className="text-[13px] font-semibold text-slate-100">Switch to the {MODE_INFO[target].label}?</h3>
-        <p className="text-[10px] text-slate-500 mt-1">Here's what changes - you can switch back any time from these settings.</p>
+      <div className="relative bg-[#0e1c32] border border-[#1a2a42] rounded-2xl shadow-2xl p-6 w-[460px] max-w-[92vw]">
+        <h3 className="text-[19px] font-bold text-slate-100 text-center">Switch to the {MODE_INFO[target].label}?</h3>
 
-        <div className="mt-3 space-y-2">
+        <div className="mt-4 space-y-2.5">
           {(['starter', 'pro'] as UiMode[]).map((m) => {
             const isTarget = m === target;
             return (
@@ -175,7 +174,7 @@ function ModeSwitchConfirm({ current, target, onCancel, onConfirm }: {
                 }`}
               >
                 <div className="flex items-center gap-1.5">
-                  <span className={`text-[11px] font-semibold ${isTarget ? 'text-accent-hover' : 'text-slate-300'}`}>
+                  <span className={`text-[14px] font-bold ${isTarget ? 'text-accent-hover' : 'text-slate-300'}`}>
                     {MODE_INFO[m].label}
                   </span>
                   {m === current && (
@@ -191,18 +190,18 @@ function ModeSwitchConfirm({ current, target, onCancel, onConfirm }: {
           })}
         </div>
 
-        <div className="flex items-center justify-end gap-2 mt-4">
-          <button
-            onClick={onCancel}
-            className="px-3 py-1.5 text-[10px] font-medium text-slate-300 bg-white/[0.04] hover:bg-white/[0.08] rounded transition-colors"
-          >
-            Cancel
-          </button>
+        <div className="mt-5 space-y-2">
           <button
             onClick={onConfirm}
-            className="px-3 py-1.5 text-[10px] font-semibold text-on-accent bg-accent hover:bg-accent-hover rounded transition-colors"
+            className="w-full py-2.5 text-[13px] font-bold text-on-accent bg-accent rounded-lg transition-all hover:bg-accent-hover hover:brightness-105 active:scale-[0.98] shadow-lg shadow-accent/20"
           >
             Switch to {MODE_INFO[target].label}
+          </button>
+          <button
+            onClick={onCancel}
+            className="w-full py-2 text-[12px] font-medium text-slate-400 bg-white/[0.03] rounded-lg transition-all hover:bg-white/[0.07] hover:text-slate-200 active:scale-[0.98]"
+          >
+            Cancel
           </button>
         </div>
       </div>

@@ -17,7 +17,7 @@ import { startEditorTour } from './launch';
  * the user presses a button - each press BUILDS the next animation with the editor's own
  * self-assembling choreography (insertAnimationTemplateAnimated), then:
  *   pen-writing  → build, then play        → box + Continue
- *   bar-chart-race → build, then play to end → box + Show me
+ *   bar-chart-race → appears instantly, then plays (building it is not pretty) → box + Show me
  *   recursive-editor → build, no play        → box + Show me
  *   forest       → build, no play           → deselect all → focus rectangle + final box
  * When the user switches to the Full editor (confirmed), the normal guided tutorial launches.
@@ -67,14 +67,14 @@ function playMs(id: string): number {
   return (t.durationFrames / t.authorFps) * 1000 + PLAY_TAIL_MS;
 }
 
-/** Pause and land on the template's last content frame (the finished look). */
-function pauseAtEnd(id: string) {
+/** After an animation plays, park the playhead at second 4 - a representative frame - rather than the
+ *  very last frame, whose content can be blank (which looked broken on the canvas). Always second 4. */
+function pauseAtEnd() {
   const tl = useTimelineStore.getState();
   tl.pause();
-  const t = getTemplate(id);
-  const total = useEditorStore.getState().composition.settings.durationFrames;
-  const frame = t ? Math.min(total - 1, t.durationFrames) : Math.max(0, total - 1);
-  tl.seekTo(Math.max(0, frame));
+  const { frameRate, durationFrames } = useEditorStore.getState().composition.settings;
+  const frame = Math.min(Math.max(0, durationFrames - 1), Math.round(4 * (frameRate || 30)));
+  tl.seekTo(frame);
 }
 
 export function TutorialIntro() {
@@ -104,6 +104,20 @@ export function TutorialIntro() {
     });
   };
 
+  // Insert a template INSTANTLY (no self-assembling build), then optionally play it. Used for the
+  // "medium" bar-chart-race: watching it build is not pretty, but it plays back great.
+  const runInstant = (id: string, play: boolean, onSettled: () => void) => {
+    buildRef.current?.cancel();
+    buildRef.current = null;
+    clearComposition();
+    const tl = useTimelineStore.getState();
+    tl.seekTo(0); // anchor so the template's keyframes rebase to frame 0
+    useEditorStore.getState().insertAnimationTemplate(id);
+    tl.seekTo(0);
+    if (play) tl.play();
+    onSettled();
+  };
+
   // Cancel any in-flight build if we unmount mid-show.
   useEffect(() => () => buildRef.current?.cancel(), []);
 
@@ -124,11 +138,11 @@ export function TutorialIntro() {
       return () => window.clearTimeout(t);
     }
     if (phase === 'penPlay') {
-      const t = window.setTimeout(() => { pauseAtEnd('pen-writing'); setPhase('penBox'); }, playMs('pen-writing'));
+      const t = window.setTimeout(() => { pauseAtEnd(); setPhase('penBox'); }, playMs('pen-writing'));
       return () => window.clearTimeout(t);
     }
     if (phase === 'racePlay') {
-      const t = window.setTimeout(() => { pauseAtEnd('bar-chart-race'); setPhase('raceBox'); }, playMs('bar-chart-race'));
+      const t = window.setTimeout(() => { pauseAtEnd(); setPhase('raceBox'); }, playMs('bar-chart-race'));
       return () => window.clearTimeout(t);
     }
     if (phase === 'recStatic') {
@@ -156,7 +170,7 @@ export function TutorialIntro() {
 
   // Button handlers: each press starts the NEXT build (the choreography never runs on its own).
   const startShowcase = () => { setPhase('penBuild'); runBuild('pen-writing', true, () => setPhase('penPlay')); };
-  const toRace = () => { setPhase('raceBuild'); runBuild('bar-chart-race', true, () => setPhase('racePlay')); };
+  const toRace = () => { setPhase('raceBuild'); runInstant('bar-chart-race', true, () => setPhase('racePlay')); };
   const toRecursive = () => { setPhase('recBuild'); runBuild('recursive-editor', false, () => setPhase('recStatic')); };
   const toForest = () => { setPhase('forestBuild'); runBuild('forest', false, () => setPhase('forestStatic')); };
 

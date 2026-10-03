@@ -77,6 +77,7 @@ function Editor() {
   const undo = useHistoryStore((s) => s.undo);
   const redo = useHistoryStore((s) => s.redo);
   const closeProject = useProjectStore((s) => s.closeProject);
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const workspace = useAnimationBuilderStore((s) => s.workspace);
   const aiChatOpen = usePanelStore((s) => s.aiChatOpen);
   const toggleAiChat = usePanelStore((s) => s.toggleAiChat);
@@ -477,7 +478,7 @@ function Editor() {
     <div className="h-screen w-screen flex flex-col bg-surface-sunken text-slate-300 overflow-hidden select-none" onContextMenu={(e) => e.preventDefault()}>
       <div data-tutorial-id="top-bar" className={`flex items-stretch bg-surface-1 border-b border-hairline shadow-[0_1px_3px_rgba(0,0,0,0.4)] ${uiMode === 'starter' ? 'h-14' : ''}`}>
         <button
-          onClick={closeProject}
+          onClick={() => setShowLeaveConfirm(true)}
           className="flex items-center gap-1.5 px-3 text-slate-400 hover:text-slate-200 hover:bg-white/[0.03] transition-colors border-r border-hairline"
           title="Back to Projects"
         >
@@ -567,6 +568,29 @@ function Editor() {
       <SaveReminderModal />
       <AgentBuildOverlay />
       {workspace === 'editor' && <FlashCharacter />}
+      {showLeaveConfirm && (
+        <div className="fixed inset-0 z-modal flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowLeaveConfirm(false)} />
+          <div className="relative w-[420px] max-w-[92vw] bg-[#0e1c32] border border-[#1a2a42] rounded-2xl shadow-2xl p-6">
+            <h3 className="text-[18px] font-bold text-slate-100 text-center">Leave to Projects?</h3>
+            <p className="text-[12px] text-slate-400 text-center mt-1.5">Your work is saved automatically.</p>
+            <div className="mt-5 space-y-2">
+              <button
+                onClick={() => { setShowLeaveConfirm(false); void closeProject(); }}
+                className="w-full py-2.5 text-[13px] font-bold text-on-accent bg-accent rounded-lg transition-all hover:bg-accent-hover hover:brightness-105 active:scale-[0.98] shadow-lg shadow-accent/20"
+              >
+                Go to Projects
+              </button>
+              <button
+                onClick={() => setShowLeaveConfirm(false)}
+                className="w-full py-2 text-[12px] font-medium text-slate-400 bg-white/[0.03] rounded-lg transition-all hover:bg-white/[0.07] hover:text-slate-200 active:scale-[0.98]"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

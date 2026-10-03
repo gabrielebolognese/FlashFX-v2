@@ -1863,6 +1863,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       hoveredLayerId: null,
       renamingLayerId: null,
     });
+    // The visible playhead is owned by the timeline store + playbackController, which the editor-store
+    // currentFrame above does not drive - so without this a new/opened project inherited the previous
+    // project's playback position (e.g. it opened already parked at second 11). Reset the transport.
+    const tl = useTimelineStore.getState();
+    tl.stop();
+    tl.seekTo(0);
   },
 
   toggleGroupCollapsed: (groupId) => {
