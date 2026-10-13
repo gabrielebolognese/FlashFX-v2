@@ -76,6 +76,15 @@ export async function getProjectMetadata(id: string): Promise<ProjectMetadata | 
   return getMetadata(id);
 }
 
+/** Cheap existence probe for the open flow: confirms the scene record is present + non-empty WITHOUT
+ *  running the full (synchronous, O(layers x keyframes)) deserialize+validate. Opening used to
+ *  deserialize the whole document here just to null-check it, then throw the result away and
+ *  deserialize AGAIN in ProjectApp - doubling the heaviest CPU/memory step for big projects. */
+export async function projectSceneExists(id: string): Promise<boolean> {
+  const scene = await getScene(id);
+  return !!(scene && typeof scene.data === 'string' && scene.data.length > 0);
+}
+
 export async function loadProjectScene(id: string): Promise<SceneDocument | null> {
   const scene = await getScene(id);
   if (!scene) return null;

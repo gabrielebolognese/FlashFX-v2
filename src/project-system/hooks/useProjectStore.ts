@@ -6,7 +6,7 @@ import {
   deleteProject,
   renameProject,
   duplicateProject,
-  loadProjectScene,
+  projectSceneExists,
   saveProjectScene,
   saveProjectPreview,
   getProjectPreviewUrl,
@@ -99,23 +99,25 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   createAndOpenProject: async (options) => {
     const metadata = await createProject(options);
-    const doc = await loadProjectScene(metadata.id);
-    if (doc) {
+    // Cheap existence probe - the real (single) deserialize happens once in ProjectApp.
+    if (await projectSceneExists(metadata.id)) {
       usePanelStore.getState().setVideoFormat(metadata.videoFormat ?? 'long');
       set({ activeProjectId: metadata.id, view: 'editor' });
     }
   },
 
   openProject: async (id) => {
-    const doc = await loadProjectScene(id);
-    if (doc) {
+    // Only probe that the scene exists here; ProjectApp does the one real deserialize + install.
+    // (Previously this fully deserialized the whole document just to null-check it, then discarded
+    // it - the heaviest step ran twice on every open.)
+    if (await projectSceneExists(id)) {
       const metadata = await getProjectMetadata(id);
       usePanelStore.getState().setVideoFormat(metadata?.videoFormat ?? 'long');
       set({ activeProjectId: id, view: 'editor' });
     } else {
       useIslandStore.getState().error("Couldn't open this project. The file may be corrupted or missing.");
     }
-    return doc;
+    return null;
   },
 
   closeProject: async () => {

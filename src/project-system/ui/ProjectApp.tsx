@@ -4,6 +4,7 @@ import { useAutoSave } from '../hooks/useAutoSave';
 import { useEditorStore } from '../../store/editor';
 import { Dashboard } from './Dashboard';
 import { loadProjectScene, saveProjectPreview } from '../services/projects';
+import { useIslandStore } from '../../ui/island/islandStore';
 import { mediaAssetManager } from '../../engine/media/assetManager';
 import { playbackController } from '../../store/timeline';
 import { resolveFrame } from '../../core/interpolation';
@@ -36,24 +37,38 @@ export function ProjectApp({ editorComponent: EditorComponent }: Props) {
 
       (async () => {
         const comp = await loadProjectScene(activeProjectId);
-        await mediaAssetManager.loadProjectAssets(activeProjectId);
-        if (comp) {
-          loadDocument(comp);
-          // Drop the loader only after the first (heavy) frame has actually rendered: render on
-          // the next frame, then lift the splash on the frame after so the editor is painted
-          // with content underneath before it's revealed.
-          requestAnimationFrame(() => {
-            playbackController.renderCurrentFrame();
-            requestAnimationFrame(() => setProjectLoading(false));
-          });
-          // Refresh the project-card thumbnail with a random frame from this scene so tens of
-          // projects stay visually distinguishable. Runs a couple seconds after open (renderer
-          // warm, media loaded) and replaces the old preview blob (IDB put overwrites → the old
-          // one is freed).
-          captureRandomThumbnail(activeProjectId);
-        } else {
+        if (!comp) {
+          // Scene record is present (openProject probed it) but unreadable -> surface it here, the
+          // one place that actually deserializes.
           setProjectLoading(false);
+          useIslandStore.getState().error("Couldn't open this project. The file may be corrupted or missing.");
+          return;
         }
+        // PROCEDURAL LOAD: install the document FIRST so the whole interface + every vector layer
+        // (shapes, text, layout, the timeline) paints immediately. Media (photos / video / audio) is
+        // restored AFTER and streamed in, so a big project no longer blocks the editor behind every
+        // asset decode (the old `await loadProjectAssets` before install was the time-to-interactive
+        // wall, and decoding all images/audio up front was the OOM risk).
+        loadDocument(comp);
+        // Drop the loader only after the first frame has rendered: render on the next frame (vector
+        // content, media still blank), then lift the splash on the frame after.
+        requestAnimationFrame(() => {
+          playbackController.renderCurrentFrame();
+          requestAnimationFrame(() => setProjectLoading(false));
+        });
+        // Restore media WITHOUT blocking the paint; re-render once it lands so images/video appear.
+        // The renderer already draws nothing for a not-yet-loaded asset, so the interim frames are
+        // simply media-less rather than broken.
+        mediaAssetManager.loadProjectAssets(activeProjectId)
+          .then(() => {
+            if (useProjectStore.getState().activeProjectId === activeProjectId) {
+              playbackController.renderCurrentFrame();
+            }
+          })
+          .catch((e) => console.warn('[open] asset restore failed:', e));
+        // Refresh the project-card thumbnail with a random frame (renderer warm, media loaded by
+        // then). Replaces the old preview blob (IDB put overwrites -> the old one is freed).
+        captureRandomThumbnail(activeProjectId);
       })();
     }
     if (view === 'dashboard') {
