@@ -65,6 +65,10 @@ interface AssetCtl {
 class MediabunnyController {
   private assets = new Map<string, AssetCtl>();
   private initInflight = new Map<string, Promise<VideoMetadata>>();
+  // Reused surface for source-rotation correction (see applyRotation). The VideoFrame ctor copies the
+  // canvas pixels synchronously, so one canvas can be reused across frames like videoTextureCache's.
+  private rotCanvas: OffscreenCanvas | null = null;
+  private rotCtx: OffscreenCanvasRenderingContext2D | null = null;
 
   async initAsset(assetId: string, source: File | string): Promise<VideoMetadata> {
     const existing = this.assets.get(assetId);
@@ -169,7 +173,7 @@ class MediabunnyController {
     if (cachedBitmap) {
       ctl.frameCache.delete(i); ctl.frameCache.set(i, cachedBitmap); // touch -> most-recently-used
       try {
-        return this.applyProxy(ctl, new VideoFrame(cachedBitmap, { timestamp: Math.max(0, Math.round(this.timeForIndex(ctl, i) * 1_000_000)) }));
+        return this.applyProxy(ctl, this.applyRotation(ctl, new VideoFrame(cachedBitmap, { timestamp: Math.max(0, Math.round(this.timeForIndex(ctl, i) * 1_000_000)) })));
       } catch {
         // Bitmap was closed mid-copy (a concurrent evict) or the ctor failed - fall through to decode.
       }
@@ -205,7 +209,7 @@ class MediabunnyController {
     const cur = c;
     const job = cur.chain.then(() => this.runJob(ctl, cur, i, myGen));
     cur.chain = job.catch(() => {}); // keep the chain alive across a failed/superseded job
-    return job.then((frame) => this.applyProxy(ctl, frame));
+    return job.then((frame) => this.applyProxy(ctl, this.applyRotation(ctl, frame)));
   }
 
   // Half-res (proxy) decode: when setProxyMode has dropped proxyScale below 1 (the scheduler does this
@@ -230,6 +234,42 @@ class MediabunnyController {
       return scaled;
     } catch {
       return frame; // fall back to full-res on any failure
+    }
+  }
+
+  // Apply the track's container ROTATION (90/180/270 from phone/portrait footage) to a decoded frame
+  // so the pixels display upright AND the frame's dimensions match the rotation-corrected
+  // track.displayWidth/Height that the video LAYER stores as sourceWidth/sourceHeight. WebCodecs decodes
+  // coded (un-rotated) pixels and mediabunny exposes rotation separately, so without this the texture is
+  // landscape while the quad is portrait -> the clip renders sideways + stretched (the short-form bug).
+  // rotation 0 (all landscape / long-form footage) returns the frame untouched: byte-identical, zero
+  // cost, no regression. Fail-safe: any error returns the original frame.
+  private applyRotation(ctl: AssetCtl, frame: VideoFrame): VideoFrame {
+    const rot = (((Math.round(ctl.metadata.rotation) % 360) + 360) % 360);
+    if (rot === 0) return frame;
+    const cw = frame.displayWidth;
+    const ch = frame.displayHeight;
+    const swap = rot === 90 || rot === 270;
+    const outW = swap ? ch : cw;
+    const outH = swap ? cw : ch;
+    try {
+      if (!this.rotCanvas || this.rotCanvas.width !== outW || this.rotCanvas.height !== outH) {
+        this.rotCanvas = new OffscreenCanvas(outW, outH);
+        this.rotCtx = this.rotCanvas.getContext('2d');
+      }
+      const ctx = this.rotCtx;
+      if (!ctx) return frame;
+      ctx.clearRect(0, 0, outW, outH);
+      ctx.save();
+      ctx.translate(outW / 2, outH / 2);
+      ctx.rotate((rot * Math.PI) / 180); // container rotation = clockwise to display upright
+      ctx.drawImage(frame, -cw / 2, -ch / 2, cw, ch);
+      ctx.restore();
+      const ts = frame.timestamp;
+      frame.close();
+      return new VideoFrame(this.rotCanvas, { timestamp: ts });
+    } catch {
+      return frame;
     }
   }
 
@@ -338,7 +378,8 @@ class MediabunnyController {
     const sample = await ctl.sink.getSample(this.timeForIndex(ctl, i));
     if (!sample) throw new Error(`mediabunny: no export frame at index ${i} for ${assetId}`);
     try {
-      return sample.toVideoFrame();
+      // Rotation-correct for export too, so a portrait clip exports upright (no proxy on this path).
+      return this.applyRotation(ctl, sample.toVideoFrame());
     } finally {
       sample.close();
     }

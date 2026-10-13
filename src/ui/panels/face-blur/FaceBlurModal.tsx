@@ -5,6 +5,7 @@ import { useEditorStore } from '../../../store/editor';
 import { useProjectStore } from '../../../project-system/hooks/useProjectStore';
 import { useMediaPoolStore } from '../../../store/mediaPool';
 import { mediaAssetManager } from '../../../engine/media/assetManager';
+import { decodeImageBitmap } from '../../../engine/media/decodeImage';
 import { detectFaces, faceDetectionAvailable } from '../../../engine/face-blur/detect';
 import { renderFaceBlur, makePreviewBitmap } from '../../../engine/face-blur/treatment';
 import { autoSelect, invertSelection, type FaceBox, type Treatment } from '../../../engine/face-blur/faceMask';
@@ -61,7 +62,7 @@ export function FaceBlurModal() {
         if (!bmp) {
           const url = mediaAssetManager.getObjectUrl(assetId);
           if (!url) throw new Error('unavailable');
-          bmp = await createImageBitmap(await (await fetch(url)).blob());
+          bmp = await decodeImageBitmap(await (await fetch(url)).blob());
         }
         const detected = await detectFaces(bmp);
         const prev = await makePreviewBitmap(bmp, 1000);

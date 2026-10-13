@@ -5,6 +5,7 @@ import { useEditorStore } from '../../../store/editor';
 import { useProjectStore } from '../../../project-system/hooks/useProjectStore';
 import { useMediaPoolStore } from '../../../store/mediaPool';
 import { mediaAssetManager } from '../../../engine/media/assetManager';
+import { decodeImageBitmap } from '../../../engine/media/decodeImage';
 import { renderGrade, makePreviewBitmap } from '../../../engine/color-grade/colorGrade';
 import { parseCube, type LUT3D } from '../../../core/effects/lut';
 import { GRADE_PRESETS, type GradePreset } from '../../../core/effects/gradePresets';
@@ -45,7 +46,7 @@ export function ColorGradeModal() {
     (async () => {
       try {
         let bmp = mediaAssetManager.getImageBitmap(assetId);
-        if (!bmp) { const url = mediaAssetManager.getObjectUrl(assetId); if (!url) throw new Error('unavailable'); bmp = await createImageBitmap(await (await fetch(url)).blob()); }
+        if (!bmp) { const url = mediaAssetManager.getObjectUrl(assetId); if (!url) throw new Error('unavailable'); bmp = await decodeImageBitmap(await (await fetch(url)).blob()); }
         const prev = await makePreviewBitmap(bmp, 900);
         if (cancelled) return;
         setFull(bmp); setPreview(prev); setStatus('ready');

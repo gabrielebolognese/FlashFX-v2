@@ -5,6 +5,7 @@ import { useEditorStore } from '../../../store/editor';
 import { useProjectStore } from '../../../project-system/hooks/useProjectStore';
 import { useMediaPoolStore } from '../../../store/mediaPool';
 import { mediaAssetManager } from '../../../engine/media/assetManager';
+import { decodeImageBitmap } from '../../../engine/media/decodeImage';
 import { analyzeBitmap, renderMatch, makePreviewBitmap } from '../../../engine/color-match/imageOps';
 import { buildTransform, combineStats, autoReadout, describeLook, type LabStats, type MatchMode } from '../../../engine/color-match/colorTransfer';
 
@@ -21,7 +22,7 @@ async function bitmapFor(assetId: string): Promise<ImageBitmap> {
   if (b) return b;
   const url = mediaAssetManager.getObjectUrl(assetId);
   if (!url) throw new Error('unavailable');
-  return createImageBitmap(await (await fetch(url)).blob());
+  return decodeImageBitmap(await (await fetch(url)).blob());
 }
 
 export function ColorMatchModal() {

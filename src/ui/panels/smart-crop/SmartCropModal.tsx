@@ -5,6 +5,7 @@ import { useEditorStore } from '../../../store/editor';
 import { useProjectStore } from '../../../project-system/hooks/useProjectStore';
 import { useMediaPoolStore } from '../../../store/mediaPool';
 import { mediaAssetManager } from '../../../engine/media/assetManager';
+import { decodeImageBitmap } from '../../../engine/media/decodeImage';
 import { analyzeImage, type AnalysisResult } from '../../../engine/smart-crop/analyze';
 import { solveCrop, type CropResult, type FocusMode, type CompositionMode } from '../../../engine/smart-crop/cropSolver';
 
@@ -77,7 +78,7 @@ export function SmartCropModal() {
           const url = mediaAssetManager.getObjectUrl(assetId);
           if (!url) throw new Error('Image not available');
           const blob = await (await fetch(url)).blob();
-          bmp = await createImageBitmap(blob);
+          bmp = await decodeImageBitmap(blob);
         }
         if (cancelled) return;
         const res = await analyzeImage(bmp);

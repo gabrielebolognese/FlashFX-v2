@@ -5,6 +5,7 @@ import { useEditorStore } from '../../../store/editor';
 import { useProjectStore } from '../../../project-system/hooks/useProjectStore';
 import { useMediaPoolStore } from '../../../store/mediaPool';
 import { mediaAssetManager } from '../../../engine/media/assetManager';
+import { decodeImageBitmap } from '../../../engine/media/decodeImage';
 import { renderRetouch, makePreviewBitmap, DEFAULT_RETOUCH_OPTIONS, type RetouchOptions } from '../../../engine/retouch/retouch';
 import { detectFaces, faceDetectionAvailable } from '../../../engine/face-blur/detect';
 import type { FaceBox } from '../../../engine/face-blur/faceMask';
@@ -48,7 +49,7 @@ export function RetouchModal() {
     (async () => {
       try {
         let bmp = mediaAssetManager.getImageBitmap(assetId);
-        if (!bmp) { const url = mediaAssetManager.getObjectUrl(assetId); if (!url) throw new Error('unavailable'); bmp = await createImageBitmap(await (await fetch(url)).blob()); }
+        if (!bmp) { const url = mediaAssetManager.getObjectUrl(assetId); if (!url) throw new Error('unavailable'); bmp = await decodeImageBitmap(await (await fetch(url)).blob()); }
         const prev = await makePreviewBitmap(bmp, 900);
         if (cancelled) return;
         setFull(bmp); setPreview(prev); setStatus('ready');

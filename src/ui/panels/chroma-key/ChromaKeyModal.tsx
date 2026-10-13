@@ -5,6 +5,7 @@ import { useEditorStore } from '../../../store/editor';
 import { useProjectStore } from '../../../project-system/hooks/useProjectStore';
 import { useMediaPoolStore } from '../../../store/mediaPool';
 import { mediaAssetManager } from '../../../engine/media/assetManager';
+import { decodeImageBitmap } from '../../../engine/media/decodeImage';
 import { renderChromaKey, makePreviewBitmap, sampleBitmapColor, DEFAULT_KEY_OPTIONS, type KeyOptions } from '../../../engine/chroma-key/chromaKey';
 
 // Chroma Key: knock a green/blue backing out of an image to transparency (YCbCr chroma key + despill +
@@ -58,7 +59,7 @@ export function ChromaKeyModal() {
     (async () => {
       try {
         let bmp = mediaAssetManager.getImageBitmap(assetId);
-        if (!bmp) { const url = mediaAssetManager.getObjectUrl(assetId); if (!url) throw new Error('unavailable'); bmp = await createImageBitmap(await (await fetch(url)).blob()); }
+        if (!bmp) { const url = mediaAssetManager.getObjectUrl(assetId); if (!url) throw new Error('unavailable'); bmp = await decodeImageBitmap(await (await fetch(url)).blob()); }
         const prev = await makePreviewBitmap(bmp, 900);
         if (cancelled) return;
         setFull(bmp); setPreview(prev); setStatus('ready');

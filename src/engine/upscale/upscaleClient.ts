@@ -1,4 +1,5 @@
 import type { UpscaleInbound, UpscaleOutbound } from './upscaleWorker';
+import { decodeImageBitmap } from '../media/decodeImage';
 
 // 2x classical super-resolution (Swin2SR, ONNX). Runs fully client-side via
 // transformers.js (WebGPU with a WASM fallback). The model is fetched from the
@@ -46,7 +47,7 @@ export function disposeUpscaleWorker(): void {
 }
 
 async function prepareInput(source: Blob): Promise<Blob> {
-  const bmp = await createImageBitmap(source);
+  const bmp = await decodeImageBitmap(source);
   const long = Math.max(bmp.width, bmp.height);
   if (long <= MAX_INPUT_SIDE) {
     bmp.close();

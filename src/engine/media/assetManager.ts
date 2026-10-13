@@ -10,6 +10,7 @@ import { frameScheduler } from '../video/frameScheduler';
 import { videoAudioPlayer } from '../video/videoAudioPlayer';
 import { videoTextureCache } from '../video/videoTextureCache';
 import { videoAssetStore } from '../video/videoAssetStore';
+import { decodeImageBitmap } from './decodeImage';
 
 export interface ImageAssetMetadata {
   assetId: string;
@@ -29,8 +30,10 @@ const MAX_IMAGE_DIM = 8192;
 /** Decode `file` to a straight-alpha bitmap, downscaling (preserving aspect) if it exceeds the GPU
  *  texture limit. Returns the bitmap plus the file's original dimensions. */
 async function decodeImageCapped(file: Blob): Promise<{ bitmap: ImageBitmap; originalWidth: number; originalHeight: number }> {
+  // imageOrientation 'from-image' (via decodeImageBitmap) applies EXIF orientation, so a portrait phone
+  // photo decodes upright and its width/height match the pixels - fixing the rotated/Y-stretched import.
   const opts: ImageBitmapOptions = { premultiplyAlpha: 'none', colorSpaceConversion: 'none' };
-  const probe = await createImageBitmap(file, opts);
+  const probe = await decodeImageBitmap(file, opts);
   const originalWidth = probe.width;
   const originalHeight = probe.height;
   if (originalWidth <= MAX_IMAGE_DIM && originalHeight <= MAX_IMAGE_DIM) {
@@ -39,7 +42,7 @@ async function decodeImageCapped(file: Blob): Promise<{ bitmap: ImageBitmap; ori
   const scale = MAX_IMAGE_DIM / Math.max(originalWidth, originalHeight);
   const resizeWidth = Math.max(1, Math.round(originalWidth * scale));
   const resizeHeight = Math.max(1, Math.round(originalHeight * scale));
-  const bitmap = await createImageBitmap(file, { ...opts, resizeWidth, resizeHeight, resizeQuality: 'high' });
+  const bitmap = await decodeImageBitmap(file, { ...opts, resizeWidth, resizeHeight, resizeQuality: 'high' });
   probe.close();
   return { bitmap, originalWidth, originalHeight };
 }
