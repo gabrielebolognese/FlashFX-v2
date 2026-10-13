@@ -3142,7 +3142,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const oldSel = selection;
 
     const meta = mediaAssetManager.getImageMetadata(assetId);
-    if (!meta) return;
+    if (!meta) {
+      // Image decodes lazily now - if its metadata isn't ready, decode then retry this insert once.
+      void mediaAssetManager.ensureImageMetadata(assetId).then((m) => { if (m) get().addImageFromAsset(assetId, x, y); });
+      return;
+    }
     const asset = mediaAssetManager.getAsset(assetId);
     const name = asset?.name?.replace(/\.[^.]+$/, '') || 'Image';
 
@@ -3196,7 +3200,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const oldComp = composition;
     const oldSel = selection;
     const meta = mediaAssetManager.getImageMetadata(assetId);
-    if (!meta) return;
+    if (!meta) {
+      void mediaAssetManager.ensureImageMetadata(assetId).then((m) => { if (m) get().addImageAsBackground(assetId); });
+      return;
+    }
     const asset = mediaAssetManager.getAsset(assetId);
     const name = asset?.name?.replace(/\.[^.]+$/, '') || 'Background';
     const { width: cw, height: ch } = composition.settings;
@@ -3219,7 +3226,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const oldComp = composition;
     const oldSel = selection;
     const meta = mediaAssetManager.getImageMetadata(assetId);
-    if (!meta) return;
+    if (!meta) {
+      void mediaAssetManager.ensureImageMetadata(assetId).then((m) => { if (m) get().addImageFitCanvas(assetId); });
+      return;
+    }
     const asset = mediaAssetManager.getAsset(assetId);
     const name = asset?.name?.replace(/\.[^.]+$/, '') || 'Image';
     const { width: cw, height: ch } = composition.settings;
@@ -3240,7 +3250,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const oldComp = composition;
     const oldSel = selection;
     const meta = mediaAssetManager.getImageMetadata(assetId);
-    if (!meta) return;
+    if (!meta) {
+      void mediaAssetManager.ensureImageMetadata(assetId).then((m) => { if (m) get().cropImageAsset(assetId); });
+      return;
+    }
     const asset = mediaAssetManager.getAsset(assetId);
     const name = asset?.name?.replace(/\.[^.]+$/, '') || 'Image';
     const { width: cw, height: ch } = composition.settings;
@@ -5504,6 +5517,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     if (kind === 'image') {
       const m = mediaAssetManager.getImageMetadata(assetId);
       if (m) src = { kind: 'image', assetId, sourceWidth: m.width, sourceHeight: m.height, format: m.format, fileSize: m.fileSize };
+      else {
+        // Lazy image: decode for its dimensions, then retry the replace once.
+        void mediaAssetManager.ensureImageMetadata(assetId).then((mm) => { if (mm) get().replaceSourceWithAsset(layerId, assetId); });
+        return;
+      }
     } else if (kind === 'video') {
       const m = mediaAssetManager.getMetadata(assetId);
       if (m) src = { kind: 'video', assetId, sourceWidth: m.width, sourceHeight: m.height, sourceDuration: m.duration, sourceFrameRate: m.frameRate };

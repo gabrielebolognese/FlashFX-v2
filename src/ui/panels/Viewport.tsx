@@ -7,6 +7,7 @@ import { playbackController } from '../../store/timeline';
 import { useTimelineStore } from '../../store/timeline';
 import { useEditorStore } from '../../store/editor';
 import { importFilesToPool } from '../../engine/media/importToPool';
+import { mediaAssetManager } from '../../engine/media/assetManager';
 import { useGridStore } from '../../store/grid';
 import { usePreviewStore, getQualityScale, getMotionBlurSamples } from '../../store/preview';
 import { useViewportNavStore } from '../../store/viewportNav';
@@ -186,6 +187,19 @@ export function Viewport() {
   // Repaint whenever the font set changes (bundled faces finish loading, or a custom font is
   // imported/removed) so a static frame re-rasterizes with the real face.
   useEffect(() => onFontsChanged(() => playbackController.renderCurrentFrame()), []);
+
+  // Repaint when media assets become ready (lazy image decode lands, video restore finishes) so
+  // streamed-in content appears on a static frame without the user having to interact. rAF-coalesced
+  // so a burst of asset-ready notifications (e.g. a project full of images) costs at most one render
+  // per frame instead of one per asset.
+  useEffect(() => {
+    let scheduled = false;
+    return mediaAssetManager.subscribe(() => {
+      if (scheduled) return;
+      scheduled = true;
+      requestAnimationFrame(() => { scheduled = false; playbackController.renderCurrentFrame(); });
+    });
+  }, []);
 
   // On-canvas text editing: hide the edited layer's rendered text (the textarea shows it),
   // then repaint so the change is reflected whether or not playback is running.

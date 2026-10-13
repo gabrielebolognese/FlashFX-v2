@@ -4,6 +4,7 @@ import { WebGPURenderer } from '../engine/renderer';
 import { EXPORT_MOTION_BLUR_SAMPLES } from '../store/preview';
 import { videoDecoderPool } from '../engine/video/videoDecoderPool';
 import { frameScheduler } from '../engine/video/frameScheduler';
+import { mediaAssetManager } from '../engine/media/assetManager';
 import { exportCompositionAudio, type EncodedAudio } from './audioMixer';
 import {
   normalizeExportDimensions, validateExportTiming,
@@ -195,6 +196,21 @@ export async function exportToMp4(
       }
       if (videoDecodePromises.length > 0) {
         await Promise.all(videoDecodePromises);
+      }
+
+      // Images now decode lazily (to bound heap on big projects), so an image that hasn't been drawn
+      // in the preview yet has no resident bitmap. Ensure every image layer in THIS frame is decoded
+      // before rendering, or the export would silently drop it (getImageBitmap returns null -> the
+      // renderer skips the layer). Bounded: only the images visible at this frame.
+      const imageEnsures: Promise<unknown>[] = [];
+      for (const l of renderData.layers) {
+        // ensureImageBitmap fast-returns the cached bitmap when already resident.
+        if (l.layerType === 'image' && l.image?.assetId) {
+          imageEnsures.push(mediaAssetManager.ensureImageBitmap(l.image.assetId));
+        }
+      }
+      if (imageEnsures.length > 0) {
+        await Promise.all(imageEnsures);
       }
 
       await renderer.renderFrameAsync(renderData, 'offscreen');

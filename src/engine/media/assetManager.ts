@@ -88,6 +88,12 @@ function isVideoFormatSupported(file: File): boolean {
 // How many video assets may keep their full decoded PCM resident at once (ensureAudioBuffer).
 const MAX_RESIDENT_VIDEO_PCM = 2;
 
+// How many decoded image ImageBitmaps may stay resident at once. Comfortably above the number of
+// images visible in any single frame (the renderer touches each drawn image every frame, so visible
+// images stay most-recent and are never evicted); cold/off-screen images are dropped and re-decoded
+// on demand. Caps image heap at ~this many bitmaps regardless of how many images the project has.
+const MAX_RESIDENT_IMAGE_BITMAPS = 24;
+
 class MediaAssetManager {
   private assets = new Map<string, RegisteredAsset>();
   private objectUrls = new Map<string, string>();
@@ -102,6 +108,11 @@ class MediaAssetManager {
   private _audioExtractChain: Promise<void> = Promise.resolve();
   // LRU of VIDEO assetIds whose full decoded PCM is currently cached (see ensureAudioBuffer).
   private residentVideoPcm: string[] = [];
+  // LRU of IMAGE assetIds whose decoded ImageBitmap is currently resident (see ensureImageBitmap).
+  private residentImageBitmaps: string[] = [];
+  // Dedup in-flight image decodes so the renderer calling getImageBitmap every frame for a
+  // not-yet-decoded image launches exactly one decode.
+  private inflightImageDecodes = new Map<string, Promise<ImageBitmap | null>>();
 
   subscribe(listener: () => void): () => void {
     this.listeners.add(listener);
@@ -718,6 +729,9 @@ class MediaAssetManager {
     }
     this.assets.clear();
     this.objectUrls.clear();
+    this.residentImageBitmaps = [];
+    this.residentVideoPcm = [];
+    this.inflightImageDecodes.clear();
     this.currentProjectId = null;
 
     this.notify();
@@ -767,37 +781,29 @@ class MediaAssetManager {
           added = true;
         }
       } else if (asset.type === 'image') {
-        try {
-          const { bitmap, originalWidth, originalHeight } = await decodeImageCapped(asset.blob);
-          const imageMetadata: ImageAssetMetadata = {
-            assetId: asset.id,
-            width: bitmap.width,
-            height: bitmap.height,
-            originalWidth,
-            originalHeight,
-            format: asset.mimeType,
-            fileSize: asset.blob.size,
-          };
-          const objectUrl = URL.createObjectURL(asset.blob);
-          this.assets.set(asset.id, {
-            id: asset.id,
-            name: asset.name,
-            mimeType: asset.mimeType,
-            objectUrl,
-            createdAt: asset.createdAt,
-            metadata: null,
-            imageMetadata,
-            audioMetadata: null,
-            imageBitmap: bitmap,
-            waveform: null,
-            audioBuffer: null,
-            status: 'ready',
-          });
-          this.objectUrls.set(asset.id, objectUrl);
-          added = true;
-        } catch {
-          // Corrupted image, skip
-        }
+        // LAZY: register the image WITHOUT decoding it. Decoding every image to a resident
+        // ImageBitmap on open (up to ~268 MB each, never evicted) was the dominant image-project
+        // OOM. The bitmap + its metadata are produced on demand by ensureImageBitmap() the first
+        // time the asset is actually drawn (renderer) or inserted (add flows), and kept in a bounded
+        // LRU. Existing layers already carry their own sourceWidth/Height, so nothing needs the
+        // decode to lay out or paint the scene.
+        const objectUrl = URL.createObjectURL(asset.blob);
+        this.assets.set(asset.id, {
+          id: asset.id,
+          name: asset.name,
+          mimeType: asset.mimeType,
+          objectUrl,
+          createdAt: asset.createdAt,
+          metadata: null,
+          imageMetadata: null,
+          audioMetadata: null,
+          imageBitmap: null,
+          waveform: null,
+          audioBuffer: null,
+          status: 'loading',
+        });
+        this.objectUrls.set(asset.id, objectUrl);
+        added = true;
       } else if (asset.type === 'audio') {
         try {
           const arrayBuffer = await asset.blob.arrayBuffer();
@@ -972,8 +978,86 @@ class MediaAssetManager {
     return decodePromise;
   }
 
+  // Mark an image as most-recently-used and evict the coldest decoded bitmaps beyond the cap. A
+  // drawn image is touched every frame, so it can never be the eviction target while on-screen.
+  private touchImageBitmap(assetId: string): void {
+    this.residentImageBitmaps = this.residentImageBitmaps.filter((id) => id !== assetId);
+    this.residentImageBitmaps.push(assetId);
+    while (this.residentImageBitmaps.length > MAX_RESIDENT_IMAGE_BITMAPS) {
+      const evict = this.residentImageBitmaps.shift();
+      if (evict && evict !== assetId) {
+        const ea = this.assets.get(evict);
+        if (ea?.imageBitmap) {
+          try { ea.imageBitmap.close(); } catch { /* already closed */ }
+          // Keep imageMetadata (dimensions) so insert/replace flows still work; only drop the
+          // heavy bitmap. getImageBitmap re-decodes on demand if the image is drawn again.
+          ea.imageBitmap = null;
+        }
+      }
+    }
+  }
+
+  /**
+   * Decode an image asset's ImageBitmap on demand (from its source blob) and cache it, bounded by an
+   * LRU. Also fills in imageMetadata the first time. Deduped so the renderer requesting the same
+   * not-yet-ready image every frame triggers exactly one decode; notify()s when the bitmap lands so
+   * the viewport re-renders. Returns null if the asset is unknown or the blob is undecodable.
+   */
+  async ensureImageBitmap(assetId: string): Promise<ImageBitmap | null> {
+    const asset = this.assets.get(assetId);
+    if (!asset) return null;
+    if (asset.imageBitmap) { this.touchImageBitmap(assetId); return asset.imageBitmap; }
+    const existing = this.inflightImageDecodes.get(assetId);
+    if (existing) return existing;
+    const url = this.getObjectUrl(assetId);
+    if (!url) return null;
+    const decodePromise = (async () => {
+      try {
+        const blob = await (await fetch(url)).blob();
+        const { bitmap, originalWidth, originalHeight } = await decodeImageCapped(blob);
+        const a = this.assets.get(assetId);
+        if (!a) { try { bitmap.close(); } catch { /* ignore */ } return null; }
+        a.imageBitmap = bitmap;
+        a.imageMetadata = {
+          assetId,
+          width: bitmap.width,
+          height: bitmap.height,
+          originalWidth,
+          originalHeight,
+          format: a.mimeType,
+          fileSize: blob.size,
+        };
+        a.status = 'ready';
+        this.touchImageBitmap(assetId);
+        this.notify();
+        return bitmap;
+      } catch {
+        return null;
+      } finally {
+        this.inflightImageDecodes.delete(assetId);
+      }
+    })();
+    this.inflightImageDecodes.set(assetId, decodePromise);
+    return decodePromise;
+  }
+
+  /** Decode (if needed) and return an image asset's metadata - used by the insert/replace flows,
+   *  which need the source dimensions before building a layer. */
+  async ensureImageMetadata(assetId: string): Promise<ImageAssetMetadata | null> {
+    const cached = this.assets.get(assetId)?.imageMetadata;
+    if (cached) return cached;
+    await this.ensureImageBitmap(assetId);
+    return this.assets.get(assetId)?.imageMetadata ?? null;
+  }
+
   getImageBitmap(assetId: string): ImageBitmap | null {
-    return this.assets.get(assetId)?.imageBitmap ?? null;
+    const asset = this.assets.get(assetId);
+    if (!asset) return null;
+    if (asset.imageBitmap) { this.touchImageBitmap(assetId); return asset.imageBitmap; }
+    // Not decoded yet (lazy) or evicted: kick off a decode and return null for now. The renderer
+    // draws nothing this frame and re-renders when ensureImageBitmap notify()s.
+    void this.ensureImageBitmap(assetId);
+    return null;
   }
 
   getAsset(assetId: string): RegisteredAsset | null {
@@ -1013,6 +1097,8 @@ class MediaAssetManager {
       }
       this.assets.delete(assetId);
       this.objectUrls.delete(assetId);
+      this.residentImageBitmaps = this.residentImageBitmaps.filter((id) => id !== assetId);
+      this.inflightImageDecodes.delete(assetId);
     }
     await deleteAsset(assetId);
     if (this.currentProjectId) {
