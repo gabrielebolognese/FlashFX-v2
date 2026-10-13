@@ -28,7 +28,7 @@ const FALLBACK_TEXT_LAYOUT: TextLayoutConfig = {
   boundingBox: { type: 'auto' }, horizontalAlign: 'left', verticalAlign: 'top',
   overflow: 'visible', baselineShift: 0, perGlyphAnimation: false,
 };
-import { evaluateProperty } from '../../core/interpolation';
+import { evaluateProperty, measureLayerPreferredSize } from '../../core/interpolation';
 import { FONT_MANIFEST, defaultTrackingPx } from '../../engine/fonts';
 import { useCustomFontStore } from '../../engine/customFonts';
 import { autoCaptionAudioLayers, useAutoCaptionStore } from '../../store/autoCaption';
@@ -341,6 +341,7 @@ function InspectorTabContent({ tab, layer }: { tab: InspectorTab; layer: Layer }
   const updateLayerProperty = useEditorStore((s) => s.updateLayerProperty);
   const setTrackMatte = useEditorStore((s) => s.setTrackMatte);
   const addKeyframe = useEditorStore((s) => s.addKeyframe);
+  const setLayerAnchor = useEditorStore((s) => s.setLayerAnchor);
   const toggleLayer3D = useEditorStore((s) => s.toggleLayer3D);
   const toggleSeparateDimensions = useEditorStore((s) => s.toggleSeparateDimensions);
   const addSeparatedKeyframe = useEditorStore((s) => s.addSeparatedKeyframe);
@@ -592,6 +593,25 @@ function InspectorTabContent({ tab, layer }: { tab: InspectorTab; layer: Layer }
           defaultValue={[1, 1]}
           propPath="transform.scale"
         />
+        <Vec2DragInput
+          label="Anchor"
+          prop={layer.transform.anchorPoint}
+          frame={currentFrame}
+          onChangeValue={(v) => updateLayerProperty(layer.id, 'transform.anchorPoint.defaultValue', v)}
+          onKeyframe={(v) => addKeyframe(layer.id, 'transform.anchorPoint', currentFrame, v)}
+          hasKeyframe={hasKeyframeAt(layer.transform.anchorPoint)}
+          step={1}
+          labels={['X', 'Y']}
+          defaultValue={[0, 0]}
+          propPath="transform.anchorPoint"
+        />
+        {layer.type !== 'group' && (
+          <AnchorPresetGrid
+            anchor={evaluateProperty(layer.transform.anchorPoint, currentFrame) as Vec2}
+            size={measureLayerPreferredSize(layer, currentFrame)}
+            onPick={(a) => setLayerAnchor(layer.id, a, currentFrame)}
+          />
+        )}
         <NumberDragInput
           label="Opacity"
           prop={layer.transform.opacity}
@@ -2776,6 +2796,43 @@ function Vec2DragInput({
       >
         <Diamond size={10} fill={hasKeyframe ? 'currentColor' : 'none'} />
       </button>
+    </div>
+  );
+}
+
+// Nine-point pivot picker: snaps the anchor to a named point of the content (corners / edges /
+// centre) WITHOUT moving the layer (position is compensated by setLayerAnchor). The anchor is in
+// unscaled centre-relative px, so each point is (col·w/2, row·h/2). The dot matching the current
+// anchor is filled so you can see where the pivot sits.
+function AnchorPresetGrid({ anchor, size, onPick }: {
+  anchor: Vec2;
+  size: { width: number; height: number };
+  onPick: (a: Vec2) => void;
+}) {
+  const hw = size.width / 2;
+  const hh = size.height / 2;
+  const cols = [-1, 0, 1];
+  const rows = [-1, 0, 1];
+  const near = (a: number, b: number) => Math.abs(a - b) < Math.max(0.5, Math.max(hw, hh) * 0.02);
+  return (
+    <div className="flex items-center gap-2 mt-1">
+      <span className="text-caption text-slate-500 w-14 flex-shrink-0">Pivot</span>
+      <div className="inline-grid grid-cols-3 gap-px p-0.5 rounded border border-hairline bg-surface-3">
+        {rows.map((ry) => cols.map((cx) => {
+          const target: Vec2 = [cx * hw, ry * hh];
+          const active = near(anchor[0], target[0]) && near(anchor[1], target[1]);
+          return (
+            <button
+              key={`${cx},${ry}`}
+              onClick={() => onPick(target)}
+              title={`Pivot ${['left', 'center', 'right'][cx + 1]} ${['top', 'middle', 'bottom'][ry + 1]}`}
+              className="w-3.5 h-3.5 flex items-center justify-center rounded-sm hover:bg-white/10 transition-colors"
+            >
+              <span className={`block w-1.5 h-1.5 rounded-full ${active ? 'bg-accent' : 'bg-slate-500'}`} />
+            </button>
+          );
+        }))}
+      </div>
     </div>
   );
 }

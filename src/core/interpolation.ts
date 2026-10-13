@@ -41,6 +41,7 @@ import type { ClonerLayer } from '../cloner/types';
 import { rasterizeField, type FieldGrid } from '../field-sampling/fields';
 import { precompLocalFrame, MAX_PRECOMP_DEPTH } from './precomp';
 import type { ResolveContext } from './precomp';
+import { applyPivotCompensation } from './anchor';
 import type { Mat4, Vec3 } from './mat4';
 import type { CameraLayer } from './types';
 import { defaultCamera, cameraFromParams, localModelMatrix, composeWorldMatrix, forwardVector, cubicBezierVec3, type ResolvedCamera } from './camera3d';
@@ -277,7 +278,10 @@ export function evaluateVec2(prop: AnimatableProperty, frame: number): Vec2 {
   return Array.isArray(val) ? val : [val, val];
 }
 
-function resolveTransform(transform: Transform, frame: number): ResolvedTransform {
+// RAW transform evaluation: `anchorPoint` is the unscaled centre-relative pivot, `position` the
+// anchor's world location (as authored). The 3D `mat4.composeModel`/camera chain and the parent
+// chain consume this form directly (composeModel already pivots correctly from the raw anchor).
+function resolveTransformRaw(transform: Transform, frame: number): ResolvedTransform {
   const pos = evaluateVec2(transform.position, frame);
   const scale = evaluateVec2(transform.scale, frame);
   const anchor = evaluateVec2(transform.anchorPoint, frame);
@@ -295,6 +299,13 @@ function resolveTransform(transform: Transform, frame: number): ResolvedTransfor
     rotationX: transform.rotationX ? evaluateNumber(transform.rotationX, frame) : 0,
     rotationY: transform.rotationY ? evaluateNumber(transform.rotationY, frame) : 0,
   };
+}
+
+// The resolved transform the 2D render pipeline (quad shaders / cardMVP / overlay pathTransform) and
+// the shadow/motion-blur pivots consume: the anchor point becomes the pivot of BOTH rotation and
+// scale (see core/anchor.ts). Anchor [0,0] is a no-op, so pre-anchor scenes stay byte-identical.
+function resolveTransform(transform: Transform, frame: number): ResolvedTransform {
+  return applyPivotCompensation(resolveTransformRaw(transform, frame));
 }
 
 // Evaluate a shape layer's path-modifier stack (B8a) to plain numbers for the current frame,
@@ -468,7 +479,7 @@ function getParentTransform(layerId: string, layers: Layer[], frame: number): Re
     return { positionX: 0, positionY: 0, rotation: 0, scaleX: 1, scaleY: 1, anchorX: 0, anchorY: 0, opacity: 1, positionZ: 0, rotationX: 0, rotationY: 0 };
   }
 
-  const parentLocal = resolveTransform(parent.transform, frame);
+  const parentLocal = resolveTransformRaw(parent.transform, frame);
   const grandparent = getParentTransform(parent.id, layers, frame);
   let composed = composeTransforms(grandparent, parentLocal);
 
@@ -912,7 +923,7 @@ function computeBlur(
   };
 }
 
-function measureLayerPreferredSize(layer: Layer, frame: number): { width: number; height: number } {
+export function measureLayerPreferredSize(layer: Layer, frame: number): { width: number; height: number } {
   if (layer.type === 'shape') {
     const shape = (layer as ShapeLayer).shape;
     if (!shape) return { width: 100, height: 100 };
@@ -1039,7 +1050,7 @@ function resolveActiveCamera(composition: Composition, sortedLayers: Layer[], fr
     chosen = l;
   }
   if (!chosen) return defaultCamera(width, height);
-  const t = resolveTransform(chosen.transform, frame);
+  const t = resolveTransformRaw(chosen.transform, frame);
   // Eye honours the optional smooth spatial-bezier path; falls back to the plain transform when
   // there are no tangents (byte-identical). rotationX/Y/rotation still come from `t` (one-node aim).
   const eye: Vec3 = resolveCameraEye(chosen, frame);
@@ -1079,7 +1090,9 @@ function worldMatrixFor(layerId: string, frame: number): Mat4 {
     cur = cur.parentId ? _layerById.get(cur.parentId) : undefined;
   }
   chain.reverse();
-  return composeWorldMatrix(chain.map((l) => localModelMatrix(resolveTransform(l.transform, frame))));
+  // RAW: mat4.composeModel pivots about the unscaled anchor BEFORE scale, so it must not receive the
+  // scale-folded compensated pair the 2D pipeline uses (that would double-scale the pivot).
+  return composeWorldMatrix(chain.map((l) => localModelMatrix(resolveTransformRaw(l.transform, frame))));
 }
 
 export function resolveFrame(composition: Composition, frame: number, ctx?: ResolveContext): RenderFrame {

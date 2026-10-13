@@ -34,6 +34,7 @@ import { getLayerRect } from '../core/snap/bbox';
 import { createDefaultCloner, createEffector } from '../cloner/factory';
 import type { ClonerEffector } from '../cloner/types';
 import { evaluateVec2, evaluateNumber, buildPhysicsEvaluator } from '../core/interpolation';
+import { compensatePosition } from '../core/anchor';
 import {
   remapSelectedFrames, reverseSelectedValues, distributeSelectedEven, alignSelected,
   bakeSelected, setSelectedTangentMode, duplicateSelected, extractForClipboard, insertClipboard,
@@ -316,6 +317,9 @@ interface EditorState {
   resetTransformScale: (id: string) => void;
   resetTransformRotation: (id: string) => void;
   resetTransformAll: (id: string) => void;
+  /** Move the pivot to `anchor` (unscaled, centre-relative px) without moving the content (position
+   *  is compensated); rotation + scale then pivot about it. `[0,0]` re-centres the anchor. */
+  setLayerAnchor: (id: string, anchor: Vec2, frame: number) => void;
   deselectAll: () => void;
   /** Select every layer in the active composition (Ctrl/Cmd+A). */
   selectAllLayers: () => void;
@@ -1622,6 +1626,49 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const newComp = { ...composition, layers: newLayers };
     exec({
       label: 'Reset All Transforms',
+      execute: () => { set({ composition: newComp }); },
+      undo: () => { set({ composition: oldComp }); },
+    });
+  },
+
+  // Move a layer's anchor point (pivot) to `anchor` (unscaled, centre-relative layer px) WITHOUT
+  // moving the rendered content: `position` is compensated so the same pixels stay put (the AE
+  // "pan behind" / centre-anchor behaviour). Afterwards rotation and scale pivot about the new
+  // point. One undoable command; keyframe-aware on both properties (upserts at `frame` when keyed).
+  setLayerAnchor: (id, anchor, frame) => {
+    const { composition } = get();
+    const layer = composition.layers.find((l) => l.id === id);
+    if (!layer) return;
+    const scale = evaluateVec2(layer.transform.scale, frame);
+    const rot = evaluateNumber(layer.transform.rotation, frame);
+    const pos = evaluateVec2(layer.transform.position, frame);
+    const oldAnchor = evaluateVec2(layer.transform.anchorPoint, frame);
+    const newPos = compensatePosition([pos[0], pos[1]], oldAnchor, anchor, scale[0], scale[1], rot);
+    const setAt = (prop: AnimatableProperty, value: number | Vec2): AnimatableProperty => {
+      if (prop.keyframes.length > 0 && !prop.separated) {
+        const has = prop.keyframes.some((k) => k.frame === frame);
+        const keyframes = has
+          ? prop.keyframes.map((k) => (k.frame === frame ? { ...k, value } : k))
+          : [...prop.keyframes, createKeyframe(frame, value)].sort((a, b) => a.frame - b.frame);
+        return { ...prop, keyframes };
+      }
+      return { ...prop, defaultValue: value };
+    };
+    const oldComp = composition;
+    const newLayers = composition.layers.map((l) => {
+      if (l.id !== id) return l;
+      return {
+        ...l,
+        transform: {
+          ...l.transform,
+          anchorPoint: setAt(l.transform.anchorPoint, [anchor[0], anchor[1]] as Vec2),
+          position: setAt(l.transform.position, newPos),
+        },
+      } as Layer;
+    });
+    const newComp = { ...composition, layers: newLayers };
+    exec({
+      label: 'Set Anchor Point',
       execute: () => { set({ composition: newComp }); },
       undo: () => { set({ composition: oldComp }); },
     });

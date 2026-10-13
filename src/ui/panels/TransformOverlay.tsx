@@ -10,6 +10,7 @@ import type { ShapeLayer, TextLayer, GroupLayer, VideoLayer, ImageLayer, Layer, 
 import type { ClonerLayer, InstanceTransform } from '../../cloner/types';
 import { computeInstanceTransforms } from '../../cloner/distribution';
 import { evaluateProperty, evaluateNumber, evaluateVec2 } from '../../core/interpolation';
+import { contentCenterOffset, compDeltaToAnchorDelta } from '../../core/anchor';
 import { measureText } from '../../engine/textAtlas';
 import { computeGroupBounds, getWorldPosition } from '../../core/sceneGraph';
 import { resolveCanvasClick, resolveDoubleClick } from '../../core/selection';
@@ -68,6 +69,7 @@ type HandleType =
   | 'tl' | 'tr' | 'bl' | 'br'
   | 'top' | 'bottom' | 'left' | 'right'
   | 'rotate'
+  | 'anchor'
   | 'radius';
 
 interface TransformState {
@@ -76,8 +78,12 @@ interface TransformState {
   w: number;
   h: number;
   rotation: number;
+  // Anchor point: unscaled centre-relative px (`anchorX/Y`), plus the transform scale so the overlay
+  // can place it in composition px (the content centre is `(x,y) − rotate(scale·anchor, rotation)`).
   anchorX: number;
   anchorY: number;
+  scaleXT: number;
+  scaleYT: number;
 }
 
 const HANDLE_SIZE = 8;
@@ -224,6 +230,16 @@ function getLayerWorldBounds(layer: Layer, layers: Layer[], currentFrame: number
   } else {
     return null;
   }
+  // With a non-centre anchor, `position` is where the anchor sits, not the content centre; shift the
+  // bounds back to the rendered content centre so hover/selection outlines + hit-testing still wrap
+  // the visible pixels. Anchor [0,0] leaves this untouched (every pre-anchor layer is unchanged).
+  const anchor = evaluateVec2(layer.transform.anchorPoint, currentFrame);
+  if (anchor[0] !== 0 || anchor[1] !== 0) {
+    const sc = evaluateProperty(layer.transform.scale, currentFrame) as Vec2;
+    const rotDeg = evaluateNumber(layer.transform.rotation, currentFrame);
+    const [ox, oy] = contentCenterOffset(sc[0], sc[1], anchor[0], anchor[1], rotDeg);
+    return { x: pos[0] - ox, y: pos[1] - oy, w, h };
+  }
   return { x: pos[0], y: pos[1], w, h };
 }
 
@@ -293,6 +309,8 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
         rotation: rot,
         anchorX: 0,
         anchorY: 0,
+        scaleXT: 1,
+        scaleYT: 1,
       };
     }
 
@@ -377,7 +395,8 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
     }
     const rot = hasPhysics && baked ? baked.rotation * (180 / Math.PI) : evaluateProperty(activeLayer.transform.rotation, currentFrame) as number;
     const anchor = evaluateProperty(activeLayer.transform.anchorPoint, currentFrame) as Vec2;
-    return { x: pos[0], y: pos[1], w, h, rotation: rot, anchorX: anchor[0], anchorY: anchor[1] };
+    const tScale = evaluateProperty(activeLayer.transform.scale, currentFrame) as Vec2;
+    return { x: pos[0], y: pos[1], w, h, rotation: rot, anchorX: anchor[0], anchorY: anchor[1], scaleXT: tScale[0], scaleYT: tScale[1] };
   }, [activeLayer, composition.layers, composition.physicsBindings, currentFrame, compW, compH]);
 
   const transformState = getTransformState();
@@ -450,7 +469,7 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
         const hitRot = evaluateProperty(hit.transform.rotation, currentFrame) as number;
         const hitAnchor = evaluateProperty(hit.transform.anchorPoint, currentFrame) as Vec2;
         const hitScale = evaluateProperty(hit.transform.scale, currentFrame) as Vec2;
-        const state: TransformState = { x: hitPos[0], y: hitPos[1], w: hitBounds.w, h: hitBounds.h, rotation: hitRot, anchorX: hitAnchor[0], anchorY: hitAnchor[1] };
+        const state: TransformState = { x: hitPos[0], y: hitPos[1], w: hitBounds.w, h: hitBounds.h, rotation: hitRot, anchorX: hitAnchor[0], anchorY: hitAnchor[1], scaleXT: hitScale[0], scaleYT: hitScale[1] };
 
         // Capture positions of all other selected layers
         const positions: { id: string; pos: Vec2 }[] = [];
@@ -806,8 +825,10 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
           }
           hudData = { kind: 'rotate', a: initRot + angleDelta, b: 0 };
         } else {
-          const pivotX = state.x + state.anchorX;
-          const pivotY = state.y + state.anchorY;
+          // The anchor point IS the rotation pivot, and `position` is where it sits (anchor [0,0]
+          // ⇒ the centre, so this is byte-identical for un-anchored layers).
+          const pivotX = state.x;
+          const pivotY = state.y;
           const [scx, scy] = toScreen(pivotX, pivotY);
           const el = overlayRef.current;
           if (!el) return;
@@ -831,6 +852,16 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
         const newR = Math.max(0, Math.min(maxR, dragStart.current.startRadius + (dx + dy) / 2));
         updateAnimatable('shape.borderRadius', newR);
         hudData = { kind: 'radius', a: newR, b: 0 };
+      } else if (dragging === 'anchor') {
+        // Pan-behind: drag the pivot crosshair to a new spot. `position` follows the cursor so the
+        // anchor's world location IS the cursor, and the anchor value shifts by the inverse
+        // rotate·scale of the pointer delta - together these keep the rendered content fixed.
+        const newPos: Vec2 = [state.x + dx, state.y + dy];
+        const [dax, day] = compDeltaToAnchorDelta(dx, dy, state.scaleXT, state.scaleYT, state.rotation);
+        const newAnchor: Vec2 = [state.anchorX + dax, state.anchorY + day];
+        updateAnimatable('transform.anchorPoint', newAnchor);
+        updateAnimatable('transform.position', newPos);
+        hudData = { kind: 'move', a: newAnchor[0], b: newAnchor[1] };
       } else {
         if (isGroupActive) return;
 
@@ -1009,6 +1040,7 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
       case 'left': case 'right': return 'ew-resize';
       case 'rotate': return 'crosshair';
       case 'move': return 'move';
+      case 'anchor': return 'move';
       default: return 'default';
     }
   };
@@ -1042,13 +1074,16 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
     );
   }
 
-  const { x, y, w, h, rotation, anchorX, anchorY } = transformState;
+  const { x, y, w, h, rotation, anchorX, anchorY, scaleXT, scaleYT } = transformState;
+  // The outer div sits at the anchor's world location (= position); the inner box is offset so its
+  // centre lands on the rendered content centre and it rotates about the anchor. Anchor is unscaled
+  // layer px, so its composition offset from centre is scale·anchor (CSS applies the rotation).
   const [centerSX, centerSY] = toScreen(x, y);
   const sw = w * sX;
   const sh = h * sY;
 
-  const ancSX = anchorX * sX;
-  const ancSY = anchorY * sY;
+  const ancSX = scaleXT * anchorX * sX;
+  const ancSY = scaleYT * anchorY * sY;
   const originX = sw / 2 + ancSX;
   const originY = sh / 2 + ancSY;
 
@@ -1156,8 +1191,8 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
         <div
           className="absolute pointer-events-none"
           style={{
-            left: -sw / 2,
-            top: -sh / 2,
+            left: -sw / 2 - ancSX,
+            top: -sh / 2 - ancSY,
             width: sw,
             height: sh,
             transform: `rotate(${rotation}deg)`,
@@ -1272,15 +1307,20 @@ export function TransformOverlay({ style }: TransformOverlayProps) {
 
           {!isGroupActive && (
             <div
-              className="absolute pointer-events-none"
+              className="absolute pointer-events-auto flex items-center justify-center"
               style={{
-                left: sw / 2 + ancSX - 5,
-                top: sh / 2 + ancSY - 5,
-                width: 10,
-                height: 10,
+                left: sw / 2 + ancSX - 9,
+                top: sh / 2 + ancSY - 9,
+                width: 18,
+                height: 18,
+                cursor: 'move',
               }}
+              title="Drag to move the anchor point (pivot) without moving the layer"
+              onPointerDown={(e) => startDrag(e, 'anchor')}
+              onPointerEnter={() => setHoverHandle('anchor')}
+              onPointerLeave={() => setHoverHandle(null)}
             >
-              <svg width="10" height="10" viewBox="0 0 10 10" className="text-accent-hover">
+              <svg width="12" height="12" viewBox="0 0 10 10" className={hoverHandle === 'anchor' || dragging === 'anchor' ? 'text-accent' : 'text-accent-hover'}>
                 <circle cx="5" cy="5" r="3" fill="none" stroke="currentColor" strokeWidth="1" />
                 <line x1="0" y1="5" x2="10" y2="5" stroke="currentColor" strokeWidth="0.5" />
                 <line x1="5" y1="0" x2="5" y2="10" stroke="currentColor" strokeWidth="0.5" />

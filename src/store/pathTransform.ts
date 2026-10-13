@@ -1,12 +1,16 @@
 import type { ResolvedTransform, Vec2, Layer } from '../core/types';
 import { evaluateVec2, evaluateNumber } from '../core/interpolation';
+import { applyPivotCompensation } from '../core/anchor';
 
-// Resolve a layer's transform to concrete values at a given frame.
+// Resolve a layer's transform to concrete values at a given frame. The anchor-point pivot
+// compensation is applied so localToComp/compToLocal below map 1:1 with the (compensated) renderer -
+// i.e. the overlay and pen-path editing pivot around the anchor exactly as the GPU does. Anchor
+// [0,0] is a no-op, so this stays byte-identical for every pre-anchor layer.
 export function resolveXform(layer: Layer, frame: number): ResolvedTransform {
   const pos = evaluateVec2(layer.transform.position, frame);
   const scale = evaluateVec2(layer.transform.scale, frame);
   const anchor = evaluateVec2(layer.transform.anchorPoint, frame);
-  return {
+  return applyPivotCompensation({
     positionX: pos[0],
     positionY: pos[1],
     scaleX: scale[0],
@@ -18,7 +22,7 @@ export function resolveXform(layer: Layer, frame: number): ResolvedTransform {
     positionZ: layer.transform.positionZ ? evaluateNumber(layer.transform.positionZ, frame) : 0,
     rotationX: layer.transform.rotationX ? evaluateNumber(layer.transform.rotationX, frame) : 0,
     rotationY: layer.transform.rotationY ? evaluateNumber(layer.transform.rotationY, frame) : 0,
-  };
+  });
 }
 
 // Coordinate transforms between layer-local path space and composition space.

@@ -408,6 +408,7 @@ export function buildClipMenu(layerId: string): MenuEntry[] {
         item('reset-pos', 'Reset Position', () => editor.resetTransformPosition(layerId), Move),
         item('reset-scale', 'Reset Scale', () => editor.resetTransformScale(layerId), Maximize2),
         item('reset-rotation', 'Reset Rotation', () => editor.resetTransformRotation(layerId), RotateCcw),
+        item('center-anchor', 'Center Anchor Point', () => editor.setLayerAnchor(layerId, [0, 0], useTimelineStore.getState().currentFrame), Crosshair),
         item('reset-all', 'Reset All Transforms', () => editor.resetTransformAll(layerId), RefreshCcw),
       ],
     },
