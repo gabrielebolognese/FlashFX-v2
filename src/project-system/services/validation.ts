@@ -43,6 +43,7 @@ import type {
 import { DEFAULT_DECODE_CHARSET } from '../../core/textDecode';
 import { isMaskMode } from '../../core/maskCoverage';
 import { sanitizeRefineEdge } from '../../core/refineEdge';
+import { resolveAdjustmentFilters } from '../../core/effects/adjustmentComposite';
 import type { LayerConstraints } from '../../core/reframe';
 
 function isObject(v: unknown): v is Record<string, unknown> {
@@ -690,9 +691,14 @@ function validateLayer(raw: unknown): Layer | null {
     }
     case 'adjustment': {
       // Adjustment layer (B11b): baseFields already carries its effects stack + effectsEnabled +
-      // shadow/glow/blur/masks - everything it needs. Pass through so it survives load (else it hits
-      // the default and is silently stripped, the cloner/precomp data-loss class).
-      return { ...baseFields, type: 'adjustment' } as unknown as Layer;
+      // shadow/glow/blur/masks. Pass through so it survives load (else it hits the default and is
+      // silently stripped, the cloner/precomp data-loss class). Its basic filters (B11b-gpu) are
+      // sanitized to five finite numbers (identity for anything missing / non-finite).
+      return {
+        ...baseFields,
+        type: 'adjustment',
+        ...(isObject(r.filters) ? { filters: resolveAdjustmentFilters(r.filters) } : {}),
+      } as unknown as Layer;
     }
     // The following layer types carry app-generated structured payloads. Pass them
     // through (like cloner) so they SURVIVE load instead of hitting the default and

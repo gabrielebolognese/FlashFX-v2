@@ -36,6 +36,7 @@ import { resolveMaskVertices, resolveMaskFeathers } from './maskPath';
 import { resolveRefineEdge } from './refineEdge';
 import { resolveEffectStack } from './effects/effectStack';
 import { resolveAdjustmentCoverage } from './effects/adjustmentCoverage';
+import { adjustmentHasWork, resolveAdjustmentFilters } from './effects/adjustmentComposite';
 import { evaluateMotionPathAtFrame } from './motionPath';
 import { computeInstanceTransforms, selectClonerRenderPath, buildDataBoundSources } from '../cloner';
 import type { ClonerLayer } from '../cloner/types';
@@ -1681,11 +1682,12 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
           layerType: 'beam',
         });
       } else if (layer.type === 'adjustment') {
-        // Adjustment layer (B11b): draws nothing itself - it carries its resolved effect stack so the
-        // renderer's apply-below composite (browser-gated) can run it over the layers beneath. The
-        // coverage (which content layers below it affects, and whether it's a no-op) is filled in by
-        // the post-pass below, once the final render order (incl. cloner expansion) is known.
+        // Adjustment layer (B11b): draws nothing itself - it carries its resolved effect stack + basic
+        // filters so the renderer's apply-below composite (B11b-gpu) can run them over the layers
+        // beneath. The coverage (which content layers below it affects, and whether it's a no-op) is
+        // filled in by the post-pass below, once the final render order (incl. cloner expansion) is known.
         const adjEffects = resolveEffectStack(layer.effects, layer.effectsEnabled !== false);
+        const adjFilters = resolveAdjustmentFilters(layer.filters);
         resolvedLayers.push({
           id: layer.id,
           visible: true,
@@ -1696,7 +1698,7 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
           shadow,
           glow,
           blur,
-          adjustment: { effects: adjEffects, coveredLayerIds: [], noOp: true },
+          adjustment: { effects: adjEffects, filters: adjFilters, coveredLayerIds: [], noOp: true },
           layerType: 'adjustment',
         });
       }
@@ -1845,7 +1847,10 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
         id: l.id,
         isAdjustment: l.layerType === 'adjustment',
         active: true,
-        hasEffects: (l.adjustment?.effects.length ?? 0) > 0,
+        // Any stack effect, a non-identity basic filter, or the layer's own Blur / Glow (B11b-gpu).
+        hasEffects: !!l.adjustment && adjustmentHasWork({
+          effectCount: l.adjustment.effects.length, filters: l.adjustment.filters, blur: !!l.blur, glow: !!l.glow,
+        }),
       })),
     );
     for (const c of coverage) {

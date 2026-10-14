@@ -1,4 +1,4 @@
-import type { RenderFrame, ResolvedLayer, ResolvedMask, ResolvedFill, ResolvedPattern, ResolvedEffect, ResolvedVideo, Background } from '../core/types';
+import type { RenderFrame, ResolvedLayer, ResolvedMask, ResolvedFill, ResolvedPattern, ResolvedEffect, ResolvedVideo, ResolvedBlur, Background } from '../core/types';
 import { MAX_PRECOMP_DEPTH } from '../core/precomp';
 // 2.5D (M2): per-3D-layer MVP + painter's depth sort. cardMVP/cameraSpaceDepth are pure and
 // harness-verified (verify:camera3d); the renderer just packs the matrix + reorders draws.
@@ -16,6 +16,8 @@ import { EFFECT_TYPE } from '../core/effects/effectRegistry';
 import { matteFlags } from '../core/trackMatte';
 import { packMaskSlots } from '../core/maskCoverage';
 import { packRefineEdge } from '../core/refineEdge';
+import { ADJUST_MODE, IDENTITY_FILTERS, isIdentityFilters, planAdjustmentPasses, type AdjustmentPassPlan } from '../core/effects/adjustmentComposite';
+import { packBlurFx, planBlurFxSlots } from '../core/effects/blurFxPack';
 import { MASK_WGSL } from './maskWgsl';
 import { REFINE_WGSL } from './refineWgsl';
 import { renderTextToCanvas, textCacheKey } from './textAtlas';
@@ -693,6 +695,7 @@ const UNIFORM_ALIGN = 512;
 const MAX_LAYERS = 512;
 // One-shot warn when procedural expansion is clamped to the uniform-buffer cap.
 let proceduralClampWarned = false;
+let adjustSlotsWarned = false; // B11b-gpu: warn once when adjustments exceed the image-uniform slots
 // The shape (rect/circle/star) uniform carries per-shape gradient fill + stroke
 // data plus a pattern block, so it has its own larger stride, independent of the
 // other pipelines. Layout (bytes): base 80 + masks 384 + fill/stroke arrays 3136
@@ -872,7 +875,48 @@ const TEXT_MVP_FLAG = 108; // float index of is3D
 const TEXT_MVP_BASE = 112; // float index of mvp[0]
 const TEXT_UNIFORM_FLOATS = 128; // packer view length (covers mvp)
 
-const IMAGE_SHADER = /* wgsl */ `
+// ---- Adjustment-variant insertions (B11b-gpu). Only imageShaderSource(true) contains these. ----
+const ADJUST_BELOW_BINDING = `
+// Adjustment variant only: the untouched composite below the adjustment (premultiplied).
+@group(0) @binding(3) var belowTex: texture_2d<f32>;`;
+
+// The quad covers the whole target, so the copied composite is sampled at this fragment's own texel
+// (exact, no interpolation drift). Mix-only (the split plan's last pass): texData already holds the
+// effected + blurred / glowed result; mix it with the below by k = opacity x mask alpha.
+const ADJUST_FS_PROLOGUE = `  let adjUV = in.position.xy / vec2f(textureDimensions(texData));
+  if (i32(u.adjustMode + 0.5) == ${ADJUST_MODE.mixOnly}) {
+    let adjFx = textureSampleLevel(texData, texSampler, adjUV, 0.0);
+    let adjK = clamp(u.opacity * computeMaskStackAlpha(in.worldPos, i32(u.maskCount + 0.5), u.masks), 0.0, 1.0);
+    return mix(textureSampleLevel(belowTex, texSampler, adjUV, 0.0), adjFx, adjK);
+  }
+`;
+
+// Effects run in composition space on the copied composite.
+const ADJUST_FS_UV = `
+  uv = adjUV;`;
+
+// Warps + spatial effects filtered the PREMULTIPLIED composite (correct: no dark fringes); the basic
+// filters + colour effects that follow run on straight colour, like on an image layer.
+const ADJUST_FS_UNPREMULTIPLY = `
+  color = vec4f(select(vec3f(0.0), color.rgb / max(color.a, 1e-4), color.a > 1e-4), color.a);`;
+
+// Clamp + re-premultiply the effected colour; apply-only returns it (into the split plan's
+// intermediate), apply-mix mixes it with the below by k = opacity x mask alpha.
+const ADJUST_FS_EPILOGUE = `  if (u.adjustMode > 0.5) {
+    let adjA = clamp(color.a, 0.0, 1.0);
+    let adjEff = vec4f(clamp(color.rgb, vec3f(0.0), vec3f(1.0)) * adjA, adjA);
+    if (i32(u.adjustMode + 0.5) == ${ADJUST_MODE.applyOnly}) { return adjEff; }
+    return mix(textureSampleLevel(belowTex, texSampler, adjUV, 0.0), adjEff, clamp(u.opacity * mA, 0.0, 1.0));
+  }
+`;
+
+// The image / video / precomp fragment shader, generated in two variants. `adjust` = false is the
+// shader every image + video layer draws with; every `${adjust ? ... : ''}` below is empty for it, so
+// its WGSL is unchanged. `adjust` = true is the adjustment-layer variant (B11b-gpu): it samples the
+// copied composite below the adjustment, runs the same effect stack + basic filters over it, and
+// mixes the result with the untouched below by opacity x masks (see core/effects/adjustmentComposite).
+function imageShaderSource(adjust: boolean): string {
+  return /* wgsl */ `
 struct MaskSlot {
   params: vec4f,
   center: vec2f,
@@ -918,7 +962,8 @@ struct ImageUniforms {
   // Effect stack appended after masks (mask base index unchanged).
   effectCount: f32,
   effectTime: f32,  // frame number, seeds procedural/noise effects
-  _epad1: f32,
+  // B11b-gpu: 0 on every image / video draw; ADJUST_MODE (1..3) on the adjustment-variant pipeline.
+  adjustMode: f32,
   _epad2: f32,
   effects: array<EffectSlot, 16>,
   // 2.5D (M2): 0 for a 2D layer; 1 → project the quad through mvp (image/video/precomp cards).
@@ -939,7 +984,7 @@ struct ImageUniforms {
 
 @group(0) @binding(0) var<uniform> u: ImageUniforms;
 @group(0) @binding(1) var texSampler: sampler;
-@group(0) @binding(2) var texData: texture_2d<f32>;
+@group(0) @binding(2) var texData: texture_2d<f32>;${adjust ? ADJUST_BELOW_BINDING : ''}
 
 struct VertexOutput {
   @builtin(position) position: vec4f,
@@ -2121,13 +2166,13 @@ ${REFINE_WGSL}
 
 @fragment
 fn fs(in: VertexOutput) -> @location(0) vec4f {
-  let aspect = max(u.quadSize.x, 1.0) / max(u.quadSize.y, 1.0);
+${adjust ? ADJUST_FS_PROLOGUE : ''}  let aspect = max(u.quadSize.x, 1.0) / max(u.quadSize.y, 1.0);
   let ec = i32(u.effectCount + 0.5);
 
   // Pre-sample warp stack (class B): compose the sampling UV in effect order
   // before the texture read. Warp-type slots match here; color-type slots don't.
   // Start from the source-rotated UV so a rotated video samples upright (srcRotation=0 → in.uv).
-  var uv = rotateSrcUV(in.uv, u.srcRotation);
+  var uv = rotateSrcUV(in.uv, u.srcRotation);${adjust ? ADJUST_FS_UV : ''}
   for (var wi = 0; wi < ec; wi = wi + 1) {
     uv = applyWarpEffect(uv, u.effects[wi].a, u.effects[wi].b, aspect, u.effectTime);
   }
@@ -2148,7 +2193,7 @@ fn fs(in: VertexOutput) -> @location(0) vec4f {
   // The clamp-to-edge sampler + this bounds test give geometric warps a transparent
   // border (tiling/fold warps keep uv in range, so inBounds stays 1).
   let inBounds = step(0.0, uv.x) * step(uv.x, 1.0) * step(0.0, uv.y) * step(uv.y, 1.0);
-  color = color * inBounds;
+  color = color * inBounds;${adjust ? ADJUST_FS_UNPREMULTIPLY : ''}
 
   // Exposure
   let exposureMul = pow(2.0, u.exposure);
@@ -2194,10 +2239,13 @@ fn fs(in: VertexOutput) -> @location(0) vec4f {
   } else {
     mA = computeMaskStackAlpha(in.worldPos, mc, u.masks);
   }
-  color = vec4f(clamp(color.rgb + refineDelta, vec3f(0.0), vec3f(1.0)), color.a * u.opacity * mA);
+${adjust ? ADJUST_FS_EPILOGUE : ''}  color = vec4f(clamp(color.rgb + refineDelta, vec3f(0.0), vec3f(1.0)), color.a * u.opacity * mA);
   return color;
 }
 `;
+}
+const IMAGE_SHADER = imageShaderSource(false);
+const ADJUST_SHADER = imageShaderSource(true);
 
 // Image + video layers share this uniform buffer. Its stride is independent of
 // the shared UNIFORM_ALIGN (512), enlarged to fit the effect-slot array appended
@@ -2239,6 +2287,7 @@ function writeCard3D(data: Float32Array, flagIdx: number, mvpIdx: number, layer:
 const IMAGE_MAX_EFFECTS = 16;
 const IMAGE_EFFECTCOUNT_FLOAT = 124;
 const IMAGE_EFFECTTIME_FLOAT = 125;
+const IMAGE_ADJUSTMODE_FLOAT = 126; // B11b-gpu: ADJUST_MODE on the adjustment-variant pipeline (0 elsewhere)
 const IMAGE_EFFECTS_BASE_FLOAT = 128;
 
 const PATH_SHADER = /* wgsl */ `
@@ -2845,6 +2894,10 @@ interface GPUState {
   // ensureBlurTextures and reused across frames until dimensions change.
   blurPipeline: GPURenderPipeline;
   blitPipeline: GPURenderPipeline;
+  // The blit shader with premultiplied-over blending + a bind group on layerTex: composites an isolated
+  // (already blurred) layer over the scene. Bind group (re)built in ensureBlurTextures.
+  layerOverPipeline: GPURenderPipeline;
+  layerOverBindGroup: GPUBindGroup | null;
   blurUniformBuffer: GPUBuffer;
   blurBindGroupLayout: GPUBindGroupLayout;
   blitBindGroupLayout: GPUBindGroupLayout;
@@ -2864,6 +2917,11 @@ interface GPUState {
   matteSrcTex: GPUTexture | null;
   matteSrcTexView: GPUTextureView | null;
   matteBindGroup: GPUBindGroup | null;
+  // Adjustment layers (B11b-gpu): the adjustment variant of the image pipeline (imageShaderSource(true))
+  // - no blending (it writes the already-mixed result) and a 4th binding for the below copy. Nullable +
+  // guarded like the matte composite: if it fails to build, adjustment layers stay inert (as before).
+  adjustPipeline: GPURenderPipeline | null;
+  adjustBindGroupLayout: GPUBindGroupLayout | null;
   blurTexW: number;
   blurTexH: number;
 
@@ -3486,6 +3544,13 @@ export class WebGPURenderer {
       fragment: { module: blitShaderModule, entryPoint: 'fs', targets: [{ format }] },
       primitive: { topology: 'triangle-list' },
     });
+    // Same blit, premultiplied-over: composites the isolated layer texture (layerTex) over the scene.
+    const layerOverPipeline = device.createRenderPipeline({
+      layout: device.createPipelineLayout({ bindGroupLayouts: [blitBindGroupLayout] }),
+      vertex: { module: blitShaderModule, entryPoint: 'vs' },
+      fragment: { module: blitShaderModule, entryPoint: 'fs', targets: [{ format, blend: premultipliedOver }] },
+      primitive: { topology: 'triangle-list' },
+    });
 
     // Track-matte composite (B10d): samples the matted layer + the matte source (both premultiplied),
     // multiplies alpha by matteCoverage, composites premultiplied-over the scene. Flags via a dynamic-offset
@@ -3513,6 +3578,33 @@ export class WebGPURenderer {
     } catch (err) {
       console.warn('[renderer] track-matte composite pipeline unavailable - matted layers draw normally', err);
       matteCompositePipeline = null; matteBindGroupLayout = null; matteUniformBuffer = null;
+    }
+
+    // Adjustment apply-below pipeline (B11b-gpu): same vertex stage + uniform layout as the image
+    // pipeline, plus binding 3 (the untouched composite below). No blend state - the fragment returns the
+    // final mixed value for every pixel of the full-frame quad. Only used when a frame has an active
+    // adjustment layer.
+    let adjustPipeline: GPURenderPipeline | null = null;
+    let adjustBindGroupLayout: GPUBindGroupLayout | null = null;
+    try {
+      const adjustModule = device.createShaderModule({ code: ADJUST_SHADER });
+      adjustBindGroupLayout = device.createBindGroupLayout({
+        entries: [
+          { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform', hasDynamicOffset: true, minBindingSize: IMAGE_UNIFORM_SIZE } },
+          { binding: 1, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'filtering' } },
+          { binding: 2, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
+          { binding: 3, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
+        ],
+      });
+      adjustPipeline = device.createRenderPipeline({
+        layout: device.createPipelineLayout({ bindGroupLayouts: [adjustBindGroupLayout] }),
+        vertex: { module: adjustModule, entryPoint: 'vs' },
+        fragment: { module: adjustModule, entryPoint: 'fs', targets: [{ format }] },
+        primitive: { topology: 'triangle-list' },
+      });
+    } catch (err) {
+      console.warn('[renderer] adjustment-layer pipeline unavailable - adjustment layers stay inert', err);
+      adjustPipeline = null; adjustBindGroupLayout = null;
     }
 
     // Procedural pattern pipelines - one per blend mode (blend-with-below). Guarded so a shader failure
@@ -3547,10 +3639,12 @@ export class WebGPURenderer {
       textSampler, format,
       patternPipelines, patternUniformBuffer, patternBindGroupLayout,
       blurPipeline, blitPipeline, blurUniformBuffer, blurBindGroupLayout, blitBindGroupLayout,
+      layerOverPipeline, layerOverBindGroup: null,
       sceneTex: null, layerTex: null, sceneTexView: null, layerTexView: null,
       blurBindGroup: null, blitBindGroup: null, blurTexW: 0, blurTexH: 0,
       matteCompositePipeline, matteBindGroupLayout, matteUniformBuffer,
       matteSrcTex: null, matteSrcTexView: null, matteBindGroup: null,
+      adjustPipeline, adjustBindGroupLayout,
       shadowHPipeline, shadowVPipeline, shadowUniformBuffer, shadowBindGroupLayout,
       shadowTex: null, shadowTexView: null, shadowBindGroupH: null, shadowBindGroupV: null,
       glowExtractPipeline, glowHPipeline, glowVPipeline, glowUniformBuffer, glowBindGroupLayout,
@@ -3730,6 +3824,13 @@ export class WebGPURenderer {
       entries: [
         { binding: 0, resource: gpu.textSampler },
         { binding: 1, resource: gpu.sceneTexView },
+      ],
+    });
+    gpu.layerOverBindGroup = gpu.device.createBindGroup({
+      layout: gpu.blitBindGroupLayout,
+      entries: [
+        { binding: 0, resource: gpu.textSampler },
+        { binding: 1, resource: gpu.layerTexView },
       ],
     });
     // Track-matte composite (B10d): matted layer = layerTex, matte source = matteSrcTex, flags via the
@@ -3922,6 +4023,7 @@ export class WebGPURenderer {
     const imageLayers: { index: number; layer: ResolvedLayer }[] = [];
     const pathLayers: { index: number; layer: ResolvedLayer }[] = [];
     const patternLayers: { index: number; layer: ResolvedLayer }[] = [];
+    const adjustLayers: { index: number; layer: ResolvedLayer }[] = [];
 
     // Expand procedural grid/tile layers into multiple instances. Each per-layer
     // uniform buffer holds MAX_LAYERS slots, and buckets partition expandedLayers,
@@ -3988,12 +4090,16 @@ export class WebGPURenderer {
 
     for (let i = 0; i < expandedLayers.length; i++) {
       const layer = expandedLayers[i];
-      // Adjustment layers (B11b) draw nothing on their own - their effect stack is meant to apply to
-      // the accumulated render of the layers BELOW them. That apply-below composite is a structural
-      // multipass change (B11b-gpu, browser-gated); until it lands the layer is inert (skipped here),
-      // which keeps frames with no adjustment byte-identical. `layer.adjustment` carries the resolved
-      // stack + coverage for that pass. This is the hook point.
-      if (layer.layerType === 'adjustment') continue;
+      // Adjustment layers (B11b) draw nothing on their own: their effects apply to the accumulated
+      // composite BELOW them, via the apply-below pass in the multipass loop (B11b-gpu). No-ops (nothing
+      // below / nothing to apply - the pure coverage resolver) are dropped here, so a frame without an
+      // active adjustment never leaves the fast path. Without the adjustment pipeline they stay inert.
+      if (layer.layerType === 'adjustment') {
+        if (layer.adjustment && !layer.adjustment.noOp && gpu.adjustPipeline && gpu.adjustBindGroupLayout) {
+          adjustLayers.push({ index: i, layer });
+        }
+        continue;
+      }
       // Beam / lightning (B16): drawn by the isolated fragment-SDF beam pipeline (B16-gpu-render,
       // browser-gated). Until it lands the layer resolves + persists but draws nothing here, keeping
       // frames with no beam byte-identical. `layer.beam` carries the resolved centreline + params.
@@ -4381,6 +4487,37 @@ export class WebGPURenderer {
       device.queue.writeBuffer(imageUniformBuffer, IMAGE_UNIFORM_ALIGN * videoLayers.length, imageBufData, 0, IMAGE_UNIFORM_ALIGN * imageLayers.length);
     }
 
+    // Adjustment layers (B11b-gpu): their image-uniform slots follow the video + image ones. The plan
+    // (core/effects/adjustmentComposite) is one apply+mix slot, or - when the layer Blur / Glow run
+    // (gated by the effects-preview switch like every layer's) - an apply-only slot (effects + filters)
+    // plus a mix-only slot (masks + opacity). The draw itself happens in the multipass loop.
+    type AdjustDraw = { plan: AdjustmentPassPlan; slotA: number; slotB: number };
+    const adjustByIndex = new Map<number, AdjustDraw>();
+    if (adjustLayers.length > 0) {
+      const fxOn = !this.effectsPreviewDisabled;
+      const firstSlot = videoLayers.length + imageLayers.length;
+      const adjBufData = new ArrayBuffer(IMAGE_UNIFORM_ALIGN * adjustLayers.length * 2);
+      let used = 0;
+      for (const { index, layer } of adjustLayers) {
+        const adj = layer.adjustment!;
+        const plan = planAdjustmentPasses({ blur: fxOn && !!layer.blur, glow: fxOn && !!layer.glow });
+        const hasStack = adj.effects.length > 0 || !isIdentityFilters(adj.filters);
+        if (!hasStack && !plan.split) continue; // only a Blur / Glow, and effects preview is off
+        if (firstSlot + used + plan.slots > MAX_LAYERS) {
+          if (!adjustSlotsWarned) { adjustSlotsWarned = true; console.warn(`[renderer] Too many image + adjustment layers for ${MAX_LAYERS} uniform slots; extra adjustment layers are skipped.`); }
+          continue;
+        }
+        const slotA = firstSlot + used;
+        const modes = plan.split ? [ADJUST_MODE.applyOnly, ADJUST_MODE.mixOnly] : [ADJUST_MODE.applyMix];
+        for (const mode of modes) {
+          this.fillAdjustmentData(new Float32Array(adjBufData, IMAGE_UNIFORM_ALIGN * used, IMAGE_UNIFORM_FLOATS), layer, frame, mode);
+          used++;
+        }
+        adjustByIndex.set(index, { plan, slotA, slotB: plan.split ? slotA + 1 : slotA });
+      }
+      if (used > 0) device.queue.writeBuffer(imageUniformBuffer, IMAGE_UNIFORM_ALIGN * firstSlot, adjBufData, 0, IMAGE_UNIFORM_ALIGN * used);
+    }
+
     // Path layers - tessellate vector geometry into a shared vertex buffer
     const pathRanges: { first: number; count: number }[] = [];
     if (pathLayers.length > 0) {
@@ -4490,7 +4627,9 @@ export class WebGPURenderer {
     // motion-blur descriptor (if any) so the render path below can decide
     // between the single-pass fast path and the per-layer blur path. Bind
     // groups and dynamic offsets are identical regardless of the target pass.
-    type Draw = { blur?: ResolvedLayer['motionBlur']; shadow?: ResolvedLayer['shadow']; glow?: ResolvedLayer['glow']; blurFx?: ResolvedLayer['blur']; is3D?: boolean; depth?: number; layerId?: string; matte?: ResolvedLayer['matte']; consumedAsMatte?: boolean; fn: (p: GPURenderPassEncoder) => void };
+    // `adjust` (B11b-gpu) marks an adjustment layer's apply-below pass (its fn is unused; its blurFx /
+    // glow are the adjustment's own Blur / Glow, run over the effected composite).
+    type Draw = { blur?: ResolvedLayer['motionBlur']; shadow?: ResolvedLayer['shadow']; glow?: ResolvedLayer['glow']; blurFx?: ResolvedLayer['blur']; is3D?: boolean; depth?: number; layerId?: string; matte?: ResolvedLayer['matte']; consumedAsMatte?: boolean; adjust?: AdjustDraw; fn: (p: GPURenderPassEncoder) => void };
     const draws: Draw[] = [];
     {
       let shapeIdx = 0, textIdx = 0, videoIdx = 0, imageIdx = 0, pathIdx = 0, patternIdx = 0;
@@ -4518,6 +4657,12 @@ export class WebGPURenderer {
         if (fx && is3DLayer && frame.camera?.dof && rl3d.worldMatrix) {
           const r = cocRadius(Math.abs(layerDepth), frame.camera.dof.focusDistance, frame.camera.dof.aperture, frame.camera.zoom, frame.camera.dof.blurLevel);
           if (r > 0.5) dofBlurFx = { type: 'gaussian', radius: r, angle: 0, centerX: 0.5, centerY: 0.5, strength: 1, passes: 1 };
+        }
+        const adjustDraw = adjustByIndex.get(i);
+        if (adjustDraw) {
+          // Full-frame 2D pass: pins the painter order, never matted, no motion blur / shadow / DOF.
+          draws.push({ adjust: adjustDraw, blurFx: adjustDraw.plan.blur ? rl3d.blur : undefined, glow: adjustDraw.plan.glow ? rl3d.glow : undefined, layerId: rl3d.id, fn: () => {} });
+          continue;
         }
         if (shapeIdx < shapeLayers.length && shapeLayers[shapeIdx].index === i) {
           const slot = shapeIdx;
@@ -4622,7 +4767,10 @@ export class WebGPURenderer {
     const matteDraws = draws.filter((d) => d.matte && !d.consumedAsMatte);
     // Requires the (guarded) composite pipeline; if it failed to build, matted layers just draw normally.
     const hasMatte = matteDraws.length > 0 && !!gpu.matteCompositePipeline && !!gpu.matteBindGroup && !!gpu.matteUniformBuffer;
-    const hasMultipass = hasBlur || hasShadow || hasGlow || hasBlurFx || hasMatte;
+    // Adjustment layers (B11b-gpu): an active adjustment replaces the composite below it, which only the
+    // multipass path (an offscreen scene texture) can do.
+    const hasAdjust = draws.some((d) => d.adjust);
+    const hasMultipass = hasBlur || hasShadow || hasGlow || hasBlurFx || hasMatte || hasAdjust;
 
     // Render target: the swapchain at the top level, or a precomp's offscreen
     // texture when rendering a nested composition (clearAlpha 0 → transparent).
@@ -4719,31 +4867,28 @@ export class WebGPURenderer {
           f[9] = gl.radius;                        // params.y
           f[10] = gl.threshold;                    // params.z
           // B12: 'bloom' renders as a broad image glow today (true pyramid is browser-gated B12-gpu).
-          const modeFloat = gl.mode === 'image' || gl.mode === 'bloom' ? 0 : gl.mode === 'outer' ? 1 : 2;
+          // B11b-gpu: an adjustment's glow is always the image (luminance) glow - outer / inner glows
+          // trace a layer's alpha edge, which a full-frame composite does not have.
+          const modeFloat = glowDraws[k].adjust || gl.mode === 'image' || gl.mode === 'bloom' ? 0 : gl.mode === 'outer' ? 1 : 2;
           f[11] = modeFloat;                       // params.w
         }
         device.queue.writeBuffer(gpu.glowUniformBuffer, 0, glowBufData, 0, UNIFORM_ALIGN * glowDraws.length);
       }
 
-      // Upload blur effect uniforms (non-kawase modes; kawase writes per-pass).
-      if (hasBlurFx) {
-        const blurFxBufData = new ArrayBuffer(UNIFORM_ALIGN * blurFxDraws.length);
+      // Upload the layer-blur uniforms: every distinct uniform (each blur's main slot, the shared
+      // passthrough copy, each kawase pass) gets its OWN slot, written once (core/effects/blurFxPack -
+      // a rewrite between passes would only ever be seen with its last value, see there).
+      const blurFxPlan = hasBlurFx ? planBlurFxSlots(blurFxDraws.map((d) => d.blurFx!), MAX_LAYERS) : null;
+      if (blurFxPlan && blurFxPlan.total > 0) {
+        const stride = UNIFORM_ALIGN / 4;
+        const f = new Float32Array(stride * blurFxPlan.total);
         for (let k = 0; k < blurFxDraws.length; k++) {
           const bfx = blurFxDraws[k].blurFx!;
-          const f = new Float32Array(blurFxBufData, UNIFORM_ALIGN * k, 12);
-          f[0] = frame.width;         // resolution.x
-          f[1] = frame.height;        // resolution.y
-          f[2] = bfx.radius;          // params.x = radius
-          f[3] = bfx.angle * Math.PI / 180; // params.y = angle in radians
-          f[4] = bfx.strength;        // params.z = strength
-          const modeFloat = bfx.type === 'gaussian' ? 0 : bfx.type === 'directional' ? 1 : bfx.type === 'radial' ? 2 : 3;
-          f[5] = modeFloat;           // params.w = mode
-          f[6] = bfx.centerX;         // center.x
-          f[7] = bfx.centerY;         // center.y
-          f[8] = 0;                   // extra.x (pass index, set per-pass for kawase)
-          f[9] = bfx.passes;          // extra.y
+          if (blurFxPlan.main[k] >= 0) packBlurFx(f, stride * blurFxPlan.main[k], bfx, frame.width, frame.height);
+          blurFxPlan.kawase[k].forEach((slot, kp) => packBlurFx(f, stride * slot, bfx, frame.width, frame.height, kp + 1));
         }
-        device.queue.writeBuffer(gpu.blurFxUniformBuffer, 0, blurFxBufData, 0, UNIFORM_ALIGN * blurFxDraws.length);
+        if (blurFxPlan.passthrough >= 0) packBlurFx(f, stride * blurFxPlan.passthrough, null, frame.width, frame.height);
+        device.queue.writeBuffer(gpu.blurFxUniformBuffer, 0, f.buffer, 0, UNIFORM_ALIGN * blurFxPlan.total);
       }
 
       // Track matte (B10d): write one flags slot (luma, invert) per matted layer + a layerId->draw map so
@@ -4780,12 +4925,135 @@ export class WebGPURenderer {
       let shadowSlot = 0;
       let glowSlot = 0;
       let blurFxSlot = 0;
+      // A draw that takes a branch which does not run its own effects (matte source / matted layer) must
+      // still consume the slots its effects were uploaded into, or every later layer reads the wrong one.
+      const skipEffectSlots = (d: Draw): void => {
+        if (hasBlur && d.blur) blurSlot++;
+        if (d.shadow) shadowSlot++;
+        if (d.glow) glowSlot++;
+        if (d.blurFx) blurFxSlot++;
+      };
+
+      // Layer blur (Gaussian / Directional / Radial / Kawase) of layerTex IN PLACE, ping-ponging through
+      // blurFxTex. `k` indexes blurFxDraws (draw order); every pass reads its own uniform slot from the plan.
+      const runBlurFx = (k: number, bfx: ResolvedBlur): void => {
+        const plan = blurFxPlan;
+        if (!plan || plan.main[k] < 0) return; // out of uniform slots: left unblurred
+        const main = plan.main[k];
+        const blurFxView = gpu.blurFxTexView!;
+        const fromLayer = gpu.blurFxBindGroupLayer!;
+        const fromBlur = gpu.blurFxBindGroupTex!;
+        const pass = (pipe: GPURenderPipeline, bg: GPUBindGroup, slot: number, dst: GPUTextureView): void => {
+          const p = encoder.beginRenderPass({ colorAttachments: [{ view: dst, loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 0 } }] });
+          p.setPipeline(pipe);
+          p.setBindGroup(0, bg, [UNIFORM_ALIGN * slot]);
+          p.draw(3);
+          p.end();
+        };
+        // The passthrough slot has radius 0, so the gaussian V entry just copies blurFxTex back.
+        const copyBack = (): void => pass(gpu.blurFxVPipeline, fromBlur, plan.passthrough, layerView);
+        if (bfx.type === 'gaussian') {
+          pass(gpu.blurFxHPipeline, fromLayer, main, blurFxView);
+          pass(gpu.blurFxVPipeline, fromBlur, main, layerView);
+        } else if (bfx.type === 'directional' || bfx.type === 'radial') {
+          pass(bfx.type === 'directional' ? gpu.blurFxDirPipeline : gpu.blurFxRadialPipeline, fromLayer, main, blurFxView);
+          copyBack();
+        } else if (bfx.type === 'kawase') {
+          const slots = plan.kawase[k];
+          slots.forEach((slot, kp) => {
+            const even = kp % 2 === 0;
+            pass(gpu.blurFxKawasePipeline, even ? fromLayer : fromBlur, slot, even ? blurFxView : layerView);
+          });
+          if (slots.length % 2 !== 0) copyBack();
+        }
+      };
+
+      // Glow: extract layerTex -> glowExtractTex, H blur -> glowBlurTex, V blur + composite onto `target`
+      // (premultiplied-over; the image glow outputs alpha 0, i.e. additive).
+      const runGlow = (slot: number, target: GPUTextureView): void => {
+        const extractPass = encoder.beginRenderPass({
+          colorAttachments: [{ view: glowExtractView, loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 0 } }],
+        });
+        extractPass.setPipeline(gpu.glowExtractPipeline);
+        extractPass.setBindGroup(0, gpu.glowBindGroupLayer!, [UNIFORM_ALIGN * slot]);
+        extractPass.draw(3);
+        extractPass.end();
+        const hBlur = encoder.beginRenderPass({
+          colorAttachments: [{ view: glowBlurView, loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 0 } }],
+        });
+        hBlur.setPipeline(gpu.glowHPipeline);
+        hBlur.setBindGroup(0, gpu.glowBindGroupExtract!, [UNIFORM_ALIGN * slot]);
+        hBlur.draw(3);
+        hBlur.end();
+        const vBlur = encoder.beginRenderPass({
+          colorAttachments: [{ view: target, loadOp: 'load', storeOp: 'store' }],
+        });
+        vBlur.setPipeline(gpu.glowVPipeline);
+        vBlur.setBindGroup(0, gpu.glowBindGroupBlur!, [UNIFORM_ALIGN * slot]);
+        vBlur.draw(3);
+        vBlur.end();
+      };
+
+      // Adjustment-layer bind groups (B11b-gpu), built at most once per frame. The untouched composite
+      // below an adjustment is copied into matteSrcTex (free here: an adjustment is never matted); the
+      // split plan's effected intermediate is layerTex.
+      const adjustBindGroups = new Map<GPUTextureView, GPUBindGroup>();
+      const adjustBindGroup = (fxView: GPUTextureView): GPUBindGroup => {
+        let bg = adjustBindGroups.get(fxView);
+        if (!bg) {
+          bg = device.createBindGroup({
+            layout: gpu.adjustBindGroupLayout!,
+            entries: [
+              { binding: 0, resource: { buffer: imageUniformBuffer, size: IMAGE_UNIFORM_SIZE } },
+              { binding: 1, resource: textSampler },
+              { binding: 2, resource: fxView },
+              { binding: 3, resource: matteSrcView },
+            ],
+          });
+          adjustBindGroups.set(fxView, bg);
+        }
+        return bg;
+      };
+      const adjustPass = (target: GPUTextureView, loadOp: GPULoadOp, fxView: GPUTextureView, slot: number): void => {
+        const p = encoder.beginRenderPass({ colorAttachments: [{ view: target, loadOp, storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 0 } }] });
+        p.setPipeline(gpu.adjustPipeline!);
+        p.setBindGroup(0, adjustBindGroup(fxView), [IMAGE_UNIFORM_ALIGN * slot]);
+        p.draw(6);
+        p.end();
+      };
+
       for (const d of draws) {
+        // Adjustment layer (B11b-gpu): replace the composite so far with its adjusted version. Copy the
+        // scene (the untouched "below") into matteSrcTex, then either ONE pass runs the effect stack +
+        // basic filters over it and mixes the result back into the scene by opacity x masks, or - with the
+        // layer's Blur / Glow - the effected result goes to layerTex, is blurred / glowed there, and a
+        // mix-only pass writes it back. Per pixel: core/effects/adjustmentComposite (gpu:adjustment).
+        if (d.adjust) {
+          const a = d.adjust;
+          const myBlurFxSlot = d.blurFx ? blurFxSlot++ : -1;
+          const myGlowSlot = d.glow ? glowSlot++ : -1;
+          scenePass.end();
+          const copyPass = encoder.beginRenderPass({ colorAttachments: [{ view: matteSrcView, loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 0 } }] });
+          copyPass.setPipeline(gpu.blitPipeline);
+          copyPass.setBindGroup(0, gpu.blitBindGroup!);
+          copyPass.draw(3);
+          copyPass.end();
+          if (!a.plan.split) {
+            adjustPass(sceneView, 'load', matteSrcView, a.slotA);
+          } else {
+            adjustPass(layerView, 'clear', matteSrcView, a.slotA);
+            if (myBlurFxSlot >= 0) runBlurFx(myBlurFxSlot, d.blurFx!);
+            if (myGlowSlot >= 0) runGlow(myGlowSlot, layerView);
+            adjustPass(sceneView, 'load', layerView, a.slotB);
+          }
+          scenePass = encoder.beginRenderPass({ colorAttachments: [{ view: sceneView, loadOp: 'load', storeOp: 'store' }] });
+          continue;
+        }
         // Track matte (B10d): a layer consumed AS a matte source draws only INTO the matte, never on its
         // own; skip its standalone composite here.
         // Only active when the composite pipeline built (hasMatte); otherwise matted/source layers draw
         // normally below - a shader-compile failure degrades to "no matte", never a broken renderer.
-        if (d.consumedAsMatte && hasMatte) continue;
+        if (d.consumedAsMatte && hasMatte) { skipEffectSlots(d); continue; }
         // A matted layer: render the matte source + the matted layer into isolated textures, then a small
         // composite pass multiplies the matted alpha by the source's coverage (matteCoverage) and draws it
         // premultiplied-over the scene at this layer's slot. (v1: applies to the matted layer's base -
@@ -4793,6 +5061,7 @@ export class WebGPURenderer {
         if (d.matte && hasMatte) {
           const src = drawByLayerId.get(d.matte.sourceId);
           const mySlot = matteSlot++;
+          skipEffectSlots(d);
           scenePass.end();
           const srcPass = encoder.beginRenderPass({ colorAttachments: [{ view: matteSrcView, loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 0 } }] });
           if (src) src.fn(srcPass);
@@ -4833,108 +5102,7 @@ export class WebGPURenderer {
         // Layer blur effect: applies Gaussian/Directional/Radial/Kawase blur
         // to the isolated layer texture before shadow/glow/composite. The blurred
         // result ends up in layerTex (via ping-pong with blurFxTex).
-        if (needsBlurFx) {
-          const bfx = d.blurFx!;
-          const blurFxView = gpu.blurFxTexView!;
-          if (bfx.type === 'gaussian') {
-            // H pass: layerTex → blurFxTex
-            const hPass = encoder.beginRenderPass({
-              colorAttachments: [{ view: blurFxView, loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 0 } }],
-            });
-            hPass.setPipeline(gpu.blurFxHPipeline);
-            hPass.setBindGroup(0, gpu.blurFxBindGroupLayer!, [UNIFORM_ALIGN * myBlurFxSlot]);
-            hPass.draw(3);
-            hPass.end();
-            // V pass: blurFxTex → layerTex
-            const vPass = encoder.beginRenderPass({
-              colorAttachments: [{ view: layerView, loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 0 } }],
-            });
-            vPass.setPipeline(gpu.blurFxVPipeline);
-            vPass.setBindGroup(0, gpu.blurFxBindGroupTex!, [UNIFORM_ALIGN * myBlurFxSlot]);
-            vPass.draw(3);
-            vPass.end();
-          } else if (bfx.type === 'directional') {
-            // Single pass: layerTex → blurFxTex, then copy back
-            const dirPass = encoder.beginRenderPass({
-              colorAttachments: [{ view: blurFxView, loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 0 } }],
-            });
-            dirPass.setPipeline(gpu.blurFxDirPipeline);
-            dirPass.setBindGroup(0, gpu.blurFxBindGroupLayer!, [UNIFORM_ALIGN * myBlurFxSlot]);
-            dirPass.draw(3);
-            dirPass.end();
-            // Write radius=0 so gaussian V acts as passthrough blit
-            const zeroBuf = new Float32Array(12);
-            zeroBuf[0] = frame.width; zeroBuf[1] = frame.height;
-            device.queue.writeBuffer(gpu.blurFxUniformBuffer, UNIFORM_ALIGN * myBlurFxSlot, zeroBuf);
-            // Copy blurFxTex → layerTex so downstream effects use the blurred result
-            const copyBack = encoder.beginRenderPass({
-              colorAttachments: [{ view: layerView, loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 0 } }],
-            });
-            copyBack.setPipeline(gpu.blurFxVPipeline);
-            copyBack.setBindGroup(0, gpu.blurFxBindGroupTex!, [UNIFORM_ALIGN * myBlurFxSlot]);
-            copyBack.draw(3);
-            copyBack.end();
-          } else if (bfx.type === 'radial') {
-            const radPass = encoder.beginRenderPass({
-              colorAttachments: [{ view: blurFxView, loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 0 } }],
-            });
-            radPass.setPipeline(gpu.blurFxRadialPipeline);
-            radPass.setBindGroup(0, gpu.blurFxBindGroupLayer!, [UNIFORM_ALIGN * myBlurFxSlot]);
-            radPass.draw(3);
-            radPass.end();
-            const zeroBuf2 = new Float32Array(12);
-            zeroBuf2[0] = frame.width; zeroBuf2[1] = frame.height;
-            device.queue.writeBuffer(gpu.blurFxUniformBuffer, UNIFORM_ALIGN * myBlurFxSlot, zeroBuf2);
-            const copyBack = encoder.beginRenderPass({
-              colorAttachments: [{ view: layerView, loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 0 } }],
-            });
-            copyBack.setPipeline(gpu.blurFxVPipeline);
-            copyBack.setBindGroup(0, gpu.blurFxBindGroupTex!, [UNIFORM_ALIGN * myBlurFxSlot]);
-            copyBack.draw(3);
-            copyBack.end();
-          } else if (bfx.type === 'kawase') {
-            // Multi-pass kawase: ping-pong between layerTex and blurFxTex
-            const passes = Math.max(1, Math.min(bfx.passes, 8));
-            for (let kp = 0; kp < passes; kp++) {
-              const isEven = kp % 2 === 0;
-              const srcBG = isEven ? gpu.blurFxBindGroupLayer! : gpu.blurFxBindGroupTex!;
-              const dstView = isEven ? blurFxView : layerView;
-              // Write kawase pass index into uniform extra.x
-              const kawaseData = new Float32Array(12);
-              kawaseData[0] = frame.width;
-              kawaseData[1] = frame.height;
-              kawaseData[2] = bfx.radius;
-              kawaseData[3] = 0;
-              kawaseData[4] = bfx.strength;
-              kawaseData[5] = 3; // mode = kawase
-              kawaseData[6] = bfx.centerX;
-              kawaseData[7] = bfx.centerY;
-              kawaseData[8] = kp + 1; // pass index (1-based offset)
-              kawaseData[9] = passes;
-              device.queue.writeBuffer(gpu.blurFxUniformBuffer, UNIFORM_ALIGN * myBlurFxSlot, kawaseData);
-              const kPass = encoder.beginRenderPass({
-                colorAttachments: [{ view: dstView, loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 0 } }],
-              });
-              kPass.setPipeline(gpu.blurFxKawasePipeline);
-              kPass.setBindGroup(0, srcBG, [UNIFORM_ALIGN * myBlurFxSlot]);
-              kPass.draw(3);
-              kPass.end();
-            }
-            // Ensure final result is in layerTex (if odd number of passes, it's in blurFxTex)
-            if (passes % 2 !== 0) {
-              const zeroBufK = new Float32Array(12);
-              zeroBufK[0] = frame.width; zeroBufK[1] = frame.height;
-              device.queue.writeBuffer(gpu.blurFxUniformBuffer, UNIFORM_ALIGN * myBlurFxSlot, zeroBufK);
-              const finalCopy = encoder.beginRenderPass({
-                colorAttachments: [{ view: layerView, loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 0 } }],
-              });
-              finalCopy.setPipeline(gpu.blurFxVPipeline);
-              finalCopy.setBindGroup(0, gpu.blurFxBindGroupTex!, [UNIFORM_ALIGN * myBlurFxSlot]);
-              finalCopy.draw(3);
-              finalCopy.end();
-            }
-          }
-        }
+        if (needsBlurFx) runBlurFx(myBlurFxSlot, d.blurFx!);
 
         // Shadow: horizontal project+blur into shadowTex, then vertical blur
         // composited under the scene.
@@ -4957,34 +5125,7 @@ export class WebGPURenderer {
         }
 
         // Outer glow composites BEFORE the object (behind it).
-        if (needsGlow && d.glow!.mode === 'outer') {
-          // Extract: layerTex → glowExtractTex
-          const extractPass = encoder.beginRenderPass({
-            colorAttachments: [{ view: glowExtractView, loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 0 } }],
-          });
-          extractPass.setPipeline(gpu.glowExtractPipeline);
-          extractPass.setBindGroup(0, gpu.glowBindGroupLayer!, [UNIFORM_ALIGN * myGlowSlot]);
-          extractPass.draw(3);
-          extractPass.end();
-
-          // H blur: glowExtractTex → glowBlurTex
-          const hBlur = encoder.beginRenderPass({
-            colorAttachments: [{ view: glowBlurView, loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 0 } }],
-          });
-          hBlur.setPipeline(gpu.glowHPipeline);
-          hBlur.setBindGroup(0, gpu.glowBindGroupExtract!, [UNIFORM_ALIGN * myGlowSlot]);
-          hBlur.draw(3);
-          hBlur.end();
-
-          // V blur + composite: glowBlurTex → sceneView
-          const vBlur = encoder.beginRenderPass({
-            colorAttachments: [{ view: sceneView, loadOp: 'load', storeOp: 'store' }],
-          });
-          vBlur.setPipeline(gpu.glowVPipeline);
-          vBlur.setBindGroup(0, gpu.glowBindGroupBlur!, [UNIFORM_ALIGN * myGlowSlot]);
-          vBlur.draw(3);
-          vBlur.end();
-        }
+        if (needsGlow && d.glow!.mode === 'outer') runGlow(myGlowSlot, sceneView);
 
         // Object over the shadow/outer-glow, unless shadow-only or glow-only.
         const skipObject = (d.shadow?.onlyShadow) || (d.glow?.onlyGlow && !d.shadow);
@@ -4997,6 +5138,16 @@ export class WebGPURenderer {
             composite.setBindGroup(0, gpu.blurBindGroup!, [UNIFORM_ALIGN * myBlurSlot]);
             composite.draw(3);
             composite.end();
+          } else if (needsBlurFx && blurFxPlan && blurFxPlan.main[myBlurFxSlot] >= 0) {
+            // The layer Blur ran: composite the BLURRED isolated layer (premultiplied-over). Redrawing
+            // d.fn here (as before B11b-gpu) put the sharp layer back, so the blur never showed.
+            const objPass = encoder.beginRenderPass({
+              colorAttachments: [{ view: sceneView, loadOp: 'load', storeOp: 'store' }],
+            });
+            objPass.setPipeline(gpu.layerOverPipeline);
+            objPass.setBindGroup(0, gpu.layerOverBindGroup!);
+            objPass.draw(3);
+            objPass.end();
           } else {
             const objPass = encoder.beginRenderPass({
               colorAttachments: [{ view: sceneView, loadOp: 'load', storeOp: 'store' }],
@@ -5007,34 +5158,7 @@ export class WebGPURenderer {
         }
 
         // Image glow (bloom) and inner glow composite AFTER the object (on top).
-        if (needsGlow && d.glow!.mode !== 'outer') {
-          // Extract: layerTex → glowExtractTex
-          const extractPass = encoder.beginRenderPass({
-            colorAttachments: [{ view: glowExtractView, loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 0 } }],
-          });
-          extractPass.setPipeline(gpu.glowExtractPipeline);
-          extractPass.setBindGroup(0, gpu.glowBindGroupLayer!, [UNIFORM_ALIGN * myGlowSlot]);
-          extractPass.draw(3);
-          extractPass.end();
-
-          // H blur: glowExtractTex → glowBlurTex
-          const hBlur = encoder.beginRenderPass({
-            colorAttachments: [{ view: glowBlurView, loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 0 } }],
-          });
-          hBlur.setPipeline(gpu.glowHPipeline);
-          hBlur.setBindGroup(0, gpu.glowBindGroupExtract!, [UNIFORM_ALIGN * myGlowSlot]);
-          hBlur.draw(3);
-          hBlur.end();
-
-          // V blur + composite: glowBlurTex → sceneView (premultiplied-over)
-          const vBlur = encoder.beginRenderPass({
-            colorAttachments: [{ view: sceneView, loadOp: 'load', storeOp: 'store' }],
-          });
-          vBlur.setPipeline(gpu.glowVPipeline);
-          vBlur.setBindGroup(0, gpu.glowBindGroupBlur!, [UNIFORM_ALIGN * myGlowSlot]);
-          vBlur.draw(3);
-          vBlur.end();
-        }
+        if (needsGlow && d.glow!.mode !== 'outer') runGlow(myGlowSlot, sceneView);
 
         scenePass = encoder.beginRenderPass({
           colorAttachments: [{ view: sceneView, loadOp: 'load', storeOp: 'store' }],
@@ -5415,6 +5539,34 @@ export class WebGPURenderer {
         data[base + 1 + p] = e.params[p] ?? 0;
       }
     }
+  }
+
+  // B11b-gpu: one adjustment-variant image uniform. The quad is the whole composition (an adjustment is
+  // a full-frame layer with no spatial transform of its own); `mode` (ADJUST_MODE) picks the pass. The
+  // apply passes carry the effect stack + basic filters, the mixing passes the masks + opacity.
+  private fillAdjustmentData(data: Float32Array, layer: ResolvedLayer, frame: RenderFrame, mode: number): void {
+    const adj = layer.adjustment!;
+    const apply = mode !== ADJUST_MODE.mixOnly;
+    const mixes = mode !== ADJUST_MODE.applyOnly;
+    data[0] = frame.width;
+    data[1] = frame.height;
+    data[2] = frame.width / 2;   // quad centre
+    data[3] = frame.height / 2;
+    data[4] = frame.width;       // quad size = the composition
+    data[5] = frame.height;
+    // anchor (6, 7) and rotation (8) stay 0
+    data[9] = layer.transform.opacity;
+    const f = apply ? adj.filters : IDENTITY_FILTERS;
+    data[10] = f.brightness;
+    data[11] = f.contrast;
+    data[12] = f.saturation;
+    data[13] = f.exposure;
+    data[14] = f.gamma;
+    // lift / gamma / gain (16..27) stay 0 = identity
+    if (mixes) this.writeMaskUniforms(data, 15, 28, layer.masks);
+    if (apply) this.writeEffectSlots(data, adj.effects);
+    data[IMAGE_EFFECTTIME_FLOAT] = frame.frameNumber;
+    data[IMAGE_ADJUSTMODE_FLOAT] = mode;
   }
 
   getOffscreenCanvas(): OffscreenCanvas | null {

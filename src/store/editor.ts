@@ -5,7 +5,7 @@ import { buildMaskReveal, type MaskRevealKind } from '../core/maskReveal';
 import { insertPointOnSegment, applyVertexType } from '../core/pathVertexOps';
 import { pathMaskFromComp } from '../core/maskPath';
 import type { TrackMatteMode } from '../core/trackMatte';
-import type { LayerEffect, RefineEdge } from '../core/types';
+import type { LayerEffect, RefineEdge, ImageLayer, AdjustmentLayer } from '../core/types';
 import { clampRefineEdge } from '../core/refineEdge';
 import { cloneEffectStack } from '../core/effects/effectStack';
 import { autoSpatialTangents, segmentArcLength, framesFromCumLengths } from '../core/positionPath';
@@ -521,9 +521,9 @@ interface EditorState {
   /** Enable 3D on every selected layer that supports it (skips camera/group/audio and already-3D
    *  layers), as ONE undo step - so a whole scene can be prepped for a camera in a single click. */
   convertSelectionTo3D: () => void;
-  // Image effect-stack actions (see core/effects/effectRegistry). `type` is the
-  // frozen numeric effect id; upsert sets one param (creating the effect if
-  // absent), remove deletes the whole effect.
+  // Effect-stack actions for image AND adjustment layers (see core/effects/effectRegistry). `type`
+  // is the frozen numeric effect id; upsert sets one param (creating the effect if absent), remove
+  // deletes the whole effect.
   setLayerEffectParam: (layerId: string, type: number, paramIndex: number, value: number, defaults?: number[]) => void;
   removeLayerEffect: (layerId: string, type: number) => void;
   // Manage Effects: reorder (stack render order) and enable/disable one effect.
@@ -3966,7 +3966,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   setLayerEffectParam: (layerId, type, paramIndex, value, defaults = []) => {
     const applyToLayer = (layer: Layer): Layer => {
-      if (layer.type !== 'image') return layer;
+      if (!hasEffectStack(layer)) return layer;
       const effects = layer.effects ? layer.effects.slice() : [];
       const idx = effects.findIndex((e) => e.type === type);
       const params = idx >= 0 ? effects[idx].params.slice() : defaults.slice();
@@ -3987,7 +3987,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       return;
     }
     const layer = composition.layers.find((l) => l.id === layerId);
-    if (!layer || layer.type !== 'image') return;
+    if (!layer || !hasEffectStack(layer)) return;
     const oldComp = composition;
     const newComp = { ...composition, layers: composition.layers.map((l) => (l.id === layerId ? applyToLayer(l) : l)) };
     exec({
@@ -4000,12 +4000,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   removeLayerEffect: (layerId, type) => {
     const { composition } = get();
     const layer = composition.layers.find((l) => l.id === layerId);
-    if (!layer || layer.type !== 'image' || !layer.effects?.some((e) => e.type === type)) return;
+    if (!layer || !hasEffectStack(layer) || !layer.effects?.some((e) => e.type === type)) return;
     const oldComp = composition;
     const newComp = {
       ...composition,
       layers: composition.layers.map((l) => {
-        if (l.id !== layerId || l.type !== 'image') return l;
+        if (l.id !== layerId || !hasEffectStack(l)) return l;
         return { ...l, effects: (l.effects ?? []).filter((e) => e.type !== type) };
       }),
     };
@@ -4019,7 +4019,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   reorderLayerEffect: (layerId, type, direction) => {
     const { composition } = get();
     const layer = composition.layers.find((l) => l.id === layerId);
-    if (!layer || layer.type !== 'image' || !layer.effects) return;
+    if (!layer || !hasEffectStack(layer) || !layer.effects) return;
     const idx = layer.effects.findIndex((e) => e.type === type);
     if (idx < 0) return;
     const target = direction === 'up' ? idx - 1 : idx + 1;
@@ -4028,7 +4028,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const newComp = {
       ...composition,
       layers: composition.layers.map((l) => {
-        if (l.id !== layerId || l.type !== 'image') return l;
+        if (l.id !== layerId || !hasEffectStack(l)) return l;
         const effects = (l.effects ?? []).slice();
         [effects[idx], effects[target]] = [effects[target], effects[idx]];
         return { ...l, effects };
@@ -4044,12 +4044,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   toggleLayerEffect: (layerId, type) => {
     const { composition } = get();
     const layer = composition.layers.find((l) => l.id === layerId);
-    if (!layer || layer.type !== 'image' || !layer.effects?.some((e) => e.type === type)) return;
+    if (!layer || !hasEffectStack(layer) || !layer.effects?.some((e) => e.type === type)) return;
     const oldComp = composition;
     const newComp = {
       ...composition,
       layers: composition.layers.map((l) => {
-        if (l.id !== layerId || l.type !== 'image') return l;
+        if (l.id !== layerId || !hasEffectStack(l)) return l;
         return { ...l, effects: (l.effects ?? []).map((e) => (e.type === type ? { ...e, enabled: !e.enabled } : e)) };
       }),
     };
@@ -4063,12 +4063,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   setLayerEffects: (layerId, effects) => {
     const { composition } = get();
     const layer = composition.layers.find((l) => l.id === layerId);
-    if (!layer || layer.type !== 'image') return;
+    if (!layer || !hasEffectStack(layer)) return;
     const oldComp = composition;
     const cloned = cloneEffectStack(effects);
     const newComp = {
       ...composition,
-      layers: composition.layers.map((l) => (l.id === layerId && l.type === 'image' ? { ...l, effects: cloned } : l)),
+      layers: composition.layers.map((l) => (l.id === layerId && hasEffectStack(l) ? { ...l, effects: cloned } : l)),
     };
     exec({
       label: 'Apply Effect Preset',
@@ -7154,6 +7154,12 @@ function deepGet(obj: unknown, path: string): unknown {
 // Immutable set at `key` on either an object or an array. Arrays MUST be cloned
 // via slice() with a numeric index - spreading an array into `{...arr}` would
 // corrupt it into an index-keyed object (breaks `effects.0.params.1` paths).
+// Layers with an editable effect stack: image layers, and adjustment layers (whose stack applies to
+// everything below them - B11b-gpu).
+function hasEffectStack(l: Layer): l is ImageLayer | AdjustmentLayer {
+  return l.type === 'image' || l.type === 'adjustment';
+}
+
 function cloneWith(container: unknown, key: string, value: unknown): unknown {
   if (Array.isArray(container)) {
     const arr = container.slice();

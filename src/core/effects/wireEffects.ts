@@ -67,7 +67,9 @@ function buildWireBlur(id: string, value: number): LayerBlur {
     angle: 0,
     centerX: 0.5,
     centerY: 0.5,
-    strength: 1,
+    // Directional / radial blurs read `strength` (gaussian / kawase read radius / passes), so the
+    // slider drives both; a pinned strength of 1 made those two filters do nothing visible.
+    strength: value,
     passes,
     variant: id,
   };

@@ -1,7 +1,12 @@
 import { useState, useCallback } from 'react';
 import { ChevronRight, Search, RotateCcw, Upload, ChevronUp, ChevronDown, X, Eye, EyeOff, Layers, Lock, Bookmark, Sparkles } from 'lucide-react';
 import { FILTER_CATEGORIES, type FilterDef, type FilterCategory } from './filterDefinitions';
-import type { ImageLayer } from '../../../core/types';
+import type { ImageLayer, AdjustmentLayer } from '../../../core/types';
+
+// The panel edits an image layer's own filters / effect stack, or an adjustment layer's (B11b-gpu),
+// whose stack applies to everything below it. Both carry `filters` (partial on an adjustment),
+// `effects`, `blur` and `glow`.
+type FilterableLayer = ImageLayer | AdjustmentLayer;
 import { useEditorStore } from '../../../store/editor';
 import { useEffectPresetStore } from '../../../store/effectPresets';
 import { STYLIZE_PRESETS, applyStylizePreset, type StylizePreset } from '../../../core/effects/stylizePresets';
@@ -27,7 +32,7 @@ interface FilterValues {
   [filterId: string]: number | string;
 }
 
-export function ImageFiltersPanel({ layer }: { layer: ImageLayer }) {
+export function ImageFiltersPanel({ layer }: { layer: FilterableLayer }) {
   const updateLayerProperty = useEditorStore((s) => s.updateLayerProperty);
   const setLayerEffectParam = useEditorStore((s) => s.setLayerEffectParam);
   const removeLayerEffect = useEditorStore((s) => s.removeLayerEffect);
@@ -95,7 +100,7 @@ export function ImageFiltersPanel({ layer }: { layer: ImageLayer }) {
 
   const getFilterValue = useCallback((filter: FilterDef): number => {
     if (isLegacyFilter(filter.id)) {
-      return (layer.filters as unknown as Record<string, number>)[filter.id] ?? filter.defaultValue ?? 0;
+      return ((layer.filters ?? {}) as Record<string, number | undefined>)[filter.id] ?? filter.defaultValue ?? 0;
     }
     if (isWireFilter(filter.id)) {
       return readWireValue(filter.id, layer);
@@ -196,7 +201,7 @@ function AppliedEffects({
   onToggle,
   onRemove,
 }: {
-  layer: ImageLayer;
+  layer: FilterableLayer;
   onReorder: (layerId: string, type: number, direction: 'up' | 'down') => void;
   onToggle: (layerId: string, type: number) => void;
   onRemove: (layerId: string, type: number) => void;
@@ -263,7 +268,7 @@ function AppliedEffects({
 // saved ones. Presets are app-global (localStorage) so they carry across projects.
 /** Built-in one-click looks (B13 stylise, B14 glitch). Each applies a curated stack of existing,
  *  rendering effects via setLayerEffects (chromatic aberration, grain, halftone, RGB split, VHS, ...). */
-function LookPresetBar({ layer, title, presets }: { layer: ImageLayer; title: string; presets: StylizePreset[] }) {
+function LookPresetBar({ layer, title, presets }: { layer: FilterableLayer; title: string; presets: StylizePreset[] }) {
   const setLayerEffects = useEditorStore((s) => s.setLayerEffects);
   return (
     <div className="mb-2 mx-1 rounded-md border border-hairline bg-[#0a1524] px-2.5 py-1.5">
@@ -287,7 +292,7 @@ function LookPresetBar({ layer, title, presets }: { layer: ImageLayer; title: st
   );
 }
 
-function EffectPresetBar({ layer }: { layer: ImageLayer }) {
+function EffectPresetBar({ layer }: { layer: FilterableLayer }) {
   const presets = useEffectPresetStore((s) => s.presets);
   const savePreset = useEffectPresetStore((s) => s.savePreset);
   const deletePreset = useEffectPresetStore((s) => s.deletePreset);
@@ -309,7 +314,7 @@ function EffectPresetBar({ layer }: { layer: ImageLayer }) {
         </button>
       </div>
       {presets.length === 0 ? (
-        <p className="text-[9px] text-slate-600">Save an effect stack to reuse it on any image layer.</p>
+        <p className="text-[9px] text-slate-600">Save an effect stack to reuse it on any image or adjustment layer.</p>
       ) : (
         <div className="flex flex-wrap gap-1">
           {presets.map((p) => (

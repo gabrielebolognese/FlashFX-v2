@@ -15,7 +15,7 @@ import { MASK_REVEAL_KINDS, type MaskRevealKind } from '../../core/maskReveal';
 import { isPathMask, maskPathAt, resolveMaskFeathers, setMaskVertexFeather, toggleMaskPathKeyframe } from '../../core/maskPath';
 import type { TrackMatteMode } from '../../core/trackMatte';
 import type { MaskMode, RefineEdge } from '../../core/types';
-import type { ShapeLayer, TextLayer, VideoLayer, ImageLayer, AudioLayer, ParticleLayer, GenerativePatternLayer, CameraLayer, AnimationItemLayer, LottieIconLayer, AnimatableProperty, Vec2, Vec4, RectangleShape, CircleShape, StarShape, PolygonShape, MotionPathAnchor, MotionPathLoop, Mask, MaskType, Layer, LayerShadow, LayerGlow, LayerBlur, BlurType, GlowMode, LayoutObjectLayer, LayoutContainerLayer, TextSpanStyle, TextLayoutConfig, TextGradientFill, ShapeModifierType, BlendMode } from '../../core/types';
+import type { ShapeLayer, TextLayer, VideoLayer, ImageLayer, AdjustmentLayer, AudioLayer, ParticleLayer, GenerativePatternLayer, CameraLayer, AnimationItemLayer, LottieIconLayer, AnimatableProperty, Vec2, Vec4, RectangleShape, CircleShape, StarShape, PolygonShape, MotionPathAnchor, MotionPathLoop, Mask, MaskType, Layer, LayerShadow, LayerGlow, LayerBlur, BlurType, GlowMode, LayoutObjectLayer, LayoutContainerLayer, TextSpanStyle, TextLayoutConfig, TextGradientFill, ShapeModifierType, BlendMode } from '../../core/types';
 import { BLEND_MODES, BLEND_MODE_META } from '../../core/effects/blendModes';
 import { GLOW_PRESETS, applyGlowPreset } from '../../core/effects/glowParams';
 
@@ -265,7 +265,8 @@ export function Inspector() {
   const tabs: { id: InspectorTab; label: string; icon: React.ReactNode; show: boolean }[] = [
     { id: 'properties', label: 'Properties', icon: <Sliders size={13} />, show: true },
     { id: 'advanced', label: 'Advanced', icon: <Layers size={13} />, show: hasAdvanced },
-    { id: 'filters', label: 'Filters', icon: <SlidersHorizontal size={13} />, show: isImage },
+    // Adjustment layers (B11b-gpu) get the same Filters panel: its effects apply to everything below.
+    { id: 'filters', label: 'Filters', icon: <SlidersHorizontal size={13} />, show: isImage || layer.type === 'adjustment' },
     { id: 'colorCorrection', label: 'Color', icon: <Palette size={13} />, show: isImage },
     { id: 'motionPath', label: 'Motion Path', icon: <Route size={13} />, show: true },
     { id: 'effects', label: 'Effects', icon: <Wand2 size={13} />, show: hasEffects },
@@ -380,8 +381,8 @@ function InspectorTabContent({ tab, layer }: { tab: InspectorTab; layer: Layer }
     return <EffectsSection layer={layer} />;
   }
 
-  if (tab === 'filters' && isImage) {
-    return <ImageFiltersPanel layer={layer as ImageLayer} />;
+  if (tab === 'filters' && (isImage || layer.type === 'adjustment')) {
+    return <ImageFiltersPanel layer={layer as ImageLayer | AdjustmentLayer} />;
   }
 
   if (tab === 'colorCorrection' && isImage) {
@@ -448,15 +449,30 @@ function InspectorTabContent({ tab, layer }: { tab: InspectorTab; layer: Layer }
     );
   }
 
-  // Adjustment layer (B11b): a content-less, full-frame layer whose effect stack applies to
-  // everything below it. No spatial transform - just its name + its effect stack.
+  // Adjustment layer (B11b): a content-less, full-frame layer whose effects apply to everything below
+  // it. No spatial transform - its name, its Opacity (how strongly the effects apply, keyframeable;
+  // masks limit where) and its Blur / Glow. The effect stack + basic filters live in the Filters tab.
   if (layer.type === 'adjustment') {
     return (
       <>
         <div className="p-2 border-b border-hairline space-y-1.5">
           <StringInput label="Name" value={layer.name} onChange={(v) => updateLayerProperty(layer.id, 'name', v)} />
+          <NumberDragInput
+            label="Opacity"
+            prop={layer.transform.opacity}
+            frame={currentFrame}
+            onChange={(v) => updateLayerProperty(layer.id, 'transform.opacity.defaultValue', v)}
+            onKeyframe={(v) => addKeyframe(layer.id, 'transform.opacity', currentFrame, v)}
+            hasKeyframe={hasKeyframeAt(layer.transform.opacity)}
+            min={0}
+            max={1}
+            step={0.01}
+            precision={2}
+            defaultValue={1}
+            propPath="transform.opacity"
+          />
           <p className="text-[10px] leading-relaxed text-slate-500">
-            This layer's effects apply to every layer below it. Reorder it in the timeline to change what it affects.
+            This layer's effects apply to every layer below it. Add them in the Filters tab; Opacity sets how strongly they apply and masks limit where. Reorder it in the timeline to change what it affects.
           </p>
         </div>
         <EffectsSection layer={layer} />
@@ -1349,9 +1365,14 @@ function EffectsSection({ layer }: { layer: Layer }) {
   const glowEnabled = !!glow?.enabled;
   const blur = (layer as { blur?: LayerBlur }).blur;
   const blurEnabled = !!blur?.enabled;
+  // Adjustment layers (B11b-gpu) have no pixels of their own: Blur and Glow run over the composite
+  // below (the glow is always the luminance glow), while motion blur / shadow / glow-only would need a
+  // layer silhouette, so they are hidden there.
+  const isAdjustment = layer.type === 'adjustment';
 
   return (
     <Section title="Effects">
+      {!isAdjustment && (<>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5">
           <Zap size={12} className="text-cyan-400" />
@@ -1462,7 +1483,9 @@ function EffectsSection({ layer }: { layer: Layer }) {
         </div>
       )}
 
-      <div className="mt-3 pt-3 border-t border-hairline flex items-center justify-between">
+      </>)}
+
+      <div className={`${isAdjustment ? '' : 'mt-3 pt-3 border-t border-hairline '}flex items-center justify-between`}>
         <div className="flex items-center gap-1.5">
           <Sparkles size={12} className="text-cyan-400" />
           <span className="text-caption text-slate-300">Glow</span>
@@ -1496,6 +1519,7 @@ function EffectsSection({ layer }: { layer: Layer }) {
               ))}
             </div>
           </div>
+          {!isAdjustment && (
           <div className="flex items-center gap-1">
             <label className="text-caption text-slate-500 w-14 flex-shrink-0">Mode</label>
             <div className="flex-1 flex gap-1">
@@ -1514,6 +1538,7 @@ function EffectsSection({ layer }: { layer: Layer }) {
               ))}
             </div>
           </div>
+          )}
 
           <ColorInput
             label="Color"
@@ -1529,13 +1554,14 @@ function EffectsSection({ layer }: { layer: Layer }) {
             label="Radius" suffix="px" min={0} max={100} step={1} value={glow.radius}
             onChange={(v) => updateLayerProperty(layer.id, 'glow.radius', v)}
           />
-          {glow.mode === 'image' && (
+          {(glow.mode === 'image' || isAdjustment) && (
             <ShadowSlider
               label="Threshold" suffix="" min={0} max={1} step={0.01} value={glow.threshold} precision={2}
               onChange={(v) => updateLayerProperty(layer.id, 'glow.threshold', v)}
             />
           )}
 
+          {!isAdjustment && (
           <div className="flex items-center justify-between pt-1">
             <label className="text-caption text-slate-500">Glow Only</label>
             <button
@@ -1549,6 +1575,7 @@ function EffectsSection({ layer }: { layer: Layer }) {
               />
             </button>
           </div>
+          )}
         </div>
       )}
 

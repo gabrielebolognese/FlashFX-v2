@@ -1327,6 +1327,9 @@ export interface AdjustmentLayer {
   outPoint: number;
   /** The effect stack applied to the layers below this adjustment. */
   effects?: LayerEffect[];
+  /** Basic filters (brightness / contrast / saturation / exposure / gamma) applied to the layers below
+   *  (B11b-gpu). Partial: the Filters panel sets one key at a time; absent keys are identity. */
+  filters?: Partial<ImageFilters>;
   /** Master switch for the effect stack (default on). */
   effectsEnabled?: boolean;
   motionBlur?: boolean;
@@ -1951,7 +1954,7 @@ export interface ResolvedLayer {
   // (B16-gpu-render, browser-gated) consumes this; until it lands the renderer skips beam layers.
   beam?: ResolvedBeam;
   // Adjustment layer (B11b): its resolved effect stack + which layers below it covers. The renderer's
-  // apply-below composite (browser-gated) consumes this; the layer itself draws nothing.
+  // apply-below composite (B11b-gpu) consumes this; the layer itself draws nothing.
   adjustment?: ResolvedAdjustment;
   // 2.5D (M1): world model matrix for 3D layers (`is3D`), for the M2 MVP path. Absent on 2D
   // layers, which keep the cheap affine transform above.
@@ -1969,13 +1972,15 @@ export interface ResolvedLayer {
 }
 
 /**
- * A resolved adjustment layer (B11b): its effect stack resolved for the frame plus the coverage the
- * pure resolver computed (which content layers below it it affects, and whether it is a no-op this
- * frame). The renderer's apply-below composite (browser-gated) runs `effects` over the accumulated
- * render of `coveredLayerIds`; `noOp` lets it skip the pass entirely.
+ * A resolved adjustment layer (B11b): its effect stack + basic filters resolved for the frame plus the
+ * coverage the pure resolver computed (which content layers below it it affects, and whether it is a
+ * no-op this frame). The renderer's apply-below composite (B11b-gpu) runs them (and the layer's Blur /
+ * Glow) over the accumulated render below it, scaled by opacity x masks; `noOp` skips the pass.
  */
 export interface ResolvedAdjustment {
   effects: ResolvedEffect[];
+  /** Basic filters with identity defaults filled in (core/effects/adjustmentComposite). */
+  filters: ImageFilters;
   coveredLayerIds: string[];
   noOp: boolean;
 }
