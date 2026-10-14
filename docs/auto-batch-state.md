@@ -1,8 +1,8 @@
 needs_human: none
 all_done: false
-last_completed_batch: none
-remaining_buildable: unknown
-browser_pending: none
+last_completed_batch: B10d-mask
+remaining_buildable: 18
+browser_pending: B10d-mask
 
 # Auto-batch run state
 
@@ -38,3 +38,11 @@ deviations: <none, or the decision made>
 review: <pending | accepted | rejected + numbered problems>
 fix-attempt: done (<date>)   # only present if a rejected batch was fixed
 -->
+
+### B10d-mask - Freeform-polygon mask coverage shader + path-mask authoring UI
+built: 2026-10-14 (commit 85ccf8e)
+review request: CLAUDE.md docs/AE-FEATURE-BATCHES.md package.json scripts/gpu-verify-masks.mjs scripts/lib/headless-gpu.mjs scripts/verify-mask-coverage.mjs scripts/verify-mask-path.mjs src/App.tsx src/core/maskCoverage.ts src/core/maskPath.ts src/core/pathVertexOps.ts src/core/strokeFit.ts src/engine/maskWgsl.ts src/engine/renderer.ts src/project-system/services/validation.ts src/store/editor.ts src/store/mask.ts src/store/maskPen.ts src/ui/panels/Inspector.tsx src/ui/panels/MaskOverlay.tsx
+deviations: (1) Render mechanism: neither option in the batch section (new per-mask vertex storage buffer, or CPU coverage bake to a texture). Chose packing a freeform mask into a RUN of the existing 8 MaskSlot uniforms (header + bezier/polyline data stream), so there is no bind-group/buffer/pipeline surgery. Cost: <=12 exact bezier vertices per mask when alone; several path masks share via water-filling; over-budget outlines are reduced (least-error of Schneider refit / anchor fit / RDP / arc polyline). (2) Path vertices are stored in the mask's normalized local frame (comp = position + R(rot)(local * size)) so position/size/rotation, the overlay box handles and the B10a reveal wipes drive path masks unchanged. (3) Equal-count path keyframes now interpolate vertex-for-vertex (AE behaviour) instead of B8b's arc-length resample; one B10c verify:mask-path expectation was updated deliberately. (4) Nonzero fill rule; a path mask with <3 vertices is skipped (identity). (5) Persistence: path vertices/poses are sanitized on load and per-vertex feathers are no longer index-shifted by dropping bad entries. (6) New tooling: headless Chrome runs WebGPU on this machine - scripts/lib/headless-gpu.mjs + `npm run gpu:masks` (27 checks: shader vs CPU twin, the real WebGPURenderer for shape/image/text + animated path, the real MaskOverlay driven by genuine CDP mouse events). Not part of `npm test` (CI has no GPU). insertPointOnSegment/applyVertexType moved from store/editor.ts to core/pathVertexOps.ts (shared, verbatim).
+gates: tsc 0 | lint 125 (106/19, baseline held) | build ok | npm test 110/110 | gpu:masks 27/27 (local, headless)
+browser: code-complete; GPU render + overlay interaction machine-verified headless; an in-app eyeball (Tailwind styling, stacking against the other viewport overlays, App.tsx key routing) is still owed.
+review: pending
