@@ -98,6 +98,9 @@ export async function exportToMp4(
   // Export always renders motion blur at full quality so output matches the
   // full-quality preview (Preview = Export).
   renderer.setMotionBlurSamples(EXPORT_MOTION_BLUR_SAMPLES);
+  // Export decodes ORIGINAL (coded) frames and never routes through the upright __proxy, so the shader
+  // must apply the original container rotation (see renderer.exportMode / srcRotation).
+  renderer.setExportMode(true);
 
   const canvas = renderer.getOffscreenCanvas()!;
 

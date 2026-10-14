@@ -27,6 +27,7 @@ import { PATTERN_TYPE } from '../patterns/types';
 import { lottieRendererEngine } from './lottieRenderer';
 import { videoTextureCache, VideoTextureCache } from './video/videoTextureCache';
 import { frameScheduler } from './video/frameScheduler';
+import { videoDecoderPool } from './video/videoDecoderPool';
 import { FLOW_WARP_SHADER, FLOW_UNIFORM_SIZE } from './video/opticalFlow';
 
 const BG_MAX_LAYERS = 10;
@@ -1000,6 +1001,10 @@ struct ImageUniforms {
   _mvpPad1: f32,
   _mvpPad2: f32,
   mvp: mat4x4<f32>,
+  // Source container rotation in DEGREES (phone/portrait video: 90/180/270). 0 for images/text and for
+  // landscape footage. Rotates ONLY the base-texture sampling UV (see rotateSrcUV / fs), so the decoded
+  // CODED (un-rotated) frame displays upright on the rotation-corrected quad with no per-frame CPU work.
+  srcRotation: f32,
 }
 
 @group(0) @binding(0) var<uniform> u: ImageUniforms;
@@ -2156,6 +2161,18 @@ fn applySpatialEffect(color: vec4f, a: vec4f, b: vec4f, uv: vec2f, texel: vec2f,
 
 ${MASK_WGSL}
 
+// Reorient the base-texture sampling UV for a rotated source (phone/portrait video). deg is the
+// container rotation; for a 90-multiple this is an exact remap of the unit square, so the decoded CODED
+// (landscape) frame maps onto the rotation-corrected (portrait) quad. Identity at 0, so images/text and
+// landscape video are byte-identical. These are the exact inverse of the old CPU canvas rotation.
+fn rotateSrcUV(uv: vec2f, deg: f32) -> vec2f {
+  let r = ((i32(round(deg)) % 360) + 360) % 360;
+  if (r == 90) { return vec2f(uv.y, 1.0 - uv.x); }
+  else if (r == 180) { return vec2f(1.0 - uv.x, 1.0 - uv.y); }
+  else if (r == 270) { return vec2f(1.0 - uv.y, uv.x); }
+  return uv;
+}
+
 @fragment
 fn fs(in: VertexOutput) -> @location(0) vec4f {
   let aspect = max(u.quadSize.x, 1.0) / max(u.quadSize.y, 1.0);
@@ -2163,7 +2180,8 @@ fn fs(in: VertexOutput) -> @location(0) vec4f {
 
   // Pre-sample warp stack (class B): compose the sampling UV in effect order
   // before the texture read. Warp-type slots match here; color-type slots don't.
-  var uv = in.uv;
+  // Start from the source-rotated UV so a rotated video samples upright (srcRotation=0 → in.uv).
+  var uv = rotateSrcUV(in.uv, u.srcRotation);
   for (var wi = 0; wi < ec; wi = wi + 1) {
     uv = applyWarpEffect(uv, u.effects[wi].a, u.effects[wi].b, aspect, u.effectTime);
   }
@@ -2232,6 +2250,7 @@ const IMAGE_UNIFORM_ALIGN = 1280;
 const IMAGE_UNIFORM_FLOATS = 320;
 const IMAGE_MVP_FLAG = 256; // float index of is3D
 const IMAGE_MVP_BASE = 260; // float index of mvp[0]
+const IMAGE_SRCROT_FLOAT = 276; // float index of srcRotation (deg); 0 for images/text, 90/180/270 for rotated video
 
 // 2.5D (M2): pack a 3D layer's MVP into its pipeline uniform view. NO-OP for 2D layers or when
 // there is no active camera - the is3D flag stays 0 (buffers are zero-initialized) and the 2D
@@ -2988,9 +3007,20 @@ export class WebGPURenderer {
   // separate instance also stops export teardown (destroy -> destroyAll) from wiping the preview
   // cache. Defaults to the singleton so any pre-init use is safe.
   private videoTex: VideoTextureCache = videoTextureCache;
+  // Export renderer flag (a separate WebGPURenderer instance). Container rotation is now applied in the
+  // IMAGE_SHADER at sample time (srcRotation uniform), reading the rotation of whichever asset actually
+  // produced the frame. PREVIEW frames come from the upright __proxy when registered (rotation 0), so
+  // the screen renderer reads the proxy-aware rotation; EXPORT decodes the ORIGINAL (coded) frame and
+  // never routes through the proxy, so the export renderer must read the original rotation instead.
+  private exportMode = false;
 
   setMotionBlurSamples(n: number): void {
     this.motionBlurSamples = Math.max(2, Math.round(n));
+  }
+
+  /** Mark this as the export renderer (reads original container rotation; see exportMode). */
+  setExportMode(on: boolean): void {
+    this.exportMode = on;
   }
 
   setEffectsPreviewDisabled(disabled: boolean): void {
@@ -4169,6 +4199,12 @@ export class WebGPURenderer {
         data[14] = 1;
         this.writeMaskUniforms(data, 15, 28, vidLayer.masks);
         writeCard3D(data, IMAGE_MVP_FLAG, IMAGE_MVP_BASE, vidLayer, frame.camera);
+        // Container rotation applied in-shader (replaces the per-frame CPU rotate). EXPORT decodes the
+        // ORIGINAL coded frame (never the upright __proxy), so it reads the original rotation; PREVIEW
+        // reads the proxy-aware rotation (0 when the upright __proxy is serving this asset).
+        data[IMAGE_SRCROT_FLOAT] = this.exportMode
+          ? (videoDecoderPool.getMetadata(video.assetId)?.rotation ?? 0)
+          : videoDecoderPool.getSourceRotation(video.assetId);
 
         // Optical-flow retiming (B6b, opt-in): when this layer is frame-blending with interp:'flow',
         // try to build a motion-compensated warp texture for the frame pair. Any failure (or the shader

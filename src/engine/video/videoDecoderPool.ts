@@ -330,6 +330,18 @@ class VideoDecoderPool {
     return this.workers.get(assetId)?.metadata ?? null;
   }
 
+  /** Container rotation (deg) of the frames currently served for PREVIEW of this asset. When a low-res
+   *  __proxy is registered, PREVIEW decodes route to it (decodeFrame), and the proxy is transcoded to
+   *  DISPLAY dimensions - its pixels are already upright, rotation 0. Without a proxy the original coded
+   *  frames carry the container rotation. The renderer rotates the base-texture UV by this in-shader, so
+   *  the decoded frame displays upright with no per-frame CPU work. (Export reads getMetadata() directly
+   *  - decodeFrameForExport never routes through the proxy.) */
+  getSourceRotation(assetId: string): number {
+    const proxyId = this.proxyOf.get(assetId);
+    if (proxyId) return this.getMetadata(proxyId)?.rotation ?? 0;
+    return this.getMetadata(assetId)?.rotation ?? 0;
+  }
+
   /** Get keyframe indices for an asset. */
   getKeyframes(assetId: string): number[] {
     if (USE_MEDIABUNNY) return []; // mediabunny seeks by timestamp; keyframe indices aren't used
