@@ -231,10 +231,13 @@ export class PlaybackController {
       const wrapped = newFrame < this._currentFrame;
       this._currentFrame = newFrame;
       frameScheduler.setPlaybackState(newFrame, 1, false);
-      // Under the audio-master clock the picture is a passive follower: show the
-      // newest decoded frame ≤ target and drop the rest (never block). Scrub/seek
-      // renders keep requesting the EXACT frame (presentLatest stays false).
-      this.renderCurrentFrame(useMaster);
+      // During PLAYBACK the picture is always a passive follower: show the newest
+      // decoded frame ≤ target and drop the rest, so a decode miss shows the freshest
+      // available frame instead of stalling on the exact one (P1b). This is decoupled
+      // from the audio-master CLOCK (the clock still uses wall-clock when the flag is
+      // off); only the present policy is forced here. Scrub/seek renders are separate
+      // paths and keep requesting the EXACT frame (presentLatest stays false).
+      this.renderCurrentFrame(true);
       this.syncAudio(wrapped);
       this.notify();
     }
