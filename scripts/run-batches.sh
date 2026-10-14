@@ -12,11 +12,11 @@
 # human (needs_human), a batch cannot complete even after a retry, or a batch fails
 # review twice.
 #
-# Usage:  scripts/run-batches.sh [--max-batches N] [--max-turns T] [--skip-browser]
-#   --max-batches N   stop after N accepted batches this run (default 100; a runaway cap)
-#   --max-turns T     per-session turn cap passed to claude (default 600)
-#   --skip-browser    stop (needs_human) when the next batch is browser-gated (WebGPU),
-#                     instead of building GPU code that cannot be verified headlessly
+# Usage:  scripts/run-batches.sh [--max-batches N] [--max-budget-usd N] [--skip-browser]
+#   --max-batches N    stop after N accepted batches this run (default 100; a runaway cap)
+#   --max-budget-usd N optional per-session API spend cap passed to claude (default: none)
+#   --skip-browser     stop (needs_human) when the next batch is browser-gated (WebGPU),
+#                      instead of building GPU code that cannot be verified headlessly
 #
 # NOTE: this commits and pushes to whatever branch is checked out (main by the user's
 # choice). Every accepted batch pushes to main, which auto-deploys to production
@@ -31,13 +31,13 @@ set -uo pipefail
 cd "$(git rev-parse --show-toplevel)" 2>/dev/null || { echo "not in a git repo"; exit 2; }
 
 MAX_BATCHES=100
-MAX_TURNS=600
+MAX_BUDGET=""
 AUTO_ARG="auto"
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --max-batches) MAX_BATCHES="$2"; shift 2;;
-    --max-turns)   MAX_TURNS="$2"; shift 2;;
-    --skip-browser) AUTO_ARG="auto skip-browser"; shift;;
+    --max-batches)     MAX_BATCHES="$2"; shift 2;;
+    --max-budget-usd)  MAX_BUDGET="$2"; shift 2;;
+    --skip-browser)    AUTO_ARG="auto skip-browser"; shift;;
     *) echo "unknown arg: $1"; exit 2;;
   esac
 done
@@ -56,14 +56,16 @@ log()   { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG"; }
 
 branch="$(git rev-parse --abbrev-ref HEAD)"
 
-# one batch-build session (interpreting ARGUMENTS ourselves is version-robust vs slash parsing)
-run_build()  { claude -p "$(cat "$NEXT_CMD"; printf '\n\nARGUMENTS: %s\n' "$AUTO_ARG")" \
-                 --dangerously-skip-permissions --max-turns "$MAX_TURNS" --output-format text 2>&1 \
-                 | tee -a "$LOG" >/dev/null; }
+# claude flags shared by both session kinds. The prompt is the SLASH COMMAND itself
+# (starts with '/', so it is never mis-parsed as an option) - this expands the command
+# file, substitutes $ARGUMENTS, and runs the batch-pointer grep.
+CLAUDE_FLAGS=(-p --dangerously-skip-permissions --output-format text)
+[[ -n "$MAX_BUDGET" ]] && CLAUDE_FLAGS+=(--max-budget-usd "$MAX_BUDGET")
+
+# one batch-build session
+run_build()  { claude "${CLAUDE_FLAGS[@]}" "/next-batch $AUTO_ARG" 2>&1 | tee -a "$LOG" >/dev/null; }
 # one review session; echo only its last line (the verdict)
-run_review() { claude -p "$(cat "$REVIEW_CMD")" \
-                 --dangerously-skip-permissions --max-turns "$MAX_TURNS" --output-format text 2>&1 \
-                 | tee -a "$LOG" | tail -1; }
+run_review() { claude "${CLAUDE_FLAGS[@]}" "/review-batch" 2>&1 | tee -a "$LOG" | tail -1; }
 
 stop_if_flagged() {
   [[ "$(field all_done)" == "true" ]] && { log "DONE: all buildable batches complete"; exit 0; }
@@ -86,7 +88,7 @@ while (( count < MAX_BATCHES )); do
     run_build
     stop_if_flagged
     after="$(field last_completed_batch)"
-    [[ "$after" == "$before" ]] && { log "STOP: batch did not complete after retry (raise --max-turns?)"; exit 4; }
+    [[ "$after" == "$before" ]] && { log "STOP: batch did not complete after retry (see docs/auto-run.log for the session error)"; exit 4; }
   fi
 
   log "--- review $after ---"

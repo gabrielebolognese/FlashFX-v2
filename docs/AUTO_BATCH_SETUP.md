@@ -46,10 +46,10 @@ including browser-gated batches that were only verified headlessly.
 bash scripts/run-batches.sh
 ```
 
-Options: `--max-batches N` (stop after N accepted batches; default 100), `--max-turns T`
-(per-session turn cap; default 600), `--skip-browser` (stop and ask for a human when the
-next batch is WebGPU/browser-gated rather than build GPU code that cannot be verified
-headlessly).
+Options: `--max-batches N` (stop after N accepted batches; default 100),
+`--max-budget-usd N` (optional per-session API spend cap; default none), `--skip-browser`
+(stop and ask for a human when the next batch is WebGPU/browser-gated rather than build
+GPU code that cannot be verified headlessly).
 
 `--dangerously-skip-permissions` is what makes it unattended (no edit/command prompts);
 that is why it runs on an isolated branch.
@@ -74,8 +74,8 @@ Everything is in `docs/auto-run.log`, `docs/auto-batch-state.md`, and `git log -
 - **2** - misuse: bad argument, `claude` not on PATH, or setup files missing.
 - **3** - a session wrote `needs_human`. Read the reason in `docs/auto-batch-state.md`,
   fix the cause, set `needs_human:` back to `none`, and rerun to resume.
-- **4** - a batch did not complete even after a retry (usually `--max-turns` too low for a
-  heavy batch; raise it and rerun).
+- **4** - a batch did not complete even after a retry (the build session errored or
+  stopped early; check `docs/auto-run.log` for the session error, then rerun).
 - **5** - a batch failed review twice. Inspect its log entry, fix by hand or adjust the
   batch scope in `docs/AE-FEATURE-BATCHES.md`, and rerun.
 
