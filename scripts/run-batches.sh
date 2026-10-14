@@ -18,10 +18,13 @@
 #   --skip-browser    stop (needs_human) when the next batch is browser-gated (WebGPU),
 #                     instead of building GPU code that cannot be verified headlessly
 #
-# IMPORTANT: run this ON A BRANCH, never main - pushing to main auto-deploys to production.
-#   git switch -c auto-batches && bash scripts/run-batches.sh
+# NOTE: this commits and pushes to whatever branch is checked out (main by the user's
+# choice). Every accepted batch pushes to main, which auto-deploys to production
+# (editor.flashfx.app via Netlify) - including browser-gated WebGPU batches that were only
+# verified headlessly (tsc/lint/build/test), not in a browser.
+#   bash scripts/run-batches.sh
 #
-# Exit codes: 0 done / cap reached · 2 misuse (on main, bad arg, no claude) ·
+# Exit codes: 0 done / cap reached · 2 misuse (bad arg, no claude, missing files) ·
 #             3 needs_human · 4 a batch did not complete after a retry · 5 rejected twice.
 
 set -uo pipefail
@@ -52,11 +55,6 @@ field() { grep -iE "^$1:" "$STATE" 2>/dev/null | head -1 | sed -E 's/^[^:]*:[[:s
 log()   { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG"; }
 
 branch="$(git rev-parse --abbrev-ref HEAD)"
-if [[ "$branch" == "main" || "$branch" == "master" ]]; then
-  echo "REFUSING to run on '$branch': pushing there auto-deploys to production."
-  echo "Create a branch first:  git switch -c auto-batches"
-  exit 2
-fi
 
 # one batch-build session (interpreting ARGUMENTS ourselves is version-robust vs slash parsing)
 run_build()  { claude -p "$(cat "$NEXT_CMD"; printf '\n\nARGUMENTS: %s\n' "$AUTO_ARG")" \

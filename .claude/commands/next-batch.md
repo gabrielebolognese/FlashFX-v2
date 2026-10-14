@@ -86,7 +86,7 @@ If a gate is red: fix and re-run (at most **two** fix attempts this session). If
 
 1. `docs/AE-FEATURE-BATCHES.md`: flip this batch to `✅` in BOTH the Status table and its section heading; move `▶ **next**` to the next `⬜` row that is not `⏭️ skip`; note anything deferred or split in the section.
 2. If the batch was browser-gated (`(browser)`): add its ID to `browser_pending:` in the state file - it is **code-complete, browser eyeball owed**. Do not claim visual verification anywhere.
-3. Commit **and push to the current branch** (the runner forbids `main`) with message `batch-<ID>: <short title>` and the standing attribution trailers.
+3. Commit **and push to the current branch** with message `batch-<ID>: <short title>` and the standing attribution trailers.
 4. `docs/auto-batch-state.md`: set `last_completed_batch: <ID>`; recompute `remaining_buildable:` = count of `⬜` rows that are not `skip`; append a `## Log` entry:
    ```
    ### <ID> - <title>

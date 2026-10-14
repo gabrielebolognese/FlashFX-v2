@@ -38,12 +38,11 @@ run-batches.sh loop
 
 ## Running it
 
-**On a branch, never `main`.** Every push to `main` auto-deploys to production
-(editor.flashfx.app via Netlify). The runner refuses to start on `main`/`master`. Work on
-a branch; review the diff and merge to `main` yourself when you are happy.
+This runs on `main` and pushes each finished batch to `main` (the user's chosen setup).
+Note that every push to `main` auto-deploys to production (editor.flashfx.app via Netlify),
+including browser-gated batches that were only verified headlessly.
 
 ```bash
-git switch -c auto-batches
 bash scripts/run-batches.sh
 ```
 
@@ -72,7 +71,7 @@ Everything is in `docs/auto-run.log`, `docs/auto-batch-state.md`, and `git log -
 (build + progress + review commits per batch). Exit codes:
 
 - **0** - plan complete, or `--max-batches` reached.
-- **2** - misuse: on `main`, bad argument, or `claude` not on PATH.
+- **2** - misuse: bad argument, `claude` not on PATH, or setup files missing.
 - **3** - a session wrote `needs_human`. Read the reason in `docs/auto-batch-state.md`,
   fix the cause, set `needs_human:` back to `none`, and rerun to resume.
 - **4** - a batch did not complete even after a retry (usually `--max-turns` too low for a
