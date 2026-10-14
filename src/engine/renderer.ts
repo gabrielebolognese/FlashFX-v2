@@ -3922,6 +3922,9 @@ export class WebGPURenderer {
       this.activeTextKeys.clear();
       this.pinNestedTextKeys(frame);
       this.renderTree.markAllClean(this.frameClock);
+      // P2a: prune video requirements for layers not drawn last frame BEFORE this frame's video loops
+      // (incl. the precomp pre-pass below) re-report them, so prefetch only decodes assets still in use.
+      frameScheduler.frameBoundary();
     }
 
     // Precomp pre-pass: render each precomp layer's nested composition into its own

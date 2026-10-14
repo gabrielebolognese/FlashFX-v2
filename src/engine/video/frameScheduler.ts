@@ -76,6 +76,8 @@ class FrameScheduler {
   private proxyActive = new Map<string, boolean>();
   private proxySettleTimer: ReturnType<typeof setTimeout> | null = null;
   private tabHidden = false;
+  /** Layer ids whose requirement was reported during the current frame (P2a); drives frameBoundary. */
+  private reportedThisFrame = new Set<string>();
 
   onFrameReady: (() => void) | null = null;
 
@@ -118,6 +120,7 @@ class FrameScheduler {
    */
   reportVideoRequirement(layerId: string, assetId: string, sourceFrame: number, playbackRate: number): void {
     this.requirements.set(layerId, { assetId, sourceFrame, playbackRate });
+    this.reportedThisFrame.add(layerId); // P2a: mark drawn-this-frame so frameBoundary keeps it
 
     // If the frame the renderer just asked for isn't buffered or already being
     // decoded, kick a prefetch now. Otherwise a video whose playhead doesn't move
@@ -311,7 +314,13 @@ class FrameScheduler {
 
   private prefetch(): void {
     if (this.tabHidden) return;
-    const uniqueAssets = new Set(this.registrations.map((r) => r.assetId));
+    // P2a: prefetch ONLY assets a video layer currently NEEDS - an asset with a live requirement the
+    // renderer reported for a layer it actually drew this frame (on-screen, in-time, visible). Assets are
+    // registered at IMPORT, so iterating `registrations` decoded every imported + off-screen + not-yet-
+    // placed clip each tick, opening/evicting decoder cursors and thrashing the global cursor budget past
+    // a few clips (the "many clips lag"). `requirements` is the active set; stale entries (a layer that
+    // left the time range / was hidden) are pruned by retainRequirements so they stop driving prefetch.
+    const uniqueAssets = new Set([...this.requirements.values()].map((r) => r.assetId));
 
     for (const assetId of uniqueAssets) {
       const buffer = this.buffers.get(assetId);
@@ -361,6 +370,19 @@ class FrameScheduler {
   /** True while the user is actively scrubbing (used by the renderer to widen drop-to-newest). */
   isScrubbingNow(): boolean {
     return this.isScrubbing;
+  }
+
+  /** Frame boundary (P2a): called once at the start of each TOP-LEVEL render. Prune requirements for any
+   *  layer NOT drawn during the previous frame, then reset the per-frame seen set. This stops a clip the
+   *  playhead has moved past (its layer no longer drawn) from decoding its asset off-screen forever - the
+   *  residual that would otherwise re-accumulate the prefetch thrash across a timeline of clips. Precomp-
+   *  safe: nested layers report during the frame's precomp pre-pass, so they land in `reportedThisFrame`
+   *  and survive. One-frame lag before a vanished layer is pruned (harmless). */
+  frameBoundary(): void {
+    for (const layerId of [...this.requirements.keys()]) {
+      if (!this.reportedThisFrame.has(layerId)) this.requirements.delete(layerId);
+    }
+    this.reportedThisFrame.clear();
   }
 
   private computeFramesToRequest(assetId: string, totalFrames: number): number[] {
@@ -531,6 +553,8 @@ class FrameScheduler {
     }
     this.buffers.clear();
     this.registrations = [];
+    this.requirements.clear();
+    this.reportedThisFrame.clear();
     this.totalMemoryUsage = 0;
     this.proxyActive.clear();
   }
