@@ -1,8 +1,8 @@
 needs_human: none
 all_done: false
-last_completed_batch: B10d-mask
-remaining_buildable: 18
-browser_pending: B10d-mask
+last_completed_batch: B10e
+remaining_buildable: 17
+browser_pending: B10d-mask B10e
 
 # Auto-batch run state
 
@@ -46,3 +46,11 @@ deviations: (1) Render mechanism: neither option in the batch section (new per-m
 gates: tsc 0 | lint 125 (106/19, baseline held) | build ok | npm test 110/110 | gpu:masks 27/27 (local, headless)
 browser: code-complete; GPU render + overlay interaction machine-verified headless; an in-app eyeball (Tailwind styling, stacking against the other viewport overlays, App.tsx key routing) is still owed.
 review: accepted (2026-10-14; re-ran tsc 0 | lint 125 (106/19) | npm test 110/110 incl. verify:mask-coverage + verify:mask-path. Delivers traced to real code: packMaskSlots + CPU twin, freeform WGSL in all 4 masked shaders via the single writeMaskUniforms, mask pen + vertex/handle editing, path keyframes, per-vertex feather, load sanitization. No Math.random/Date, no em dash, no secrets, 2.5D scope, browser_pending honest. Non-blocking for the in-app eyeball: a stale selectedVertex on the active layer's selected path mask makes Delete remove that vertex instead of the layer.)
+
+### B10e - Basic roto / refine-edge (mask modes + mask expansion + colour-aware Refine Edge)
+built: 2026-10-14 (commit 680f120)
+review request: CLAUDE.md docs/AE-FEATURE-BATCHES.md package.json scripts/gpu-verify-masks.mjs scripts/lib/legacy-mask-twin.mjs scripts/verify-mask-coverage.mjs scripts/verify-refine-edge.mjs src/core/factory.ts src/core/interpolation.ts src/core/maskCoverage.ts src/core/refineEdge.ts src/core/types.ts src/engine/maskWgsl.ts src/engine/refineWgsl.ts src/engine/renderer.ts src/project-system/services/validation.ts src/store/editor.ts src/ui/panels/Inspector.tsx
+deviations: (1) Scope: "basic roto / refine-edge" was built on B10c/B10d-mask's animated freeform masks as AE mask MODES + mask EXPANSION (both orphan gaps from the B10 audit that multi-shape roto needs) + a colour-aware Refine Edge pass. No ML Roto Brush (deferred, recorded in the doc). (2) Mode default: absent = intersect (the legacy multiply: existing projects render bit-identically, proven vs a frozen pre-B10e twin), but NEW masks default to Add (the AE default), so a second mask added from now on unions instead of intersecting; one older gpu:masks scene was pinned to intersect explicitly. (3) Refine Edge is per LAYER (image/video) on the combined matte edge, not per mask or brush-painted; its params are static numbers (mask expansion IS keyframable). (4) No bind/buffer/pipeline change: mode rides in params.y (invert + 2*modeId), expansion in each slot's unused last float, refine in image-uniform floats 277..279 (radius 0 = the old alpha path). (5) Refine classifies on the unwarped, uncorrected source texture and adds the decontamination delta to the corrected colour. (6) The normal/field is only computed within the refine band (freeform early-out widened by it) - proven exact wherever |sd| < band. (7) gpu:masks: the harness comp background is now black (the renderer paints comp.background, not settings.backgroundColor) and the real Inspector is mounted with a tall emulated viewport.
+gates: tsc 0 | lint 125 (106/19, baseline held) | build ok | npm test 111/111 | gpu:masks 50/50 (local, headless)
+browser: code-complete; modes/expansion/refine render on the real WebGPURenderer and the real Inspector controls are machine-verified headless. Owed: an in-app eyeball (Tailwind layout of the new Masks-tab rows; Refine Edge on real decoded VIDEO footage - headless had no video, only an image layer).
+review: pending
