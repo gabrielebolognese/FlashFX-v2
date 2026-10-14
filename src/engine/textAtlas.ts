@@ -158,9 +158,29 @@ function measureCtx(): OffscreenCanvasRenderingContext2D {
   return _measureCtx;
 }
 
+// Memoized text MEASUREMENT (P2c): computeLayout does canvas word-wrap + per-line measurement, and
+// resolveFrame calls measureText every frame for every text layer even when the text never changes -
+// pure wasted work on static captions/titles over a playing video. The result is a pure function of the
+// same inputs textCacheKey already captures for the render cache (including fontEpoch, so a font load
+// flips the key), so memoizing by that key is complete by construction: a static text layer skips the
+// re-measure each frame; any change to content/size/font/box/align flips the key and re-measures. The
+// returned object is read-only to every caller (interpolation, sceneGraph, snap, textExplode), so
+// sharing the cached instance is safe. Bounded LRU, same cap as the render cache.
+const measureCache = new Map<string, { width: number; height: number }>();
+const MAX_MEASURE_CACHE = 256;
+
 export function measureText(text: ResolvedText): { width: number; height: number } {
+  const key = textCacheKey(text);
+  const hit = measureCache.get(key);
+  if (hit) return hit;
   const layout = computeLayout(measureCtx(), text);
-  return { width: layout.canvasWidth, height: layout.canvasHeight };
+  const result = { width: layout.canvasWidth, height: layout.canvasHeight };
+  if (measureCache.size >= MAX_MEASURE_CACHE) {
+    const firstKey = measureCache.keys().next().value as string | undefined;
+    if (firstKey !== undefined) measureCache.delete(firstKey);
+  }
+  measureCache.set(key, result);
+  return result;
 }
 
 // Full layout used by the text-explode engine to read exact line geometry

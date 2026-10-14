@@ -13,6 +13,14 @@ and no synchronous GPU readback on the hot path. The lag is not one broken
 subsystem; it is a small number of concrete costs layered on top of that good
 base. They are ranked below by impact.
 
+## Status (updated 2026-10-14)
+
+- **P0 - DONE** (`f031d26`): rotation moved to the GPU sampler.
+- **P1b - DONE** (committed): drop-to-newest present policy during playback, decoupled from the audio-master flag.
+- **P2a - DONE** (committed): prefetch only assets with a live renderer requirement (on-screen/in-time/visible) instead of every imported asset, plus a per-frame `frameBoundary()` that prunes requirements for layers no longer drawn.
+- **P2c - PARTIAL (safe subset) DONE**: the expensive per-frame work the audit flagged - text `measureText` (canvas word-wrap + per-line measurement, run every frame per text layer) - is now memoized by the proven `textCacheKey` (complete by construction, incl. `fontEpoch`). The *full* "skip re-resolving static layers" was found UNSAFE as a shared cache: `resolveFrame` mutates resolved layers per frame (`interpolation.ts` ~1703/1735/1748 reassign `transform`, ~1854 sets `consumedAsMatte`), so a shared static `ResolvedLayer` would cross-frame-contaminate / freeze. A full version needs per-frame cloning (marginal gain for simple layers) or more surgical sub-result caches; left as a browser-verified follow-up.
+- **P1a - DEFERRED** (user decision): on inspection it is NOT the drop-in the item below implies. Video draws through the shared *image* shader whose binding is `texture_2d`; `texture_external` can't share it, so video needs its own pipeline + a duplicated shader. And `importExternalTexture` is stateless (valid only for the current frame/task), which collides with the renderer's hold-last-frame-on-miss present policy (`renderer.ts` ~4148) - the external path needs per-layer `VideoFrame` retention (re-import on miss), re-introducing the decoder-output-slot pressure the scheduler avoids. ~200 lines of delicate, browser-unverifiable GPU + frame-lifecycle code with a black-video failure mode. Do it with a browser in the loop (or behind a default-off flag).
+
 ---
 
 ## TL;DR root cause
