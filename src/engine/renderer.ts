@@ -14,6 +14,8 @@ interface PrecompRenderOpts {
 }
 import { EFFECT_TYPE } from '../core/effects/effectRegistry';
 import { matteFlags } from '../core/trackMatte';
+import { packMaskSlots } from '../core/maskCoverage';
+import { MASK_WGSL } from './maskWgsl';
 import { renderTextToCanvas, textCacheKey } from './textAtlas';
 import { mediaAssetManager } from './media/assetManager';
 import { tessellatePathCached, PATH_FLOATS_PER_VERTEX, getPathTessellationStats } from './pathTessellation';
@@ -197,84 +199,6 @@ fn fs(in: VertexOutput) -> @location(0) vec4f {
   }
 
   return color;
-}
-`;
-
-const MASK_WGSL = /* wgsl */ `
-// N-pointed star SDF (mask variant - identical math to starSDF). Inside < 0.
-fn mask_starSDF(p: vec2f, points: f32, outerR: f32, innerR: f32) -> f32 {
-  let pi = 3.14159265;
-  let n = max(points, 2.0);
-  let an = pi / n;
-  let R = max(outerR, 1e-4);
-  let ri = clamp(innerR, 1e-4, R);
-  var a = atan2(p.y, p.x) + pi * 0.5;
-  a = a - 2.0 * an * floor(a / (2.0 * an) + 0.5);
-  a = abs(a);
-  let r = length(p);
-  let q = vec2f(r * cos(a), r * sin(a));
-  let vOut = vec2f(R, 0.0);
-  let vIn = vec2f(ri * cos(an), ri * sin(an));
-  let e = vIn - vOut;
-  let w = q - vOut;
-  let t = clamp(dot(w, e) / dot(e, e), 0.0, 1.0);
-  let d = length(w - e * t);
-  let cr = e.x * w.y - e.y * w.x;
-  return select(d, -d, cr > 0.0);
-}
-
-fn mask_ngonSDF(p: vec2f, r: f32, n: f32) -> f32 {
-  let nn = max(n, 3.0);
-  let an = 3.14159265 / nn;
-  let acs = vec2f(cos(an), sin(an));
-  let bn = atan2(p.x, p.y);
-  let m = bn - 2.0 * an * floor(bn / (2.0 * an) + 0.5);
-  var q = length(p) * vec2f(cos(m), abs(sin(m)));
-  q = q - r * acs;
-  q.y = q.y + clamp(-q.y, 0.0, r * acs.y);
-  return length(q) * sign(q.x);
-}
-
-fn mask_ellipseSDF(p: vec2f, ab: vec2f) -> f32 {
-  let k1 = length(p / ab);
-  let k2 = length(p / (ab * ab));
-  return k1 * (k1 - 1.0) / max(k2, 0.0001);
-}
-
-fn computeMaskAlpha(world: vec2f, mParams: vec4f, mCenter: vec2f, mSize: vec2f, mRot: f32, mPoints: f32, mInner: f32) -> f32 {
-  let mtype = i32(mParams.x + 0.5);
-  if (mtype == 0) { return 1.0; }
-  let rel = world - mCenter;
-  let c = cos(-mRot);
-  let s = sin(-mRot);
-  let p = vec2f(rel.x * c - rel.y * s, rel.x * s + rel.y * c);
-  var d: f32;
-  if (mtype == 1) {
-    let q = abs(p) - mSize;
-    d = length(max(q, vec2f(0.0))) + min(max(q.x, q.y), 0.0);
-  } else if (mtype == 2) {
-    d = mask_ellipseSDF(p, max(mSize, vec2f(0.001)));
-  } else if (mtype == 3) {
-    d = mask_starSDF(p, mPoints, mSize.x, mInner);
-  } else {
-    d = mask_ngonSDF(p, mSize.x, mPoints);
-  }
-  let feather = max(mParams.w, 0.001);
-  var a = 1.0 - smoothstep(-feather, feather, d);
-  if (mParams.y > 0.5) { a = 1.0 - a; }
-  let mOpacity = mParams.z;
-  return 1.0 - mOpacity * (1.0 - a);
-}
-
-fn computeMaskStackAlpha(world: vec2f, maskCount: i32, masks: array<MaskSlot, 8>) -> f32 {
-  if (maskCount <= 0) { return 1.0; }
-  var alpha = 1.0;
-  for (var i = 0; i < maskCount; i = i + 1) {
-    let m = masks[i];
-    let a = computeMaskAlpha(world, m.params, m.center, m.size, m.rot, m.points, m.inner);
-    alpha = alpha * a;
-  }
-  return alpha;
 }
 `;
 
@@ -5417,36 +5341,16 @@ export class WebGPURenderer {
     }
   }
 
+  // The 8-slot mask block (B10d-mask): core/maskCoverage.ts packMaskSlots is the single source of
+  // truth for the layout MASK_WGSL reads (parametric masks keep their legacy one-slot encoding; a
+  // freeform path mask packs into a header + data-slot run). maskCount = slots used.
   private writeMaskUniforms(
     data: Float32Array,
     maskCountOffset: number,
     masksOffset: number,
     masks: ResolvedMask[] | undefined
   ): void {
-    const typeMap: Record<string, number> = { rectangle: 1, ellipse: 2, star: 3, polygon: 4 };
-    const count = masks ? Math.min(masks.length, 8) : 0;
-    data[maskCountOffset] = count;
-    for (let i = 0; i < count; i++) {
-      const m = masks![i];
-      const base = masksOffset + i * 12;
-      data[base] = typeMap[m.type] ?? 1;
-      data[base + 1] = m.invert ? 1 : 0;
-      data[base + 2] = m.opacity;
-      data[base + 3] = m.feather;
-      data[base + 4] = m.centerX;
-      data[base + 5] = m.centerY;
-      data[base + 6] = m.sizeX * 0.5;
-      data[base + 7] = m.sizeY * 0.5;
-      data[base + 8] = m.rotation * (Math.PI / 180);
-      data[base + 9] = m.points;
-      data[base + 10] = m.innerRadius;
-      data[base + 11] = 0;
-    }
-    // Zero remaining slots
-    for (let i = count; i < 8; i++) {
-      const base = masksOffset + i * 12;
-      for (let j = 0; j < 12; j++) data[base + j] = 0;
-    }
+    data[maskCountOffset] = packMaskSlots(masks, data, masksOffset);
   }
 
   // Packs the image effect stack into the uniform (effectCount at float 124,

@@ -12,6 +12,7 @@ import { BrandColorPicker } from '../components/BrandColorPicker';
 import { PanelTutorialButton } from '../tutorials/PanelTutorialButton';
 import { tutorialForSectionTitle } from '../tutorials/registry';
 import { MASK_REVEAL_KINDS, type MaskRevealKind } from '../../core/maskReveal';
+import { isPathMask, maskPathAt, resolveMaskFeathers, setMaskVertexFeather, toggleMaskPathKeyframe } from '../../core/maskPath';
 import type { TrackMatteMode } from '../../core/trackMatte';
 import type { ShapeLayer, TextLayer, VideoLayer, ImageLayer, AudioLayer, ParticleLayer, GenerativePatternLayer, CameraLayer, AnimationItemLayer, LottieIconLayer, AnimatableProperty, Vec2, Vec4, RectangleShape, CircleShape, StarShape, PolygonShape, MotionPathAnchor, MotionPathLoop, Mask, MaskType, Layer, LayerShadow, LayerGlow, LayerBlur, BlurType, GlowMode, LayoutObjectLayer, LayoutContainerLayer, TextSpanStyle, TextLayoutConfig, TextGradientFill, ShapeModifierType, BlendMode } from '../../core/types';
 import { BLEND_MODES, BLEND_MODE_META } from '../../core/effects/blendModes';
@@ -28,14 +29,14 @@ const FALLBACK_TEXT_LAYOUT: TextLayoutConfig = {
   boundingBox: { type: 'auto' }, horizontalAlign: 'left', verticalAlign: 'top',
   overflow: 'visible', baselineShift: 0, perGlyphAnimation: false,
 };
-import { evaluateProperty, measureLayerPreferredSize } from '../../core/interpolation';
+import { evaluateProperty, evaluateNumber, measureLayerPreferredSize } from '../../core/interpolation';
 import { FONT_MANIFEST, defaultTrackingPx } from '../../engine/fonts';
 import { useCustomFontStore } from '../../engine/customFonts';
 import { autoCaptionAudioLayers, useAutoCaptionStore } from '../../store/autoCaption';
 import { createProperty, createTextAnimOverrides } from '../../core/factory';
 import { getMotionBlur } from '../../core/layerSwitches';
 import { DEFAULT_CONSTRAINTS, type ReframeAxisMode } from '../../core/reframe';
-import { Diamond, Route, Trash2, Wand2, Sliders, Sparkles, Square, Circle, Star, Hexagon, Zap, Scissors, Moon, Layers, Type, Frame, Copy, ChevronUp, ChevronDown, Eye, EyeOff, Plus, Repeat, Link2, Atom, Grid3x3, Aperture, Code2, SlidersHorizontal, Palette, Loader2, Boxes, Box, RotateCcw, Lock, Unlock, Upload, Captions, Crop, ShieldAlert, ScanLine, Feather } from 'lucide-react';
+import { Diamond, Route, Trash2, Wand2, Sliders, Sparkles, Square, Circle, Star, Hexagon, Zap, Scissors, Moon, Layers, Type, Frame, Copy, ChevronUp, ChevronDown, Eye, EyeOff, Plus, Repeat, Link2, Atom, Grid3x3, Aperture, Code2, SlidersHorizontal, Palette, Loader2, Boxes, Box, RotateCcw, Lock, Unlock, Upload, Captions, Crop, ShieldAlert, ScanLine, Feather, PenTool } from 'lucide-react';
 import { DragInput } from '../components/DragInput';
 import { useAgentBuildStore } from '../agent-build/agentBuildStore';
 import { useSilenceStore } from '../../store/silenceStripper';
@@ -2890,8 +2891,11 @@ function MaskSection({ layerId, currentFrame }: { layerId: string; currentFrame:
   const duplicateMask = useEditorStore((s) => s.duplicateMask);
   const reorderMask = useEditorStore((s) => s.reorderMask);
   const applyMaskReveal = useEditorStore((s) => s.applyMaskReveal);
+  const patchMask = useEditorStore((s) => s.patchMask);
   const selectedMaskId = useMaskStore((s) => s.selectedMaskId);
   const setSelectedMaskId = useMaskStore((s) => s.setSelectedMaskId);
+  const selectedVertex = useMaskStore((s) => s.selectedVertex);
+  const penLayerId = useMaskStore((s) => s.penLayerId);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
 
   const layer = composition.layers.find((l) => l.id === layerId);
@@ -2917,6 +2921,18 @@ function MaskSection({ layerId, currentFrame }: { layerId: string; currentFrame:
   };
 
   const hasKf = (prop: AnimatableProperty) => prop.keyframes.some((k) => k.frame === currentFrame);
+
+  // Freeform path mask (B10d-mask): drawn with the mask pen in the viewport.
+  const handleAddPath = () => {
+    setAddMenuOpen(false);
+    useMaskStore.getState().startMaskPen(layerId);
+  };
+  const pathMask = mask && isPathMask(mask) ? mask : null;
+  const pathVerts = pathMask ? maskPathAt(pathMask, currentFrame) : [];
+  const pathKeyed = !!pathMask?.pathKeyframes?.length;
+  const pathKeyHere = !!pathMask?.pathKeyframes?.some((k) => k.frame === currentFrame);
+  const vertexIdx = pathMask && selectedVertex !== null && selectedVertex < pathVerts.length ? selectedVertex : null;
+  const featherNow = (m: Mask) => evaluateNumber(m.feather, currentFrame);
 
   return (
     <Section title="Masks">
@@ -2946,7 +2962,7 @@ function MaskSection({ layerId, currentFrame }: { layerId: string; currentFrame:
                   <span className={`flex-1 text-caption truncate ${m.id === selectedMaskId ? 'text-yellow-300' : 'text-slate-300'}`}>
                     {m.name || `Mask ${idx + 1}`}
                   </span>
-                  <span className="text-[9px] text-slate-500 capitalize">{m.type}</span>
+                  <span className="text-[9px] text-slate-500 capitalize">{isPathMask(m) ? 'path' : m.type}</span>
                 </div>
               ))}
             </div>
@@ -2973,6 +2989,14 @@ function MaskSection({ layerId, currentFrame }: { layerId: string; currentFrame:
                       {label}
                     </button>
                   ))}
+                  <button
+                    onClick={handleAddPath}
+                    className="flex items-center gap-1.5 w-full px-2 py-1 text-caption text-slate-300 hover:bg-yellow-500/10 hover:text-yellow-300 transition-colors border-t border-hairline"
+                    title="Draw a freeform mask in the viewport"
+                  >
+                    <PenTool size={10} />
+                    Path (draw)
+                  </button>
                 </div>
               )}
             </div>
@@ -3012,21 +3036,50 @@ function MaskSection({ layerId, currentFrame }: { layerId: string; currentFrame:
           </div>
         </div>
 
+        {penLayerId === layerId && (
+          <div className="flex items-center gap-1.5 rounded border border-sky-500/30 bg-sky-500/10 px-2 py-1.5 text-caption text-sky-200">
+            <PenTool size={10} className="flex-shrink-0" />
+            <span className="flex-1">Click in the viewport to place points, drag for curves. Click the first point or press Enter to close.</span>
+            <button
+              onClick={() => useMaskStore.getState().stopMaskPen()}
+              className="px-1.5 py-0.5 rounded border border-hairline text-slate-300 hover:text-white"
+            >
+              Cancel
+            </button>
+          </div>
+        )}
+
         {/* Selected mask properties */}
         {mask && (
           <div className="space-y-2 pt-1 border-t border-hairline">
-            <div className="flex items-center gap-1">
-              <label className="text-caption text-slate-500 w-14 flex-shrink-0">Type</label>
-              <select
-                value={mask.type}
-                onChange={(e) => updateMaskProperty(layerId, mask.id, 'type', e.target.value as MaskType)}
-                className="flex-1 bg-surface-4 border border-hairline rounded px-1.5 py-0.5 text-caption text-slate-300 outline-none"
-              >
-                {MASK_TYPES.map((opt) => (
-                  <option key={opt.type} value={opt.type}>{opt.label}</option>
-                ))}
-              </select>
-            </div>
+            {pathMask ? (
+              <div className="flex items-center gap-1">
+                <label className="text-caption text-slate-500 w-14 flex-shrink-0">Path</label>
+                <span className="flex-1 text-caption text-slate-300">
+                  {pathVerts.length} vertices{pathKeyed ? `, ${pathMask.pathKeyframes!.length} key${pathMask.pathKeyframes!.length === 1 ? '' : 's'}` : ''}
+                </span>
+                <button
+                  onClick={() => patchMask(layerId, pathMask.id, toggleMaskPathKeyframe(pathMask, currentFrame), pathKeyHere ? 'Remove Path Keyframe' : 'Add Path Keyframe')}
+                  className={`p-0.5 rounded transition-colors flex-shrink-0 ${pathKeyHere ? 'text-yellow-400' : pathKeyed ? 'text-slate-400 hover:text-yellow-300' : 'text-slate-600 hover:text-slate-400'}`}
+                  title={pathKeyHere ? 'Remove the path keyframe at the playhead' : pathKeyed ? 'Add a path keyframe at the playhead' : 'Animate the path (adds a keyframe at the playhead)'}
+                >
+                  <Diamond size={10} fill={pathKeyHere ? 'currentColor' : 'none'} />
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1">
+                <label className="text-caption text-slate-500 w-14 flex-shrink-0">Type</label>
+                <select
+                  value={mask.type}
+                  onChange={(e) => updateMaskProperty(layerId, mask.id, 'type', e.target.value as MaskType)}
+                  className="flex-1 bg-surface-4 border border-hairline rounded px-1.5 py-0.5 text-caption text-slate-300 outline-none"
+                >
+                  {MASK_TYPES.map((opt) => (
+                    <option key={opt.type} value={opt.type}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             <Vec2DragInput
               label="Position"
@@ -3079,7 +3132,34 @@ function MaskSection({ layerId, currentFrame }: { layerId: string; currentFrame:
               precision={2}
             />
 
-            {(mask.type === 'star' || mask.type === 'polygon') && (
+            {pathMask && vertexIdx !== null && (
+              <div className="flex items-center gap-1">
+                <label className="text-caption text-slate-500 w-14 flex-shrink-0" title="Feather of the selected vertex (px), blended along its edges">Vtx {vertexIdx + 1}</label>
+                <DragInput
+                  value={resolveMaskFeathers(pathMask.feathers, pathVerts.length, featherNow(pathMask))[vertexIdx] ?? 0}
+                  onChange={(v) => {
+                    const patch = setMaskVertexFeather(pathMask, vertexIdx, v, pathVerts.length, featherNow(pathMask));
+                    if (patch) patchMask(layerId, pathMask.id, patch, 'Vertex Feather');
+                  }}
+                  min={0}
+                  step={0.5}
+                  precision={1}
+                  suffix="px"
+                  className="flex-1"
+                />
+              </div>
+            )}
+            {pathMask && pathMask.feathers && pathMask.feathers.length > 0 && (
+              <button
+                onClick={() => patchMask(layerId, pathMask.id, { feathers: undefined }, 'Reset Vertex Feathers')}
+                className="w-full px-2 py-0.5 text-[9px] rounded border border-hairline text-slate-400 hover:text-slate-200 hover:border-yellow-500/30"
+                title="Drop the per-vertex feathers so the Feather value applies to every vertex again"
+              >
+                Reset vertex feathers
+              </button>
+            )}
+
+            {!pathMask && (mask.type === 'star' || mask.type === 'polygon') && (
               <div className="flex items-center gap-1">
                 <label className="text-caption text-slate-500 w-14 flex-shrink-0">Points</label>
                 <DragInput
@@ -3093,7 +3173,7 @@ function MaskSection({ layerId, currentFrame }: { layerId: string; currentFrame:
               </div>
             )}
 
-            {mask.type === 'star' && (
+            {!pathMask && mask.type === 'star' && (
               <NumberDragInput
                 label="Inner R"
                 prop={mask.innerRadius}

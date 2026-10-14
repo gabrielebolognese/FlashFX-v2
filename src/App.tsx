@@ -36,6 +36,7 @@ import { TutorialPanel as PanelHelpTutorial } from './ui/tutorials/TutorialPanel
 import { useCommandPaletteStore } from './ui/commands/store';
 import { useShapeToolStore, isVectorTool } from './store/shapeTool';
 import { usePathEditStore } from './store/pathEdit';
+import { handleMaskKey } from './store/maskPen';
 import { resolveExitStep } from './core/selection';
 import { OnboardingFlow, useOnboardingStore } from './onboarding';
 import { TutorialRunner } from './tutorial/TutorialRunner';
@@ -116,6 +117,13 @@ function Editor() {
             .then(() => useIslandStore.getState().toast('Saved', { tone: 'success', icon: 'check' }))
             .catch((err) => { console.error('Save failed:', err); useIslandStore.getState().error('Save failed'); });
         }
+        return;
+      }
+
+      // Path masks (B10d-mask): the mask pen owns Enter/Esc/Backspace while drawing, and Delete on a
+      // selected mask vertex removes the vertex - never the layer.
+      if (!isTextInput && !e.ctrlKey && !e.metaKey && handleMaskKey(e)) {
+        e.preventDefault();
         return;
       }
 

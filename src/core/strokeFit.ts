@@ -210,3 +210,23 @@ export function fitStroke(samples: Vec2[], opts: FitStrokeOptions = {}): FitStro
     : fitCubic(d, norm(sub(d[1], d[0])), norm(sub(d[d.length - 2], d[d.length - 1])), tol * tol);
   return { vertices: cubicsToVertices(cubics, !!opts.closed), closed: !!opts.closed };
 }
+
+/**
+ * One least-squares cubic through `d` (≥2 points) with fixed end tangents (unit vectors pointing INTO
+ * the segment from each end), Schneider's generateBezier plus a few Newton reparameterizations.
+ * Returns [P0, c1, c2, P3]. Used by freeform-mask refitting (core/maskCoverage.ts) to fit handles
+ * between anchors it has already chosen.
+ */
+export function fitCubicSegment(d: Vec2[], tHat1: Vec2, tHat2: Vec2): Vec2[] {
+  if (d.length < 3) {
+    const l = dist(d[0], d[d.length - 1]) / 3;
+    return [d[0], add(d[0], scale(tHat1, l)), add(d[d.length - 1], scale(tHat2, l)), d[d.length - 1]];
+  }
+  let u = chordParam(d);
+  let bez = generateBezier(d, u, tHat1, tHat2);
+  for (let it = 0; it < 3; it++) {
+    u = u.map((ui, i) => Math.min(1, Math.max(0, newtonStep(bez, d[i], ui))));
+    bez = generateBezier(d, u, tHat1, tHat2);
+  }
+  return bez;
+}

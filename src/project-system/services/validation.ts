@@ -382,6 +382,38 @@ function ensureTextAnimOverrides(val: unknown): TextAnimatableOverrides {
   };
 }
 
+// Freeform mask outlines (B10d-mask) are RENDERED, so a malformed vertex would throw inside the mask
+// packer every frame. Keep only vertices with a finite position; bad handles become [0, 0].
+function ensureMaskVertices(val: unknown): PathVertex[] {
+  if (!Array.isArray(val)) return [];
+  const pair = (p: unknown): [number, number] | null =>
+    Array.isArray(p) && p.length >= 2 && Number.isFinite(p[0]) && Number.isFinite(p[1]) ? [p[0] as number, p[1] as number] : null;
+  const out: PathVertex[] = [];
+  for (const raw of val) {
+    if (!isObject(raw)) continue;
+    const v = raw as Record<string, unknown>;
+    const position = pair(v.position);
+    if (!position) continue;
+    const vertexType = v.vertexType === 'smooth' || v.vertexType === 'bezier' ? v.vertexType : 'corner';
+    const handleMode = v.handleMode === 'mirrored' || v.handleMode === 'angle' || v.handleMode === 'independent' ? v.handleMode : undefined;
+    out.push({ position, handleIn: pair(v.handleIn) ?? [0, 0], handleOut: pair(v.handleOut) ?? [0, 0], vertexType, ...(handleMode ? { handleMode } : {}) });
+  }
+  return out;
+}
+
+function ensureMaskPathKeyframes(val: unknown): NonNullable<Mask['pathKeyframes']> {
+  if (!Array.isArray(val)) return [];
+  return val
+    .filter((k): k is Record<string, unknown> => isObject(k) && typeof k.frame === 'number' && Number.isFinite(k.frame))
+    .map((k) => ({
+      frame: k.frame as number,
+      vertices: ensureMaskVertices(k.vertices),
+      closed: true,
+      ...(k.interpolation === 'hold' || k.interpolation === 'linear' ? { interpolation: k.interpolation as 'hold' | 'linear' } : {}),
+    }))
+    .sort((a, b) => a.frame - b.frame);
+}
+
 function ensureMasks(val: unknown): Mask[] | undefined {
   if (!Array.isArray(val) || val.length === 0) return undefined;
   const validTypes: MaskType[] = ['rectangle', 'ellipse', 'star', 'polygon'];
@@ -404,9 +436,11 @@ function ensureMasks(val: unknown): Mask[] | undefined {
       points: typeof m.points === 'number' ? m.points : 5,
       innerRadius: ensureAnimatableProperty(m.innerRadius, 'Inner Radius', 'number', 40),
       // B10c foundation - preserve an optional freeform outline + per-vertex feather.
-      ...(Array.isArray(m.vertices) ? { vertices: m.vertices as Mask['vertices'] } : {}),
-      ...(Array.isArray(m.pathKeyframes) ? { pathKeyframes: m.pathKeyframes as Mask['pathKeyframes'] } : {}),
-      ...(Array.isArray(m.feathers) ? { feathers: (m.feathers as unknown[]).filter((f): f is number => typeof f === 'number') } : {}),
+      ...(Array.isArray(m.vertices) ? { vertices: ensureMaskVertices(m.vertices) } : {}),
+      ...(Array.isArray(m.pathKeyframes) ? { pathKeyframes: ensureMaskPathKeyframes(m.pathKeyframes) } : {}),
+      // Per-vertex feathers are positional: a bad entry becomes 0 rather than being dropped (dropping
+      // would shift every later feather onto the wrong vertex).
+      ...(Array.isArray(m.feathers) ? { feathers: (m.feathers as unknown[]).map((f) => (typeof f === 'number' && Number.isFinite(f) ? Math.max(0, f) : 0)) } : {}),
     });
   }
   return masks.length > 0 ? masks : undefined;
