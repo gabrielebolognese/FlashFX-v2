@@ -18,6 +18,10 @@ There is no test runner configured. Validate changes with `npm run typecheck` an
 
 `npm run icons` reads `node_modules/lucide-static` and writes the chunked icon JSON under `public/icons/` consumed by the icon library UI. It runs automatically before `dev`/`build`; run it manually after upgrading `lucide-static`. A `preinstall` script writes `ignore-scripts=true` to `.npmrc` to keep dependency postinstall scripts from running.
 
+### Unattended batch builds
+
+`docs/AE-FEATURE-BATCHES.md` drives the feature build plan (one batch per prompt: `/next-batch` shows the current batch, you reply `go` to build it). For hands-off runs, `/next-batch auto` builds the next buildable batch end to end (audit, implement, the four gates, commit, push, flip the Status row) without stopping, `/review-batch` independently reviews the last one, and `scripts/run-batches.sh` chains them - one fresh Claude session per batch - until the plan is done or a session writes `needs_human` into `docs/auto-batch-state.md`. **Run it on a branch, never `main`** (pushing to `main` auto-deploys to production via Netlify; the runner refuses to start on `main`). Browser-gated (WebGPU) batches are built and compiled but not visually verified - they are listed in `browser_pending:` for a human eyeball. Full detail in `docs/AUTO_BATCH_SETUP.md`.
+
 ## Environment & platform requirements
 
 - **WebGPU is required.** The rendering and export pipeline (`WebGPURenderer` in `src/engine/renderer.ts`, `src/codec/exporter.ts`) calls `navigator.gpu.requestAdapter()` with no WebGL fallback. Use a Chromium-based browser with WebGPU enabled.
