@@ -676,6 +676,10 @@ export function createMask(
     opacity: createProperty('Mask Opacity', 'number', 1),
     points: type === 'star' ? 5 : 6,
     innerRadius: createProperty('Inner Radius', 'number', Math.max(1, Math.min(width, height) * 0.2)),
+    // B10e: new masks combine like After Effects' default (Add = union); older masks without a mode
+    // keep the legacy multiply ('intersect').
+    mode: 'add',
+    expansion: createProperty('Mask Expansion', 'number', 0),
   };
 }
 

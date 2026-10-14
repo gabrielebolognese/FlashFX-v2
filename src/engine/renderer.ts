@@ -15,7 +15,9 @@ interface PrecompRenderOpts {
 import { EFFECT_TYPE } from '../core/effects/effectRegistry';
 import { matteFlags } from '../core/trackMatte';
 import { packMaskSlots } from '../core/maskCoverage';
+import { packRefineEdge } from '../core/refineEdge';
 import { MASK_WGSL } from './maskWgsl';
+import { REFINE_WGSL } from './refineWgsl';
 import { renderTextToCanvas, textCacheKey } from './textAtlas';
 import { mediaAssetManager } from './media/assetManager';
 import { tessellatePathCached, PATH_FLOATS_PER_VERTEX, getPathTessellationStats } from './pathTessellation';
@@ -929,6 +931,10 @@ struct ImageUniforms {
   // landscape footage. Rotates ONLY the base-texture sampling UV (see rotateSrcUV / fs), so the decoded
   // CODED (un-rotated) frame displays upright on the rotation-corrected quad with no per-frame CPU work.
   srcRotation: f32,
+  // Refine Edge (B10e): band radius in px (0 = off), contrast, decontaminate. See core/refineEdge.ts.
+  refineRadius: f32,
+  refineContrast: f32,
+  refineDecontam: f32,
 }
 
 @group(0) @binding(0) var<uniform> u: ImageUniforms;
@@ -2097,6 +2103,22 @@ fn rotateSrcUV(uv: vec2f, deg: f32) -> vec2f {
   return uv;
 }
 
+// Refine Edge (B10e): the layer's source colour at a COMPOSITION point - the exact inverse of the
+// vertex shader's 2D placement (worldPos = R(rotation)(local - anchor) + anchor + quadPos, local =
+// (uv - 0.5) * quadSize), then the same source-rotation remap as the base sample. Unwarped and
+// uncorrected on purpose: the edge is classified on the footage itself.
+fn refine_sample(p: vec2f) -> vec3f {
+  let rel = p - u.anchorPoint - u.quadPos;
+  let c = cos(-u.rotation);
+  let s = sin(-u.rotation);
+  let local = vec2f(rel.x * c - rel.y * s, rel.x * s + rel.y * c) + u.anchorPoint;
+  let qs = select(u.quadSize, vec2f(1e-4), abs(u.quadSize) < vec2f(1e-4));
+  let uv = rotateSrcUV(local / qs + vec2f(0.5), u.srcRotation);
+  return textureSampleLevel(texData, texSampler, uv, 0.0).rgb;
+}
+
+${REFINE_WGSL}
+
 @fragment
 fn fs(in: VertexOutput) -> @location(0) vec4f {
   let aspect = max(u.quadSize.x, 1.0) / max(u.quadSize.y, 1.0);
@@ -2158,8 +2180,21 @@ fn fs(in: VertexOutput) -> @location(0) vec4f {
     color = applyColorEffect(color, u.effects[ei].a, u.effects[ei].b, in.uv, u.effectTime);
   }
 
-  let mA = computeMaskStackAlpha(in.worldPos, i32(u.maskCount + 0.5), u.masks);
-  color = vec4f(clamp(color.rgb, vec3f(0.0), vec3f(1.0)), color.a * u.opacity * mA);
+  // Masks. With Refine Edge on (B10e) the stack also yields the matte's signed distance + normal and
+  // the edge band is re-classified from the footage (alpha) and decontaminated (colour delta); off, the
+  // plain alpha path runs exactly as before.
+  let mc = i32(u.maskCount + 0.5);
+  var mA: f32;
+  var refineDelta = vec3f(0.0);
+  if (u.refineRadius > 0.0 && mc > 0) {
+    let field = computeMaskStack(in.worldPos, mc, u.masks, u.refineRadius);
+    let refined = refineEdgeAt(in.worldPos, field, u.refineRadius, u.refineContrast, u.refineDecontam);
+    mA = refined.x;
+    refineDelta = refined.yzw;
+  } else {
+    mA = computeMaskStackAlpha(in.worldPos, mc, u.masks);
+  }
+  color = vec4f(clamp(color.rgb + refineDelta, vec3f(0.0), vec3f(1.0)), color.a * u.opacity * mA);
   return color;
 }
 `;
@@ -2169,12 +2204,23 @@ fn fs(in: VertexOutput) -> @location(0) vec4f {
 // AFTER the masks (so the mask base index at float 28 never moves). Layout (bytes):
 // header 112 + masks 384 + effectCount(+pad) 16 + effects 512 = 1024 (256 f32).
 // 2.5D (M2): +80 bytes (is3D f256, mvp f260..275). ALIGN/SIZE grown to 1280 (5×256).
+// srcRotation f276, Refine Edge (B10e) f277..279 - the struct ends at 1120 bytes, inside the 1280.
 const IMAGE_UNIFORM_SIZE = 1280;
 const IMAGE_UNIFORM_ALIGN = 1280;
 const IMAGE_UNIFORM_FLOATS = 320;
 const IMAGE_MVP_FLAG = 256; // float index of is3D
 const IMAGE_MVP_BASE = 260; // float index of mvp[0]
 const IMAGE_SRCROT_FLOAT = 276; // float index of srcRotation (deg); 0 for images/text, 90/180/270 for rotated video
+// Refine Edge (B10e): radius / contrast / decontaminate at 277..279 (radius 0 = off; buffers start zeroed).
+const IMAGE_REFINE_FLOAT = 277;
+
+function writeRefineEdge(data: Float32Array, layer: ResolvedLayer): void {
+  if (!layer.refineEdge) return;
+  const [radius, contrast, decontaminate] = packRefineEdge(layer.refineEdge);
+  data[IMAGE_REFINE_FLOAT] = radius;
+  data[IMAGE_REFINE_FLOAT + 1] = contrast;
+  data[IMAGE_REFINE_FLOAT + 2] = decontaminate;
+}
 
 // 2.5D (M2): pack a 3D layer's MVP into its pipeline uniform view. NO-OP for 2D layers or when
 // there is no active camera - the is3D flag stays 0 (buffers are zero-initialized) and the 2D
@@ -4125,6 +4171,7 @@ export class WebGPURenderer {
         // near-black. Write the identity (1) to keep video color untouched.
         data[14] = 1;
         this.writeMaskUniforms(data, 15, 28, vidLayer.masks);
+        writeRefineEdge(data, vidLayer);
         writeCard3D(data, IMAGE_MVP_FLAG, IMAGE_MVP_BASE, vidLayer, frame.camera);
         // Container rotation applied in-shader (replaces the per-frame CPU rotate). EXPORT decodes the
         // ORIGINAL coded frame (never the upright __proxy), so it reads the original rotation; PREVIEW
@@ -4304,6 +4351,7 @@ export class WebGPURenderer {
         data[27] = imgCC.gain.intensity;
 
         this.writeMaskUniforms(data, 15, 28, imgLayer.masks);
+        writeRefineEdge(data, imgLayer);
         this.writeEffectSlots(data, imgEffects);
         data[IMAGE_EFFECTTIME_FLOAT] = frame.frameNumber; // seeds procedural/noise effects
         writeCard3D(data, IMAGE_MVP_FLAG, IMAGE_MVP_BASE, imgLayer, frame.camera);

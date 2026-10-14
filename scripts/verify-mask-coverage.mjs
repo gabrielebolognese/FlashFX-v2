@@ -1,4 +1,4 @@
-// Acceptance harness for mask uniform packing + coverage (B10d-mask). Bundles the pure
+// Acceptance harness for mask uniform packing + coverage (B10d-mask; modes / expansion / field B10e). Bundles the pure
 // core/maskCoverage.ts (packMaskSlots + its CPU twin of the mask WGSL) and engine/maskWgsl.ts, and
 // asserts with node:assert. The same twin is checked against the real GPU by `npm run gpu:masks`.
 //   node scripts/verify-mask-coverage.mjs   (or: npm run verify:mask-coverage)
@@ -9,6 +9,7 @@ import { pathToFileURL } from 'node:url';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { legacyMaskStackCoverage } from './lib/legacy-mask-twin.mjs';
 
 const tmp = mkdtempSync(join(tmpdir(), 'maskcov-verify-'));
 let passed = 0;
@@ -246,10 +247,211 @@ try {
     assert.deepEqual(Buffer.from(a.buffer), Buffer.from(fresh.buffer));
   });
 
+  // ── B10e: mask modes + expansion + the combined signed-distance field ──
+  const { maskStackField, MASK_MODE_ID, MASK_MODES, isMaskMode } = C;
+  const field = (masks, x, y) => { const { b, n } = pack(masks); return maskStackField(b, 0, n, x, y); };
+  const near = (a, b, eps, msg) => assert.ok(Math.abs(a - b) <= eps, `${msg ?? ''} ${a} vs ${b}`);
+
+  check('B10e legacy stacks (no mode / expansion) cover EXACTLY as the frozen pre-B10e twin (random parametric + freeform)', () => {
+    const r = rng(1010);
+    const types = ['rectangle', 'ellipse', 'star', 'polygon'];
+    let samples = 0;
+    for (let trial = 0; trial < 40; trial++) {
+      const n = 1 + Math.floor(r() * 5);
+      const masks = Array.from({ length: n }, () => {
+        const base = {
+          type: types[Math.floor(r() * types.length)], centerX: 40 + r() * 120, centerY: 40 + r() * 120, sizeX: 30 + r() * 140, sizeY: 30 + r() * 140,
+          rotation: r() * 360 - 180, feather: r() * 8, invert: r() < 0.3, opacity: 0.3 + r() * 0.7, points: 3 + Math.floor(r() * 6), innerRadius: 5 + r() * 30,
+        };
+        if (r() < 0.4) base.vertices = r() < 0.5 ? circle() : wavy(6 + Math.floor(r() * 10));
+        return rm(base);
+      });
+      const { b, n: count } = pack(masks);
+      for (let k = 0; k < 120; k++) {
+        const x = r() * 200, y = r() * 200;
+        assert.equal(maskStackCoverage(b, 0, count, x, y), legacyMaskStackCoverage(b, 0, count, x, y), `trial ${trial} @ ${x},${y}`);
+        samples++;
+      }
+    }
+    assert.ok(samples === 4800);
+  });
+
+  check('B10e packing: mode rides in params.y (invert + 2*id), expansion in the last slot float; absent = legacy bytes', () => {
+    assert.deepEqual(MASK_MODE_ID, { intersect: 0, add: 1, subtract: 2, lighten: 3, darken: 4, difference: 5 });
+    assert.deepEqual(MASK_MODES.map((m) => m.id), ['add', 'subtract', 'intersect', 'lighten', 'darken', 'difference']);
+    assert.ok(isMaskMode('add') && !isMaskMode('bogus') && !isMaskMode(undefined) && !isMaskMode('toString'));
+    const p = pack([rm({ mode: 'subtract', invert: true, expansion: -6.5 }), rm({ mode: 'difference' }), rm({})]);
+    assert.equal(p.b[1], 1 + 2 * 2);
+    assert.equal(p.b[11], -6.5);
+    assert.equal(p.b[12 + 1], 2 * 5);
+    assert.equal(p.b[12 + 11], 0);
+    assert.equal(p.b[24 + 1], 0, 'no mode -> legacy intersect id 0');
+    const f = pack([rm({ vertices: square(), mode: 'add', expansion: 3, invert: true })]);
+    assert.equal(f.b[0], FREEFORM_MASK_TYPE);
+    assert.equal(f.b[1], 1 + 2 * 1);
+    assert.equal(f.b[11], 3, 'freeform header carries the expansion');
+    const bad = pack([rm({ mode: 'nope', expansion: NaN })]);
+    assert.equal(bad.b[1], 0);
+    assert.equal(bad.b[11], 0, 'a non-finite expansion packs as 0');
+  });
+
+  // Two hard 60x60 squares overlapping in x 70..90: A = 40..100, B = 70..130 (y 70..130 for both).
+  const A = (o = {}) => rm({ centerX: 70, centerY: 100, sizeX: 60, sizeY: 60, ...o });
+  const B = (o = {}) => rm({ centerX: 100, centerY: 100, sizeX: 60, sizeY: 60, ...o });
+  const zones = (masks) => ({ aOnly: cov(masks, 55, 100), both: cov(masks, 80, 100), bOnly: cov(masks, 115, 100), none: cov(masks, 150, 100) });
+
+  check('B10e modes (AE semantics): add = union, subtract = A minus B, intersect = overlap, difference = xor, lighten/darken', () => {
+    assert.deepEqual(zones([A({ mode: 'add' }), B({ mode: 'add' })]), { aOnly: 1, both: 1, bOnly: 1, none: 0 });
+    assert.deepEqual(zones([A({ mode: 'add' }), B({ mode: 'subtract' })]), { aOnly: 1, both: 0, bOnly: 0, none: 0 });
+    assert.deepEqual(zones([A({ mode: 'add' }), B({ mode: 'intersect' })]), { aOnly: 0, both: 1, bOnly: 0, none: 0 });
+    assert.deepEqual(zones([A({ mode: 'add' }), B({ mode: 'difference' })]), { aOnly: 1, both: 0, bOnly: 1, none: 0 });
+    assert.deepEqual(zones([A({ mode: 'add' }), B({ mode: 'lighten' })]), { aOnly: 1, both: 1, bOnly: 1, none: 0 });
+    assert.deepEqual(zones([A({ mode: 'add' }), B({ mode: 'darken' })]), { aOnly: 0, both: 1, bOnly: 0, none: 0 });
+    // Legacy (no mode on either) = multiply = intersect.
+    assert.deepEqual(zones([A(), B()]), { aOnly: 0, both: 1, bOnly: 0, none: 0 });
+  });
+
+  check('B10e first-mask start: a lone subtract cuts a hole in the full layer; lone add / intersect keep the inside', () => {
+    assert.deepEqual(zones([B({ mode: 'subtract' })]), { aOnly: 1, both: 0, bOnly: 0, none: 1 });
+    assert.deepEqual(zones([B({ mode: 'add' })]), { aOnly: 0, both: 1, bOnly: 1, none: 0 });
+    assert.deepEqual(zones([B({ mode: 'intersect' })]), { aOnly: 0, both: 1, bOnly: 1, none: 0 });
+    assert.deepEqual(zones([B({ mode: 'darken' })]), { aOnly: 0, both: 1, bOnly: 1, none: 0 });
+    assert.deepEqual(zones([B({ mode: 'difference' })]), { aOnly: 0, both: 1, bOnly: 1, none: 0 });
+    // An inverted subtract (the keep-inside-B idiom): full minus outside-of-B.
+    assert.deepEqual(zones([B({ mode: 'subtract', invert: true })]), { aOnly: 0, both: 1, bOnly: 1, none: 0 });
+  });
+
+  check('B10e opacity: add/subtract scale the contribution; intersect/darken keep the legacy "0 = no effect" rule', () => {
+    near(cov([B({ mode: 'add', opacity: 0.5 })], 115, 100), 0.5, 1e-12, 'add 50% inside');
+    near(cov([B({ mode: 'add', opacity: 0.5 })], 150, 100), 0, 1e-12, 'add 50% outside');
+    near(cov([B({ opacity: 0.5 })], 150, 100), 0.5, 1e-12, 'legacy intersect 50% outside');
+    near(cov([A({ mode: 'add' }), B({ mode: 'subtract', opacity: 0.25 })], 80, 100), 0.75, 1e-12, 'subtract 25%');
+    near(cov([A({ mode: 'add' }), B({ mode: 'add', opacity: 0 })], 115, 100), 0, 1e-12, 'add 0% adds nothing');
+    near(cov([A({ mode: 'add' }), B({ mode: 'intersect', opacity: 0 })], 55, 100), 1, 1e-12, 'intersect 0% has no effect');
+    // Add is cumulative + clamped: two 50% adds over the same area reach 100%.
+    near(cov([B({ mode: 'add', opacity: 0.5 }), B({ mode: 'add', opacity: 0.5 })], 115, 100), 1, 1e-12, 'cumulative add');
+  });
+
+  check('B10e expansion moves the edge by exactly N px (rect, freeform, star), + grows, - chokes, feather centred on it', () => {
+    // Rect B: right edge at x = 130.
+    near(cov([B({ mode: 'add', expansion: 10 })], 139.5, 100), 1, 0, 'grown 10 px');
+    near(cov([B({ mode: 'add', expansion: 10 })], 140, 100), 0.5, 1e-9, 'edge at 140');
+    near(cov([B({ mode: 'add', expansion: -10 })], 120, 100), 0.5, 1e-9, 'choked edge at 120');
+    near(cov([B({ mode: 'add', expansion: -10 })], 125, 100), 0, 0, 'choked off');
+    near(cov([B({ mode: 'add', expansion: 6, feather: 4 })], 136, 100), 0.5, 1e-9, 'feather centred on the expanded edge');
+    // Freeform square 50..150 (the harness rm default).
+    near(cov([rm({ vertices: square(), expansion: 7 })], 157, 100), 0.5, 1e-9, 'freeform grown');
+    near(cov([rm({ vertices: square(), expansion: 7 })], 156, 20), 0, 0, 'freeform corner rounds (distance-based)');
+    near(cov([rm({ vertices: square(), expansion: -7 })], 143, 100), 0.5, 1e-9, 'freeform choked');
+    // Grown freeform is not clipped by the bbox early-out.
+    near(cov([rm({ vertices: square(), expansion: 30 })], 175, 100), 1, 0, 'past the bbox, inside the grown edge');
+    // Star: expansion is a uniform offset of its distance field.
+    const st = (e) => [rm({ type: 'star', sizeX: 120, innerRadius: 25, points: 5, expansion: e })];
+    let grown = 0, base = 0;
+    for (let y = 0; y < 200; y += 2) for (let x = 0; x < 200; x += 2) { grown += cov(st(4), x, y); base += cov(st(0), x, y); }
+    assert.ok(grown > base * 1.1, `star grows (${base} -> ${grown})`);
+  });
+
+  check('B10e field: the alpha path and the field path (any band) agree on alpha everywhere (incl. the freeform bbox early-out)', () => {
+    const stacks = [
+      [rm({ vertices: wavy(9), feather: 3, expansion: 4 }), B({ mode: 'subtract', feather: 2 })],
+      [A({ mode: 'add', invert: true }), rm({ vertices: circle(), mode: 'difference', sizeX: 80, sizeY: 80 })],
+      [rm({ type: 'star', mode: 'lighten', opacity: 0.6 }), rm({ vertices: square(), expansion: -5, mode: 'darken' })],
+    ];
+    const r = rng(33);
+    for (const st of stacks) {
+      const { b, n } = pack(st);
+      for (let k = 0; k < 400; k++) {
+        const x = r() * 220 - 10, y = r() * 220 - 10;
+        const a0 = maskStackCoverage(b, 0, n, x, y);
+        for (const band of [Infinity, 12, 3, 0.5]) assert.equal(maskStackField(b, 0, n, x, y, band).alpha, a0, `band ${band}`);
+      }
+    }
+  });
+
+  check('B10e field: signed distance + unit outward normal of the combined matte (CSG)', () => {
+    // Lone rect B (70..130): 5 px right of its edge.
+    let f = field([B({ mode: 'add' })], 135, 100);
+    near(f.sd, 5, 1e-9, 'sd outside');
+    near(f.gx, 1, 1e-9); near(f.gy, 0, 1e-9);
+    f = field([B({ mode: 'add' })], 100, 75);
+    near(f.sd, -5, 1e-9, 'sd inside, top edge nearest');
+    near(f.gx, 0, 1e-9); near(f.gy, -1, 1e-9, 'normal points out through the top');
+    // Expansion shifts the distance.
+    near(field([B({ mode: 'add', expansion: 3 })], 135, 100).sd, 2, 1e-9);
+    // Inverted: the KEPT region is outside the rect, so the sign and normal flip.
+    f = field([B({ mode: 'add', invert: true })], 135, 100);
+    near(f.sd, -5, 1e-9); near(f.gx, -1, 1e-9);
+    // Subtract hole (B, x 70..130) punched in a wide A (x 20..180): at x = 75, 5 px inside the hole
+    // from its left edge, the distance to the kept region is +5 and the normal points away from the
+    // kept region (into the hole).
+    f = field([A({ mode: 'add', sizeX: 160, centerX: 100 }), B({ mode: 'subtract' })], 75, 100);
+    near(f.sd, 5, 1e-9, 'inside the hole, 5 px from its edge');
+    near(f.gx, 1, 1e-9, 'normal points into the hole');
+    // Union: the nearer surface wins.
+    f = field([A({ mode: 'add' }), B({ mode: 'add' })], 135, 100);
+    near(f.sd, 5, 1e-9); near(f.gx, 1, 1e-9);
+    // Freeform circle (r = 50 at 100,100): the normal is radial.
+    f = field([rm({ vertices: circle(), mode: 'add' })], 100 + 60 * Math.cos(0.7), 100 + 60 * Math.sin(0.7));
+    near(f.sd, 10, 0.3, 'circle sd');
+    near(f.gx, Math.cos(0.7), 0.02); near(f.gy, Math.sin(0.7), 0.02);
+    // Exactly on a polyline edge: the perpendicular, oriented outward.
+    f = field([rm({ vertices: square(), mode: 'add' })], 150, 100);
+    near(Math.abs(f.sd), 0, 1e-9); near(f.gx, 1, 1e-9); near(f.gy, 0, 1e-9);
+    // No masks contributing: the field has no edge (refine stays off there).
+    const none = maskStackField(new Float32Array(MASK_BLOCK_FLOATS), 0, 0, 10, 10);
+    assert.equal(none.alpha, 1); assert.ok(none.sd < -1e29); assert.equal(none.gx, 0);
+  });
+
+  check('B10e field: normals are unit length across random stacks (|g| = 1 wherever an edge contributes)', () => {
+    const r = rng(77);
+    const st = [rm({ vertices: wavy(12), mode: 'add', expansion: 2 }), rm({ type: 'ellipse', centerX: 130, sizeX: 90, sizeY: 60, mode: 'subtract' }), rm({ type: 'star', centerY: 70, mode: 'add', sizeX: 70 })];
+    const { b, n } = pack(st);
+    for (let k = 0; k < 500; k++) {
+      const x = r() * 200, y = r() * 200;
+      const f = maskStackField(b, 0, n, x, y);
+      const g = Math.hypot(f.gx, f.gy);
+      assert.ok(Math.abs(g - 1) < 1e-6, `|g| = ${g} at ${x},${y}`);
+    }
+  });
+
+  check('B10e field band: a finite band (the refine radius) is exact wherever |sd| < band and never invents an edge', () => {
+    const r = rng(91);
+    const stacks = [
+      [rm({ vertices: wavy(12), mode: 'add', expansion: 2 }), rm({ type: 'ellipse', centerX: 130, sizeX: 90, sizeY: 60, mode: 'subtract' })],
+      [rm({ vertices: circle(), centerX: 60, sizeX: 60, sizeY: 60, mode: 'add' }), rm({ vertices: square(), centerX: 150, centerY: 150, sizeX: 40, sizeY: 40, mode: 'difference' })],
+      [rm({ vertices: circle(), centerX: 60, sizeX: 70, sizeY: 70, mode: 'add' }), rm({ vertices: square(), centerX: 140, centerY: 120, sizeX: 50, sizeY: 50, mode: 'intersect', expansion: -4 })],
+      [rm({ vertices: circle(), sizeX: 80, sizeY: 80, mode: 'add', invert: true, feather: 3 })],
+    ];
+    let inBand = 0;
+    for (const st of stacks) {
+      const { b, n } = pack(st);
+      for (const band of [4, 10]) {
+        for (let k = 0; k < 600; k++) {
+          const x = r() * 260 - 30, y = r() * 260 - 30;
+          const full = maskStackField(b, 0, n, x, y);
+          const banded = maskStackField(b, 0, n, x, y, band);
+          if (Math.abs(full.sd) < band) {
+            inBand++;
+            assert.equal(banded.sd, full.sd);
+            assert.equal(banded.gx, full.gx);
+            assert.equal(banded.gy, full.gy);
+          } else {
+            assert.ok(Math.abs(banded.sd) >= band, `outside the band stays outside (${full.sd} -> ${banded.sd})`);
+          }
+        }
+      }
+    }
+    assert.ok(inBand > 150, `exercised the band (${inBand})`);
+  });
+
   check('mask WGSL: constants interpolated from the packer (single source of truth)', () => {
     const src = W.MASK_WGSL;
     assert.ok(!src.includes('${'), 'no un-interpolated template');
-    assert.ok(src.includes('fn computeFreeformMaskAlpha(') && src.includes('fn computeMaskStackAlpha('));
+    assert.ok(src.includes('fn mask_freeformEval(') && src.includes('fn computeMaskStack(') && src.includes('fn computeMaskStackAlpha('));
+    // B10e: the mode ids the stack branches on come from the packer's table.
+    for (const [mode, id] of Object.entries(MASK_MODE_ID)) if (mode !== 'intersect') assert.ok(src.includes(`mode == ${id})`), `mode ${mode}`);
+    assert.ok(src.includes('>> 1u') && src.includes('& 1) == 1'), 'mode / invert decode');
     assert.ok(src.includes(`== ${FREEFORM_MASK_TYPE})`), 'freeform type id');
     assert.ok(src.includes('/ 0.25)))') && src.includes(', 1, 32)'), 'flatten tolerance + piece cap');
     assert.ok(src.includes('k * 7') && src.includes('k * 3'), 'bezier / polyline strides');

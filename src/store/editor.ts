@@ -5,7 +5,8 @@ import { buildMaskReveal, type MaskRevealKind } from '../core/maskReveal';
 import { insertPointOnSegment, applyVertexType } from '../core/pathVertexOps';
 import { pathMaskFromComp } from '../core/maskPath';
 import type { TrackMatteMode } from '../core/trackMatte';
-import type { LayerEffect } from '../core/types';
+import type { LayerEffect, RefineEdge } from '../core/types';
+import { clampRefineEdge } from '../core/refineEdge';
 import { cloneEffectStack } from '../core/effects/effectStack';
 import { autoSpatialTangents, segmentArcLength, framesFromCumLengths } from '../core/positionPath';
 import { splitDimensions, mergeDimensions } from '../core/separateDimensions';
@@ -497,6 +498,9 @@ interface EditorState {
   updateLayerProperty: (layerId: string, path: string, value: unknown) => void;
   /** Track matte (B10b): set/clear how this layer is matted by the layer directly above it. */
   setTrackMatte: (layerId: string, mode: TrackMatteMode | undefined) => void;
+  /** Refine Edge (B10e): set / clear the colour-aware matte-edge refinement of an image / video layer.
+   *  Batch-aware (a slider drag is one undo step). */
+  setRefineEdge: (layerId: string, refine: RefineEdge | undefined) => void;
   /** Path modifier stack (B8a) - trim/offset/roughen on a shape layer's outline. Params are edited
    *  through the generic updateLayerProperty/addKeyframe on `modifiers.<i>.<param>` dot-paths. */
   addShapeModifier: (layerId: string, type: ShapeModifierType) => void;
@@ -6342,6 +6346,31 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const newComp = apply(oldComp);
     exec({
       label: 'Add Mask Keyframe',
+      execute: () => { set({ composition: newComp }); },
+      undo: () => { set({ composition: oldComp }); },
+    });
+  },
+
+  setRefineEdge: (layerId, refine) => {
+    const apply = (comp: Composition): Composition => ({
+      ...comp,
+      layers: comp.layers.map((l) => {
+        if (l.id !== layerId || (l.type !== 'image' && l.type !== 'video')) return l;
+        const next = { ...l } as Layer & { refineEdge?: RefineEdge };
+        if (refine) next.refineEdge = clampRefineEdge(refine);
+        else delete next.refineEdge;
+        return next as Layer;
+      }),
+    });
+    const history = useHistoryStore.getState();
+    if (history.isUndoing || history.isBatching) {
+      set({ composition: apply(get().composition) });
+      return;
+    }
+    const oldComp = get().composition;
+    const newComp = apply(oldComp);
+    exec({
+      label: refine ? 'Refine Edge' : 'Remove Refine Edge',
       execute: () => { set({ composition: newComp }); },
       undo: () => { set({ composition: oldComp }); },
     });

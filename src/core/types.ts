@@ -358,6 +358,27 @@ export interface ShapePatternConfig {
 
 export type MaskType = 'rectangle' | 'ellipse' | 'star' | 'polygon';
 
+/**
+ * How a mask combines with the masks above it (B10e, After Effects mask modes). Masks are applied top
+ * to bottom; a stack whose first mask is subtract / intersect / darken starts from the full layer,
+ * otherwise from nothing. Absent = 'intersect' (the legacy multiply), so older projects are unchanged.
+ */
+export type MaskMode = 'add' | 'subtract' | 'intersect' | 'lighten' | 'darken' | 'difference';
+
+/**
+ * Refine Edge (B10e): a colour-aware pass over the matte edge of an image / video layer's masks. In a
+ * band of `radius` px around the combined mask outline, each pixel's alpha is re-estimated from the
+ * footage itself (foreground colour sampled just inside the edge, background just outside), so a rough
+ * roto snaps to the real subject edge and keeps soft detail. `contrast` hardens the classified edge and
+ * `decontaminate` strips the old background's colour from edge pixels.
+ */
+export interface RefineEdge {
+  enabled: boolean;
+  radius: number;
+  contrast: number;
+  decontaminate: number;
+}
+
 export interface Mask {
   id: string;
   name: string;
@@ -380,6 +401,10 @@ export interface Mask {
   vertices?: PathVertex[];
   pathKeyframes?: PathKeyframe[];
   feathers?: number[]; // per-vertex feather in px; absent → the single `feather` applies uniformly
+  // B10e: how this mask combines with the masks above it. Absent = 'intersect' (legacy multiply).
+  mode?: MaskMode;
+  // B10e: grow (+) or choke (-) the edge in px without redrawing the outline (AE Mask Expansion).
+  expansion?: AnimatableProperty;
 }
 
 export interface ResolvedMask {
@@ -398,6 +423,9 @@ export interface ResolvedMask {
   // Present only for path masks; the coverage shader that consumes them is browser-gated.
   vertices?: PathVertex[];
   feathers?: number[];
+  // B10e: combine mode (absent = 'intersect') and the evaluated edge expansion in px (absent = 0).
+  mode?: MaskMode;
+  expansion?: number;
 }
 
 // A keyframeable 2.5D projected shadow. The shadow is rendered as a separate
@@ -680,6 +708,8 @@ export interface VideoLayer {
   masks?: Mask[];
   /** Track matte (B10b): this layer is matted by the layer directly above (its alpha/luma). */
   trackMatte?: TrackMatteMode;
+  /** Refine Edge (B10e): colour-aware refinement of the masks' matte edge. */
+  refineEdge?: RefineEdge;
   video: {
     assetId: string;
     sourceWidth: number;
@@ -788,6 +818,8 @@ export interface ImageLayer {
   masks?: Mask[];
   /** Track matte (B10b): this layer is matted by the layer directly above (its alpha/luma). */
   trackMatte?: TrackMatteMode;
+  /** Refine Edge (B10e): colour-aware refinement of the masks' matte edge. */
+  refineEdge?: RefineEdge;
   image: {
     assetId: string;
     sourceWidth: number;
@@ -1907,6 +1939,8 @@ export interface ResolvedLayer {
   proceduralLoop?: ResolvedProceduralLoop;
   mask?: ResolvedMask;
   masks?: ResolvedMask[];
+  // Refine Edge (B10e): present only on an image / video layer with refine on AND masks to refine.
+  refineEdge?: RefineEdge;
   motionBlur?: ResolvedMotionBlur;
   shadow?: ResolvedShadow;
   glow?: ResolvedGlow;

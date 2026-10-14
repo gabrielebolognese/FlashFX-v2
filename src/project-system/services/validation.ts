@@ -38,8 +38,11 @@ import type {
   PathVertex,
   TextDecode,
   TextPathBinding,
+  RefineEdge,
 } from '../../core/types';
 import { DEFAULT_DECODE_CHARSET } from '../../core/textDecode';
+import { isMaskMode } from '../../core/maskCoverage';
+import { sanitizeRefineEdge } from '../../core/refineEdge';
 import type { LayerConstraints } from '../../core/reframe';
 
 function isObject(v: unknown): v is Record<string, unknown> {
@@ -441,9 +444,18 @@ function ensureMasks(val: unknown): Mask[] | undefined {
       // Per-vertex feathers are positional: a bad entry becomes 0 rather than being dropped (dropping
       // would shift every later feather onto the wrong vertex).
       ...(Array.isArray(m.feathers) ? { feathers: (m.feathers as unknown[]).map((f) => (typeof f === 'number' && Number.isFinite(f) ? Math.max(0, f) : 0)) } : {}),
+      // B10e - mask mode (absent = legacy intersect) + edge expansion.
+      ...(isMaskMode(m.mode) ? { mode: m.mode } : {}),
+      ...(isObject(m.expansion) ? { expansion: ensureAnimatableProperty(m.expansion, 'Mask Expansion', 'number', 0) } : {}),
     });
   }
   return masks.length > 0 ? masks : undefined;
+}
+
+// B10e - Refine Edge on image / video layers (sanitized; dropped when not an object).
+function refineEdgeField(raw: unknown): { refineEdge?: RefineEdge } {
+  const r = sanitizeRefineEdge(raw);
+  return r ? { refineEdge: r } : {};
 }
 
 function validateLayer(raw: unknown): Layer | null {
@@ -571,6 +583,7 @@ function validateLayer(raw: unknown): Layer | null {
         ...baseFields,
         type: 'video',
         ...(typeof r.lockAspect === 'boolean' ? { lockAspect: r.lockAspect } : {}),
+        ...refineEdgeField(r.refineEdge),
         video: {
           assetId: v.assetId as string,
           sourceWidth: typeof v.sourceWidth === 'number' ? v.sourceWidth : 1920,
@@ -597,6 +610,7 @@ function validateLayer(raw: unknown): Layer | null {
         ...baseFields,
         type: 'image',
         ...(typeof r.lockAspect === 'boolean' ? { lockAspect: r.lockAspect } : {}),
+        ...refineEdgeField(r.refineEdge),
         image: {
           assetId: img.assetId as string,
           sourceWidth: typeof img.sourceWidth === 'number' ? img.sourceWidth : 800,

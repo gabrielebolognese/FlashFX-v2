@@ -8,10 +8,18 @@
 // Parametric masks (rectangle / ellipse / star / polygon) keep their legacy one-slot layout
 // byte-for-byte, so frames without freeform masks upload exactly what they did before.
 //
+// B10e packs two more things without growing a slot: the mask MODE rides in the invert float
+// (params.y = invert + 2 * modeId, intersect = 0, so legacy stacks still write 0 / 1) and the edge
+// EXPANSION (px) in the slot's last float (the old `_pad`, 0 when absent). The stack combines masks top
+// to bottom by mode (After Effects semantics) and also builds a CSG signed distance + outward normal of
+// the combined matte (min / max of the per-mask distances), which the image shader's Refine Edge pass
+// (core/refineEdge.ts) reads; the alpha-only path never computes the normal.
+//
 // Freeform (path) masks occupy a RUN of consecutive slots - this is what lets an arbitrary outline
 // render with no new bind-group entry, buffer, or pipeline change:
-//   header slot   params = (5, invert, opacity, maxFeather)   center = (count, mode)
+//   header slot   params = (5, invert + 2 * maskMode, opacity, maxFeather)   center = (count, mode)
 //                 size = bbox min (x, y)   rot, points = bbox max (x, y)   inner = span (slots)
+//                 last float = expansion (px)
 //   data slots    a flat float stream. mode 0 (bezier): 7 floats per vertex
 //                 (x, y, inX, inY, outX, outY, feather) - handle POINTS absolute, composition space.
 //                 mode 1 (polyline): 3 floats per point (x, y, feather).
@@ -20,7 +28,8 @@
 // interpolates the feather along that edge. An outline with more vertices than its slot budget is
 // reduced (bezier refit or polyline, whichever strays least from the path). Frame-pure.
 
-import type { ResolvedMask, PathVertex, Vec2 } from './types';
+import type { ResolvedMask, PathVertex, Vec2, MaskMode } from './types';
+import type { MaskField } from './refineEdge';
 import { maskPathToComp } from './maskPath';
 import { fitStroke, fitCubicSegment } from './strokeFit';
 
@@ -33,6 +42,28 @@ export const FREEFORM_BEZIER_STRIDE = 7;
 export const FREEFORM_POLY_STRIDE = 3;
 export const FREEFORM_FLATTEN_TOL = 0.25;
 export const FREEFORM_MAX_PIECES = 32;
+
+/** Mask mode ids as packed (intersect = 0 = the legacy multiply, so an absent mode packs as before). */
+export const MASK_MODE_ID: Record<MaskMode, number> = { intersect: 0, add: 1, subtract: 2, lighten: 3, darken: 4, difference: 5 };
+/** UI order + labels (After Effects naming). */
+export const MASK_MODES: readonly { id: MaskMode; label: string }[] = [
+  { id: 'add', label: 'Add' },
+  { id: 'subtract', label: 'Subtract' },
+  { id: 'intersect', label: 'Intersect' },
+  { id: 'lighten', label: 'Lighten' },
+  { id: 'darken', label: 'Darken' },
+  { id: 'difference', label: 'Difference' },
+];
+export function isMaskMode(v: unknown): v is MaskMode {
+  return typeof v === 'string' && Object.prototype.hasOwnProperty.call(MASK_MODE_ID, v);
+}
+
+/** The packed params.y: invert bit + 2 * mode id. */
+export function maskModeCode(m: ResolvedMask): number {
+  return (m.invert ? 1 : 0) + 2 * (isMaskMode(m.mode) ? MASK_MODE_ID[m.mode] : 0);
+}
+
+const finiteOr0 = (v: number | undefined) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
 
 /** A resolved mask that renders as a freeform outline (has a resolved `vertices` array). */
 export function isFreeformResolved(m: ResolvedMask): m is ResolvedMask & { vertices: PathVertex[] } {
@@ -348,7 +379,7 @@ export function packMaskSlots(masks: ResolvedMask[] | undefined, out: Float32Arr
     const base = offset + slot * MASK_SLOT_FLOATS;
     if (!isFreeformResolved(m)) {
       out[base] = MASK_TYPE_ID[m.type] ?? 1;
-      out[base + 1] = m.invert ? 1 : 0;
+      out[base + 1] = maskModeCode(m);
       out[base + 2] = m.opacity;
       out[base + 3] = m.feather;
       out[base + 4] = m.centerX;
@@ -358,7 +389,7 @@ export function packMaskSlots(masks: ResolvedMask[] | undefined, out: Float32Arr
       out[base + 8] = m.rotation * (Math.PI / 180);
       out[base + 9] = m.points;
       out[base + 10] = m.innerRadius;
-      out[base + 11] = 0;
+      out[base + 11] = finiteOr0(m.expansion);
       slot++;
       continue;
     }
@@ -368,7 +399,7 @@ export function packMaskSlots(masks: ResolvedMask[] | undefined, out: Float32Arr
     if (!packed) continue;
     const span = 1 + Math.ceil(packed.data.length / MASK_SLOT_FLOATS);
     out[base] = FREEFORM_MASK_TYPE;
-    out[base + 1] = m.invert ? 1 : 0;
+    out[base + 1] = maskModeCode(m);
     out[base + 2] = m.opacity;
     out[base + 3] = packed.maxFeather;
     out[base + 4] = packed.count;
@@ -378,7 +409,7 @@ export function packMaskSlots(masks: ResolvedMask[] | undefined, out: Float32Arr
     out[base + 8] = packed.bbox[2];
     out[base + 9] = packed.bbox[3];
     out[base + 10] = span;
-    out[base + 11] = 0;
+    out[base + 11] = finiteOr0(m.expansion);
     const dataBase = base + MASK_SLOT_FLOATS;
     for (let k = 0; k < packed.data.length; k++) out[dataBase + k] = packed.data[k];
     slot += span;
@@ -435,39 +466,62 @@ function ellipseSDF(px: number, py: number, ax: number, ay: number): number {
   return (k1 * (k1 - 1)) / Math.max(k2, 0.0001);
 }
 
-function parametricAlpha(b: ArrayLike<number>, o: number, x: number, y: number): number {
+const BIG = 1e30;
+const MODE = MASK_MODE_ID;
+
+// One mask evaluated at a point: `a` = feathered coverage after invert (opacity is applied by the
+// stack), `sd` = signed distance after expansion, negated when inverted (inside the KEPT region < 0),
+// (gx, gy) = unit gradient of sd. `band` is the Refine Edge radius: the normal is only computed when
+// |sd| < band (0 = the alpha-only path: never), and a freeform mask's bbox early-out widens by it
+// (beyond the bbox + band its edge cannot be the refined one, so +-1e30 "far" is exact enough).
+interface MaskEval { a: number; sd: number; gx: number; gy: number }
+
+const decodeInvert = (code: number) => (Math.round(code) & 1) === 1;
+const decodeMode = (code: number) => Math.round(code) >> 1;
+
+function parametricSD(b: ArrayLike<number>, o: number, x: number, y: number): number {
   const mtype = Math.round(b[o]);
-  if (mtype === 0) return 1;
   const relX = x - b[o + 4], relY = y - b[o + 5];
   const c = Math.cos(-b[o + 8]), s = Math.sin(-b[o + 8]);
   const px = relX * c - relY * s, py = relX * s + relY * c;
   const sx = b[o + 6], sy = b[o + 7];
-  let d: number;
   if (mtype === 1) {
     const qx = Math.abs(px) - sx, qy = Math.abs(py) - sy;
-    d = Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0);
-  } else if (mtype === 2) {
-    d = ellipseSDF(px, py, Math.max(sx, 0.001), Math.max(sy, 0.001));
-  } else if (mtype === 3) {
-    d = starSDF(px, py, b[o + 9], sx, b[o + 10]);
-  } else {
-    d = ngonSDF(px, py, sx, b[o + 9]);
+    return Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0);
   }
-  const feather = Math.max(b[o + 3], 0.001);
-  let a = 1 - smoothstep(-feather, feather, d);
-  if (b[o + 1] > 0.5) a = 1 - a;
-  return 1 - b[o + 2] * (1 - a);
+  if (mtype === 2) return ellipseSDF(px, py, Math.max(sx, 0.001), Math.max(sy, 0.001));
+  if (mtype === 3) return starSDF(px, py, b[o + 9], sx, b[o + 10]);
+  return ngonSDF(px, py, sx, b[o + 9]);
 }
 
-/** Freeform coverage at (x, y) for the run whose header is at float `o`, plus its signed distance. */
-export function freeformCoverage(b: ArrayLike<number>, o: number, x: number, y: number): { alpha: number; signedDist: number } {
+function parametricEval(b: ArrayLike<number>, o: number, x: number, y: number, band: number): MaskEval {
+  const d = parametricSD(b, o, x, y) - b[o + 11];
+  const feather = Math.max(b[o + 3], 0.001);
+  let a = 1 - smoothstep(-feather, feather, d);
+  const inv = decodeInvert(b[o + 1]);
+  if (inv) a = 1 - a;
+  let gx = 0, gy = 0;
+  if (band > 0 && Math.abs(d) < band) {
+    const hx = parametricSD(b, o, x + 0.5, y) - parametricSD(b, o, x - 0.5, y);
+    const hy = parametricSD(b, o, x, y + 0.5) - parametricSD(b, o, x, y - 0.5);
+    const gl = Math.hypot(hx, hy);
+    if (gl > 1e-6) { gx = hx / gl; gy = hy / gl; }
+  }
+  return inv ? { a, sd: -d, gx: -gx, gy: -gy } : { a, sd: d, gx, gy };
+}
+
+function freeformEval(b: ArrayLike<number>, o: number, x: number, y: number, band: number): MaskEval & { shapeSd: number } {
   const n = Math.round(b[o + 4]);
   const mode = Math.round(b[o + 5]);
   const maxF = Math.max(b[o + 3], 0.001);
-  let minD = 1e30;
+  const expn = b[o + 11];
+  let minD = BIG;
   let fAt = maxF;
   let inside = false;
-  const outside = x < b[o + 6] - (maxF + 1) || y < b[o + 7] - (maxF + 1) || x > b[o + 8] + (maxF + 1) || y > b[o + 9] + (maxF + 1);
+  let qx = 0, qy = 0, eAx = 0, eAy = 0, area2 = 0;
+  // bbox early-out, widened by the grown edge and by the refine band (the field needs true distances there).
+  const pad = maxF + 1 + Math.max(expn, 0) + band;
+  const outside = x < b[o + 6] - pad || y < b[o + 7] - pad || x > b[o + 8] + pad || y > b[o + 9] + pad;
   if (!outside && n >= 3) {
     const d0 = o + MASK_SLOT_FLOATS;
     let winding = 0;
@@ -495,7 +549,12 @@ export function freeformCoverage(b: ArrayLike<number>, o: number, x: number, y: 
         if (d < minD) {
           minD = d;
           fAt = f0 + (f1 - f0) * ((j - 1 + tt) / pieces);
+          qx = prev[0] + ex * tt;
+          qy = prev[1] + ey * tt;
+          eAx = ex;
+          eAy = ey;
         }
+        area2 += prev[0] * cur[1] - cur[0] * prev[1];
         const isLeft = ex * wy - ey * wx;
         if (prev[1] <= y) {
           if (cur[1] > y && isLeft > 0) winding++;
@@ -507,27 +566,94 @@ export function freeformCoverage(b: ArrayLike<number>, o: number, x: number, y: 
     }
     inside = winding !== 0;
   }
-  const sd = inside ? -minD : minD;
+  const sd = (inside ? -minD : minD) - expn;
   const f = Math.max(fAt, 0.001);
   let a = 1 - smoothstep(-f, f, sd);
-  if (b[o + 1] > 0.5) a = 1 - a;
-  return { alpha: 1 - b[o + 2] * (1 - a), signedDist: sd };
+  const inv = decodeInvert(b[o + 1]);
+  if (inv) a = 1 - a;
+  let gx = 0, gy = 0;
+  if (band > 0 && minD < 1e29 && Math.abs(sd) < band) {
+    if (minD > 1e-5) {
+      const s = inside ? -1 : 1;
+      gx = ((x - qx) / minD) * s;
+      gy = ((y - qy) / minD) * s;
+    } else {
+      // Exactly on the outline: the edge's outward perpendicular (orientation from the signed area).
+      const len = Math.hypot(eAx, eAy);
+      if (len > 1e-12) {
+        const s = area2 >= 0 ? 1 : -1;
+        gx = (eAy / len) * s;
+        gy = (-eAx / len) * s;
+      }
+    }
+  }
+  return inv ? { a, sd: -sd, gx: -gx, gy: -gy, shapeSd: sd } : { a, sd, gx, gy, shapeSd: sd };
 }
 
-/** The multiplied coverage of a packed mask block at composition point (x, y) - the shader's result. */
-export function maskStackCoverage(block: ArrayLike<number>, offset: number, slotCount: number, x: number, y: number): number {
-  if (slotCount <= 0) return 1;
-  let alpha = 1;
+/** Freeform coverage at (x, y) for the run whose header is at float `o` (alpha after opacity), plus the
+ *  outline's signed distance (after expansion, before invert). */
+export function freeformCoverage(b: ArrayLike<number>, o: number, x: number, y: number): { alpha: number; signedDist: number } {
+  const ev = freeformEval(b, o, x, y, 0);
+  return { alpha: 1 - b[o + 2] * (1 - ev.a), signedDist: ev.shapeSd };
+}
+
+/**
+ * The packed mask block at composition point (x, y), combined top to bottom by mode - the shader's
+ * `computeMaskStack`. `alpha` is the coverage; `sd`/`gx`/`gy` are the CSG signed distance + unit outward
+ * normal of the combined matte (+-1e30 and a zero normal when no mask edge contributes). `band` is the
+ * Refine Edge radius: the normal is exact wherever |sd| < band (where the refine pass reads it); 0 is
+ * the alpha-only path. The default (Infinity) computes the full field everywhere.
+ */
+export function maskStackField(block: ArrayLike<number>, offset: number, slotCount: number, x: number, y: number, band = Infinity): MaskField {
+  if (slotCount <= 0) return { alpha: 1, sd: -BIG, gx: 0, gy: 0 };
+  const m0 = decodeMode(block[offset + 1]);
+  const startFull = m0 === MODE.intersect || m0 === MODE.subtract || m0 === MODE.darken;
+  let acc = startFull ? 1 : 0;
+  let sdAcc = startFull ? -BIG : BIG;
+  let gAx = 0, gAy = 0;
   let i = 0;
   while (i < slotCount && i < MASK_SLOTS) {
     const o = offset + i * MASK_SLOT_FLOATS;
-    if (Math.round(block[o]) === FREEFORM_MASK_TYPE) {
-      alpha *= freeformCoverage(block, o, x, y).alpha;
-      i += Math.max(Math.round(block[o + 10]), 1);
+    const t = Math.round(block[o]);
+    if (t === 0) { i += 1; continue; }
+    let ev: MaskEval;
+    let adv = 1;
+    if (t === FREEFORM_MASK_TYPE) {
+      ev = freeformEval(block, o, x, y, band);
+      adv = Math.max(Math.round(block[o + 10]), 1);
     } else {
-      alpha *= parametricAlpha(block, o, x, y);
-      i += 1;
+      ev = parametricEval(block, o, x, y, band);
     }
+    const op = block[o + 2];
+    const c = ev.a;
+    const mode = decodeMode(block[o + 1]);
+    if (mode === MODE.add) acc = Math.min(1, acc + op * c);
+    else if (mode === MODE.subtract) acc = Math.max(0, acc - op * c);
+    else if (mode === MODE.lighten) acc = Math.max(acc, op * c);
+    else if (mode === MODE.darken) acc = Math.min(acc, 1 - op * (1 - c));
+    else if (mode === MODE.difference) acc = Math.abs(acc - op * c);
+    else acc = acc * (1 - op * (1 - c));
+    if (op > 0) {
+      const s = ev.sd;
+      if (mode === MODE.add || mode === MODE.lighten) {
+        if (s < sdAcc) { sdAcc = s; gAx = ev.gx; gAy = ev.gy; }
+      } else if (mode === MODE.subtract) {
+        if (-s > sdAcc) { sdAcc = -s; gAx = -ev.gx; gAy = -ev.gy; }
+      } else if (mode === MODE.difference) {
+        // xor: max(min(acc, s), -max(acc, s))
+        let lo = sdAcc, lgx = gAx, lgy = gAy, hi = s, hgx = ev.gx, hgy = ev.gy;
+        if (s < sdAcc) { lo = s; lgx = ev.gx; lgy = ev.gy; hi = sdAcc; hgx = gAx; hgy = gAy; }
+        if (lo >= -hi) { sdAcc = lo; gAx = lgx; gAy = lgy; } else { sdAcc = -hi; gAx = -hgx; gAy = -hgy; }
+      } else if (s > sdAcc) {
+        sdAcc = s; gAx = ev.gx; gAy = ev.gy;
+      }
+    }
+    i += adv;
   }
-  return alpha;
+  return { alpha: acc, sd: sdAcc, gx: gAx, gy: gAy };
+}
+
+/** The combined coverage of a packed mask block at composition point (x, y) - the shader's result. */
+export function maskStackCoverage(block: ArrayLike<number>, offset: number, slotCount: number, x: number, y: number): number {
+  return maskStackField(block, offset, slotCount, x, y, 0).alpha;
 }

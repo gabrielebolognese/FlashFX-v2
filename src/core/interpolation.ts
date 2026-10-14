@@ -33,6 +33,7 @@ import { decodeCharAt } from './textDecode';
 import { totalPathLength, pointAndAngleAt, glyphPathFraction, type TextPathNode } from './textPath';
 import { pairTrackMattes, type TrackMatteMode } from './trackMatte';
 import { resolveMaskVertices, resolveMaskFeathers } from './maskPath';
+import { resolveRefineEdge } from './refineEdge';
 import { resolveEffectStack } from './effects/effectStack';
 import { resolveAdjustmentCoverage } from './effects/adjustmentCoverage';
 import { evaluateMotionPathAtFrame } from './motionPath';
@@ -762,6 +763,7 @@ function resolveMask(masks: Mask[] | undefined, frame: number): ResolvedMask | u
     points: Math.max(3, Math.round(mask.points)),
     innerRadius: Math.max(0, evaluateNumber(mask.innerRadius, frame)),
     ...maskPathFields(mask, frame),
+    ...maskModeFields(mask, frame),
   };
 }
 
@@ -772,6 +774,17 @@ function maskPathFields(mask: Mask, frame: number): { vertices?: PathVertex[]; f
   const vertices = resolveMaskVertices(mask.vertices, mask.pathKeyframes, frame);
   const feathers = resolveMaskFeathers(mask.feathers, vertices.length, Math.max(0, evaluateNumber(mask.feather, frame)));
   return { vertices, feathers };
+}
+
+// Mask mode + expansion (B10e). Empty ({}) for a mask with neither, so legacy masks resolve unchanged.
+function maskModeFields(mask: Mask, frame: number): { mode?: Mask['mode']; expansion?: number } {
+  const out: { mode?: Mask['mode']; expansion?: number } = {};
+  if (mask.mode) out.mode = mask.mode;
+  if (mask.expansion) {
+    const e = evaluateNumber(mask.expansion, frame);
+    if (Number.isFinite(e) && e !== 0) out.expansion = e;
+  }
+  return out;
 }
 
 function resolveMasks(masks: Mask[] | undefined, frame: number): ResolvedMask[] {
@@ -794,6 +807,7 @@ function resolveMasks(masks: Mask[] | undefined, frame: number): ResolvedMask[] 
       points: Math.max(3, Math.round(mask.points)),
       innerRadius: Math.max(0, evaluateNumber(mask.innerRadius, frame)),
       ...maskPathFields(mask, frame),
+      ...maskModeFields(mask, frame),
     });
   }
   return result;
@@ -1271,6 +1285,8 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
       } else if (layer.type === 'video') {
         const resolvedVideo = resolveVideoLayer(layer, frame, settings.frameRate);
         if (resolvedVideo) {
+          const vMasks = resolveMasks(layer.masks, frame);
+          const vRefine = resolveRefineEdge(layer.refineEdge, vMasks.length);
           resolvedLayers.push({
             id: layer.id,
             visible: true,
@@ -1278,7 +1294,8 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
             transform: worldTransform,
             video: resolvedVideo,
             mask: resolveMask(layer.masks, frame),
-            masks: resolveMasks(layer.masks, frame),
+            masks: vMasks,
+            ...(vRefine ? { refineEdge: vRefine } : {}),
             motionBlur,
             shadow,
             glow,
@@ -1298,13 +1315,16 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
               transform: { ...worldTransform, opacity: worldTransform.opacity * resolvedVideo.blendMix },
               video: { ...resolvedVideo, sourceFrame: resolvedVideo.sourceFrameB, sourceFrameB: undefined, blendMix: undefined },
               mask: resolveMask(layer.masks, frame),
-              masks: resolveMasks(layer.masks, frame),
+              masks: vMasks,
+              ...(vRefine ? { refineEdge: vRefine } : {}),
               layerType: 'video',
             });
           }
         }
       } else if (layer.type === 'image') {
         const resolvedImage = resolveImageLayer(layer);
+        const iMasks = resolveMasks(layer.masks, frame);
+        const iRefine = resolveRefineEdge(layer.refineEdge, iMasks.length);
         resolvedLayers.push({
           id: layer.id,
           visible: true,
@@ -1312,7 +1332,8 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
           transform: worldTransform,
           image: resolvedImage,
           mask: resolveMask(layer.masks, frame),
-          masks: resolveMasks(layer.masks, frame),
+          masks: iMasks,
+          ...(iRefine ? { refineEdge: iRefine } : {}),
           motionBlur,
           shadow,
           glow,

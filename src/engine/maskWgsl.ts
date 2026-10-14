@@ -2,9 +2,14 @@
 // interpolate it after declaring `struct MaskSlot` + a `masks: array<MaskSlot, 8>` uniform). Moved out
 // of renderer.ts (B10d-mask) so the GPU harness (`npm run gpu:masks`) can compile and run the exact
 // shipping code. The slot layout is defined by core/maskCoverage.ts `packMaskSlots`, and
-// `maskStackCoverage` there is this shader's CPU twin - change both together.
+// `maskStackField` there is this shader's CPU twin - change both together.
+//
+// B10e: masks combine by MODE (params.y = invert + 2 * modeId; intersect = 0 is the legacy multiply)
+// and grow / choke by EXPANSION (the slot's last float, `_pad`). `computeMaskStack` also returns the
+// CSG signed distance + outward normal of the combined matte for the image shader's Refine Edge pass;
+// `computeMaskStackAlpha` (every other caller) asks for no normal.
 
-import { FREEFORM_MASK_TYPE, FREEFORM_FLATTEN_TOL, FREEFORM_MAX_PIECES, FREEFORM_BEZIER_STRIDE, FREEFORM_POLY_STRIDE } from '../core/maskCoverage';
+import { FREEFORM_MASK_TYPE, FREEFORM_FLATTEN_TOL, FREEFORM_MAX_PIECES, FREEFORM_BEZIER_STRIDE, FREEFORM_POLY_STRIDE, MASK_MODE_ID } from '../core/maskCoverage';
 
 const f32Lit = (v: number) => (Number.isInteger(v) ? `${v}.0` : `${v}`);
 
@@ -49,29 +54,45 @@ fn mask_ellipseSDF(p: vec2f, ab: vec2f) -> f32 {
   return k1 * (k1 - 1.0) / max(k2, 0.0001);
 }
 
-fn computeMaskAlpha(world: vec2f, mParams: vec4f, mCenter: vec2f, mSize: vec2f, mRot: f32, mPoints: f32, mInner: f32) -> f32 {
-  let mtype = i32(mParams.x + 0.5);
-  if (mtype == 0) { return 1.0; }
-  let rel = world - mCenter;
-  let c = cos(-mRot);
-  let s = sin(-mRot);
+fn mask_invert(m: MaskSlot) -> bool { return (i32(m.params.y + 0.5) & 1) == 1; }
+fn mask_mode(m: MaskSlot) -> i32 { return i32(m.params.y + 0.5) >> 1u; }
+
+// Raw signed distance of a parametric mask's shape (rect / ellipse / star / regular polygon).
+fn mask_parametricSD(world: vec2f, m: MaskSlot) -> f32 {
+  let mtype = i32(m.params.x + 0.5);
+  let rel = world - m.center;
+  let c = cos(-m.rot);
+  let s = sin(-m.rot);
   let p = vec2f(rel.x * c - rel.y * s, rel.x * s + rel.y * c);
-  var d: f32;
   if (mtype == 1) {
-    let q = abs(p) - mSize;
-    d = length(max(q, vec2f(0.0))) + min(max(q.x, q.y), 0.0);
+    let q = abs(p) - m.size;
+    return length(max(q, vec2f(0.0))) + min(max(q.x, q.y), 0.0);
   } else if (mtype == 2) {
-    d = mask_ellipseSDF(p, max(mSize, vec2f(0.001)));
+    return mask_ellipseSDF(p, max(m.size, vec2f(0.001)));
   } else if (mtype == 3) {
-    d = mask_starSDF(p, mPoints, mSize.x, mInner);
-  } else {
-    d = mask_ngonSDF(p, mSize.x, mPoints);
+    return mask_starSDF(p, m.points, m.size.x, m.inner);
   }
-  let feather = max(mParams.w, 0.001);
+  return mask_ngonSDF(p, m.size.x, m.points);
+}
+
+// One mask at a point: (coverage after feather + invert, signed distance after expansion - negated
+// when inverted, unit gradient of that distance). band = the Refine Edge radius: the gradient is only
+// computed where |d| < band (0 = the alpha-only path: never).
+fn mask_parametricEval(world: vec2f, m: MaskSlot, band: f32) -> vec4f {
+  let d = mask_parametricSD(world, m) - m._pad;
+  let feather = max(m.params.w, 0.001);
   var a = 1.0 - smoothstep(-feather, feather, d);
-  if (mParams.y > 0.5) { a = 1.0 - a; }
-  let mOpacity = mParams.z;
-  return 1.0 - mOpacity * (1.0 - a);
+  let inv = mask_invert(m);
+  if (inv) { a = 1.0 - a; }
+  var g = vec2f(0.0);
+  if (band > 0.0 && abs(d) < band) {
+    let hx = mask_parametricSD(world + vec2f(0.5, 0.0), m) - mask_parametricSD(world - vec2f(0.5, 0.0), m);
+    let hy = mask_parametricSD(world + vec2f(0.0, 0.5), m) - mask_parametricSD(world - vec2f(0.0, 0.5), m);
+    let gl = length(vec2f(hx, hy));
+    if (gl > 1e-6) { g = vec2f(hx, hy) / gl; }
+  }
+  if (inv) { return vec4f(a, -d, -g); }
+  return vec4f(a, d, g);
 }
 
 fn mask_cubic(p0: vec2f, p1: vec2f, p2: vec2f, p3: vec2f, t: f32) -> vec2f {
@@ -79,23 +100,29 @@ fn mask_cubic(p0: vec2f, p1: vec2f, p2: vec2f, p3: vec2f, t: f32) -> vec2f {
   return p0 * (u * u * u) + p1 * (3.0 * u * u * t) + p2 * (3.0 * u * t * t) + p3 * (t * t * t);
 }
 
-// Freeform (path) mask coverage (B10d-mask). The mask is a run of slots starting at header slot h:
-// params = (type, invert, opacity, maxFeather), center = (count, mode), size = bbox min,
-// (rot, points) = bbox max, inner = span. The span-1 data slots are a flat float stream - bezier
-// (mode 0): ${FREEFORM_BEZIER_STRIDE} floats per vertex (x, y, inX, inY, outX, outY, feather), polyline (mode 1):
-// ${FREEFORM_POLY_STRIDE} floats per point (x, y, feather). Each cubic is flattened adaptively (Wang's bound);
+// Freeform (path) mask (B10d-mask). The mask is a run of slots starting at header slot h:
+// params = (type, invert + 2 * maskMode, opacity, maxFeather), center = (count, mode), size = bbox min,
+// (rot, points) = bbox max, inner = span, _pad = expansion. The span-1 data slots are a flat float
+// stream - bezier (mode 0): ${FREEFORM_BEZIER_STRIDE} floats per vertex (x, y, inX, inY, outX, outY, feather), polyline
+// (mode 1): ${FREEFORM_POLY_STRIDE} floats per point (x, y, feather). Each cubic is flattened adaptively (Wang's bound);
 // the signed distance is the nearest-edge distance, negative inside (nonzero winding); the feather is
-// interpolated along that edge between its two vertices' feathers.
-fn computeFreeformMaskAlpha(world: vec2f, masks: array<MaskSlot, 8>, h: i32) -> f32 {
+// interpolated along that edge between its two vertices' feathers. Returns what mask_parametricEval does.
+fn mask_freeformEval(world: vec2f, masks: array<MaskSlot, 8>, h: i32, band: f32) -> vec4f {
   let hd = masks[h];
   let n = i32(hd.center.x + 0.5);
   let mode = i32(hd.center.y + 0.5);
   let span = i32(hd.inner + 0.5);
   let maxF = max(hd.params.w, 0.001);
+  let expn = hd._pad;
   var minD = 1e30;
   var fAt = maxF;
   var inside = false;
-  let pad = vec2f(maxF + 1.0);
+  var q = vec2f(0.0);
+  var eAt = vec2f(0.0);
+  var area2 = 0.0;
+  // bbox early-out, widened by the grown edge and by the refine band (beyond it this edge cannot be the
+  // refined one, so "far" is exact enough for the field).
+  let pad = vec2f(maxF + 1.0 + max(expn, 0.0) + band);
   let outside = any(world < hd.size - pad) || any(world > vec2f(hd.rot, hd.points) + pad);
   if (!outside && n >= 3) {
     var fd: array<f32, 84>;
@@ -160,7 +187,10 @@ fn computeFreeformMaskAlpha(world: vec2f, masks: array<MaskSlot, 8>, h: i32) -> 
         if (d < minD) {
           minD = d;
           fAt = mix(f0, f1, (f32(j - 1) + tt) / f32(pieces));
+          q = prev + e * tt;
+          eAt = e;
         }
+        area2 = area2 + (prev.x * cur.y - cur.x * prev.y);
         let isLeft = e.x * w.y - e.y * w.x;
         if (prev.y <= world.y) {
           if (cur.y > world.y && isLeft > 0.0) { winding = winding + 1; }
@@ -172,30 +202,89 @@ fn computeFreeformMaskAlpha(world: vec2f, masks: array<MaskSlot, 8>, h: i32) -> 
     }
     inside = winding != 0;
   }
-  let sd = select(minD, -minD, inside);
+  let sd = select(minD, -minD, inside) - expn;
   let f = max(fAt, 0.001);
   var a = 1.0 - smoothstep(-f, f, sd);
-  if (hd.params.y > 0.5) { a = 1.0 - a; }
-  return 1.0 - hd.params.z * (1.0 - a);
+  let inv = mask_invert(hd);
+  if (inv) { a = 1.0 - a; }
+  var g = vec2f(0.0);
+  if (band > 0.0 && minD < 1e29 && abs(sd) < band) {
+    if (minD > 1e-5) {
+      g = (world - q) / minD * select(1.0, -1.0, inside);
+    } else {
+      // Exactly on the outline: the edge's outward perpendicular (orientation from the signed area).
+      let len = length(eAt);
+      if (len > 1e-12) { g = vec2f(eAt.y, -eAt.x) / len * select(-1.0, 1.0, area2 >= 0.0); }
+    }
+  }
+  if (inv) { return vec4f(a, -sd, -g); }
+  return vec4f(a, sd, g);
 }
 
-// Multiplies every mask's coverage. maskCount counts SLOTS: a parametric mask is one slot, a
-// freeform mask a run of 'inner' slots (skipped as a unit).
-fn computeMaskStackAlpha(world: vec2f, maskCount: i32, masks: array<MaskSlot, 8>) -> f32 {
-  if (maskCount <= 0) { return 1.0; }
-  var alpha = 1.0;
+// The whole stack, combined top to bottom by mode (After Effects semantics): returns (coverage, CSG
+// signed distance of the combined matte, its unit outward normal). maskCount counts SLOTS: a parametric
+// mask is one slot, a freeform mask a run of 'inner' slots (skipped as a unit). A stack whose first mask
+// is intersect / subtract / darken starts from the full layer, otherwise from nothing. band = the Refine
+// Edge radius: the normal is exact wherever |sd| < band (0 = alpha only).
+fn computeMaskStack(world: vec2f, maskCount: i32, masks: array<MaskSlot, 8>, band: f32) -> vec4f {
+  if (maskCount <= 0) { return vec4f(1.0, -1e30, 0.0, 0.0); }
+  let m0 = mask_mode(masks[0]);
+  let startFull = m0 == ${MASK_MODE_ID.intersect} || m0 == ${MASK_MODE_ID.subtract} || m0 == ${MASK_MODE_ID.darken};
+  var acc = select(0.0, 1.0, startFull);
+  var sdAcc = select(1e30, -1e30, startFull);
+  var gAcc = vec2f(0.0);
   var i = 0;
   loop {
     if (i >= maskCount || i >= 8) { break; }
     let m = masks[i];
-    if (i32(m.params.x + 0.5) == ${FREEFORM_MASK_TYPE}) {
-      alpha = alpha * computeFreeformMaskAlpha(world, masks, i);
-      i = i + max(i32(m.inner + 0.5), 1);
-    } else {
-      alpha = alpha * computeMaskAlpha(world, m.params, m.center, m.size, m.rot, m.points, m.inner);
+    let t = i32(m.params.x + 0.5);
+    if (t == 0) {
       i = i + 1;
+      continue;
     }
+    var ev: vec4f;
+    var adv = 1;
+    if (t == ${FREEFORM_MASK_TYPE}) {
+      ev = mask_freeformEval(world, masks, i, band);
+      adv = max(i32(m.inner + 0.5), 1);
+    } else {
+      ev = mask_parametricEval(world, m, band);
+    }
+    let o = m.params.z;
+    let c = ev.x;
+    let mode = mask_mode(m);
+    if (mode == ${MASK_MODE_ID.add}) { acc = min(1.0, acc + o * c); }
+    else if (mode == ${MASK_MODE_ID.subtract}) { acc = max(0.0, acc - o * c); }
+    else if (mode == ${MASK_MODE_ID.lighten}) { acc = max(acc, o * c); }
+    else if (mode == ${MASK_MODE_ID.darken}) { acc = min(acc, 1.0 - o * (1.0 - c)); }
+    else if (mode == ${MASK_MODE_ID.difference}) { acc = abs(acc - o * c); }
+    else { acc = acc * (1.0 - o * (1.0 - c)); }
+    if (o > 0.0) {
+      let s = ev.y;
+      let g = ev.zw;
+      if (mode == ${MASK_MODE_ID.add} || mode == ${MASK_MODE_ID.lighten}) {
+        if (s < sdAcc) { sdAcc = s; gAcc = g; }
+      } else if (mode == ${MASK_MODE_ID.subtract}) {
+        if (-s > sdAcc) { sdAcc = -s; gAcc = -g; }
+      } else if (mode == ${MASK_MODE_ID.difference}) {
+        // xor: max(min(acc, s), -max(acc, s))
+        var lo = sdAcc;
+        var gLo = gAcc;
+        var hi = s;
+        var gHi = g;
+        if (s < sdAcc) { lo = s; gLo = g; hi = sdAcc; gHi = gAcc; }
+        if (lo >= -hi) { sdAcc = lo; gAcc = gLo; } else { sdAcc = -hi; gAcc = -gHi; }
+      } else if (s > sdAcc) {
+        sdAcc = s;
+        gAcc = g;
+      }
+    }
+    i = i + adv;
   }
-  return alpha;
+  return vec4f(acc, sdAcc, gAcc);
+}
+
+fn computeMaskStackAlpha(world: vec2f, maskCount: i32, masks: array<MaskSlot, 8>) -> f32 {
+  return computeMaskStack(world, maskCount, masks, 0.0).x;
 }
 `;

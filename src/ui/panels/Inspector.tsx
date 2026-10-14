@@ -14,6 +14,7 @@ import { tutorialForSectionTitle } from '../tutorials/registry';
 import { MASK_REVEAL_KINDS, type MaskRevealKind } from '../../core/maskReveal';
 import { isPathMask, maskPathAt, resolveMaskFeathers, setMaskVertexFeather, toggleMaskPathKeyframe } from '../../core/maskPath';
 import type { TrackMatteMode } from '../../core/trackMatte';
+import type { MaskMode, RefineEdge } from '../../core/types';
 import type { ShapeLayer, TextLayer, VideoLayer, ImageLayer, AudioLayer, ParticleLayer, GenerativePatternLayer, CameraLayer, AnimationItemLayer, LottieIconLayer, AnimatableProperty, Vec2, Vec4, RectangleShape, CircleShape, StarShape, PolygonShape, MotionPathAnchor, MotionPathLoop, Mask, MaskType, Layer, LayerShadow, LayerGlow, LayerBlur, BlurType, GlowMode, LayoutObjectLayer, LayoutContainerLayer, TextSpanStyle, TextLayoutConfig, TextGradientFill, ShapeModifierType, BlendMode } from '../../core/types';
 import { BLEND_MODES, BLEND_MODE_META } from '../../core/effects/blendModes';
 import { GLOW_PRESETS, applyGlowPreset } from '../../core/effects/glowParams';
@@ -33,7 +34,9 @@ import { evaluateProperty, evaluateNumber, measureLayerPreferredSize } from '../
 import { FONT_MANIFEST, defaultTrackingPx } from '../../engine/fonts';
 import { useCustomFontStore } from '../../engine/customFonts';
 import { autoCaptionAudioLayers, useAutoCaptionStore } from '../../store/autoCaption';
-import { createProperty, createTextAnimOverrides } from '../../core/factory';
+import { createProperty, createKeyframe, createTextAnimOverrides } from '../../core/factory';
+import { MASK_MODES } from '../../core/maskCoverage';
+import { DEFAULT_REFINE_EDGE, REFINE_RADIUS_MIN, REFINE_RADIUS_MAX } from '../../core/refineEdge';
 import { getMotionBlur } from '../../core/layerSwitches';
 import { DEFAULT_CONSTRAINTS, type ReframeAxisMode } from '../../core/reframe';
 import { Diamond, Route, Trash2, Wand2, Sliders, Sparkles, Square, Circle, Star, Hexagon, Zap, Scissors, Moon, Layers, Type, Frame, Copy, ChevronUp, ChevronDown, Eye, EyeOff, Plus, Repeat, Link2, Atom, Grid3x3, Aperture, Code2, SlidersHorizontal, Palette, Loader2, Boxes, Box, RotateCcw, Lock, Unlock, Upload, Captions, Crop, ShieldAlert, ScanLine, Feather, PenTool } from 'lucide-react';
@@ -2882,6 +2885,14 @@ const LOOP_OPTIONS: { value: MotionPathLoop; label: string }[] = [
   { value: 'pingPong', label: 'Ping Pong' },
 ];
 
+// Mask Expansion stand-in for masks created before B10e (never written - the first edit creates the real one).
+const NO_EXPANSION: AnimatableProperty = createProperty('Mask Expansion', 'number', 0);
+
+// Short mode tag for the mask list (absent = the legacy multiply, shown as Intersect).
+function maskModeLabel(mode: MaskMode | undefined): string {
+  return MASK_MODES.find((o) => o.id === (mode ?? 'intersect'))?.label ?? 'Intersect';
+}
+
 function MaskSection({ layerId, currentFrame }: { layerId: string; currentFrame: number }) {
   const composition = useEditorStore((s) => s.composition);
   const addMask = useEditorStore((s) => s.addMask);
@@ -2892,6 +2903,7 @@ function MaskSection({ layerId, currentFrame }: { layerId: string; currentFrame:
   const reorderMask = useEditorStore((s) => s.reorderMask);
   const applyMaskReveal = useEditorStore((s) => s.applyMaskReveal);
   const patchMask = useEditorStore((s) => s.patchMask);
+  const setRefineEdge = useEditorStore((s) => s.setRefineEdge);
   const selectedMaskId = useMaskStore((s) => s.selectedMaskId);
   const setSelectedMaskId = useMaskStore((s) => s.setSelectedMaskId);
   const selectedVertex = useMaskStore((s) => s.selectedVertex);
@@ -2901,6 +2913,10 @@ function MaskSection({ layerId, currentFrame }: { layerId: string; currentFrame:
   const layer = composition.layers.find((l) => l.id === layerId);
   const masks: Mask[] = layer && 'masks' in layer && Array.isArray(layer.masks) ? layer.masks : [];
   const mask = masks.find((m) => m.id === selectedMaskId) ?? null;
+  // Refine Edge (B10e) is an image / video pass (it reads the footage under the matte edge).
+  const refineCapable = !!layer && (layer.type === 'image' || layer.type === 'video');
+  const refine = refineCapable ? (layer as ImageLayer | VideoLayer).refineEdge : undefined;
+  const patchRefine = (patch: Partial<RefineEdge>) => setRefineEdge(layerId, { ...(refine ?? DEFAULT_REFINE_EDGE), ...patch });
 
   const MASK_TYPES: { type: MaskType; label: string; icon: typeof Square }[] = [
     { type: 'rectangle', label: 'Rectangle', icon: Square },
@@ -2962,6 +2978,7 @@ function MaskSection({ layerId, currentFrame }: { layerId: string; currentFrame:
                   <span className={`flex-1 text-caption truncate ${m.id === selectedMaskId ? 'text-yellow-300' : 'text-slate-300'}`}>
                     {m.name || `Mask ${idx + 1}`}
                   </span>
+                  <span className="text-[9px] text-slate-500" title="Mask mode">{maskModeLabel(m.mode)}</span>
                   <span className="text-[9px] text-slate-500 capitalize">{isPathMask(m) ? 'path' : m.type}</span>
                 </div>
               ))}
@@ -3081,6 +3098,20 @@ function MaskSection({ layerId, currentFrame }: { layerId: string; currentFrame:
               </div>
             )}
 
+            {/* Mask mode (B10e): how this mask combines with the masks above it (AE semantics). */}
+            <div className="flex items-center gap-1">
+              <label className="text-caption text-slate-500 w-14 flex-shrink-0" title="How this mask combines with the masks above it">Mode</label>
+              <select
+                value={mask.mode ?? 'intersect'}
+                onChange={(e) => updateMaskProperty(layerId, mask.id, 'mode', e.target.value as MaskMode)}
+                className="flex-1 bg-surface-4 border border-hairline rounded px-1.5 py-0.5 text-caption text-slate-300 outline-none"
+              >
+                {MASK_MODES.map((opt) => (
+                  <option key={opt.id} value={opt.id}>{opt.label}</option>
+                ))}
+              </select>
+            </div>
+
             <Vec2DragInput
               label="Position"
               prop={mask.position}
@@ -3118,6 +3149,23 @@ function MaskSection({ layerId, currentFrame }: { layerId: string; currentFrame:
               hasKeyframe={hasKf(mask.feather)}
               min={0}
               step={0.5}
+            />
+            {/* Mask Expansion (B10e): grow (+) / choke (-) the edge without redrawing it. Older masks
+                have no expansion property yet - the first edit creates it. */}
+            <NumberDragInput
+              label="Expand"
+              prop={mask.expansion ?? NO_EXPANSION}
+              frame={currentFrame}
+              onChange={(v) => (mask.expansion
+                ? updateMaskProperty(layerId, mask.id, 'expansion.defaultValue', v)
+                : patchMask(layerId, mask.id, { expansion: createProperty('Mask Expansion', 'number', v) }, 'Mask Expansion'))}
+              onKeyframe={(v) => (mask.expansion
+                ? addMaskKeyframe(layerId, mask.id, 'expansion', currentFrame, v)
+                : patchMask(layerId, mask.id, { expansion: { ...createProperty('Mask Expansion', 'number', v), keyframes: [createKeyframe(currentFrame, v)] } }, 'Mask Expansion'))}
+              hasKeyframe={!!mask.expansion && hasKf(mask.expansion)}
+              step={0.5}
+              suffix="px"
+              defaultValue={0}
             />
             <NumberDragInput
               label="Opacity"
@@ -3217,6 +3265,46 @@ function MaskSection({ layerId, currentFrame }: { layerId: string; currentFrame:
                 {MASK_REVEAL_KINDS.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
               </select>
             </div>
+          </div>
+        )}
+
+        {/* Refine Edge (B10e): re-classify the matte edge from the footage (rough roto -> real edge). */}
+        {refineCapable && masks.length > 0 && (
+          <div className="space-y-1.5 pt-1 border-t border-hairline">
+            <div className="flex items-center gap-1">
+              <label
+                className="flex-1 text-caption text-slate-500"
+                title="Snap the masks' edge to the subject: pixels near the edge are re-classified by colour (foreground sampled just inside, background just outside) and the old background's colour is removed from the fringe"
+              >
+                Refine Edge
+              </label>
+              <button
+                onClick={() => patchRefine({ enabled: !refine?.enabled })}
+                className={`px-2 py-0.5 text-[9px] rounded border transition-colors ${
+                  refine?.enabled
+                    ? 'bg-yellow-500/15 border-yellow-500/40 text-yellow-300'
+                    : 'bg-surface-4 border-hairline text-slate-400 hover:border-yellow-500/30'
+                }`}
+              >
+                {refine?.enabled ? 'On' : 'Off'}
+              </button>
+            </div>
+            {refine?.enabled && (
+              <>
+                <div className="flex items-center gap-1">
+                  <label className="text-caption text-slate-500 w-14 flex-shrink-0" title="Half-width of the band around the edge that is re-classified (px)">Radius</label>
+                  <DragInput value={refine.radius} onChange={(v) => patchRefine({ radius: v })} min={REFINE_RADIUS_MIN} max={REFINE_RADIUS_MAX} step={0.5} precision={1} suffix="px" className="flex-1" />
+                </div>
+                <div className="flex items-center gap-1">
+                  <label className="text-caption text-slate-500 w-14 flex-shrink-0" title="Harden a soft, mushy classified edge">Contrast</label>
+                  <DragInput value={refine.contrast} onChange={(v) => patchRefine({ contrast: v })} min={0} max={1} step={0.01} precision={2} className="flex-1" />
+                </div>
+                <div className="flex items-center gap-1">
+                  <label className="text-caption text-slate-500 w-14 flex-shrink-0" title="Remove the old background's colour from edge pixels">Decontam</label>
+                  <DragInput value={refine.decontaminate} onChange={(v) => patchRefine({ decontaminate: v })} min={0} max={1} step={0.01} precision={2} className="flex-1" />
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>
