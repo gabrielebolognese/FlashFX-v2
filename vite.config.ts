@@ -1,9 +1,27 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
+import { execSync } from 'node:child_process';
+
+// Build stamp for the in-app export diagnostics block (so a bug report says exactly which build ran).
+// Netlify exposes the commit as COMMIT_REF; fall back to a local git read, then to 'dev'. Guarded so a
+// missing .git / git binary never fails the build.
+function resolveAppVersion(): string {
+  const ref = process.env.COMMIT_REF;
+  if (ref && ref.length >= 7) return ref.slice(0, 7);
+  try {
+    return execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim() || 'dev';
+  } catch {
+    return 'dev';
+  }
+}
 
 // https://vitejs.dev/config/
 export default defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify(resolveAppVersion()),
+    __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
+  },
   plugins: [react()],
   resolve: {
     alias: {

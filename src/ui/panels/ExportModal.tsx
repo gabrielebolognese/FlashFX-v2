@@ -1,8 +1,9 @@
 import { useState, useRef, useMemo } from 'react';
 import { X, Download, Film, Zap, Crown, Check, Volume2, VolumeX } from 'lucide-react';
 import { useEditorStore } from '../../store/editor';
-import { exportToMp4, downloadBlob, formatFileSize, estimateDuration, type ExportProgress, type ExportSettings } from '../../codec/exporter';
+import { exportToMp4, downloadBlob, formatFileSize, estimateDuration, type ExportProgress, type ExportSettings, type ExportError } from '../../codec/exporter';
 import { exportOutputFrameCount } from '../../codec/exportMath';
+import { estimateExportSize, classifyExportContent } from '../../codec/exportEstimate';
 import { compositionHasAudio } from '../../codec/audioMixer';
 import { trackEvent, captureError } from '../../lib/telemetry';
 import { classifyExportMemory, readDeviceMemoryGB } from '../../codec/exportMemory';
@@ -39,6 +40,7 @@ export function ExportModal({ onClose }: ExportModalProps) {
   const [exportedBlob, setExportedBlob] = useState<Blob | null>(null);
   const [audioDropped, setAudioDropped] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [diagnostics, setDiagnostics] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   const preset = QUALITY_PRESETS[quality];
@@ -46,11 +48,27 @@ export function ExportModal({ onClose }: ExportModalProps) {
   // thus the duration/size/memory estimates) is the resampled count, not the comp's durationFrames.
   const totalFrames = exportOutputFrameCount(composition.settings.durationFrames, composition.settings.frameRate, frameRate);
   const duration = estimateDuration(frameRate, totalFrames);
+  const durationSec = totalFrames / frameRate;
+  // Honest, content-aware size estimate. H.264 is VBR (the bitrate is a CEILING), so a pure
+  // bitrate x duration figure massively overstates simple vector content. `likelyBytes` reflects the
+  // content; `ceilingBytes` is the CBR worst case ("up to"). The exporter refines this from real bytes.
+  const contentClass = useMemo(() => classifyExportContent(composition.layers), [composition.layers]);
+  const sizeEstimate = useMemo(
+    () => estimateExportSize({
+      bitrate: preset.bitrate,
+      durationSec,
+      includeAudio: hasAudio && includeAudio,
+      content: contentClass,
+      layerCount: composition.layers.length,
+    }),
+    [preset.bitrate, durationSec, hasAudio, includeAudio, contentClass, composition.layers.length],
+  );
 
   const handleExport = async () => {
     setExporting(true);
     setProgress(null);
     setError(null);
+    setDiagnostics(null);
     setExportedBlob(null);
     setAudioDropped(false);
 
@@ -109,8 +127,10 @@ export function ExportModal({ onClose }: ExportModalProps) {
     } catch (e) {
       if ((e as Error).message !== 'Export cancelled') {
         setError((e as Error).message);
+        const diag = (e as ExportError).diagnosticsText ?? null;
+        setDiagnostics(diag);
         trackEvent('export_failed', { message: (e as Error).message });
-        captureError(e, { kind: 'export' });
+        captureError(e, { kind: 'export', diagnostics: diag ?? undefined });
       }
     } finally {
       setExporting(false);
@@ -265,15 +285,27 @@ export function ExportModal({ onClose }: ExportModalProps) {
                 <div>
                   <div className="text-[10px] text-slate-600 mb-0.5">Est. Size</div>
                   <div className="text-[12px] text-slate-300 font-medium">
-                    {formatFileSize(Math.round((preset.bitrate * totalFrames) / (frameRate * 8)))}
+                    ~{formatFileSize(sizeEstimate.likelyBytes)}
                   </div>
+                  <div className="text-[9px] text-slate-600 mt-0.5">up to {formatFileSize(sizeEstimate.ceilingBytes)}</div>
                 </div>
               </div>
             </div>
 
             {error && (
-              <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3">
+              <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 space-y-2">
                 <p className="text-[11px] text-red-400">{error}</p>
+                {diagnostics && (
+                  <div className="space-y-1.5">
+                    <pre className="text-[9px] leading-snug text-slate-400 bg-surface-1 rounded p-2 overflow-x-auto whitespace-pre-wrap">{diagnostics}</pre>
+                    <button
+                      onClick={() => { void navigator.clipboard?.writeText(diagnostics); }}
+                      className="text-[10px] text-slate-400 hover:text-slate-200 underline"
+                    >
+                      Copy diagnostics
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 
@@ -317,6 +349,9 @@ export function ExportModal({ onClose }: ExportModalProps) {
               <p className="text-[10px] text-slate-600">
                 {progress.currentFrame} / {progress.totalFrames} frames
               </p>
+              {progress.projectedBytes != null && (
+                <p className="text-[10px] text-slate-600 mt-0.5">~{formatFileSize(progress.projectedBytes)} projected</p>
+              )}
             </div>
 
             <div className="w-full h-1.5 bg-surface-4 rounded-full overflow-hidden">

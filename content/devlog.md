@@ -691,3 +691,15 @@ Video/playback + audio-sync work. Not yet committed at time of writing; this ent
 - Field-sampled layers run at the composition frame rate and show their inspector tab.
   - Number: 2-line type/resolve change; 1-line renderer change; 1-line inspector condition.
   - Internal: the CPU field renderer was hardcoded to 30fps and the Field tab was hidden unconditionally.
+
+## 2026-10-22
+
+Export bug fixes from a user report: a wildly inflated size estimate, and every export freezing after frame 10 (even an empty project). Two pure modules + two harnesses (19 new assertions); 4 gates green, npm test 112 -> 114.
+
+- The "Est. Size" in the export dialog now reflects what you are actually exporting.
+  - Number: a 38s shapes project that really exports at ~4 MB used to be advertised as ~47.5 MB (10x). It was `bitrate x duration` at the 10 Mbps "High" preset - pure CBR, content-blind. Now it reads the likely size (`~5 MB`) with the CBR worst case shown as "up to 47.5 MB", and refines to a live projection from real encoded bytes during the export.
+  - Hard part: H.264 here is VBR, so the bitrate is a ceiling, not a rate. There is no way to know the real size without encoding, so the pre-export number is a content-class heuristic (video approaches the ceiling, vector compresses ~10x under it) and the honest number is the mid-export extrapolation from bytes written.
+
+- An export can no longer hang forever. If the encoder wedges, it is caught and retried, and if it still fails you get a clear error with a copyable diagnostics block instead of a spinner that never moves.
+  - Number: 30s no-progress watchdog on every await in the loop; one automatic retry with a forced software encoder; diagnostics carry the build hash, GPU, codec, config, and the frame it stopped on.
+  - Hard part: the stall was not reproducible here - on some GPU/driver + Chrome combos the hardware H.264 encoder silently stops emitting chunks AND never fires its error callback, so the old `encodeQueueSize` backpressure loop waited on it forever. The empty-project repro was the tell: an empty comp exercises almost none of the renderer but the encoder path is identical, so the hang had to be the encoder, not the content. The never-hang guarantee is proven in Node by driving a fake wedged/erroring encoder through the real retry+stall policy - the test would itself hang if the policy could.

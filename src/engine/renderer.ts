@@ -3042,6 +3042,9 @@ export class WebGPURenderer {
   // never routes through the proxy, so the export renderer must read the original rotation instead.
   private exportMode = false;
 
+  /** GPU adapter info captured at offscreen (export) init, for the export diagnostics block. Best-effort. */
+  private offscreenAdapterInfo: GPUAdapterInfo | null = null;
+
   setMotionBlurSamples(n: number): void {
     this.motionBlurSamples = Math.max(2, Math.round(n));
   }
@@ -3142,6 +3145,12 @@ export class WebGPURenderer {
 
     const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
     if (!adapter) return false;
+    // Capture adapter info for export diagnostics (property form; guarded - some types/builds lack it).
+    try {
+      this.offscreenAdapterInfo = (adapter as unknown as { info?: GPUAdapterInfo }).info ?? null;
+    } catch {
+      this.offscreenAdapterInfo = null;
+    }
 
     const device = await adapter.requestDevice();
 
@@ -3165,6 +3174,11 @@ export class WebGPURenderer {
 
   isReady(): boolean {
     return this.ready;
+  }
+
+  /** GPU adapter info captured at offscreen init (export path), or null. For export diagnostics. */
+  getAdapterInfo(): GPUAdapterInfo | null {
+    return this.offscreenAdapterInfo;
   }
 
   isOffscreenReady(): boolean {
