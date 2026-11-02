@@ -594,6 +594,10 @@ function validateLayer(raw: unknown): Layer | null {
           startOffset: typeof v.startOffset === 'number' ? v.startOffset : 0,
           playbackRate: typeof v.playbackRate === 'number' ? v.playbackRate : 1,
           muted: typeof v.muted === 'boolean' ? v.muted : false,
+          // playbackMode + proxyScale are REQUIRED on VideoLayer.video but were dropped on load (the
+          // `as VideoLayer` cast hid it), so a reloaded clip came back with them undefined. Preserve them.
+          playbackMode: v.playbackMode === 'wait' || v.playbackMode === 'upfront' || v.playbackMode === 'proxy' ? v.playbackMode : 'wait',
+          proxyScale: typeof v.proxyScale === 'number' ? v.proxyScale : 0.25,
           ...(typeof v.freezeSourceFrame === 'number' ? { freezeSourceFrame: v.freezeSourceFrame } : {}),
           ...(v.reversed === true ? { reversed: true } : {}),
           ...(v.frameBlend === true ? { frameBlend: true } : {}),
