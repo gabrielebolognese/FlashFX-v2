@@ -165,6 +165,14 @@ export function putAsset(asset: ProjectAsset): Promise<IDBValidKey> {
   );
 }
 
+/** One asset by id (the durable copy of its bytes IndexedDB made at import). Used to re-decode media
+ *  when its in-memory object URL goes unreadable - e.g. the user deleted the original file off disk. */
+export function getAsset(id: string): Promise<ProjectAsset | undefined> {
+  return transaction<ProjectAsset | undefined>(STORES.assets, 'readonly', (store) =>
+    store.get(id) as IDBRequest<ProjectAsset | undefined>
+  );
+}
+
 export function deleteAsset(id: string): Promise<undefined> {
   return transaction(STORES.assets, 'readwrite', (store) =>
     store.delete(id)

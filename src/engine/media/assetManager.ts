@@ -1,5 +1,5 @@
 import type { VideoAssetMetadata, AudioAssetMetadata, WaveformData } from '../../project-system/types';
-import { putAsset, getAssetsByProject, deleteAsset } from '../../project-system/storage/db';
+import { putAsset, getAsset, getAssetsByProject, deleteAsset } from '../../project-system/storage/db';
 import type { ProjectAsset } from '../../project-system/types';
 import { computeWaveformPeaks } from '../../core/waveform';
 import { videoDecoderPool } from '../video/videoDecoderPool';
@@ -1016,9 +1016,24 @@ class MediaAssetManager {
     if (!url) return null;
     const decodePromise = (async () => {
       try {
-        const blob = await (await fetch(url)).blob();
-        const { bitmap, originalWidth, originalHeight } = await decodeImageCapped(blob);
+        // Decode from the in-memory object URL first (fast). If that URL is backed by the user's ORIGINAL
+        // file on disk (the import-session case) and they deleted or moved it, the URL goes unreadable -
+        // fetch rejects or the blob is empty/undecodable - and the layer would silently render fully
+        // transparent. Fall back to the durable copy IndexedDB made at import (the same source the load
+        // path uses), re-point the object URL at it so this and every later decode is independent of the
+        // original file, and only mark the asset 'missing' if that copy is gone too.
+        let decoded = await this.decodeImageFromUrl(url);
+        if (!decoded) {
+          const repointed = await this.repointObjectUrlToStore(assetId);
+          if (repointed) decoded = await this.decodeImageFromUrl(repointed);
+        }
         const a = this.assets.get(assetId);
+        if (!decoded) {
+          if (a) a.status = 'missing';
+          this.notify();
+          return null;
+        }
+        const { bitmap, originalWidth, originalHeight, fileSize } = decoded;
         if (!a) { try { bitmap.close(); } catch { /* ignore */ } return null; }
         a.imageBitmap = bitmap;
         a.imageMetadata = {
@@ -1028,7 +1043,7 @@ class MediaAssetManager {
           originalWidth,
           originalHeight,
           format: a.mimeType,
-          fileSize: blob.size,
+          fileSize,
         };
         a.status = 'ready';
         this.touchImageBitmap(assetId);
@@ -1042,6 +1057,42 @@ class MediaAssetManager {
     })();
     this.inflightImageDecodes.set(assetId, decodePromise);
     return decodePromise;
+  }
+
+  /** Fetch + decode an image from one object URL. Returns null (never throws) if the URL is unreadable
+   *  (e.g. its backing file was deleted off disk) or the bytes are empty / undecodable, so the caller can
+   *  fall back to another source. */
+  private async decodeImageFromUrl(
+    url: string,
+  ): Promise<{ bitmap: ImageBitmap; originalWidth: number; originalHeight: number; fileSize: number } | null> {
+    try {
+      const blob = await (await fetch(url)).blob();
+      if (blob.size === 0) return null;
+      const { bitmap, originalWidth, originalHeight } = await decodeImageCapped(blob);
+      return { bitmap, originalWidth, originalHeight, fileSize: blob.size };
+    } catch {
+      return null;
+    }
+  }
+
+  /** Re-point an asset's object URL at IndexedDB's durable copy of its bytes (revoking the dead one), so
+   *  decodes survive the user deleting/moving the original file off disk. Returns the new URL, or null if
+   *  no stored copy exists (truly missing media). */
+  private async repointObjectUrlToStore(assetId: string): Promise<string | null> {
+    let stored: ProjectAsset | undefined;
+    try {
+      stored = await getAsset(assetId);
+    } catch {
+      return null;
+    }
+    if (!stored || !stored.blob || stored.blob.size === 0) return null;
+    const old = this.objectUrls.get(assetId);
+    if (old) { try { URL.revokeObjectURL(old); } catch { /* ignore */ } }
+    const next = URL.createObjectURL(stored.blob);
+    this.objectUrls.set(assetId, next);
+    const a = this.assets.get(assetId);
+    if (a) a.objectUrl = next;
+    return next;
   }
 
   /** Decode (if needed) and return an image asset's metadata - used by the insert/replace flows,
