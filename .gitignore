@@ -24,3 +24,6 @@ dist-ssr
 
 # unattended batch runner local artifacts (auto-run*.log already covered by *.log)
 docs/HANDOFF.md
+
+# Vite temp files
+vite.config.ts.timestamp-*.mjs
