@@ -1,129 +1,187 @@
-<div align="center">
-
-<img src="public/flashfx-mark.svg" width="72" alt="FlashFX" />
-
 # FlashFX
 
-**A motion-graphics studio that runs entirely in your browser, on WebGPU.**
-
 [![CI](https://github.com/gabrielebolognese/FlashFX-v2/actions/workflows/ci.yml/badge.svg)](https://github.com/gabrielebolognese/FlashFX-v2/actions/workflows/ci.yml)
-[![Live demo](https://img.shields.io/badge/demo-editor.flashfx.app-f7b500)](https://editor.flashfx.app)
-![WebGPU](https://img.shields.io/badge/WebGPU-required-0a0f16)
-![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6)
 
-Think After Effects + Cinema 4D MoGraph, rendered client-side on the GPU, plus an AI that generates *editable* scenes instead of flat video. Built by one person.
+FlashFX is a motion-graphics and short-form video editor that runs entirely in the browser. The interface is React; compositing, animation evaluation, effects, video decoding and export run in a WebGPU and Web Worker runtime, with no WebGL fallback. It is aimed at motion designers and video creators who want keyframed, After Effects style animation without a desktop install, and at developers interested in a WebGPU 2D compositor. Projects are stored locally in IndexedDB, so the editor works offline with no backend; an optional Supabase backend adds accounts, cloud sync, billing and managed AI.
 
-### [▶ Try it live](https://editor.flashfx.app) · no install, no sign-up to look around
+Hosted editor: <https://editor.flashfx.app>
 
-<!-- TODO (owner, before launch): a demo GIF is the single biggest driver of stars. Record 10-20s of the
-     cloner + physics + an AI build, save it as docs/demo.gif, and uncomment the <img> below.
-<img src="docs/demo.gif" width="760" alt="FlashFX demo" />
--->
+## Features
 
-</div>
+**Animation**
+- Keyframes with linear, bezier, hold and spring interpolation, an interpolation graph editor and keyframe assistants.
+- Motion paths with arc-length sampling, position paths, time remapping, separate dimensions and motion blur shutter controls.
+- Expressions that drive properties from code, evaluated in a worker.
+- Animation presets, stagger, motion rigs and IK rigging, layer parenting through a scene graph.
+- Audio-reactive animation with beat detection, and data binding from spreadsheet or JSON data.
 
----
+**Layers and compositing**
+- Layer types: video, image, text, shapes (rectangle, circle, polygon, star, pen paths), audio, groups, particles, Lottie icons, generative patterns, layout containers (hbox, vbox, grid), cloner, precomposition, beam, camera and adjustment layers.
+- Precompositions with nested rendering, breadcrumb navigation and cycle protection.
+- Adjustment layers that apply an effect stack to everything below them.
+- Parametric and freeform path masks with After Effects style modes, expansion and Refine Edge; track mattes; blend modes.
+- A 2.5D camera with 3D layer transforms.
 
-## What it is
+**MoGraph and simulation**
+- A cloner that expands one layer into many instances (grid, radial, path and field distributions) with an ordered effector stack: random, falloff, step, time and target.
+- 2D rigid-body physics (Rapier), particles, plexus, destruction and field sampling.
+- All procedural systems are frame-pure: seeded randomness only, so scrubbing to any frame gives identical output.
 
-FlashFX is a single-page motion-graphics and short-form video editor. The UI is React; everything that
-matters - compositing, animation evaluation, effects, video decode, export - runs in a **WebGPU +
-Web Worker** runtime driving an `OffscreenCanvas`. There is no WebGL fallback: it is GPU-first by design.
+**Effects and color**
+- More than 100 GPU effects written in WGSL: color, warp, blur and glow, stylize, glitch, HSL, curves, vignette and LUT color grading.
+- Chroma keying, color matching, smart crop and reframe, cutout shadow, face blur and retouch tools.
+- In-browser background removal and 2x image upscaling (Swin2SR through transformers.js).
 
-It is the kind of thing that normally only exists as a native desktop app (After Effects, Cinema 4D),
-and most "web video editors" are really trim-and-caption tools. FlashFX is trying to be an actual
-**motion-graphics engine** in the browser:
+**Text**
+- Per-character text animators with range selectors, kinetic typography presets, text on a path, text outlines and text explode.
+- Bundled fonts plus user-imported custom fonts.
 
-- a **real keyframe system** (linear / bezier / hold / spring), graph editor, motion paths with
-  arc-length spacing, speed ramps and time-remapping;
-- an **expression engine** (sandboxed in a worker) so properties can be driven by code;
-- **MoGraph**: a C4D-style **cloner** that expands one layer into N instances as a pure function of
-  `(params, index)`, with an effector stack (random / falloff / step / time / target);
-- **2D physics** (Rapier), **particles**, **field sampling**, **pen/vector tooling**, **2.5D camera**,
-  **precompositions**, **track mattes**, **IK rigging**, **audio-reactive** animation and
-  **spreadsheet/JSON data binding**;
-- **100+ GPU effects** (color, blur/glow, distortion, stylize, keying, LUT color grading) authored in
-  WGSL, plus per-character/kinetic typography;
-- **MP4 (H.264 / AAC) export** via WebCodecs, rendered frame-for-frame from the same engine as the
-  preview, so what you see is what you get.
+**Video editing**
+- A multi-track timeline with trim, split, snapping and scenes.
+- WebCodecs decoding through a decoder pool with a texture cache, frame scheduler and proxy transcoding.
+- Automatic captions transcribed in the browser with Whisper models, with a subtitle review panel.
+- Silence detection and removal, scene detection, optical flow and motion tracking.
 
-It is **local-first**: projects live in IndexedDB and it runs fully offline. An optional backend
-(Supabase) adds accounts and cloud sync, but the editor needs zero keys to run.
+**AI scene generation**
+- A two-stage pipeline: a Director model turns a prompt into a structured plan, a Coder model writes each panel, and the result is validated, compiled and committed to the timeline as ordinary editable layers in one undo step.
+- Runs through a Supabase edge function (`ai-proxy`) with per-account usage metering, or with the user's own Anthropic API key stored in the browser.
+- An AI chat panel and the "Flash" mascot character that presents the build.
 
-## The AI part (the interesting bit)
+**Projects, templates and export**
+- Project dashboard, autosave, multi-composition documents and `.ffx` project files.
+- An animation template library, deep-link templates (`/?template=<id>`), a brand kit, saved assets, an icon library and a command palette.
+- MP4 export (H.264 video, AAC audio) through WebCodecs, rendered by the same engine as the preview. Presets for 720p, 1080p and 4K, four quality levels and a selectable frame rate.
+- Optional accounts (email and password, Google sign-in), cloud project sync with storage quotas, and a Pro plan billed through Paddle that unlocks AI, expressions, 3D and the premium pack.
+- Onboarding flow, interactive tutorials, a consent banner and optional Sentry and PostHog telemetry.
 
-Most "AI video" tools hand you an uncontrollable clip. FlashFX's pipeline is built to produce an
-**editable scene**: a planner ("Director") turns a prompt into a structured plan, a **deterministic
-compiler** turns that plan into real layers, keyframes and effects, and the result drops into the
-timeline as a normal, tweakable composition (one undo step). You can then open any layer and change it.
+## Getting started
 
-> Type a prompt → get a keyframed, on-brand, editable motion-graphics scene. Not a black-box video.
+### Prerequisites
 
-## Meet Flash
+- Node.js 18 or newer (CI runs Node 20) and npm.
+- A Chromium-based browser with WebGPU enabled (recent Chrome, Edge or Arc). Browsers without WebGPU show an "unsupported browser" screen.
 
-There is a character living in the editor - **Flash** (the logo, with a body, drawn entirely in SVG).
-He hops around, reacts, and when you ask the AI to build something he pops up to confirm ("you want me
-to build this? I'll take the wheel for a bit - sit back and relax"), then sits at a little laptop and
-works while the scene generates. The goal is to make the tool feel like collaborating with a motion
-designer, not operating panels.
-
-## Why it might be worth a look (for developers)
-
-- A **WebGPU 2D compositor** with a multipass pipeline (isolated layer passes, premultiplied-over
-  blend, pooled render targets) - there are very few open examples of this.
-- **Frame-purity** is a hard constraint: the timeline scrubs non-sequentially, so the renderer and every
-  procedural system (cloner, particles, physics, the Random effector) must be byte-identical for a given
-  frame. Randomness is seeded (`mulberry32`); `Math.random`/`Date` are banned in the pure paths.
-- A **WebCodecs decode pool** (via mediabunny) with a present-on-clock scheduler, texture cache and
-  hard memory caps, because naive WebCodecs usage stalls the hardware decoder's output pool.
-- Pure, framework-free domain logic in `src/core` and feature modules, each with a tiny
-  `scripts/verify-*.mjs` acceptance harness (there is no test runner; ~100 harnesses bundle the real TS
-  with esbuild and assert with `node:assert`).
-
-## Tech
-
-TypeScript (strict), React 18, Zustand, Vite · WebGPU · WebCodecs · Web Workers / OffscreenCanvas ·
-Rapier 2D (WASM) · mediabunny · Supabase (optional).
-
-## Running locally
-
-**Requires a Chromium-based browser with WebGPU enabled** (recent Chrome/Edge/Arc). Node 18+.
+### Download and install
 
 ```bash
 git clone https://github.com/gabrielebolognese/FlashFX-v2.git
 cd FlashFX-v2
 npm install
-npm run dev        # Vite dev server
 ```
 
-No environment variables are needed to run the editor - it is local-first and null-checks the backend,
-so it works fully offline. `.env.example` documents the optional Supabase / billing / observability vars.
+The `preinstall` script writes `ignore-scripts=true` to `.npmrc`, so dependency postinstall scripts do not run.
+
+### Configuration
+
+No environment variables are required. Without them the editor runs local-first with no accounts and no backend.
+
+To enable the optional services, copy `.env.example` to `.env` and fill in the values you need:
+
+| Variable | Purpose |
+| --- | --- |
+| `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` | Supabase project for accounts and cloud sync. When set, the app requires sign-in before opening projects. |
+| `VITE_OAUTH_GOOGLE` | Set to `false` to hide the Google sign-in button. |
+| `VITE_PADDLE_CLIENT_TOKEN`, `VITE_PADDLE_PRICE_ID`, `VITE_PADDLE_ENV`, `VITE_PADDLE_PRICE_LABEL` | Paddle billing. Billing is on only when both the token and the price id are set. |
+| `VITE_SENTRY_DSN` | Sentry error reporting. |
+| `VITE_POSTHOG_KEY`, `VITE_POSTHOG_HOST` | PostHog analytics, sent only after the user consents. |
+| `ANTHROPIC_API_KEY` | Shell variable for the local AI scripts only. Never prefix it with `VITE_`. |
+
+Every `VITE_*` value is inlined into the browser bundle, so only public or publishable keys belong there. The edge functions read their own secrets (`ANTHROPIC_API_KEY`, `PADDLE_WEBHOOK_SECRET`, `GOOGLE_SERVICE_ACCOUNT_JSON`), which are set with `supabase secrets set` and never placed in `.env`.
+
+### Run in development
 
 ```bash
-npm run typecheck  # strict tsc
-npm run lint       # ESLint
-npm run build      # production build
-npm test           # runs all scripts/verify-*.mjs acceptance harnesses
+npm run dev
 ```
 
-See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for a technical deep-dive: the WebGPU compositor,
-frame-purity, the MoGraph cloner, the WebCodecs video pipeline, and the AI compiler.
+This regenerates the icon chunks and starts the Vite dev server. Open the URL Vite prints in a WebGPU-capable browser.
+
+## Build and deploy
+
+```bash
+npm run build     # production build into dist/
+npm run preview   # serve the production build locally
+```
+
+The output is a static single-page app in `dist/`. Any static host with HTTPS (WebGPU needs a secure context) and a catch-all rewrite to `index.html` works. The repo already contains that rewrite for two kinds of host: `public/_redirects` (Netlify, Cloudflare Pages) and `vercel.json` (Vercel, with `npm run build` and `dist` preconfigured). Set the `VITE_*` variables in the host's build environment, because Vite inlines them at build time.
+
+The optional backend lives in `supabase/`: SQL migrations in `supabase/migrations/` and three edge functions in `supabase/functions/` (`ai-proxy`, `paddle-webhook`, `drive-assets`). The full procedure, including Supabase auth redirect URLs and Paddle setup, is in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+
+## Usage
+
+1. Open the app and create a project from the dashboard.
+2. Add media, shapes or text, then animate properties with keyframes in the timeline and inspector.
+3. Apply effects, masks, cloners, physics or templates from the panels and context menus.
+4. Use the export dialog to render an MP4, choosing resolution, quality and frame rate.
+
+### npm scripts
+
+| Command | What it does |
+| --- | --- |
+| `npm run dev` | Start the Vite dev server (generates icons first). |
+| `npm run build` | Production build into `dist/` (generates icons first). |
+| `npm run preview` | Serve the production build. |
+| `npm run typecheck` | Strict TypeScript check over `src/`. |
+| `npm run lint` | ESLint over the repo. |
+| `npm test` | Run every `verify:*` harness in sequence and fail if any fails. |
+| `npm run verify:<name>` | Run one acceptance harness, for example `npm run verify:cloner`. There are 114 of them. |
+| `npm run gpu:masks`, `npm run gpu:adjustment` | Headless Chrome WebGPU harnesses. They need a local GPU and are not part of `npm test`. |
+| `npm run icons` | Regenerate `public/icons/` from `lucide-static`. |
+| `npm run director:run` | Run the AI Director against the real model and print the plan, token usage and cost. Needs `ANTHROPIC_API_KEY`. |
+| `npm run apple:secret` | Run `scripts/apple-client-secret.mjs`, a helper left from Apple sign-in, which the app no longer offers. |
+
+There is no test framework. Each `scripts/verify-*.mjs` harness bundles the real TypeScript with esbuild and asserts with `node:assert`. `scripts/coder-run.mjs` runs the full Director and Coder pipeline from the command line, and `scripts/run-batches.sh` chains unattended Claude Code build sessions described in [docs/AUTO_BATCH_SETUP.md](docs/AUTO_BATCH_SETUP.md).
+
+CI (`.github/workflows/ci.yml`) runs typecheck, tests and build on every push to `main` and on pull requests; lint runs but does not block.
+
+## Project structure
+
+| Path | Contents |
+| --- | --- |
+| `src/core/` | Pure domain model and logic: types, interpolation, scene graph, masks, effects, precomp, camera math. No React, DOM or WebGPU. |
+| `src/engine/` | Runtime: WebGPU renderer, timeline and playback clock, WebCodecs video subsystem, captions, audio, caches. |
+| `src/codec/` | MP4 exporter and audio mixer. |
+| `src/store/` | Zustand stores. `editor.ts` owns the composition; undoable edits use the command pattern in `history.ts`. |
+| `src/ui/` | React panels, layouts, context menus, overlays and the Flash character. |
+| `src/ai/`, `src/schema/` | AI Director and Coder pipeline, prompts, and the schemas it validates against. |
+| `src/cloner/`, `src/physics/`, `src/particles/`, `src/expressions/`, `src/field-sampling/`, `src/stagger/`, `src/patterns/`, `src/procedural/` | Self-contained feature modules. |
+| `src/project-system/` | IndexedDB projects, serialization, migration, `.ffx` files and cloud sync. |
+| `src/auth/`, `src/billing/`, `src/legal/` | Accounts, plans and Paddle checkout, consent and legal pages. |
+| `src/animation-templates/`, `src/templates/`, `src/tutorial/`, `src/onboarding/` | Template library, deep-link templates, tutorials and onboarding. |
+| `supabase/` | Database migrations and edge functions. |
+| `scripts/` | Verify harnesses, GPU harnesses, icon generation and AI run scripts. |
+| `public/` | Static assets: icon chunks, Lottie files, WASM and decoder files. |
+| `docs/` | Architecture, deployment, setup guides, plans and audits. |
+
+## Tech stack
+
+- TypeScript (strict), React 18, Zustand, Vite 5, Tailwind CSS, lucide-react
+- WebGPU with WGSL shaders, Web Workers and OffscreenCanvas
+- WebCodecs, mediabunny, mp4-muxer, mp4box
+- Rapier 2D (WASM), earcut, polygon-clipping, opentype.js
+- transformers.js and @imgly/background-removal for in-browser ML
+- Zod for the AI schemas
+- Supabase (Postgres, Auth, Storage, Deno edge functions), Paddle, Anthropic API
+- ESLint, GitHub Actions
+
+## Further documentation
+
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): compositor, frame purity, cloner, video pipeline and AI compiler.
+- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md): hosting, environment and post-deploy checks.
+- [docs/AUTH-SETUP.md](docs/AUTH-SETUP.md) and [docs/PADDLE-SETUP.md](docs/PADDLE-SETUP.md): accounts and billing setup.
+- [docs/ai-contract/README.md](docs/ai-contract/README.md): the AI output contract (motion presets, easing, palette roles, style).
+- [docs/EXPORT-TRUSTWORTHINESS.md](docs/EXPORT-TRUSTWORTHINESS.md) and [docs/2.5d.md](docs/2.5d.md): export pipeline and 2.5D camera notes.
+- [docs/PRODUCT-ROADMAP.md](docs/PRODUCT-ROADMAP.md) and [docs/AE-FEATURE-BATCHES.md](docs/AE-FEATURE-BATCHES.md): roadmap and feature build plan.
+- [CONTRIBUTING.md](CONTRIBUTING.md): setup, required checks and conventions.
+- [CLAUDE.md](CLAUDE.md): detailed codebase notes for AI coding assistants.
+- [content/devlog.md](content/devlog.md): development log.
+
+The `docs/` folder holds many more plans and audits; some describe earlier states of the code, so treat the source as authoritative.
 
 ## Status
 
-**Early and actively developed, pre-launch.** The engine is deep but not everything is polished, some
-GPU paths are newer than others, and there are rough edges. If you hit one, an issue with a repro is
-genuinely useful. Feedback from graphics / WebGPU / motion-design folks especially welcome.
+In active development, version 0.1.0, built by one person. The engine is broad but uneven: some GPU paths are newer than others, the Animation Builder mode is present in the code but hidden from the UI, and the Google Drive proxy is disabled. Export is MP4 only.
 
-## License
+The repository has no license file, so no license is granted; open an issue before building on the code.
 
-> **TODO (owner):** choose a license before promoting this. With no `LICENSE` file, the default is "all
-> rights reserved," which blocks contributions and discourages stars. If you want community adoption,
-> a permissive license (MIT/Apache-2.0) maximizes stars but allows commercial forks; a source-available
-> license (e.g. BSL, Elastic, PolyForm) protects the product while keeping the code readable. This is a
-> business decision - pick deliberately.
-
----
-
-<sub>FlashFX is an independent project and is not affiliated with or endorsed by Adobe (After Effects) or
-Maxon (Cinema 4D); those names are used only to describe the category of tool.</sub>
+FlashFX is an independent project and is not affiliated with Adobe (After Effects) or Maxon (Cinema 4D); those names only describe the category of tool.
