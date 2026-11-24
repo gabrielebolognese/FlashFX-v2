@@ -613,34 +613,34 @@ function expandTextGlyphs(
     baseText.textAlign === 'center' ? (canvasWidth - lineW) / 2
     : baseText.textAlign === 'right' ? canvasWidth - padding - lineW
     : padding;
-  const halfFont = baseText.fontSize / 2;
-
   // The glyph's transform relative to the layer (before composing with the world transform).
-  // `centerDist` = the glyph centre's distance along the line, `glyphW` = its measured canvas width.
-  const childTransform = (d: GlyphDelta, shiftX: number, centerDist: number, glyphW: number): ResolvedTransform => {
+  // `centerDist` = the glyph centre's distance along the line. The renderer centres every text quad on
+  // its position (the anchor is an offset FROM the centre - see the text vertex shader), and a 1-glyph
+  // stamp's canvas is exactly that glyph plus the same padding and line box, so a stamp lands on its
+  // glyph by placing its centre at the glyph centre relative to the layer canvas centre. At rotation 0
+  // the layer quad's placement does not depend on its anchor, so neither does the stamp's.
+  const childTransform = (d: GlyphDelta, shiftX: number, centerDist: number): ResolvedTransform => {
     const along = centerDist + shiftX;
-    // Text-on-path (B9b): map the glyph's along-text distance to an arc-length point + tangent on
-    // the path (layer-local space); else the normal linear layout. The pivot-offset (-anchor) and
-    // composeTransforms(world, ...) below apply the layer transform identically either way.
-    let posX = lineStartX + along - world.anchorX + d.tx;
-    let posY = padding + halfFont - world.anchorY + d.ty;
+    let posX = lineStartX + along - canvasWidth / 2 + d.tx;
+    let posY = d.ty;
     let rot = d.rotation;
     if (onPath) {
+      // Text-on-path (B9b): the glyph's along-text distance maps to an arc-length point + tangent on
+      // the path (layer-local space, as before).
       const { position, angle } = pointAndAngleAt(onPath.nodes, onPath.closed, glyphPathFraction(along, pathLen, onPath.margin));
       posX = position[0] - world.anchorX + d.tx;
       posY = position[1] - world.anchorY + d.ty;
       rot = (onPath.align ? angle : 0) + d.rotation;
     }
-    // Offset from the layer's pivot (anchor value cancels: the whole-text and stamp renders share
-    // the same pivot). Scale/rotate pivot at the glyph centre.
+    // Scale / rotate about the glyph centre (anchor 0 = the stamp quad's centre).
     return {
       positionX: posX,
       positionY: posY,
       rotation: rot,
       scaleX: d.sx,
       scaleY: d.sy,
-      anchorX: glyphW / 2,
-      anchorY: padding + halfFont,
+      anchorX: 0,
+      anchorY: 0,
       opacity: d.opacity,
       positionZ: 0,
       // Per-character 3D (B9c): out-of-plane spin per glyph. composeTransforms adds the layer's own
@@ -667,14 +667,14 @@ function expandTextGlyphs(
       stampText.measuredWidth = m.width;
       stampText.measuredHeight = m.height;
       const centerDist = advPrev + (advNext - advPrev) / 2;
-      const transform = composeTransforms(world, childTransform(d, shifts[j], centerDist, m.width));
+      const transform = composeTransforms(world, childTransform(d, shifts[j], centerDist));
       // Per-glyph motion blur: velocity of THIS glyph (animator slide/scale/spin + tracking + the layer's
       // own motion), so a static layer whose letters fly in still streaks. Replaces the layer-level
       // descriptor on the stamp; the renderer's existing per-layer blur pass draws it unchanged.
       const stampMotionBlur = glyphBlur && prevDeltas && prevShifts
         ? motionBlurBetween(
             transform,
-            composeTransforms(glyphBlur.prevWorld, childTransform(prevDeltas[j], prevShifts[j], centerDist, m.width)),
+            composeTransforms(glyphBlur.prevWorld, childTransform(prevDeltas[j], prevShifts[j], centerDist)),
             glyphBlur.shutter,
             glyphBlur.phase,
           )

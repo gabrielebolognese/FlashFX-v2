@@ -89,6 +89,21 @@ try {
     assert.ok(st.length > 0 && st.length <= 5, `expected 1..5 glyph stamps, got ${st.length}`);
   });
 
+  check('placement: stamps sit ON the layer (text quads are centred on their position): glyph row centred on the layer position', () => {
+    const noop = { enabled: true, splitMode: 'character', selector: { ...defaultRangeSelector(), amount: 0 }, delta: { position: [0, 0] } };
+    for (const align of ['center', 'left', 'right']) {
+      const { comp, layer } = build1({ motionBlur: false, animators: [noop], text: 'HELLO' });
+      layer.layoutConfig.horizontalAlign = align;
+      const st = stampsOf(resolveFrame(comp, 5), layer).sort((a, b) => glyphIndex(a) - glyphIndex(b));
+      assert.equal(st.length, 5);
+      const xs = st.map(pivotX);
+      // 5 glyphs of 12 px: centres at -24, -12, 0, 12, 24 around the layer position (960, 540).
+      [-24, -12, 0, 12, 24].forEach((e, j) => assert.ok(approx(xs[j], 960 + e), `${align}: glyph ${j} at ${xs[j]}, expected ${960 + e}`));
+      for (const s of st) assert.ok(approx(pivotY(s), 540), `${align}: glyph row on the layer centre line (y ${pivotY(s)})`);
+      for (const s of st) assert.ok(s.transform.anchorX === 0 && s.transform.anchorY === 0, 'glyphs rotate / scale about their own centre');
+    }
+  });
+
   check('motion blur OFF: no glyph carries a blur descriptor (unchanged behaviour)', () => {
     const { comp, layer } = build1({ motionBlur: false });
     for (const s of stampsOf(resolveFrame(comp, 15), layer)) assert.equal(s.motionBlur, undefined);
