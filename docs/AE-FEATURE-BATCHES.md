@@ -93,6 +93,16 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | B32 | Motion-design principle rigs - anticipation + follow-through/overshoot + squash & stretch + staggered offset as one-click keyframe rigs (harnessed, renders now) | ✅ | light |
 | B32-render | Echo / motion trails / smears - temporal ghosting (transform echo feasible at resolve-time via the cloner staggered-time path; pixel-accurate echo needs a GPU accumulation pass) | ⬜ (browser) | medium |
 | B32-secondary | Secondary motion (lag a child behind a parent) - spring-damped follow, baked to child keyframes | ✅ | medium |
+| B33 | Colour keyframes - animatable shape fill / stroke and text colour (Vec4 AnimatableProperty + interpolation + hold swaps + Inspector stopwatch) for UI state changes (Bricks gap #1) | ⬜ | medium |
+| B34 | Null layer type ("New Null": invisible controller) + parenting UI (timeline parent picker / pick-whip) - nested controller rigs (Bricks gap #2) | ⬜ | light |
+| B35 | Typing caret for type-on + UI-mock template kit (chat bubble with tail, search bar, notification, toggle pill, YouTube player, Discord card, fast-forward badge, "Scene N" card, section card) (Bricks gap #3) | ⬜ | medium |
+| B36 | Text animator completion - keyframable selector Start/End, skew + fill-colour deltas, multi-line glyph stamps, save-your-own animator preset (Bricks gap #4) | ⬜ | medium |
+| B37 | SVG import as editable shape layers (path / rect / circle / ellipse / polygon / groups -> layers) instead of a flat raster (Bricks gap #5) | ⬜ | medium |
+| B38 | Liquid-glass material - backdrop blur + refraction inside a shape outline, edge light sweep; track-matted adjustment layers (Bricks gap #6) | ⬜ (browser) | **heavy** |
+| B39 | Editor ergonomics - in-app eyedropper (EyeDropper API), relative numeric entry (+400 / *2), copy / paste easing between properties (Bricks gap #8) | ⬜ | light |
+| B40 | Property links - pick-whip UI + expressions that read another layer's property (Bricks gap #9) | ⬜ | medium |
+| B41 | Background gradients - renderer drops stops 5-6 (bug) + 4-corner (mesh-like) gradient (Bricks gap #10) | ⬜ (browser) | light |
+| B42 | Orbit / custom 2.5D debug view + bundle true italic serif faces for accent words (Bricks gap #11) | ⬜ | light |
 | PB1 | Playback: decoded-frame LRU on the mediabunny path (backward/oscillating scrubs hit the cache instead of re-walking the GOP) | ✅ | medium |
 | PB2a | Playback: keyframe-snap-then-refine on far seeks (kills the scrub freeze) | ✅ | medium |
 | PB2b | Playback: real half-res proxy decode (cuts 4K upload/convert cost during scrub) | ✅ | heavy |
@@ -588,3 +598,89 @@ Gates: tsc 0, lint 125 baseline, build ok, **103 harnesses** (`npm test`), em-da
 - **Perf weight:** medium (browser).
 - **Likely files:** `src/engine/video/mediabunnyController.ts` (source construction), `src/engine/media/assetManager.ts` (chunked reassembly), `src/engine/renderer.ts` + `src/engine/video/videoTextureCache.ts` (importExternalTexture hybrid path).
 - **Verification:** gates; manual browser: a long URL-hosted clip shows its first frame without a full-file download stall; playback uploads stay cheap at 4K.
+
+---
+
+## Bricks-tutorial gaps (B33-B42, from the Nov 2026 gap analysis)
+
+Source: the YouTube tutorial-channel project compared every technique in the 4 Bricks (@bricksdept) TARGET videos (liquid glass n0g4HXxx03s, UI designs x3SZvxoOmi0, shape morph XJIr419bY9E, smooth camera PdHYC0gqIPA) and the text-animation video MpaGgpw9Qys against the code. The full table is in the task artifact `flashfx/gap-analysis.md`. Already shipped in that step (not batches): animator "Characters Excluding Spaces" + Tracking (em), per-glyph text motion blur, mixed styles / accent word, 4 kinetic title presets (incl. a 2-animator stack), and a fix for per-glyph stamps drawn offset (`verify:textanimator`, `verify:text-glyph-motion`, `verify:text-runs`, `gpu:text-kinetic`). Blend-mode rendering for GLASS is the existing **B11c-gpu**; the voice-note waveform is the existing **B31-viz**. Timestamps below are Bricks beats (video id, m:ss).
+
+## B33 - Colour keyframes ⬜
+- **Delivers:** keyframable colour: shape fill + stroke colour and text colour (and the text gradient stops if cheap) as an `AnimatableProperty` whose value is a Vec4 (or a parallel `fillColorProp`, whichever keeps old projects byte-identical), interpolated in linear RGB with the existing eases + hold keyframes; Inspector stopwatch on the colour rows; validation/persistence; agent action or `updateLayerProperty` path documented in `featureManifest.ts`.
+- **Source beats:** XJIr 1:15-2:05 + 31:51-33:08 (fill-colour morph), XJIr 0:03-0:07 (Follow -> Following state), n0g4 0:16 + 29:52-30:50 (label colour swap), MpaGgpw9Qys 0:26 ("Fill" property word).
+- **Depends on:** nothing. Today `AnimatableProperty` values are number | Vec2 only (`core/types.ts:62`); shape `fillColor` is a fixed Vec4; text colour is `spans[0].style.color`.
+- **Perf weight:** medium (resolve path touches every shape/text layer: keep the static fast path).
+- **Likely files:** `src/core/types.ts`, `src/core/interpolation.ts` (resolveShapeLayer / resolveTextLayer), `src/core/keyframeEase.ts`, `src/ui/panels/Inspector.tsx`, `src/project-system/services/validation.ts`, `src/agent/featureManifest.ts`.
+- **Verification:** gates + `scripts/verify-color-keyframes.mjs` (interpolation, hold, frame purity, legacy projects unchanged).
+
+## B34 - Null layer + parenting UI ⬜
+- **Delivers:** a "New Null" layer type (invisible controller with a transform and an on-canvas crosshair, never rendered/exported), Object menu + agent action; a parent picker in the timeline row (dropdown and/or pick-whip drag) that calls the existing undoable `setLayerParent` keeping world transforms; nested nulls.
+- **Source beats:** PdHYC 2:05-2:46 + 5:35-6:57 (parent everything to chained nulls), XJIr 6:22-7:39 + 14:03-15:18 (null pivots, carousel), n0g4 45:21-46:52.
+- **Depends on:** nothing. `layers.groups-parenting` notes "Parenting has no UI control yet: agent-only via setLayerParent"; groups need a selection.
+- **Perf weight:** light.
+- **Likely files:** `src/core/types.ts` + `factory.ts` (null layer), `src/core/interpolation.ts` (resolve as transform-only), `src/engine/renderer.ts` (skip), `src/ui/panels/timeline/TrackRow.tsx`, `src/store/editor.ts`, `src/agent/featureManifest.ts`.
+- **Verification:** gates + `scripts/verify-null-layer.mjs` (null never draws, children follow, world transform preserved on parent/unparent).
+
+## B35 - Typing caret + UI-mock template kit ⬜
+- **Delivers:** (a) an optional caret on type-on text (thin bar after the last revealed glyph, blink rate, colour; resolve-time stamp on the existing glyph path, frame-pure); (b) animation templates: chat bubble with tail (sent / received), search bar with typing + caret, notification banner drop-in, toggle / pill state switch, YouTube-player card with Subscribe button, Discord-style community card with Join, fast-forward badge, "Scene N" reference card, section title card with cycling caption. All built from existing layers (shapes, text, animators, presets) so they stay editable.
+- **Source beats:** every TARGET cold open (narration-as-UI): PdHYC 0:00-0:24, XJIr 0:00-0:28, x3SZ 0:00-0:36, n0g4 0:00-0:27; presentation overlays (style bible §5: fast-forward badge, Scene N card, section card).
+- **Depends on:** B33 helps the toggle state swap (not required: hold-swap two layers).
+- **Perf weight:** medium (templates only; caret is one extra stamp).
+- **Likely files:** `src/core/textAnimatorPresets.ts` / `src/core/interpolation.ts` (caret), `src/animation-templates/categories/ui.ts` + `catalog.ts`, `src/agent/catalogs.ts`.
+- **Verification:** gates + harness for the caret position/blink purity + template instantiation (every template resolves without throwing, layer counts, ids unique).
+
+## B36 - Text animator completion ⬜
+- **Delivers:** keyframable selector Start and End (like Offset today), skew and fill-colour animator deltas (fill needs B33's colour interpolation or a per-stamp tint), per-glyph stamps for multi-line / wrapped text (per-line layout from `getTextLayout`, runs per line), and save-your-own animator preset (user presets in IndexedDB like effect presets, listed beside the built-ins, applied by the Animators panel and the agent).
+- **Source beats:** MpaGgpw9Qys 1:52-3:04 (style 2 keys range Start), 0:26 (skew / fill property words), 6:08-6:31 (save + apply your own presets); long titles in all hooks.
+- **Depends on:** B33 for the fill-colour delta (ship the rest without it if B33 is not done).
+- **Perf weight:** medium.
+- **Likely files:** `src/core/types.ts`, `src/core/textAnimator.ts`, `src/core/interpolation.ts` (expandTextGlyphs), `src/ui/panels/TextAnimatorEditor.tsx`, a small preset store (mirror `store/effectPresets.ts`), `src/agent/*`.
+- **Verification:** gates + extend `verify:textanimator` / `verify:text-glyph-motion` (multi-line placement, start/end keys, skew) + `gpu:text-kinetic`.
+
+## B37 - SVG import as editable shapes ⬜
+- **Delivers:** importing an `.svg` (file or paste) creates editable shape layers: `<path>` (incl. arcs -> beziers), rect (rx), circle, ellipse, line, polyline/polygon, fill/stroke/opacity, transforms flattened, `<g>` -> a group, viewBox fitted to the comp. Raster fallback stays for unsupported features (filters, masks, text).
+- **Source beats:** x3SZ 13:31-21:30 (vectors stay sharp, convert to native paths, icon assets, ungroup), XJIr 2:15-5:06, n0g4 9:50-12:41.
+- **Depends on:** nothing (pen paths / `PathVertex` exist; `importToPool.ts:13` lists svg as a raster image today).
+- **Perf weight:** medium (parse once at import).
+- **Likely files:** new pure `src/core/svgImport.ts`, `src/engine/media/importToPool.ts`, `src/store/editor.ts`.
+- **Verification:** gates + `scripts/verify-svg-import.mjs` (path commands incl. relative + arcs, transforms, groups, colours, malformed input fails soft).
+
+## B38 - Liquid-glass material ⬜ (browser)
+- **Delivers:** a glass material on any shape: backdrop blur of the composite BELOW the shape inside its outline (rounded corners follow the shape), refraction / bump of that backdrop, brightness, an inner highlight, an edge light sweep (rotating conic highlight on the stroke), outside-only shadow; plus track-matted adjustment layers (an adjustment clipped to a shape). Reuse the adjustment-layer multipass (`matteSrcTex` + `ADJUST_SHADER`) rather than a new pipeline where possible.
+- **Source beats:** n0g4 0:00-0:20 (glass hook), 1:34-9:23 (refraction, frosted blur, light sweep), 14:15-17:26; x3SZ 0:22 (frosted card).
+- **Depends on:** B11c-gpu (overlay blend for the hairline stroke) helps but is not required.
+- **Perf weight:** **heavy** (an extra scene copy + blur per glass layer; cap the count, reuse the blur pyramid).
+- **Likely files:** `src/engine/renderer.ts`, `src/core/effects/adjustmentComposite.ts` (CPU twin), shape material types/UI.
+- **Verification:** gates + CPU twin harness + a `gpu:glass` headless-Chrome pixel test (backdrop blurred only inside the outline, untouched frames byte-identical).
+
+## B39 - Editor ergonomics ⬜
+- **Delivers:** an in-app eyedropper on colour rows (the browser EyeDropper API where available, fall back to sampling the preview canvas); relative / arithmetic numeric entry in `DragInput` (`+400`, `-20`, `*2`, `/2` relative to the current value; plain numbers stay absolute); copy easing only (paste the in/out ease of one keyframe onto selected keyframes of any property).
+- **Source beats:** x3SZ 1:06-2:06 + 11:29-12:30 and XJIr 31:51 (eyedropper), n0g4 19:55-22:30 + XJIr (relative entry "+400"), PdHYC 15:14-15:57 (copy curve between layers).
+- **Depends on:** nothing.
+- **Perf weight:** light.
+- **Likely files:** `src/ui/components/DragInput.tsx` (+ a pure `parseNumericEntry`), `src/ui/panels/Inspector.tsx` colour rows, `src/store/editor.ts` keyframe clipboard, `src/ui/context-menu/menuDefinitions.ts`.
+- **Verification:** gates + `scripts/verify-numeric-entry.mjs` and an ease-paste harness.
+
+## B40 - Property links (pick-whip) ⬜
+- **Delivers:** link any animatable property to another layer's property (pick-whip drag or a picker), stored as an expression; the expression scope gains read access to other layers' resolved properties (by layer id / name), evaluated deterministically and cycle-checked.
+- **Source beats:** n0g4 5:15-7:46 + 17:26-19:55 (master shape drives its stroke / shadow copies).
+- **Depends on:** nothing (the Anchoring panel already maps a few transform channels; expressions see only their own value, `expressions/worker.ts:284-322`).
+- **Perf weight:** medium (dependency order between layers).
+- **Likely files:** `src/expressions/*`, `src/core/interpolation.ts`, `src/ui/panels/Inspector.tsx`.
+- **Verification:** gates + `verify:expressions*` extension (link reads, cycles rejected, frame purity).
+
+## B41 - Background gradient fixes ⬜ (browser)
+- **Delivers:** fix the background renderer packing only 4 colour stops while the panel allows 6 (stops 5-6 silently dropped, `renderer.ts:40,5236` vs `BackgroundPanel.tsx:798`) - raise the packed count or cap the UI; add a 4-corner (bilinear, mesh-like) gradient type for Apple-style soft backgrounds.
+- **Source beats:** n0g4 40:42-42:13 (4-colour gradient background), every kinetic-type card (style bible §7).
+- **Depends on:** nothing.
+- **Perf weight:** light (background shader uniforms).
+- **Likely files:** `src/engine/renderer.ts` (BG shader + packer), `src/ui/panels/BackgroundPanel.tsx`, `src/core/types.ts`.
+- **Verification:** gates + a CPU twin of the background gradient + `gpu:*` pixel check of a 6-stop and a 4-corner gradient.
+
+## B42 - 2.5D debug view + italic serif faces ⬜
+- **Delivers:** an orbit / custom view of the 2.5D scene for checking layer depth (camera-independent, viewport-only, not rendered); bundle true italic faces for the accent-word look (e.g. Playfair Display Italic 400/700 and one display italic serif, OFL woff in `public/fonts` + `engine/fonts.ts` manifest with style 'italic').
+- **Source beats:** PdHYC 8:21-9:02 (custom 3D view to debug depth); MpaGgpw9Qys 0:00-0:36 + style bible §7 (italic high-contrast serif accent words; today the canvas synthesises an oblique Playfair).
+- **Depends on:** nothing (2.5D scope only, per the no-full-3D rule).
+- **Perf weight:** light.
+- **Likely files:** `src/ui/panels/Camera3DView.tsx`, `src/engine/fonts.ts`, `public/fonts/`.
+- **Verification:** gates; fonts: `verify:*` for the manifest entry + headless screenshot of an italic accent.
