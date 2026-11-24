@@ -89,7 +89,7 @@ export async function exportToMp4(
   const compFps = composition.settings.frameRate;
   const durationFrames = composition.settings.durationFrames;
   const bitrate = settings.bitrate ?? 8_000_000;
-  const codec = settings.codec ?? 'avc1.42001f';
+  const requestedCodec = settings.codec ?? 'avc1.42001f';
 
   // Pre-flight: fail fast and clearly on an empty/invalid composition rather than spinning up the
   // renderer + encoder only to produce a broken file. Both fps matter (compFps for resampling).
@@ -106,9 +106,12 @@ export async function exportToMp4(
   if (typeof VideoEncoder === 'undefined') {
     throw new Error('Video export needs WebCodecs, which this browser does not support. Use a recent Chromium-based browser.');
   }
-  const support = await VideoEncoder.isConfigSupported({ codec, width, height, bitrate, framerate: exportFps });
-  if (support.supported === false) {
-    throw new Error(`This browser or GPU does not support the selected export quality (${codec} at ${width}x${height}). Try a lower quality or resolution.`);
+  // The Draft/Standard presets ask for H.264 Baseline level 3.1, which is below spec for 1080p: software
+  // encoders (headless Chrome, GPUs without an H.264 block) reject it at 1920x1080 while they accept a
+  // higher level. Keep the requested codec when it works, else step up to the first supported level.
+  const codec = await pickSupportedCodec(requestedCodec, width, height, bitrate, exportFps);
+  if (!codec) {
+    throw new Error(`This browser or GPU does not support the selected export quality (${requestedCodec} at ${width}x${height}). Try a lower quality or resolution.`);
   }
 
   // Diagnostics, filled in as we learn more; attached to the error if every encoder path fails.
@@ -123,7 +126,7 @@ export async function exportToMp4(
     bitrate,
     framerate: exportFps,
     hardwareAcceleration: 'no-preference',
-    configSupported: support.supported ?? null,
+    configSupported: true,
     stoppedAtFrame: null,
     totalFrames,
     reason: '',
@@ -437,4 +440,22 @@ export function estimateDuration(frameRate: number, totalFrames: number): string
   const secs = Math.floor(seconds % 60);
   if (mins === 0) return `${secs}s`;
   return `${mins}m ${secs}s`;
+}
+
+/** H.264 codec strings tried, in order, after the requested one: Main 4.0, High 4.0, High 5.0 (all valid
+ *  for 1080p; High 5.0 also covers 4K). */
+const CODEC_FALLBACKS = ['avc1.4d0028', 'avc1.640028', 'avc1.640032'];
+
+/** The requested codec when the encoder accepts it at this size, else the first accepted fallback, else
+ *  null. Exported for the agent/export harnesses. */
+export async function pickSupportedCodec(requested: string, width: number, height: number, bitrate: number, framerate: number): Promise<string | null> {
+  for (const codec of [requested, ...CODEC_FALLBACKS.filter((c) => c !== requested)]) {
+    try {
+      const s = await VideoEncoder.isConfigSupported({ codec, width, height, bitrate, framerate });
+      if (s.supported !== false) return codec;
+    } catch {
+      // An invalid config throws instead of resolving supported: false; try the next codec.
+    }
+  }
+  return null;
 }
