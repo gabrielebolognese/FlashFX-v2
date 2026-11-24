@@ -103,6 +103,7 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | B40 | Property links - pick-whip UI + expressions that read another layer's property (Bricks gap #9) | ⬜ | medium |
 | B41 | Background gradients - renderer drops stops 5-6 (bug) + 4-corner (mesh-like) gradient (Bricks gap #10) | ⬜ (browser) | light |
 | B42 | Orbit / custom 2.5D debug view + bundle true italic serif faces for accent words (Bricks gap #11) | ⬜ | light |
+| B43 | Text raster bounds: synthesized-italic (oblique) glyphs are clipped at the left/right of the text box, e.g. a word-initial italic "f" loses its hook (found in tutorial sample-01) | ⬜ (browser) | light |
 | PB1 | Playback: decoded-frame LRU on the mediabunny path (backward/oscillating scrubs hit the cache instead of re-walking the GOP) | ✅ | medium |
 | PB2a | Playback: keyframe-snap-then-refine on far seeks (kills the scrub freeze) | ✅ | medium |
 | PB2b | Playback: real half-res proxy decode (cuts 4K upload/convert cost during scrub) | ✅ | heavy |
@@ -684,3 +685,11 @@ Source: the YouTube tutorial-channel project compared every technique in the 4 B
 - **Perf weight:** light.
 - **Likely files:** `src/ui/panels/Camera3DView.tsx`, `src/engine/fonts.ts`, `public/fonts/`.
 - **Verification:** gates; fonts: `verify:*` for the manifest entry + headless screenshot of an italic accent.
+
+## B43 - text raster bounds for oblique / overhanging glyphs ⬜
+- **Delivers:** the text rasterizer pads its measured box by the glyph overhang (actualBoundingBoxLeft/Right) plus the synthetic oblique shear (about 0.2 x line height), so no glyph is clipped; applies to the whole-layer path and the per-glyph stamp path (animators, accent words).
+- **Source beats:** videos/sample-01 cold open (S05): the accent word "free" in Playfair Display, fontStyle italic, renders its "f" with the left hook cut off (shows as "1ree"). Worked around in the sample by keeping that word upright.
+- **Depends on:** nothing; B42 (true italic faces) reduces but does not remove it (real italics overhang too).
+- **Perf weight:** light.
+- **Likely files:** `src/text/` raster/measure code, the per-glyph stamp path.
+- **Verification:** gates + headless screenshot of "free project file" with an italic accent on "free" (no clipped pixels at the box edge).
