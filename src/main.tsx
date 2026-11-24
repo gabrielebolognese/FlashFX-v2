@@ -9,6 +9,7 @@ import { installTelemetrySinks } from './lib/telemetrySinks';
 import { RootErrorBoundary } from './ui/RootErrorBoundary';
 import { UnsupportedBrowser } from './ui/UnsupportedBrowser';
 import { useAuthStore } from './auth/store';
+import { installAgentRuntime } from './agent/runtime';
 
 // Route uncaught errors + unhandled promise rejections into telemetry before anything else runs, and
 // activate real providers (Sentry/PostHog) if their env keys are set - inert/console-only otherwise.
@@ -38,6 +39,10 @@ if (!('gpu' in navigator)) {
   if (import.meta.env.DEV) {
     import('./ai/devHook').then((m) => m.installAiDevHook()).catch(() => {});
   }
+
+  // Agent mode: window.__ffxAgent (listFeatures / getState / whitelisted run) for automated agents
+  // driving this tab - see src/agent/runtime.ts and /agent/features.json.
+  installAgentRuntime();
 
   // Hydrate any existing auth session + subscribe to changes (null-guarded: a no-op
   // until Supabase is configured, so the local-first app is unaffected).
