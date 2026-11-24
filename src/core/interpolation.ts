@@ -63,7 +63,7 @@ import { computeContainerLayout } from '../layout/containerEngine';
 import { easeSegment, segmentProgress } from './keyframeEase';
 import { positionOnSegment } from './positionPath';
 import { evalScalarKeyframes, findSegmentIndex } from './separateDimensions';
-import { effectiveShutterAngle, shutterPhaseFraction } from './shutter';
+import { effectiveShutterAngle, shutterPhaseFraction, motionBlurBetween } from './shutter';
 import { linearSourceSeconds, sourceFrameFromSeconds, frameBlendSplit } from './timeRemap';
 import { applyResolvedModifiers, evalPathKeyframes, repeaterTransforms, type ResolvedShapeModifier, type RepeaterCopy } from './shapeModifiers';
 import { expressionManager } from '../expressions/manager';
@@ -525,6 +525,14 @@ function composeTransforms(parent: ResolvedTransform, child: ResolvedTransform):
   };
 }
 
+/** Per-glyph motion blur inputs (see glyphMotionBlurContext). */
+interface GlyphBlurContext {
+  shutter: number;
+  phase: number;
+  prevFrame: number;
+  prevWorld: ResolvedTransform;
+}
+
 /** Resolve a text layer's active animators at one frame (the keyframed offset baked into the selector). */
 function resolveTextAnimatorsAt(active: TextAnimator[], frame: number): ResolvedTextAnimator[] {
   return active.map((a) => ({
@@ -548,6 +556,7 @@ function expandTextGlyphs(
   frame: number,
   common: Pick<ResolvedLayer, 'visible' | 'blendMode' | 'motionBlur' | 'shadow' | 'glow' | 'blur' | 'layerType'>,
   textPathData: { nodes: TextPathNode[]; closed: boolean; align: boolean; margin: number } | null,
+  glyphBlur: GlyphBlurContext | null = null,
 ): ResolvedLayer[] | null {
   const active = (layer.animators ?? []).filter((a) => a.enabled);
   const content = baseText.content;
@@ -567,6 +576,11 @@ function expandTextGlyphs(
   const deltas = accumulateGlyphDeltas(content, resolveTextAnimatorsAt(active, frame));
   // Animator tracking: per-glyph X shift, re-aligned like the layout (all zeros without tracking).
   const shifts = trackingShifts(deltas, baseText.textAlign);
+  // Per-glyph motion blur: the same glyph one frame earlier (animator deltas + tracking at prevFrame,
+  // under the layer's previous world transform). Only when the layer has motion blur on.
+  const prevDeltas = glyphBlur && active.length > 0 ? accumulateGlyphDeltas(content, resolveTextAnimatorsAt(active, glyphBlur.prevFrame)) : null;
+  const prevShifts = prevDeltas ? trackingShifts(prevDeltas, baseText.textAlign) : null;
+
   const { canvasWidth, padding } = layout;
   const lineW = measureAdvance(baseText, content, content.length);
   const lineStartX =
@@ -627,13 +641,24 @@ function expandTextGlyphs(
       stampText.measuredHeight = m.height;
       const centerDist = advPrev + (advNext - advPrev) / 2;
       const transform = composeTransforms(world, childTransform(d, shifts[j], centerDist, m.width));
+      // Per-glyph motion blur: velocity of THIS glyph (animator slide/scale/spin + tracking + the layer's
+      // own motion), so a static layer whose letters fly in still streaks. Replaces the layer-level
+      // descriptor on the stamp; the renderer's existing per-layer blur pass draws it unchanged.
+      const stampMotionBlur = glyphBlur && prevDeltas && prevShifts
+        ? motionBlurBetween(
+            transform,
+            composeTransforms(glyphBlur.prevWorld, childTransform(prevDeltas[j], prevShifts[j], centerDist, m.width)),
+            glyphBlur.shutter,
+            glyphBlur.phase,
+          )
+        : common.motionBlur;
       // Per-character blur (B9d): a gaussian blur per stamp = the layer's base blur + the glyph's
       // accumulated blur delta. Each stamp is a text draw that carries `blur` through the existing
       // per-layer blur pipeline (no new render). Absent (blur 0): the shared base blur is untouched.
       const glyphGauss: ResolvedBlur | undefined = d.blur > 0
         ? { type: 'gaussian', radius: d.blur + (common.blur?.radius ?? 0), angle: 0, centerX: 0.5, centerY: 0.5, strength: 0, passes: common.blur?.passes ?? 2 }
         : common.blur;
-      stamps.push({ ...common, id: `${layer.id}#g${j}`, transform, text: stampText, blur: glyphGauss, ...(layer.is3D ? { is3D: true } : {}) });
+      stamps.push({ ...common, motionBlur: stampMotionBlur, id: `${layer.id}#g${j}`, transform, text: stampText, blur: glyphGauss, ...(layer.is3D ? { is3D: true } : {}) });
     }
     advPrev = advNext;
   }
@@ -878,21 +903,33 @@ function computeMotionBlur(
     ? current
     : worldTransformAt(layer, layers, motionPaths, prevFrame);
 
-  const pivotX = current.positionX + current.anchorX;
-  const pivotY = current.positionY + current.anchorY;
-  const vx = pivotX - (prev.positionX + prev.anchorX);
-  const vy = pivotY - (prev.positionY + prev.anchorY);
-  const omega = (current.rotation - prev.rotation) * Math.PI / 180;
-  const scaleRateX = current.scaleX !== 0 ? (current.scaleX - prev.scaleX) / current.scaleX : 0;
-  const scaleRateY = current.scaleY !== 0 ? (current.scaleY - prev.scaleY) / current.scaleY : 0;
+  return motionBlurBetween(current, prev, shutter, phase);
+}
 
-  const moving =
-    Math.abs(vx) > 1e-4 || Math.abs(vy) > 1e-4 ||
-    Math.abs(omega) > 1e-5 ||
-    Math.abs(scaleRateX) > 1e-5 || Math.abs(scaleRateY) > 1e-5;
-  if (!moving) return undefined;
-
-  return { shutter, phase, pivotX, pivotY, vx, vy, omega, scaleRateX, scaleRateY };
+/**
+ * What per-glyph text motion blur needs from the layer: the effective shutter + phase and the layer's
+ * world transform one frame earlier. Null when the layer's motion blur is off, the shutter is closed,
+ * or there is no earlier frame (first frame of the clip).
+ */
+function glyphMotionBlurContext(
+  layer: Layer,
+  layers: Layer[],
+  motionPaths: MotionPath[],
+  frame: number,
+  compShutterAngle?: number,
+  compShutterPhase?: number,
+): GlyphBlurContext | null {
+  if (!getMotionBlur(layer)) return null;
+  const shutter = effectiveShutterAngle(compShutterAngle, layer.motionBlurShutter);
+  if (shutter <= 0) return null;
+  const prevFrame = Math.max(frame - 1, layer.inPoint);
+  if (prevFrame === frame) return null;
+  return {
+    shutter,
+    phase: shutterPhaseFraction(compShutterPhase, shutter),
+    prevFrame,
+    prevWorld: worldTransformAt(layer, layers, motionPaths, prevFrame),
+  };
 }
 
 // Derive the resolved shadow descriptor for a layer at the current frame. The
@@ -1283,7 +1320,8 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
           ? { nodes: tpPath.nodes as TextPathNode[], closed: tpPath.closed, align: tpBind.align, margin: tpBind.margin }
           : null;
         // Per-character animators expand into per-glyph stamps (single-line); plain text is untouched.
-        const glyphStamps = expandTextGlyphs(layer, resolvedText, worldTransform, frame, common, textPathData);
+        const glyphBlurCtx = glyphMotionBlurContext(layer, layers, motionPaths, frame, settings.shutterAngle, settings.shutterPhase);
+        const glyphStamps = expandTextGlyphs(layer, resolvedText, worldTransform, frame, common, textPathData, glyphBlurCtx);
         if (glyphStamps) {
           resolvedLayers.push(...glyphStamps);
         } else {

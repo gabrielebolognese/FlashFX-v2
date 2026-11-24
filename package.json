@@ -108,6 +108,7 @@
     "verify:load-resilience": "node scripts/verify-load-resilience.mjs",
     "verify:rangeselector": "node scripts/verify-rangeselector.mjs",
     "verify:textanimator": "node scripts/verify-textanimator.mjs",
+    "verify:text-glyph-motion": "node scripts/verify-text-glyph-motion.mjs",
     "verify:caption-window": "node scripts/verify-caption-window.mjs",
     "verify:coder": "node scripts/verify-coder.mjs",
     "verify:generate": "node scripts/verify-generate.mjs",
