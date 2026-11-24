@@ -685,7 +685,8 @@ interface EditorState {
   patchMask: (layerId: string, maskId: string, patch: Partial<Mask>, label?: string) => void;
 
   // Background actions (undoable)
-  addBackgroundLayer: () => void;
+  /** Returns the new layer's id (null when the stack is full), so agents can address it. */
+  addBackgroundLayer: () => string | null;
   removeBackgroundLayer: (id: string) => void;
   updateBackgroundLayer: (id: string, updates: Partial<BackgroundLayer>) => void;
   reorderBackgroundLayer: (id: string, direction: 'up' | 'down') => void;
@@ -6543,7 +6544,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   addBackgroundLayer: () => {
     const { composition } = get();
-    if (composition.background.layers.length >= 10) return;
+    if (composition.background.layers.length >= 10) return null;
     const oldComp = composition;
     const newLayer = createBackgroundLayer();
     const newComp = {
@@ -6555,6 +6556,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       execute: () => { set({ composition: newComp }); },
       undo: () => { set({ composition: oldComp }); },
     });
+    return newLayer.id;
   },
 
   removeBackgroundLayer: (id) => {

@@ -182,7 +182,7 @@ export const AGENT_ACTIONS: readonly AgentActionSpec[] = [
     description: 'Start preview playback (Space).', params: [] },
   { id: 'agent.pause', store: 'agent', method: 'pause', undoable: false, returns: 'the current frame',
     description: 'Pause preview playback.', params: [] },
-  { id: 'editor.addBackgroundLayer', store: 'editor', method: 'addBackgroundLayer', undoable: true, params: [],
+  { id: 'editor.addBackgroundLayer', store: 'editor', method: 'addBackgroundLayer', undoable: true, params: [], returns: 'the new background layer id (null when the stack already has 10)',
     description: 'Add a solid/gradient background layer to the composition background stack.' },
   { id: 'editor.updateBackgroundLayer', store: 'editor', method: 'updateBackgroundLayer', undoable: true,
     description: 'Patch a background layer (see BackgroundLayer in src/core/types.ts).',
