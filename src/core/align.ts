@@ -1,4 +1,4 @@
-import type { Layer, Vec2 } from './types';
+import type { AnimatableProperty, Layer, Vec2 } from './types';
 import { evaluateProperty } from './interpolation';
 
 export interface LayerBounds {
@@ -15,18 +15,18 @@ function getLayerSize(layer: Layer, frame: number): { w: number; h: number } | n
   // group/audio have no spatial box; camera is a viewpoint, not a card - never align/nudge it.
   if (layer.type === 'group' || layer.type === 'audio' || layer.type === 'camera') return null;
   if (layer.type === 'video') {
-    const vl = layer as any;
+    const vl = layer;
     return { w: vl.video.sourceWidth, h: vl.video.sourceHeight };
   }
   if (layer.type === 'image') {
-    const il = layer as any;
+    const il = layer;
     return { w: il.image.sourceWidth, h: il.image.sourceHeight };
   }
   if (layer.type === 'generativePattern') {
     return { w: evaluateProperty(layer.width, frame) as number, h: evaluateProperty(layer.height, frame) as number };
   }
   if (layer.type === 'shape') {
-    const sl = layer as any;
+    const sl = layer;
     if (!sl.shape) return null;
     const shape = sl.shape;
     switch (shape.type) {
@@ -48,8 +48,10 @@ function getLayerSize(layer: Layer, frame: number): { w: number; h: number } | n
         return { w: or * 2, h: or * 2 };
       }
       case 'polygon': {
-        const pr = typeof shape.radius === 'object' && shape.radius.defaultValue != null
-          ? evaluateProperty(shape.radius, frame) as number : 50;
+        // PolygonShape is vertex-based and has no radius; honour one if legacy data carries it.
+        const polyRadius = (shape as { radius?: AnimatableProperty }).radius;
+        const pr = typeof polyRadius === 'object' && polyRadius.defaultValue != null
+          ? evaluateProperty(polyRadius, frame) as number : 50;
         return { w: pr * 2, h: pr * 2 };
       }
       default:
@@ -60,7 +62,7 @@ function getLayerSize(layer: Layer, frame: number): { w: number; h: number } | n
     return { w: 200, h: 40 };
   }
   if (layer.type === 'hbox' || layer.type === 'vbox' || layer.type === 'grid') {
-    const ll = layer as any;
+    const ll = layer;
     const lp = ll.layoutParams;
     return {
       w: lp.width?.type === 'fixed' ? lp.width.value : 200,
@@ -68,7 +70,7 @@ function getLayerSize(layer: Layer, frame: number): { w: number; h: number } | n
     };
   }
   if (layer.type === 'layoutContainer') {
-    const lc = layer as any;
+    const lc = layer;
     return { w: lc.containerShape?.width || 200, h: lc.containerShape?.height || 200 };
   }
   return { w: 100, h: 100 };
@@ -240,7 +242,7 @@ export function computeEqualSize(mode: SizeMode, layers: Layer[], frame: number)
     if (targetW === current.w && targetH === current.h) continue;
 
     if (layer.type === 'shape') {
-      const sl = layer as any;
+      const sl = layer;
       const shape = sl.shape;
       if (!shape) continue;
       switch (shape.type) {
@@ -357,7 +359,7 @@ export function computeTransformOp(mode: TransformMode, layers: Layer[], frame: 
 
 function computeSizeChangesForLayer(layer: Layer, newW: number, newH: number): Partial<{ width: number; height: number; radius: number; outerRadius: number }> | null {
   if (layer.type === 'shape') {
-    const sl = layer as any;
+    const sl = layer;
     const shape = sl.shape;
     if (!shape) return null;
     switch (shape.type) {

@@ -65,7 +65,7 @@ export function BlockInspector() {
           {/* Property selector */}
           {('property' in block) && (
             <Field label="Property" width="140px">
-              <select value={(block as any).property} onChange={(e) => update({ property: e.target.value } as any)} className="input-field">
+              <select value={block.property} onChange={(e) => update({ property: e.target.value })} className="input-field">
                 {properties.map((p) => <option key={p.path} value={p.path}>{p.name}</option>)}
               </select>
             </Field>
@@ -89,14 +89,14 @@ function AnimateFields({ block, update }: { block: AnimateBlock; update: (u: Par
   return (
     <>
       <Field label="Target">
-        <ValueInput value={block.targetValue} onChange={(v) => update({ targetValue: v } as any)} />
+        <ValueInput value={block.targetValue} onChange={(v) => update({ targetValue: v })} />
       </Field>
       <Field label="Duration" width="80px">
-        <input type="number" value={block.duration} onChange={(e) => update({ duration: Math.max(0.01, Number(e.target.value)) } as any)}
+        <input type="number" value={block.duration} onChange={(e) => update({ duration: Math.max(0.01, Number(e.target.value)) })}
           step={0.1} min={0.01} className="input-field" />
       </Field>
       <Field label="Easing" width="90px">
-        <select value={block.interpolation} onChange={(e) => update({ interpolation: e.target.value as InterpolationType } as any)} className="input-field">
+        <select value={block.interpolation} onChange={(e) => update({ interpolation: e.target.value as InterpolationType })} className="input-field">
           {INTERPOLATION_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
         </select>
       </Field>
@@ -108,14 +108,14 @@ function RelativeAnimateFields({ block, update }: { block: RelativeAnimateBlock;
   return (
     <>
       <Field label="Delta">
-        <ValueInput value={block.delta} onChange={(v) => update({ delta: v } as any)} />
+        <ValueInput value={block.delta} onChange={(v) => update({ delta: v })} />
       </Field>
       <Field label="Duration" width="80px">
-        <input type="number" value={block.duration} onChange={(e) => update({ duration: Math.max(0.01, Number(e.target.value)) } as any)}
+        <input type="number" value={block.duration} onChange={(e) => update({ duration: Math.max(0.01, Number(e.target.value)) })}
           step={0.1} min={0.01} className="input-field" />
       </Field>
       <Field label="Easing" width="90px">
-        <select value={block.interpolation} onChange={(e) => update({ interpolation: e.target.value as InterpolationType } as any)} className="input-field">
+        <select value={block.interpolation} onChange={(e) => update({ interpolation: e.target.value as InterpolationType })} className="input-field">
           {INTERPOLATION_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
         </select>
       </Field>
@@ -126,7 +126,7 @@ function RelativeAnimateFields({ block, update }: { block: RelativeAnimateBlock;
 function InstantSetFields({ block, update }: { block: InstantSetBlock; update: (u: Partial<Block>) => void }) {
   return (
     <Field label="Value">
-      <ValueInput value={block.value} onChange={(v) => update({ value: v } as any)} />
+      <ValueInput value={block.value} onChange={(v) => update({ value: v })} />
     </Field>
   );
 }
@@ -134,7 +134,7 @@ function InstantSetFields({ block, update }: { block: InstantSetBlock; update: (
 function WaitFields({ block, update }: { block: WaitBlock; update: (u: Partial<Block>) => void }) {
   return (
     <Field label="Duration" width="80px">
-      <input type="number" value={block.duration} onChange={(e) => update({ duration: Math.max(0, Number(e.target.value)) } as any)}
+      <input type="number" value={block.duration} onChange={(e) => update({ duration: Math.max(0, Number(e.target.value)) })}
         step={0.1} min={0} className="input-field" />
     </Field>
   );
@@ -143,7 +143,7 @@ function WaitFields({ block, update }: { block: WaitBlock; update: (u: Partial<B
 function LoopFields({ block, update }: { block: LoopBlock; update: (u: Partial<Block>) => void }) {
   return (
     <Field label="Iterations" width="80px">
-      <input type="number" value={block.iterations} onChange={(e) => update({ iterations: Math.max(1, Math.round(Number(e.target.value))) } as any)}
+      <input type="number" value={block.iterations} onChange={(e) => update({ iterations: Math.max(1, Math.round(Number(e.target.value))) })}
         step={1} min={1} className="input-field" />
     </Field>
   );
@@ -152,7 +152,7 @@ function LoopFields({ block, update }: { block: LoopBlock; update: (u: Partial<B
 function PingPongFields({ block, update }: { block: PingPongBlock; update: (u: Partial<Block>) => void }) {
   return (
     <Field label="Iterations" width="80px">
-      <input type="number" value={block.iterations} onChange={(e) => update({ iterations: Math.max(1, Math.round(Number(e.target.value))) } as any)}
+      <input type="number" value={block.iterations} onChange={(e) => update({ iterations: Math.max(1, Math.round(Number(e.target.value))) })}
         step={1} min={1} className="input-field" />
     </Field>
   );
@@ -161,7 +161,7 @@ function PingPongFields({ block, update }: { block: PingPongBlock; update: (u: P
 function ConditionFields({ block, update }: { block: ConditionBlock; update: (u: Partial<Block>) => void }) {
   return (
     <Field label="Expression" width="200px">
-      <input type="text" value={block.conditionExpression} onChange={(e) => update({ conditionExpression: e.target.value } as any)}
+      <input type="text" value={block.conditionExpression} onChange={(e) => update({ conditionExpression: e.target.value })}
         placeholder="e.g. composition.width > 1080" className="input-field" />
     </Field>
   );
@@ -171,17 +171,17 @@ function RandomFields({ block, update }: { block: RandomBlock; update: (u: Parti
   return (
     <>
       <Field label="Min" width="70px">
-        <input type="number" value={block.min} onChange={(e) => update({ min: Number(e.target.value) } as any)} step={1} className="input-field" />
+        <input type="number" value={block.min} onChange={(e) => update({ min: Number(e.target.value) })} step={1} className="input-field" />
       </Field>
       <Field label="Max" width="70px">
-        <input type="number" value={block.max} onChange={(e) => update({ max: Number(e.target.value) } as any)} step={1} className="input-field" />
+        <input type="number" value={block.max} onChange={(e) => update({ max: Number(e.target.value) })} step={1} className="input-field" />
       </Field>
       <Field label="Duration" width="80px">
-        <input type="number" value={block.duration} onChange={(e) => update({ duration: Math.max(0.01, Number(e.target.value)) } as any)}
+        <input type="number" value={block.duration} onChange={(e) => update({ duration: Math.max(0.01, Number(e.target.value)) })}
           step={0.1} min={0.01} className="input-field" />
       </Field>
       <Field label="Easing" width="90px">
-        <select value={block.interpolation} onChange={(e) => update({ interpolation: e.target.value as InterpolationType } as any)} className="input-field">
+        <select value={block.interpolation} onChange={(e) => update({ interpolation: e.target.value as InterpolationType })} className="input-field">
           {INTERPOLATION_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
         </select>
       </Field>

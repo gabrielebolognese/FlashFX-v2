@@ -106,7 +106,7 @@ export class VideoTextureCache {
 
     try {
       this.device.queue.copyExternalImageToTexture(
-        { source: source as any },
+        { source },
         { texture },
         { width, height }
       );
@@ -127,7 +127,7 @@ export class VideoTextureCache {
     const ctx = this.fbCtx;
     if (!ctx) return;
 
-    ctx.drawImage(source as any, 0, 0, width, height);
+    ctx.drawImage(source, 0, 0, width, height);
     // Copy straight from the canvas - no per-frame transferToImageBitmap allocation.
     this.device.queue.copyExternalImageToTexture(
       { source: this.fbCanvas },

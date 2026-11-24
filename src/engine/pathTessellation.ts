@@ -289,7 +289,7 @@ function addJoin(prev: Vec2, cur: Vec2, next: Vec2, hw: number, colorAt: ColorAt
 
   if (join === 'round') {
     const a0 = Math.atan2(p0[1] - cur[1], p0[0] - cur[0]);
-    let a1 = Math.atan2(p1[1] - cur[1], p1[0] - cur[0]);
+    const a1 = Math.atan2(p1[1] - cur[1], p1[0] - cur[0]);
     let delta = a1 - a0;
     while (delta > Math.PI) delta -= Math.PI * 2;
     while (delta < -Math.PI) delta += Math.PI * 2;
@@ -301,7 +301,6 @@ function addJoin(prev: Vec2, cur: Vec2, next: Vec2, hw: number, colorAt: ColorAt
       pushTriAt(out, cur, prevP, cp, colorAt);
       prevP = cp;
     }
-    a1 = a1; // noop, keeps lint quiet
   } else if (join === 'bevel') {
     pushTriAt(out, cur, p0, p1, colorAt);
   } else {

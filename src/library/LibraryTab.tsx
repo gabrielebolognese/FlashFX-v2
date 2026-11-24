@@ -289,8 +289,8 @@ export function LibraryTab() {
     try {
       const result = await listDriveFolder(folderId);
       setItems(result.items);
-    } catch (err: any) {
-      setError(err.message || 'Failed to load assets');
+    } catch (err) {
+      setError((err as { message?: string }).message || 'Failed to load assets');
       setItems([]);
     } finally {
       setLoading(false);
@@ -327,10 +327,10 @@ export function LibraryTab() {
         const result = await searchDriveAssets(searchQuery.trim());
         if (cancelled) return;
         setSearchResults(result.items);
-      } catch (err: any) {
+      } catch (err) {
         if (cancelled) return;
         setSearchResults([]);
-        setError(err.message || 'Search failed');
+        setError((err as { message?: string }).message || 'Search failed');
       } finally {
         // Leave the spinner up if a newer query is already loading.
         if (!cancelled) setSearchLoading(false);
@@ -384,7 +384,7 @@ export function LibraryTab() {
       }
 
       setImportedIds((prev) => new Set(prev).add(item.id));
-    } catch (err: any) {
+    } catch (err) {
       console.error('Import failed:', err);
     } finally {
       setDownloadingId(null);

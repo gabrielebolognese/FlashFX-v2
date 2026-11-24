@@ -5,8 +5,53 @@ import type {
   VideoMetadata,
 } from './videoWorker.types';
 
-type MP4Info = any;
-type Sample = any;
+// The parts of mp4box's parsed track info / trak box this worker reads. Several fields are
+// defensive fallbacks that differ across mp4box versions (video, colour, fps), hence optional.
+interface Mp4TrackInfo {
+  id: number;
+  type?: string;
+  codec: string;
+  timescale: number;
+  duration: number;
+  track_width: number;
+  track_height: number;
+  video?: { width: number; height: number };
+  matrix?: ArrayLike<number>;
+  fps?: number;
+}
+interface MP4Info {
+  tracks: Mp4TrackInfo[];
+}
+interface Mp4ConfigBox {
+  write(stream: DataStream): void;
+}
+interface Mp4Colour {
+  colour_primaries?: number;
+  primaries?: number;
+  transfer_characteristics?: number;
+  transfer?: number;
+}
+interface Mp4SampleEntry {
+  avcC?: Mp4ConfigBox;
+  hvcC?: Mp4ConfigBox;
+  vpcC?: Mp4ConfigBox;
+  av1C?: Mp4ConfigBox;
+  colr?: Mp4Colour;
+  colour?: Mp4Colour;
+}
+interface Mp4Trak {
+  tkhd?: { matrix?: ArrayLike<number> };
+  mdia?: { minf?: { stbl?: { stsd?: { entries?: Mp4SampleEntry[] } } } };
+  samples?: Array<{ offset: number; size: number; cts: number; duration: number; is_sync?: boolean | number }>;
+}
+/** A demuxed sample: where its bytes live in the file and its timing. */
+interface Sample {
+  offset: number;
+  size: number;
+  cts: number;
+  duration: number;
+  is_sync: boolean;
+}
 
 // ---------------------------------------------------------------------------
 // BYTE SOURCE ABSTRACTION
@@ -135,7 +180,7 @@ class StreamingDemuxer {
 
       mp4file.onReady = (info: MP4Info) => {
         try {
-          const videoTrack = info.tracks.find((t: any) => t.type === 'video');
+          const videoTrack = info.tracks.find((t) => t.type === 'video');
           if (!videoTrack) {
             finish(new Error(`No video track found in asset ${assetId}`));
             return;
@@ -146,7 +191,7 @@ class StreamingDemuxer {
           const width = videoTrack.video?.width ?? videoTrack.track_width;
           const height = videoTrack.video?.height ?? videoTrack.track_height;
 
-          const trak = (mp4file as any).getTrackById(videoTrack.id);
+          const trak = mp4file.getTrackById(videoTrack.id) as unknown as Mp4Trak | undefined;
           const codecConfig = this.extractCodecConfig(videoTrack, trak);
 
           // Extract rotation from track header matrix.
@@ -170,7 +215,7 @@ class StreamingDemuxer {
           // delivers samples whose media bytes were appended; with the head/tail
           // feed that meant everything past the first few MB was missing, so any
           // real-length clip only decoded its opening fraction, then froze.)
-          const raw = (trak?.samples ?? []) as any[];
+          const raw = trak?.samples ?? [];
           if (raw.length === 0) {
             finish(new Error(`No sample table in moov for asset ${assetId} (fragmented MP4 is not supported)`));
             return;
@@ -201,7 +246,7 @@ class StreamingDemuxer {
           const frameCount = samples.length;
           const frameRate = frameCount > 0 && duration > 0
             ? frameCount / duration
-            : (videoTrack as any).fps ?? 30;
+            : videoTrack.fps ?? 30;
 
           finish(null, {
             mp4file,
@@ -264,7 +309,7 @@ class StreamingDemuxer {
     if (!isDone()) mp4file.flush();
   }
 
-  private extractCodecConfig(videoTrack: any, trak: any): VideoDecoderConfig {
+  private extractCodecConfig(videoTrack: Mp4TrackInfo, trak: Mp4Trak | undefined): VideoDecoderConfig {
     const codec = videoTrack.codec;
     const config: VideoDecoderConfig = {
       codec,
@@ -951,7 +996,7 @@ class VideoDecoderController {
     if (this.decoder && this.decoder.state !== 'closed') {
       try {
         this.decoder.reset();
-      } catch {}
+      } catch { /* already reset / errored: closing below is what matters */ }
       this.decoder.close();
     }
 

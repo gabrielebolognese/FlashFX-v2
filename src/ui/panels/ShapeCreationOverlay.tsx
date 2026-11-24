@@ -158,7 +158,7 @@ export function ShapeCreationOverlay({ style, compW, compH }: ShapeCreationOverl
     if (!drag) return;
     try {
       e.currentTarget.releasePointerCapture(e.pointerId);
-    } catch {}
+    } catch { /* pointer capture already released */ }
 
     const box = getBox(drag);
     setDrag(null);

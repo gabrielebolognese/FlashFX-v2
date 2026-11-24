@@ -322,7 +322,7 @@ export function Viewport() {
           // Audio has no canvas placement - drop anywhere adds it to the timeline.
           addAudioFromAsset(data.id);
         }
-      } catch {}
+      } catch { /* not a media-pool drag payload: ignore */ }
       return;
     }
 

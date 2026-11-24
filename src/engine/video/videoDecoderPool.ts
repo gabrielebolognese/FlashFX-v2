@@ -23,7 +23,9 @@ const USE_MEDIABUNNY: boolean = (() => {
 })();
 
 interface InFlightRequest {
-  resolve: (value: any) => void;
+  // Method syntax (bivariant) so the Promise<VideoMetadata> / Promise<VideoFrame> resolvers both fit;
+  // the worker reply type decides what is passed.
+  resolve(value: unknown): void;
   reject: (err: Error) => void;
 }
 

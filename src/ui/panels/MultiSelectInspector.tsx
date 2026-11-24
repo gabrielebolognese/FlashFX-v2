@@ -11,7 +11,7 @@ import {
   type AlignAxis, type DistributeMode, type SizeMode, type SizeResult,
   type TransformMode, type TransformResult, type RandomizeOptions, type RandomizeResult, type FitCanvasResult,
 } from '../../core/align';
-import type { Layer, Vec2, Vec4, BlendMode } from '../../core/types';
+import type { Layer, Vec2, Vec4, BlendMode, AnimatableProperty, ShapeGeometry } from '../../core/types';
 import { autoCaptionAudioLayers } from '../../store/autoCaption';
 import { FONT_MANIFEST } from '../../engine/fonts';
 import {
@@ -211,34 +211,39 @@ function applyFitCanvasResults(results: FitCanvasResult[], label: string, curren
   useHistoryStore.getState().execute({ label, execute: () => useEditorStore.setState({ composition: newComp }), undo: () => useEditorStore.setState({ composition: oldComp }) });
 }
 
+/** A size property's new base value; when it is keyframed, the keyframe AT currentFrame takes it too. */
+function withSize(prop: AnimatableProperty, value: number, currentFrame: number): AnimatableProperty {
+  return { ...prop, defaultValue: value, keyframes: prop.keyframes.length > 0 ? prop.keyframes.map((kf) => kf.frame === currentFrame ? { ...kf, value } : kf) : [] };
+}
+
+/** The size fields the shape variants may carry (rectangle: width/height, circle: radius, star: outerRadius). */
+type SizedShapeFields = { width?: AnimatableProperty; height?: AnimatableProperty; radius?: AnimatableProperty; outerRadius?: AnimatableProperty };
+
 function applySizeToLayer(layer: Layer, changes: Partial<{ width: number; height: number; radius: number; outerRadius: number }>, currentFrame: number): Layer {
   if (layer.type === 'shape') {
-    const sl = layer as any;
-    const shape = sl.shape;
+    const shape = layer.shape as ShapeGeometry & SizedShapeFields;
     if (!shape) return layer;
     let newShape = { ...shape };
     if (changes.width !== undefined && shape.width) {
-      newShape = { ...newShape, width: { ...shape.width, defaultValue: changes.width, keyframes: shape.width.keyframes.length > 0 ? shape.width.keyframes.map((kf: any) => kf.frame === currentFrame ? { ...kf, value: changes.width } : kf) : [] } };
+      newShape = { ...newShape, width: withSize(shape.width, changes.width, currentFrame) };
     }
     if (changes.height !== undefined && shape.height) {
-      newShape = { ...newShape, height: { ...shape.height, defaultValue: changes.height, keyframes: shape.height.keyframes.length > 0 ? shape.height.keyframes.map((kf: any) => kf.frame === currentFrame ? { ...kf, value: changes.height } : kf) : [] } };
+      newShape = { ...newShape, height: withSize(shape.height, changes.height, currentFrame) };
     }
     if (changes.radius !== undefined && shape.radius) {
-      newShape = { ...newShape, radius: { ...shape.radius, defaultValue: changes.radius, keyframes: shape.radius.keyframes.length > 0 ? shape.radius.keyframes.map((kf: any) => kf.frame === currentFrame ? { ...kf, value: changes.radius } : kf) : [] } };
+      newShape = { ...newShape, radius: withSize(shape.radius, changes.radius, currentFrame) };
     }
     if (changes.outerRadius !== undefined && shape.outerRadius) {
-      newShape = { ...newShape, outerRadius: { ...shape.outerRadius, defaultValue: changes.outerRadius, keyframes: shape.outerRadius.keyframes.length > 0 ? shape.outerRadius.keyframes.map((kf: any) => kf.frame === currentFrame ? { ...kf, value: changes.outerRadius } : kf) : [] } };
+      newShape = { ...newShape, outerRadius: withSize(shape.outerRadius, changes.outerRadius, currentFrame) };
     }
-    return { ...sl, shape: newShape } as Layer;
+    return { ...layer, shape: newShape };
   }
   if (layer.type === 'layoutContainer') {
-    const lc = layer as any;
-    return { ...lc, containerShape: { ...lc.containerShape, width: changes.width ?? lc.containerShape?.width, height: changes.height ?? lc.containerShape?.height } } as Layer;
+    return { ...layer, containerShape: { ...layer.containerShape, width: changes.width ?? layer.containerShape.width, height: changes.height ?? layer.containerShape.height } };
   }
   if (layer.type === 'hbox' || layer.type === 'vbox' || layer.type === 'grid') {
-    const ll = layer as any;
-    const lp = ll.layoutParams || {};
-    return { ...ll, layoutParams: { ...lp, width: changes.width !== undefined ? { type: 'fixed', value: changes.width } : lp.width, height: changes.height !== undefined ? { type: 'fixed', value: changes.height } : lp.height } } as Layer;
+    const lp = layer.layoutParams;
+    return { ...layer, layoutParams: { ...lp, width: changes.width !== undefined ? { type: 'fixed', value: changes.width } : lp.width, height: changes.height !== undefined ? { type: 'fixed', value: changes.height } : lp.height } };
   }
   return layer;
 }
@@ -829,8 +834,8 @@ function CanvasContent() {
   const currentFrame = useTimelineStore((s) => s.currentFrame);
   const selectedLayers = composition.layers.filter((l) => selection.selectedIds.includes(l.id));
   const isDisabled = selectedLayers.length < 1;
-  const canvasW = (composition as any).settings?.width || 1920;
-  const canvasH = (composition as any).settings?.height || 1080;
+  const canvasW = composition.settings?.width || 1920;
+  const canvasH = composition.settings?.height || 1080;
 
   const executeCenterToCanvas = useCallback(() => {
     if (selectedLayers.length < 1) return;

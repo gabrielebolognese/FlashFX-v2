@@ -116,7 +116,7 @@ export function MediaPool() {
   const assetCategory: AssetCategory = tab === 'videos' ? 'videos' : tab === 'audio' ? 'audio' : 'images';
 
   const filteredAssets = useMemo(() => {
-    let filtered = assets.filter((a) => {
+    const filtered = assets.filter((a) => {
       if (assetCategory === 'images' && a.type !== 'image') return false;
       if (assetCategory === 'videos' && a.type !== 'video') return false;
       if (assetCategory === 'audio' && a.type !== 'audio') return false;

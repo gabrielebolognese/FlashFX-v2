@@ -14,10 +14,26 @@ const OVERSCAN = 3;
 
 type LottieManifest = Record<string, string[]>;
 
-let _lottieModule: any = null;
-let _lottiePromise: Promise<any> | null = null;
+/** Minimal surface of the lottie-web player (loaded from a CDN script tag) that this tab uses. */
+interface LottieAnimation {
+  addEventListener(name: string, cb: () => void): void;
+  destroy(): void;
+}
 
-async function loadLottieLib(): Promise<any> {
+interface LottieLib {
+  loadAnimation(params: {
+    container: Element;
+    renderer: 'svg' | 'canvas' | 'html';
+    loop: boolean;
+    autoplay: boolean;
+    path: string;
+  }): LottieAnimation;
+}
+
+let _lottieModule: LottieLib | null | undefined = null;
+let _lottiePromise: Promise<LottieLib | null | undefined> | null = null;
+
+async function loadLottieLib(): Promise<LottieLib | null | undefined> {
   if (_lottieModule) return _lottieModule;
   if (_lottiePromise) return _lottiePromise;
 
@@ -25,7 +41,7 @@ async function loadLottieLib(): Promise<any> {
     const script = document.createElement('script');
     script.src = 'https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.12.2/lottie.min.js';
     script.onload = () => {
-      _lottieModule = (window as any).lottie;
+      _lottieModule = (window as Window & { lottie?: LottieLib }).lottie;
       resolve(_lottieModule);
     };
     script.onerror = () => resolve(null);
@@ -110,7 +126,7 @@ const LottieCell = memo(function LottieCell({
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
-  const animRef = useRef<any>(null);
+  const animRef = useRef<LottieAnimation | null>(null);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -179,7 +195,7 @@ const LottieCell = memo(function LottieCell({
 
 function LottiePreview({ entry }: { entry: LottieIconEntry }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const animRef = useRef<any>(null);
+  const animRef = useRef<LottieAnimation | null>(null);
 
   useEffect(() => {
     const el = containerRef.current;

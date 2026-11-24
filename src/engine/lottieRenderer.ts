@@ -1,7 +1,88 @@
 import type { ResolvedLottieIcon } from '../core/types';
 
+// Minimal shape of the bodymovin (Lottie) JSON this renderer reads. Everything is
+// optional because the data is parsed from user-supplied JSON and every read is guarded.
+
+/** A keyframe of an animated value property. */
+interface LottieKeyframe {
+  t: number;
+  s?: number[];
+  e?: number[];
+}
+
+/** A value property: `a === 1` means `k` holds keyframes, otherwise `k` is the static value. */
+type LottieValueProp =
+  | { a: 1; k: LottieKeyframe[] }
+  | { a?: 0; k?: number | number[] };
+
+/** Bezier path data (vertices, in/out tangents, closed flag). */
+interface LottieShapeData {
+  v: number[][];
+  i: number[][];
+  o: number[][];
+  c?: boolean;
+}
+
+/** A keyframe of an animated path. Older exports may inline the path on the keyframe itself. */
+interface LottieShapeKeyframe extends Partial<LottieShapeData> {
+  t: number;
+  s?: LottieShapeData[];
+  e?: LottieShapeData[];
+}
+
+/** A path property: `a === 1` means `k` holds keyframes, otherwise `k` is the static path. */
+type LottiePathProp =
+  | { a: 1; k: LottieShapeKeyframe[] }
+  | { a?: 0; k?: LottieShapeData };
+
+/** A shape item (`gr` group, `tr` group transform, `fl` fill, `st` stroke, `sh` path, `el`, `rc`, `sr`). */
+interface LottieShape {
+  ty: string;
+  it?: LottieShape[];
+  ks?: LottiePathProp;
+  p?: LottieValueProp;
+  s?: LottieValueProp;
+  r?: LottieValueProp;
+  a?: LottieValueProp;
+  o?: LottieValueProp;
+  w?: LottieValueProp;
+  or?: LottieValueProp;
+  ir?: LottieValueProp;
+  pt?: LottieValueProp;
+}
+
+interface LottieTransform {
+  p?: LottieValueProp;
+  s?: LottieValueProp;
+  r?: LottieValueProp;
+  a?: LottieValueProp;
+  o?: LottieValueProp;
+}
+
+interface LottieLayer {
+  ty?: number;
+  ip?: number;
+  op?: number;
+  st?: number;
+  ks?: LottieTransform;
+  shapes?: LottieShape[];
+}
+
+interface LottieAnimationData {
+  ip?: number;
+  op?: number;
+  w?: number;
+  h?: number;
+  layers?: LottieLayer[];
+}
+
+/** True when the property is keyframed (`a === 1` with keyframes present in `k`). */
+function isKeyframed<P extends { a?: number; k?: unknown }>(prop: P): prop is Extract<P, { a: 1 }> {
+  return prop.a === 1 && !!prop.k;
+}
+
 interface LottieInstance {
-  animData: any;
+  animData: LottieAnimationData;
   canvas: OffscreenCanvas;
   ctx: OffscreenCanvasRenderingContext2D;
   lastFrame: number;
@@ -24,7 +105,7 @@ class LottieRendererEngine {
     const h = Math.min(lottie.sourceHeight || this.renderSize, 512);
 
     if (!instance) {
-      let animData: any;
+      let animData: LottieAnimationData;
       try {
         animData = JSON.parse(lottie.jsonData);
       } catch {
@@ -73,7 +154,7 @@ class LottieRendererEngine {
 
   private renderBodymovinFrame(
     ctx: OffscreenCanvasRenderingContext2D,
-    animData: any,
+    animData: LottieAnimationData,
     frame: number,
     totalFrames: number,
     width: number,
@@ -109,7 +190,7 @@ class LottieRendererEngine {
 
   private renderLayer(
     ctx: OffscreenCanvasRenderingContext2D,
-    layer: any,
+    layer: LottieLayer,
     frame: number,
     _w: number,
     _h: number,
@@ -149,14 +230,14 @@ class LottieRendererEngine {
 
   private renderShapes(
     ctx: OffscreenCanvasRenderingContext2D,
-    shapes: any[],
+    shapes: LottieShape[],
     frame: number,
     color: string,
   ) {
     let fillColor = color;
     let strokeColor = color;
     let strokeWidth = 2;
-    let pathData: { vertices: number[][]; inTangents: number[][]; outTangents: number[][]; closed: boolean }[] = [];
+    const pathData: { vertices: number[][]; inTangents: number[][]; outTangents: number[][]; closed: boolean }[] = [];
     let opacity = 1;
 
     const items = [...shapes];
@@ -164,7 +245,7 @@ class LottieRendererEngine {
     for (const shape of items) {
       if (shape.ty === 'gr' && shape.it) {
         ctx.save();
-        const grKs = shape.it.find((it: any) => it.ty === 'tr');
+        const grKs = shape.it.find((it) => it.ty === 'tr');
         if (grKs) {
           const pos = this.getAnimatedValue(grKs.p, frame);
           const scale = this.getAnimatedValue(grKs.s, frame);
@@ -177,7 +258,7 @@ class LottieRendererEngine {
           if (scale) ctx.scale((scale[0] ?? 100) / 100, (scale[1] ?? 100) / 100);
           if (op !== null && op !== undefined) opacity = (op ?? 100) / 100;
         }
-        this.renderShapes(ctx, shape.it.filter((it: any) => it.ty !== 'tr'), frame, color);
+        this.renderShapes(ctx, shape.it.filter((it) => it.ty !== 'tr'), frame, color);
         ctx.restore();
         continue;
       }
@@ -314,11 +395,11 @@ class LottieRendererEngine {
     ctx.closePath();
   }
 
-  private getAnimatedPath(ks: any, frame: number): { vertices: number[][]; inTangents: number[][]; outTangents: number[][]; closed: boolean } | null {
+  private getAnimatedPath(ks: LottiePathProp | undefined, frame: number): { vertices: number[][]; inTangents: number[][]; outTangents: number[][]; closed: boolean } | null {
     if (!ks) return null;
-    let data: any;
+    let data: Partial<LottieShapeData> | null | undefined;
 
-    if (ks.a === 1 && ks.k) {
+    if (isKeyframed(ks)) {
       data = this.interpolateKeyframedShape(ks.k, frame);
     } else if (ks.k) {
       data = ks.k;
@@ -336,7 +417,7 @@ class LottieRendererEngine {
     };
   }
 
-  private interpolateKeyframedShape(keyframes: any[], frame: number): any {
+  private interpolateKeyframedShape(keyframes: LottieShapeKeyframe[], frame: number): Partial<LottieShapeData> | null | undefined {
     if (!keyframes || keyframes.length === 0) return null;
 
     for (let i = 0; i < keyframes.length; i++) {
@@ -358,7 +439,7 @@ class LottieRendererEngine {
     return last.s?.[0] ?? last.e?.[0] ?? last;
   }
 
-  private lerpShape(a: any, b: any, t: number): any {
+  private lerpShape(a: LottieShapeData, b: LottieShapeData, t: number): LottieShapeData {
     if (!a.v || !b.v) return t < 0.5 ? a : b;
     const len = Math.min(a.v.length, b.v.length);
     const v: number[][] = [];
@@ -383,9 +464,9 @@ class LottieRendererEngine {
     return { v, i: i_arr, o: o_arr, c: a.c ?? b.c ?? true };
   }
 
-  private getAnimatedValue(prop: any, frame: number): number[] | null {
+  private getAnimatedValue(prop: LottieValueProp | undefined, frame: number): number[] | null | undefined {
     if (!prop) return null;
-    if (prop.a === 1 && prop.k) {
+    if (isKeyframed(prop)) {
       return this.interpolateKeyframed(prop.k, frame);
     }
     if (Array.isArray(prop.k)) return prop.k;
@@ -393,9 +474,9 @@ class LottieRendererEngine {
     return null;
   }
 
-  private getAnimatedNumber(prop: any, frame: number): number | null {
+  private getAnimatedNumber(prop: LottieValueProp | undefined, frame: number): number | null {
     if (!prop) return null;
-    if (prop.a === 1 && prop.k) {
+    if (isKeyframed(prop)) {
       const val = this.interpolateKeyframed(prop.k, frame);
       return val ? val[0] : null;
     }
@@ -404,7 +485,7 @@ class LottieRendererEngine {
     return null;
   }
 
-  private interpolateKeyframed(keyframes: any[], frame: number): number[] | null {
+  private interpolateKeyframed(keyframes: LottieKeyframe[], frame: number): number[] | null | undefined {
     if (!keyframes || keyframes.length === 0) return null;
 
     for (let i = 0; i < keyframes.length; i++) {

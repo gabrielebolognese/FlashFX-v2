@@ -835,7 +835,7 @@ function cloneTextLayerForExplode(
       opacity: cloneAnimProperty(t.opacity, frameShift),
     },
     content: { spans: source.content.spans.map((s) => ({ text: s.text, style: { ...s.style, color: [...s.style.color] as import('../core/types').Vec4, strokeColor: [...s.style.strokeColor] as import('../core/types').Vec4 } })) },
-    layoutConfig: { ...source.layoutConfig, boundingBox: { ...source.layoutConfig.boundingBox } as any },
+    layoutConfig: { ...source.layoutConfig, boundingBox: { ...source.layoutConfig.boundingBox } },
     animOverrides: {
       fontSize: cloneAnimProperty(source.animOverrides.fontSize, frameShift),
       letterSpacing: cloneAnimProperty(source.animOverrides.letterSpacing, frameShift),
@@ -2725,7 +2725,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const oldComp = composition;
     const layout = composition.layers.find((l) => l.id === layoutId) as LayoutObjectLayer | undefined;
     if (!layout || (layout.type !== 'hbox' && layout.type !== 'vbox')) return;
-    const { [childId]: _, ...rest } = layout.childOverrides;
+    const rest = { ...layout.childOverrides };
+    delete rest[childId];
     const updatedLayout: LayoutObjectLayer = {
       ...layout,
       children: layout.children.filter((id) => id !== childId),
@@ -4859,7 +4860,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const playhead = useTimelineStore.getState().currentFrame;
 
     const oldComp = composition;
-    let updatedLayers = [...composition.layers];
+    const updatedLayers = [...composition.layers];
 
     for (const layerId of layerIds) {
       const layerIdx = updatedLayers.findIndex((l) => l.id === layerId);

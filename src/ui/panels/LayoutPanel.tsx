@@ -7,6 +7,7 @@ import {
   Maximize2, Minus, GripVertical, ArrowRight, ArrowDown, Trash2,
   Grid3x3,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 
 interface LayoutPanelProps {
   layer: LayoutObjectLayer;
@@ -316,7 +317,7 @@ const CROSS_AXIS_OPTIONS = [
 ];
 
 function AlignmentPicker({ options, value, onChange }: {
-  options: { value: string; icon: any; label: string }[];
+  options: { value: string; icon: LucideIcon; label: string }[];
   value: string;
   onChange: (v: string) => void;
   isHorizontal: boolean;

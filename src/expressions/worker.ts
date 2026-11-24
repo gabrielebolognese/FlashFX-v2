@@ -327,9 +327,12 @@ function buildScope(context: ExpressionContext) {
 // Compilation and execution
 // ---------------------------------------------------------------------------
 
-const fnCache = new Map<string, { expr: Function | null; body: Function | null }>();
+/** A compiled expression: called with the frozen scope object, returns the property value. */
+type CompiledExpression = (scope: object) => unknown;
 
-function compileExpression(code: string): Function {
+const fnCache = new Map<string, { expr: CompiledExpression | null; body: CompiledExpression | null }>();
+
+function compileExpression(code: string): CompiledExpression {
   const cached = fnCache.get(code);
   if (cached) {
     if (cached.expr) return cached.expr;
@@ -349,7 +352,7 @@ function compileExpression(code: string): Function {
     const fn = new Function(
       ...paramNames,
       `"use strict";\n${scopeDestructure}\nreturn (${code});`,
-    );
+    ) as CompiledExpression;
     fnCache.set(code, { expr: fn, body: null });
     return fn;
   } catch {
@@ -359,7 +362,7 @@ function compileExpression(code: string): Function {
   const fn = new Function(
     ...paramNames,
     `"use strict";\n${scopeDestructure}\n${code}`,
-  );
+  ) as CompiledExpression;
   fnCache.set(code, { expr: null, body: fn });
   return fn;
 }

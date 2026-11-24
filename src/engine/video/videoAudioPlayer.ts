@@ -58,8 +58,10 @@ class VideoAudioPlayer {
     const record = this.players.get(assetId);
     if (!record) return false;
     const el = record.element;
-    if ('audioTracks' in el && (el as any).audioTracks) {
-      return (el as any).audioTracks.length > 0;
+    // audioTracks is non-standard (not in the DOM lib types); only some browsers expose it.
+    const tracks = (el as HTMLMediaElement & { audioTracks?: { length: number } }).audioTracks;
+    if ('audioTracks' in el && tracks) {
+      return tracks.length > 0;
     }
     return true;
   }

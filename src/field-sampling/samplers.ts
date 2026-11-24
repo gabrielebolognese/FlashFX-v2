@@ -122,7 +122,8 @@ function sampleOffsetBundle(
   pathDef?: PathFieldDef,
 ): FieldSample[] {
   const samples: FieldSample[] = [];
-  const { copyCount, offsetSpacing, phaseOffset } = sampler;
+  // NB: sampler.phaseOffset is not applied: computeOffsetPath never used the phase it was passed.
+  const { copyCount, offsetSpacing } = sampler;
 
   const basePath = pathDef?.points ?? generateDefaultWavePath(grid.width, grid.height, time);
 
@@ -132,9 +133,7 @@ function sampleOffsetBundle(
 
   for (let copy = 0; copy < copyCount; copy++) {
     const offsetFactor = (copy - halfCount) * offsetSpacing;
-    const phase = copy * phaseOffset * time;
-
-    const offsetPath = computeOffsetPath(basePath, offsetFactor, phase);
+    const offsetPath = computeOffsetPath(basePath, offsetFactor);
 
     for (let i = 0; i < offsetPath.length - 1; i++) {
       const p0 = offsetPath[i];
@@ -181,7 +180,6 @@ function generateDefaultWavePath(width: number, height: number, time: number): [
 function computeOffsetPath(
   basePath: [number, number][],
   offset: number,
-  _phase: number,
 ): [number, number][] {
   const result: [number, number][] = [];
 

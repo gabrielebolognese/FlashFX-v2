@@ -144,8 +144,8 @@ class VideoAssetStore {
         const db = await openDB();
         await this.putRecord(db, record);
       }
-    } catch (err: any) {
-      if (err?.name === 'QuotaExceededError') {
+    } catch (err: unknown) {
+      if ((err as { name?: string } | null | undefined)?.name === 'QuotaExceededError') {
         const freed = await this.evictOldAssets(file.size, projectId);
         if (freed > 0) {
           try {
@@ -157,8 +157,8 @@ class VideoAssetStore {
               await this.putRecord(db, record);
             }
             return;
-          } catch (retryErr: any) {
-            if (retryErr?.name === 'QuotaExceededError') {
+          } catch (retryErr: unknown) {
+            if ((retryErr as { name?: string } | null | undefined)?.name === 'QuotaExceededError') {
               throw new Error(
                 `Storage full: could not save video (${formatBytes(file.size)}). Free space by removing videos from other projects.`
               );
@@ -203,7 +203,7 @@ class VideoAssetStore {
     }
   }
 
-  private putRecord(db: IDBDatabase, record: any): Promise<void> {
+  private putRecord(db: IDBDatabase, record: VideoAssetRecord): Promise<void> {
     return new Promise((resolve, reject) => {
       const tx = db.transaction(STORE_NAME, 'readwrite');
       const store = tx.objectStore(STORE_NAME);
@@ -348,7 +348,13 @@ class VideoAssetStore {
       const records = await this.getByIndex(db, projectId);
       return records
         .filter((r) => r.chunkCount >= 0)
-        .map(({ blob: _b, sampleTimestamps: _s, ...rest }) => rest);
+        .map((r) => {
+          // Strip the heavy fields (same result as a rest-destructure, without unused bindings).
+          const meta: VideoAssetMetaOnly & Partial<Pick<VideoAssetRecord, 'blob' | 'sampleTimestamps'>> = { ...r };
+          delete meta.blob;
+          delete meta.sampleTimestamps;
+          return meta;
+        });
     } catch {
       return [];
     }

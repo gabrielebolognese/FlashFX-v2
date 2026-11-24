@@ -1,3 +1,4 @@
+import type { World, RigidBody, RigidBodyDesc, Collider, ColliderDesc } from '@dimforge/rapier2d-compat';
 import type { PhysicsBinding, PhysicsWorldConfig, MaterialConfig, ColliderConfig, Vec2 } from './types';
 
 let RAPIER: typeof import('@dimforge/rapier2d-compat').default | null = null;
@@ -29,8 +30,8 @@ function getRapier() {
 }
 
 export interface PhysicsWorldHandle {
-  world: any;
-  bodies: Map<string, { rigidBody: any; collider: any }>;
+  world: World;
+  bodies: Map<string, { rigidBody: RigidBody; collider: Collider }>;
 }
 
 export function createPhysicsWorld(config: PhysicsWorldConfig): PhysicsWorldHandle {
@@ -74,7 +75,7 @@ export function addBody(
   const R = getRapier();
   const { world } = handle;
 
-  let bodyDesc: any;
+  let bodyDesc: RigidBodyDesc;
   switch (binding.role) {
     case 'kinematic':
       bodyDesc = R.RigidBodyDesc.kinematicPositionBased();
@@ -192,8 +193,8 @@ function buildColliderDesc(
   material: MaterialConfig,
   layerWidth: number,
   layerHeight: number,
-): any {
-  let desc: any;
+): ColliderDesc {
+  let desc: ColliderDesc;
 
   const w = config.widthOverride ?? layerWidth;
   const h = config.heightOverride ?? layerHeight;

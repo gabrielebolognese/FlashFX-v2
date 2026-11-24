@@ -82,7 +82,7 @@ function loadGridState(): { grid: GridSettings; guides: GuidelineSettings } {
 function saveGridState(grid: GridSettings, guides: GuidelineSettings) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ grid, guides }));
-  } catch {}
+  } catch { /* storage unavailable: settings stay in memory */ }
 }
 
 export const useGridStore = create<GridStore>((set) => {

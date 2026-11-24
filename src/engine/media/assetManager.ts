@@ -260,7 +260,7 @@ class MediaAssetManager {
       // Await persistence if still in progress
       try {
         await savePromise;
-      } catch (storeErr: any) {
+      } catch {
         if (asset) asset.status = 'storage-error';
         this._storageWarnings.push(
           'This video could not be saved to local storage. It will need to be re-imported if you close and reopen this project.'
@@ -269,12 +269,12 @@ class MediaAssetManager {
 
       this.notify();
       return { assetId, metadata };
-    } catch (err: any) {
+    } catch (err: unknown) {
       const asset = this.assets.get(assetId);
       if (asset) asset.status = 'error';
 
       // Check for audio-only file
-      if (err?.message?.includes('No video track')) {
+      if ((err as { message?: string } | null | undefined)?.message?.includes('No video track')) {
         throw new Error('This file contains no video track. To import audio, use the audio import option.');
       }
 

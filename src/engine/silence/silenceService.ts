@@ -112,7 +112,7 @@ function analyzeViaWorker(
       }
     };
 
-    const onError = (_event: ErrorEvent) => {
+    const onError = () => {
       cleanup();
       disposeSilenceWorker();
       workerFailed = true;

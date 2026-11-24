@@ -3,7 +3,6 @@ import type {
   ChildLayoutOverride,
   ComputedLayout,
   ComputedChildRect,
-  EdgeInsets,
 } from '../core/types';
 
 export interface ChildMeasurement {
@@ -22,8 +21,8 @@ export function computeLayout(
   const visibleChildren = children.filter((c) => c.override.layoutVisibility !== 'gone');
 
   if (visibleChildren.length === 0) {
-    const w = resolveSize(params.width, containerConstraint?.width ?? 0, 0, params.padding);
-    const h = resolveSize(params.height, containerConstraint?.height ?? 0, 0, params.padding);
+    const w = resolveSize(params.width, containerConstraint?.width ?? 0, 0);
+    const h = resolveSize(params.height, containerConstraint?.height ?? 0, 0);
     return {
       containerSize: { width: clampSize(w, params.minWidth, params.maxWidth), height: clampSize(h, params.minHeight, params.maxHeight) },
       childRects: {},
@@ -54,7 +53,6 @@ export function computeLayout(
     isHorizontal ? params.width : params.height,
     isHorizontal ? containerConstraint?.width ?? 0 : containerConstraint?.height ?? 0,
     totalMainUsed + paddingMain,
-    undefined,
   );
   containerMain = clampSize(containerMain, isHorizontal ? params.minWidth : params.minHeight, isHorizontal ? params.maxWidth : params.maxHeight);
 
@@ -65,7 +63,6 @@ export function computeLayout(
     isHorizontal ? params.height : params.width,
     isHorizontal ? containerConstraint?.height ?? 0 : containerConstraint?.width ?? 0,
     maxCrossChild + totalCrossMargin + paddingCross,
-    undefined,
   );
   containerCross = clampSize(containerCross, isHorizontal ? params.minHeight : params.minWidth, isHorizontal ? params.maxHeight : params.maxWidth);
 
@@ -173,7 +170,6 @@ function resolveSize(
   sizeValue: { type: string; value?: number; fraction?: number },
   parentSize: number,
   contentSize: number,
-  _padding?: EdgeInsets,
 ): number {
   if (sizeValue.type === 'fixed') return sizeValue.value ?? 100;
   if (sizeValue.type === 'wrapContent') return contentSize;
@@ -273,8 +269,8 @@ export function computeGridLayout(
   const vAlign = params.gridVAlign ?? 'start';
 
   if (visibleChildren.length === 0) {
-    const w = resolveSize(params.width, 0, 0, params.padding);
-    const h = resolveSize(params.height, 0, 0, params.padding);
+    const w = resolveSize(params.width, 0, 0);
+    const h = resolveSize(params.height, 0, 0);
     return {
       containerSize: { width: clampSize(w, params.minWidth, params.maxWidth), height: clampSize(h, params.minHeight, params.maxHeight) },
       childRects: {},
@@ -305,10 +301,10 @@ export function computeGridLayout(
   const paddingH = pad.left + pad.right;
   const paddingV = pad.top + pad.bottom;
 
-  let containerWidth = resolveSize(params.width, 0, contentWidth + paddingH, undefined);
+  let containerWidth = resolveSize(params.width, 0, contentWidth + paddingH);
   containerWidth = clampSize(containerWidth, params.minWidth, params.maxWidth);
 
-  let containerHeight = resolveSize(params.height, 0, contentHeight + paddingV, undefined);
+  let containerHeight = resolveSize(params.height, 0, contentHeight + paddingV);
   containerHeight = clampSize(containerHeight, params.minHeight, params.maxHeight);
 
   const availableWidth = containerWidth - paddingH;

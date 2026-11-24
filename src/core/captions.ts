@@ -1,4 +1,4 @@
-import type { TextLayer, Vec4 } from './types';
+import type { FontWeight, TextLayer, Vec4 } from './types';
 import { createTextLayer } from './factory';
 
 // ─── Caption domain types ───
@@ -91,7 +91,7 @@ export interface StyleTemplate {
   id: StyleTemplateId;
   label: string;
   fontFamily: string;
-  fontWeight: number;
+  fontWeight: FontWeight;
   fontStyle: 'normal' | 'italic';
   fillColor: Vec4;
   strokeColor: Vec4;
@@ -375,7 +375,7 @@ export function buildCaptionLayers(args: BuildCaptionLayersArgs): TextLayer[] {
     const span = layer.content.spans[0];
     if (span) {
       span.style.fontFamily = template.fontFamily;
-      span.style.fontWeight = template.fontWeight as any;
+      span.style.fontWeight = template.fontWeight;
       span.style.fontStyle = template.fontStyle;
       span.style.color = template.fillColor;
       span.style.strokeColor = template.strokeColor;

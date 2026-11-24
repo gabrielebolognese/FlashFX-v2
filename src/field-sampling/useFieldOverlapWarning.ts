@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useEditorStore } from '../store/editor';
 import type { FieldSampledConfig } from './types';
+import type { FieldSampledLayer, Layer } from '../core/types';
 
 export interface FieldOverlapWarning {
   show: boolean;
@@ -17,7 +18,7 @@ export function useFieldOverlapWarning(): FieldOverlapWarning {
 
   return useMemo(() => {
     const fieldLayers = composition.layers.filter(
-      (l) => l.type === 'fieldSampled' && l.visible && currentFrame >= l.inPoint && currentFrame < l.outPoint
+      (l: Layer): l is FieldSampledLayer => l.type === 'fieldSampled' && l.visible && currentFrame >= l.inPoint && currentFrame < l.outPoint
     );
 
     if (fieldLayers.length < 2) return EMPTY_WARNING;
@@ -25,7 +26,7 @@ export function useFieldOverlapWarning(): FieldOverlapWarning {
     let totalEstimatedSamples = 0;
     for (const layer of fieldLayers) {
       try {
-        const config: FieldSampledConfig = JSON.parse((layer as any).fieldSampled?.configJSON || '{}');
+        const config: FieldSampledConfig = JSON.parse(layer.fieldSampled?.configJSON || '{}');
         totalEstimatedSamples += estimateSampleCount(config);
       } catch {
         totalEstimatedSamples += 10000;

@@ -167,7 +167,7 @@ export class ExpressionManager {
     const id = this.nextId();
     const msg = await this.send({ type: 'validate', id, code });
     if (msg.type === 'validate-result') return msg.error;
-    return (msg as any).error ?? 'Unknown validation error';
+    return ('error' in msg && typeof msg.error === 'string' ? msg.error : null) ?? 'Unknown validation error';
   }
 
   clearCache(layerId?: string): void {
