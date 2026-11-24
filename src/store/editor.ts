@@ -5,7 +5,8 @@ import { buildMaskReveal, type MaskRevealKind } from '../core/maskReveal';
 import { insertPointOnSegment, applyVertexType } from '../core/pathVertexOps';
 import { pathMaskFromComp } from '../core/maskPath';
 import type { TrackMatteMode } from '../core/trackMatte';
-import type { LayerEffect, RefineEdge, ImageLayer, AdjustmentLayer } from '../core/types';
+import type { LayerEffect, RefineEdge, ImageLayer, AdjustmentLayer, TextSpanStyle } from '../core/types';
+import { setBaseSpanStyle, styleTextRange as styleSpansRange, clearTextStyles as clearSpanStyles, wordRanges, type RunStylePatch } from '../core/textRuns';
 import { clampRefineEdge } from '../core/refineEdge';
 import { cloneEffectStack } from '../core/effects/effectStack';
 import { autoSpatialTangents, segmentArcLength, framesFromCumLengths } from '../core/positionPath';
@@ -493,6 +494,13 @@ interface EditorState {
   addSubtitleClips: (layers: TextLayer[]) => void;
   stripSilence: (layerId: string, segments: SpeechSegment[]) => string[];
   explodeTextLayer: (layerId: string, splitMode: SplitMode, staggerFrames: number) => void;
+  /** Mixed styles: restyle characters [start, end) of a text layer (face / weight / italic / colour). Undoable. */
+  styleTextRange: (layerId: string, start: number, end: number, style: RunStylePatch) => void;
+  /** Mixed styles: restyle the Nth whitespace-delimited word (0-based), e.g. an italic-serif accent word.
+   *  `exclusive` = reset every other word to the base style first (one accent word). One undo step. */
+  styleTextWord: (layerId: string, wordIndex: number, style: RunStylePatch, exclusive?: boolean) => void;
+  /** Mixed styles: reset the whole text to its first span's style. Undoable. */
+  clearTextStyles: (layerId: string) => void;
   removeLayer: (id: string) => void;
   removeLayers: (ids: string[]) => void;
   updateLayerProperty: (layerId: string, path: string, value: unknown) => void;
@@ -3015,6 +3023,28 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     return newSegmentLayers.map((l) => l.id);
   },
 
+  styleTextRange: (layerId, start, end, style) => {
+    const layer = get().composition.layers.find((l) => l.id === layerId);
+    if (!layer || layer.type !== 'text') return;
+    get().updateLayerProperty(layerId, 'content.spans', styleSpansRange(layer.content.spans, start, end, style));
+  },
+
+  styleTextWord: (layerId, wordIndex, style, exclusive) => {
+    const layer = get().composition.layers.find((l) => l.id === layerId);
+    if (!layer || layer.type !== 'text') return;
+    const raw = layer.content.spans.map((sp) => sp.text).join('');
+    const w = wordRanges(raw)[Math.floor(wordIndex)];
+    if (!w) return;
+    const from = exclusive ? clearSpanStyles(layer.content.spans) : layer.content.spans;
+    get().updateLayerProperty(layerId, 'content.spans', styleSpansRange(from, w.start, w.end, style));
+  },
+
+  clearTextStyles: (layerId) => {
+    const layer = get().composition.layers.find((l) => l.id === layerId);
+    if (!layer || layer.type !== 'text' || layer.content.spans.length < 2) return;
+    get().updateLayerProperty(layerId, 'content.spans', clearSpanStyles(layer.content.spans));
+  },
+
   explodeTextLayer: (layerId, splitMode, staggerFrames) => {
     const { composition, selection } = get();
     const source = composition.layers.find((l) => l.id === layerId);
@@ -3875,7 +3905,19 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     });
   },
 
-  updateLayerProperty: (layerId, path, value) => {
+  updateLayerProperty: (layerId, rawPath, rawValue) => {
+    // Mixed-style text (accent word): an edit of the base span's style restyles every base span, not
+    // just the first piece (core/textRuns.ts setBaseSpanStyle). Single-span text: unchanged.
+    let path = rawPath;
+    let value = rawValue;
+    const baseStyle = /^content\.spans\[0\]\.style\.(\w+)$/.exec(rawPath);
+    if (baseStyle) {
+      const target = get().composition.layers.find((l) => l.id === layerId);
+      if (target && target.type === 'text' && target.content.spans.length > 1) {
+        path = 'content.spans';
+        value = setBaseSpanStyle(target.content.spans, baseStyle[1] as keyof TextSpanStyle, rawValue);
+      }
+    }
     const history = useHistoryStore.getState();
     if (history.isUndoing || history.isBatching) {
       const { composition } = get();

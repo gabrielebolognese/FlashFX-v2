@@ -4120,7 +4120,8 @@ export class WebGPURenderer {
       if (layer.layerType === 'beam') continue;
       if (layer.layerType === 'text') {
         // Skip the layer being edited on-canvas - the textarea overlay renders its text.
-        if (layer.id === this.editingTextLayerId) continue;
+        // Glyph stamps (animators / mixed styles) carry `<layerId>#g<i>` ids: hide those too.
+        if (this.editingTextLayerId && (layer.id === this.editingTextLayerId || layer.id.startsWith(`${this.editingTextLayerId}#g`))) continue;
         textLayers.push({ index: i, layer });
       } else if (layer.layerType === 'video') {
         videoLayers.push({ index: i, layer });

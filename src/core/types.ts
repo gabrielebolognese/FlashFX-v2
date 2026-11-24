@@ -1781,8 +1781,25 @@ export interface ResolvedText {
   strikethrough: boolean;
   /** Optional gradient fill; overrides `fillColor` in the rasterizer when set. */
   fill?: TextGradientFill;
+  /**
+   * Mixed styles in one text (core/textRuns.ts): per-character face + fill runs over `content`,
+   * present only when the spans differ (the top-level fields above are the first span's style).
+   * Single-line text draws them through the per-glyph stamp path; each stamp is a plain run-less text.
+   */
+  runs?: TextStyleRun[];
   measuredWidth: number;
   measuredHeight: number;
+}
+
+/** One run of characters [start, end) of a resolved text that shares a face and a fill. */
+export interface TextStyleRun {
+  start: number;
+  end: number;
+  fontFamily: string;
+  fontWeight: number;
+  fontStyle: 'normal' | 'italic';
+  fillColor: Vec4;
+  fill?: TextGradientFill;
 }
 
 export interface ResolvedVideo {

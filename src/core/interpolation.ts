@@ -31,6 +31,7 @@ import type { ResolvedMotionBlur, ResolvedShadow, ResolvedBlur, LayerShadow, Lay
 import { measureText, getTextLayout, measureAdvance } from '../engine/textAtlas';
 import { accumulateGlyphDeltas, trackingShifts, type GlyphDelta, type ResolvedTextAnimator } from './textAnimator';
 import { decodeCharAt } from './textDecode';
+import { textRunsFromSpans, runAt } from './textRuns';
 import { totalPathLength, pointAndAngleAt, glyphPathFraction, type TextPathNode } from './textPath';
 import { pairTrackMattes, type TrackMatteMode } from './trackMatte';
 import { resolveMaskVertices, resolveMaskFeathers } from './maskPath';
@@ -562,7 +563,10 @@ function expandTextGlyphs(
   const content = baseText.content;
   const decode = layer.decode?.enabled ? layer.decode : null;
   const onPath = textPathData && textPathData.nodes.length >= 2 ? textPathData : null;
-  if ((active.length === 0 && !decode && !onPath) || !content) return null;
+  // Mixed styles (accent word): per-character face + fill runs. Drawn as glyph stamps even with no
+  // animator, since the whole-layer raster draws one style.
+  const runs = baseText.runs && baseText.runs.length > 1 ? baseText.runs : null;
+  if ((active.length === 0 && !decode && !onPath && !runs) || !content) return null;
 
   const layout = getTextLayout(baseText);
   // Only the clean single-line case: bail (normal render) on hard breaks or word-wrap.
@@ -581,8 +585,30 @@ function expandTextGlyphs(
   const prevDeltas = glyphBlur && active.length > 0 ? accumulateGlyphDeltas(content, resolveTextAnimatorsAt(active, glyphBlur.prevFrame)) : null;
   const prevShifts = prevDeltas ? trackingShifts(prevDeltas, baseText.textAlign) : null;
 
+  // Stamps draw plain run-less text; a run's stamps take that run's face + fill.
+  const plainText: ResolvedText = { ...baseText };
+  delete plainText.runs;
+  const runTexts = runs
+    ? runs.map((r): ResolvedText => ({ ...plainText, fontFamily: r.fontFamily, fontWeight: r.fontWeight, fontStyle: r.fontStyle, fillColor: r.fillColor, fill: r.fill }))
+    : null;
+  // adv[j] = x advance to reach character j along the line. One style: measured on the whole string
+  // (kerned). Runs: each run measured in its own face (kerned inside the run), runs laid end to end.
+  const adv = new Array<number>(content.length + 1);
+  if (runs && runTexts) {
+    adv[0] = 0;
+    let runOrigin = 0;
+    runs.forEach((r, k) => {
+      const runStr = content.slice(r.start, r.end);
+      for (let i = r.start; i < r.end && i < content.length; i++) adv[i + 1] = runOrigin + measureAdvance(runTexts[k], runStr, i + 1 - r.start);
+      runOrigin = adv[Math.min(r.end, content.length)] ?? runOrigin;
+    });
+    for (let i = 1; i <= content.length; i++) if (adv[i] === undefined) adv[i] = adv[i - 1];
+  } else {
+    for (let j = 0; j <= content.length; j++) adv[j] = measureAdvance(baseText, content, j);
+  }
+
   const { canvasWidth, padding } = layout;
-  const lineW = measureAdvance(baseText, content, content.length);
+  const lineW = adv[content.length];
   const lineStartX =
     baseText.textAlign === 'center' ? (canvasWidth - lineW) / 2
     : baseText.textAlign === 'right' ? canvasWidth - padding - lineW
@@ -625,9 +651,9 @@ function expandTextGlyphs(
   };
 
   const stamps: ResolvedLayer[] = [];
-  let advPrev = 0;
   for (let j = 0; j < content.length; j++) {
-    const advNext = measureAdvance(baseText, content, j + 1);
+    const advPrev = adv[j];
+    const advNext = adv[j + 1];
     const ch = content[j];
     const d = deltas[j];
     // Skip whitespace (no glyph) and fully-transparent glyphs (cheap - a reveal hides many).
@@ -635,7 +661,8 @@ function expandTextGlyphs(
       // Decode swaps the SHOWN character (position/advance still use the real char, so glyphs flicker
       // in place). Absent: the real char.
       const showCh = decode ? decodeCharAt(ch, j, content.length, decProgress, frame, decode.seed, decode.charset, decode.scrambleHold) : ch;
-      const stampText: ResolvedText = { ...baseText, content: showCh, measuredWidth: 0, measuredHeight: 0 };
+      const styled = runs && runTexts ? runTexts[runs.indexOf(runAt(runs, j))] : plainText;
+      const stampText: ResolvedText = { ...styled, content: showCh, measuredWidth: 0, measuredHeight: 0 };
       const m = measureText(stampText);
       stampText.measuredWidth = m.width;
       stampText.measuredHeight = m.height;
@@ -660,7 +687,6 @@ function expandTextGlyphs(
         : common.blur;
       stamps.push({ ...common, motionBlur: stampMotionBlur, id: `${layer.id}#g${j}`, transform, text: stampText, blur: glyphGauss, ...(layer.is3D ? { is3D: true } : {}) });
     }
-    advPrev = advNext;
   }
   // Return the stamp list even when empty (every glyph currently hidden) - an empty result must draw
   // nothing, NOT fall back to rendering the whole string. null is reserved for "can't expand" above.
@@ -727,6 +753,13 @@ function resolveTextLayer(layer: TextLayer, frame: number, getStyle?: StyleLooku
     measuredWidth: 0,
     measuredHeight: 0,
   };
+  // Mixed styles (accent word): per-character runs when spans differ. A run that keeps the base colour
+  // follows the layer's linked fill style like the rest of the text.
+  const runs = textRunsFromSpans(layer.content.spans);
+  if (runs) {
+    const base = style.color;
+    resolved.runs = runs.map((r) => (r.fillColor.every((v, i) => v === base[i]) ? { ...r, fillColor: resolved.fillColor } : r));
+  }
   const measured = measureText(resolved);
   resolved.measuredWidth = measured.width;
   resolved.measuredHeight = measured.height;

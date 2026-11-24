@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { useInspectorStore, type InspectorTab } from '../../store/inspector';
 import { DEFAULT_SHADOW, DEFAULT_GLOW, DEFAULT_BLUR } from '../../core/effectDefaults';
 import { TextAnimatorsSection } from './TextAnimatorEditor';
+import { TextAccentRow } from './TextAccentRow';
 import { useEditorStore } from '../../store/editor';
 import { requirePro } from '../../billing/upgradePrompt';
 import { useTimelineStore } from '../../store/timeline';
@@ -2333,6 +2334,8 @@ function TextProperties({
                 </button>
               </div>
             </div>
+
+            <TextAccentRow layer={layer} />
 
             <NumberDragInput
               label="Size"
