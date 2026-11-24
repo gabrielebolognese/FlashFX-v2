@@ -577,6 +577,13 @@ export interface ShapeLayer {
 
 export type TextSplitMode = 'character' | 'word' | 'line';
 
+/**
+ * What a text ANIMATOR's range selector counts as one unit. The explode split modes, plus After
+ * Effects' "Characters Excluding Spaces": every non-whitespace character is a unit and whitespace
+ * rides with the character before it, so a reveal never stalls on a space.
+ */
+export type TextAnimatorSplitMode = TextSplitMode | 'characterNoSpaces';
+
 /** Per-unit property deltas an animator applies, scaled by the selector weight (value = base + delta·weight). */
 export interface TextAnimatorDelta {
   /** Opacity multiplier delta: opacity *= (1 + this·weight). -1 → fully transparent at full weight. */
@@ -592,6 +599,12 @@ export interface TextAnimatorDelta {
   rotationY?: number;
   /** Per-character gaussian blur radius in px at full weight (B9d) - e.g. blur-in reveals. */
   blur?: number;
+  /**
+   * Tracking in px at full weight (AE's animator "Tracking Amount"): extra space after each selected
+   * unit, so later glyphs shift and the line re-aligns (centre text stays centred). A large negative
+   * value collapses the letters onto one point - the "tracking burst" reveal.
+   */
+  tracking?: number;
 }
 
 /**
@@ -602,7 +615,7 @@ export interface TextAnimatorDelta {
  */
 export interface TextAnimator {
   enabled: boolean;
-  splitMode: TextSplitMode;
+  splitMode: TextAnimatorSplitMode;
   selector: RangeSelectorConfig;
   /** Optional keyframed override of selector.offset (the reveal driver). */
   offset?: AnimatableProperty;

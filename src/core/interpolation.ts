@@ -16,6 +16,7 @@ import type {
   Transform,
   ShapeLayer,
   TextLayer,
+  TextAnimator,
   VideoLayer,
   ImageLayer,
   LottieIconLayer,
@@ -28,7 +29,7 @@ import type {
 } from './types';
 import type { ResolvedMotionBlur, ResolvedShadow, ResolvedBlur, LayerShadow, LayerGlow, LayerBlur, ResolvedGlow } from './types';
 import { measureText, getTextLayout, measureAdvance } from '../engine/textAtlas';
-import { accumulateGlyphDeltas, type ResolvedTextAnimator } from './textAnimator';
+import { accumulateGlyphDeltas, trackingShifts, type GlyphDelta, type ResolvedTextAnimator } from './textAnimator';
 import { decodeCharAt } from './textDecode';
 import { totalPathLength, pointAndAngleAt, glyphPathFraction, type TextPathNode } from './textPath';
 import { pairTrackMattes, type TrackMatteMode } from './trackMatte';
@@ -524,12 +525,22 @@ function composeTransforms(parent: ResolvedTransform, child: ResolvedTransform):
   };
 }
 
+/** Resolve a text layer's active animators at one frame (the keyframed offset baked into the selector). */
+function resolveTextAnimatorsAt(active: TextAnimator[], frame: number): ResolvedTextAnimator[] {
+  return active.map((a) => ({
+    splitMode: a.splitMode,
+    selector: a.offset ? { ...a.selector, offset: evaluateNumber(a.offset, frame) } : a.selector,
+    delta: a.delta,
+  }));
+}
+
 // Per-character text animation: expand a text layer with active animators into per-glyph stamps -
 // mirrors the cloner, so the renderer draws each glyph as a normal 1-char text quad (ZERO renderer
 // changes). SINGLE VISUAL LINE ONLY for now (no hard breaks / wrapping); multi-line falls back to a
 // normal single render (returns null) so placement is never wrong. BROWSER-GATED: glyph x/y come
 // from canvas measurement (OffscreenCanvas) and need an in-browser eyeball; the per-glyph delta math
-// is unit-tested (scripts/verify-textanimator.mjs).
+// is unit-tested (scripts/verify-textanimator.mjs); placement, tracking and per-glyph motion blur
+// through resolveFrame by scripts/verify-text-glyph-motion.mjs (with a measurement stub).
 function expandTextGlyphs(
   layer: TextLayer,
   baseText: ResolvedText,
@@ -553,13 +564,9 @@ function expandTextGlyphs(
   // Text-on-path (B9b): total arc length, computed once (glyph fractions map into it below).
   const pathLen = onPath ? totalPathLength(onPath.nodes, onPath.closed) : 0;
 
-  const resolvedAnims: ResolvedTextAnimator[] = active.map((a) => ({
-    splitMode: a.splitMode,
-    selector: a.offset ? { ...a.selector, offset: evaluateNumber(a.offset, frame) } : a.selector,
-    delta: a.delta,
-  }));
-  const deltas = accumulateGlyphDeltas(content, resolvedAnims);
-
+  const deltas = accumulateGlyphDeltas(content, resolveTextAnimatorsAt(active, frame));
+  // Animator tracking: per-glyph X shift, re-aligned like the layout (all zeros without tracking).
+  const shifts = trackingShifts(deltas, baseText.textAlign);
   const { canvasWidth, padding } = layout;
   const lineW = measureAdvance(baseText, content, content.length);
   const lineStartX =
@@ -567,6 +574,41 @@ function expandTextGlyphs(
     : baseText.textAlign === 'right' ? canvasWidth - padding - lineW
     : padding;
   const halfFont = baseText.fontSize / 2;
+
+  // The glyph's transform relative to the layer (before composing with the world transform).
+  // `centerDist` = the glyph centre's distance along the line, `glyphW` = its measured canvas width.
+  const childTransform = (d: GlyphDelta, shiftX: number, centerDist: number, glyphW: number): ResolvedTransform => {
+    const along = centerDist + shiftX;
+    // Text-on-path (B9b): map the glyph's along-text distance to an arc-length point + tangent on
+    // the path (layer-local space); else the normal linear layout. The pivot-offset (-anchor) and
+    // composeTransforms(world, ...) below apply the layer transform identically either way.
+    let posX = lineStartX + along - world.anchorX + d.tx;
+    let posY = padding + halfFont - world.anchorY + d.ty;
+    let rot = d.rotation;
+    if (onPath) {
+      const { position, angle } = pointAndAngleAt(onPath.nodes, onPath.closed, glyphPathFraction(along, pathLen, onPath.margin));
+      posX = position[0] - world.anchorX + d.tx;
+      posY = position[1] - world.anchorY + d.ty;
+      rot = (onPath.align ? angle : 0) + d.rotation;
+    }
+    // Offset from the layer's pivot (anchor value cancels: the whole-text and stamp renders share
+    // the same pivot). Scale/rotate pivot at the glyph centre.
+    return {
+      positionX: posX,
+      positionY: posY,
+      rotation: rot,
+      scaleX: d.sx,
+      scaleY: d.sy,
+      anchorX: glyphW / 2,
+      anchorY: padding + halfFont,
+      opacity: d.opacity,
+      positionZ: 0,
+      // Per-character 3D (B9c): out-of-plane spin per glyph. composeTransforms adds the layer's own
+      // 3D rotation; writeCard3D renders the card MVP when the stamp is3D + a camera is active.
+      rotationX: d.rx,
+      rotationY: d.ry,
+    };
+  };
 
   const stamps: ResolvedLayer[] = [];
   let advPrev = 0;
@@ -577,50 +619,21 @@ function expandTextGlyphs(
     // Skip whitespace (no glyph) and fully-transparent glyphs (cheap - a reveal hides many).
     if (ch.trim() !== '' && d.opacity > 0.001) {
       // Decode swaps the SHOWN character (position/advance still use the real char, so glyphs flicker
-      // in place). Absent → the real char.
+      // in place). Absent: the real char.
       const showCh = decode ? decodeCharAt(ch, j, content.length, decProgress, frame, decode.seed, decode.charset, decode.scrambleHold) : ch;
       const stampText: ResolvedText = { ...baseText, content: showCh, measuredWidth: 0, measuredHeight: 0 };
       const m = measureText(stampText);
       stampText.measuredWidth = m.width;
       stampText.measuredHeight = m.height;
       const centerDist = advPrev + (advNext - advPrev) / 2;
-      const centerX = lineStartX + centerDist;
-      // Text-on-path (B9b): map the glyph's along-text distance to an arc-length point + tangent on
-      // the path (layer-local space); else the normal linear layout. The pivot-offset (−anchor) and
-      // composeTransforms(world, …) below apply the layer transform identically either way.
-      let posX = centerX - world.anchorX + d.tx;
-      let posY = padding + halfFont - world.anchorY + d.ty;
-      let rot = d.rotation;
-      if (onPath) {
-        const { position, angle } = pointAndAngleAt(onPath.nodes, onPath.closed, glyphPathFraction(centerDist, pathLen, onPath.margin));
-        posX = position[0] - world.anchorX + d.tx;
-        posY = position[1] - world.anchorY + d.ty;
-        rot = (onPath.align ? angle : 0) + d.rotation;
-      }
-      // Offset from the layer's pivot (anchor value cancels: the whole-text and stamp renders share
-      // the same pivot). Scale/rotate pivot at the glyph centre.
-      const child: ResolvedTransform = {
-        positionX: posX,
-        positionY: posY,
-        rotation: rot,
-        scaleX: d.sx,
-        scaleY: d.sy,
-        anchorX: m.width / 2,
-        anchorY: padding + halfFont,
-        opacity: d.opacity,
-        positionZ: 0,
-        // Per-character 3D (B9c): out-of-plane spin per glyph. composeTransforms adds the layer's own
-        // 3D rotation; writeCard3D renders the card MVP when the stamp is3D + a camera is active.
-        rotationX: d.rx,
-        rotationY: d.ry,
-      };
+      const transform = composeTransforms(world, childTransform(d, shifts[j], centerDist, m.width));
       // Per-character blur (B9d): a gaussian blur per stamp = the layer's base blur + the glyph's
       // accumulated blur delta. Each stamp is a text draw that carries `blur` through the existing
-      // per-layer blur pipeline (no new render). Absent (blur 0) → the shared base blur is untouched.
-      const glyphBlur: ResolvedBlur | undefined = d.blur > 0
+      // per-layer blur pipeline (no new render). Absent (blur 0): the shared base blur is untouched.
+      const glyphGauss: ResolvedBlur | undefined = d.blur > 0
         ? { type: 'gaussian', radius: d.blur + (common.blur?.radius ?? 0), angle: 0, centerX: 0.5, centerY: 0.5, strength: 0, passes: common.blur?.passes ?? 2 }
         : common.blur;
-      stamps.push({ ...common, id: `${layer.id}#g${j}`, transform: composeTransforms(world, child), text: stampText, blur: glyphBlur, ...(layer.is3D ? { is3D: true } : {}) });
+      stamps.push({ ...common, id: `${layer.id}#g${j}`, transform, text: stampText, blur: glyphGauss, ...(layer.is3D ? { is3D: true } : {}) });
     }
     advPrev = advNext;
   }

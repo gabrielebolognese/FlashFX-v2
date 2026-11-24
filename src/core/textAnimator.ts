@@ -1,6 +1,6 @@
 import type { RangeSelectorConfig } from '../text/rangeSelector';
 import { selectorWeights } from '../text/rangeSelector';
-import type { TextAnimatorDelta, TextSplitMode } from './types';
+import type { TextAnimatorDelta, TextAnimatorSplitMode } from './types';
 
 // Pure per-character text-animation core. Given the string and a set of frame-resolved animators
 // (offset already baked into each selector), it produces a per-character transform/opacity delta by
@@ -21,30 +21,42 @@ export interface GlyphDelta {
   ry: number;
   /** Per-character gaussian blur radius in px (B9d), added to the layer's base blur on each stamp. */
   blur: number;
+  /** Extra tracking in px after this character (summed over animators); see trackingShifts. */
+  tracking: number;
 }
 
 /** A frame-resolved animator: selector.offset already evaluated for the current frame. */
 export interface ResolvedTextAnimator {
-  splitMode: TextSplitMode;
+  splitMode: TextAnimatorSplitMode;
   selector: RangeSelectorConfig;
   delta: TextAnimatorDelta;
 }
 
-const identity = (): GlyphDelta => ({ tx: 0, ty: 0, sx: 1, sy: 1, rotation: 0, opacity: 1, rx: 0, ry: 0, blur: 0 });
+const identity = (): GlyphDelta => ({ tx: 0, ty: 0, sx: 1, sy: 1, rotation: 0, opacity: 1, rx: 0, ry: 0, blur: 0, tracking: 0 });
 const isWhitespace = (c: string): boolean => c === ' ' || c === '\t' || c === '\n' || c === '\r';
 const clamp01 = (x: number): number => (x < 0 ? 0 : x > 1 ? 1 : x);
 
 /**
  * Map each character to its selector UNIT index (and report the unit count), per split mode:
  * - character: one unit per character (spaces included, matching AE's "Characters").
+ * - characterNoSpaces: one unit per non-whitespace character (AE's "Characters Excluding Spaces");
+ *   whitespace shares the unit of the character before it (leading whitespace: unit 0).
  * - word: one unit per whitespace-delimited run; whitespace attaches to the preceding word.
  * - line: one unit per '\n'-delimited line.
  */
-export function splitTextUnits(content: string, mode: TextSplitMode): { unitOf: number[]; unitCount: number } {
+export function splitTextUnits(content: string, mode: TextAnimatorSplitMode): { unitOf: number[]; unitCount: number } {
   const unitOf = new Array<number>(content.length);
   if (mode === 'character') {
     for (let i = 0; i < content.length; i++) unitOf[i] = i;
     return { unitOf, unitCount: content.length };
+  }
+  if (mode === 'characterNoSpaces') {
+    let unit = -1;
+    for (let i = 0; i < content.length; i++) {
+      if (!isWhitespace(content[i])) unit++;
+      unitOf[i] = unit < 0 ? 0 : unit;
+    }
+    return { unitOf, unitCount: Math.max(1, unit + 1) };
   }
   if (mode === 'line') {
     let line = 0;
@@ -89,7 +101,32 @@ export function accumulateGlyphDeltas(content: string, animators: ResolvedTextAn
       if (d.scale) { g.sx *= 1 + d.scale[0] * w; g.sy *= 1 + d.scale[1] * w; }
       if (d.opacity) g.opacity = clamp01(g.opacity * (1 + d.opacity * w));
       if (d.blur) g.blur = Math.max(0, g.blur + d.blur * w);
+      if (d.tracking) g.tracking += d.tracking * w;
     }
   }
+  return out;
+}
+
+/**
+ * Per-glyph X shift (px) from animator tracking on ONE line. Tracking adds `deltas[k].tracking` of
+ * space after character k, so glyph j moves right by the sum over k < j. The line then re-aligns the
+ * way the layout does: left text keeps its left edge, centre text shifts back by half the added width,
+ * right text by all of it (the added width is the spacing between the first and last glyph). With a
+ * uniform tracking of minus each glyph's advance, every glyph of a centred line lands on (nearly) one
+ * point (glyph centres differ only by half their own widths).
+ * Returns all zeros (fast) when no glyph carries tracking.
+ */
+export function trackingShifts(deltas: readonly GlyphDelta[], align: 'left' | 'center' | 'right' | string): number[] {
+  const n = deltas.length;
+  const out = new Array<number>(n).fill(0);
+  if (!deltas.some((d) => d.tracking !== 0)) return out;
+  let acc = 0;
+  for (let j = 0; j < n; j++) {
+    out[j] = acc;
+    acc += deltas[j].tracking;
+  }
+  const total = n > 0 ? out[n - 1] : 0; // spacing up to the last glyph (trailing space excluded)
+  const back = align === 'center' ? total / 2 : align === 'right' ? total : 0;
+  if (back !== 0) for (let j = 0; j < n; j++) out[j] -= back;
   return out;
 }

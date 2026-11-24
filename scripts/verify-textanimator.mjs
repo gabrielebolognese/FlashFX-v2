@@ -1,7 +1,7 @@
 // Acceptance harness for the per-character text-animation core (src/core/textAnimator.ts). Pins the
 // split-unit assignment and the selector-weighted delta accumulation so future changes can't quietly
 // break per-glyph animation. The glyph PLACEMENT (canvas measurement) is browser-only and not covered
-// here — this proves the pure math. No test runner in this repo (see CLAUDE.md); bundles the real TS
+// here: this proves the pure math. No test runner in this repo (see CLAUDE.md); bundles the real TS
 // with esbuild + node:assert. Run: node scripts/verify-textanimator.mjs
 
 import { build } from 'esbuild';
@@ -26,7 +26,7 @@ try {
     entryPoints: ['src/core/textAnimator.ts'],
     outfile, bundle: true, format: 'esm', platform: 'neutral', logLevel: 'silent',
   });
-  const { splitTextUnits, accumulateGlyphDeltas } = await import(pathToFileURL(outfile).href);
+  const { splitTextUnits, accumulateGlyphDeltas, trackingShifts } = await import(pathToFileURL(outfile).href);
 
   // --- split unit assignment ---
   check('character split: one unit per char', () => {
@@ -84,7 +84,7 @@ try {
   });
   check('zero weight leaves the identity delta untouched', () => {
     const g = accumulateGlyphDeltas('abc', [{ splitMode: 'character', selector: sel(), delta: { position: [10, 5], rotation: 90, scale: [1, 1], opacity: -1 } }]);
-    assert.deepEqual(g[0], { tx: 0, ty: 0, sx: 1, sy: 1, rotation: 0, opacity: 1, rx: 0, ry: 0, blur: 0 });
+    assert.deepEqual(g[0], { tx: 0, ty: 0, sx: 1, sy: 1, rotation: 0, opacity: 1, rx: 0, ry: 0, blur: 0, tracking: 0 });
   });
   check('word split shares one weight across a whole word', () => {
     // "ab cd": 2 words → weights [0, 1]; both chars of word 1 get weight 1.
@@ -97,6 +97,54 @@ try {
     const a = accumulateGlyphDeltas('abcdef', [cfg]);
     const b = accumulateGlyphDeltas('abcdef', [cfg]);
     assert.deepEqual(a, b);
+  });
+
+  // --- Characters Excluding Spaces (AE "Based On") ---
+  check('characterNoSpaces: one unit per non-space char; a space shares the previous unit', () => {
+    const r = splitTextUnits('ab cd', 'characterNoSpaces'); // a b (space) c d
+    assert.deepEqual(r.unitOf, [0, 1, 1, 2, 3]);
+    assert.equal(r.unitCount, 4);
+    const lead = splitTextUnits('  ab', 'characterNoSpaces');
+    assert.deepEqual(lead.unitOf, [0, 0, 0, 1]);
+    assert.equal(lead.unitCount, 2);
+    assert.equal(splitTextUnits('   ', 'characterNoSpaces').unitCount, 1, 'all-space content still has one unit');
+  });
+  check('characterNoSpaces: a reveal has no dead step on the space (weights spread evenly over letters)', () => {
+    // "ab cd": 4 letter units -> rampUp weights [0, 1/3, 2/3, 1]; counting the space would give the
+    // letters [0, .25, .75, 1] (a jump over the space).
+    const g = accumulateGlyphDeltas('ab cd', [{ splitMode: 'characterNoSpaces', selector: sel(), delta: { position: [30, 0] } }]);
+    assert.ok(approx(g[0].tx, 0) && approx(g[1].tx, 10) && approx(g[3].tx, 20) && approx(g[4].tx, 30));
+    assert.ok(approx(g[2].tx, 10), 'the space rides with "b"');
+  });
+
+  // --- Tracking (AE animator "Tracking Amount") ---
+  check('tracking delta scales by weight and adds across animators', () => {
+    const g = accumulateGlyphDeltas('abc', [
+      { splitMode: 'character', selector: sel(), delta: { tracking: 10 } },
+      { splitMode: 'character', selector: sel({ shape: 'square', start: 0, end: 1, offset: -2 }), delta: { tracking: 4 } },
+    ]);
+    // animator 2's window is pushed fully past every unit -> weight 1 for all (t = 1 beyond the end).
+    assert.ok(approx(g[0].tracking, 4), `glyph 0 = 0 + 4, got ${g[0].tracking}`);
+    assert.ok(approx(g[1].tracking, 9), `glyph 1 = 5 + 4, got ${g[1].tracking}`);
+    assert.ok(approx(g[2].tracking, 14), `glyph 2 = 10 + 4, got ${g[2].tracking}`);
+  });
+  check('trackingShifts: left-aligned text pushes each glyph by the spacing before it', () => {
+    const d = [{ tracking: 5 }, { tracking: 5 }, { tracking: 5 }];
+    assert.deepEqual(trackingShifts(d, 'left'), [0, 5, 10]);
+  });
+  check('trackingShifts: centre text stays centred, right text keeps its right edge', () => {
+    const d = [{ tracking: 5 }, { tracking: 5 }, { tracking: 5 }];
+    assert.deepEqual(trackingShifts(d, 'center'), [-5, 0, 5]);
+    assert.deepEqual(trackingShifts(d, 'right'), [-10, -5, 0]);
+  });
+  check('trackingShifts: minus the advance collapses a centred line onto one point', () => {
+    // 4 glyphs of advance 20, centres 10, 30, 50, 70 (line middle 40).
+    const d = Array.from({ length: 4 }, () => ({ tracking: -20 }));
+    const sh = trackingShifts(d, 'center');
+    [10, 30, 50, 70].forEach((c, j) => assert.ok(approx(c + sh[j], 40), `centre ${c + sh[j]} should collapse to 40`));
+  });
+  check('trackingShifts: no tracking -> all zeros (the unchanged path)', () => {
+    assert.deepEqual(trackingShifts([{ tracking: 0 }, { tracking: 0 }], 'center'), [0, 0]);
   });
 
   console.log(`\ntext-animator: all ${passed} checks passed`);

@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { ChevronDown, ChevronRight, Plus, RotateCcw } from 'lucide-react';
-import type { TextLayer, TextAnimator, TextAnimatorDelta, TextSplitMode, TextDecode, TextPathBinding, Vec2 } from '../../core/types';
+import type { TextLayer, TextAnimator, TextAnimatorDelta, TextAnimatorSplitMode, TextDecode, TextPathBinding, Vec2 } from '../../core/types';
 import type { SelectorShape } from '../../text/rangeSelector';
 import { createProperty, createKeyframe } from '../../core/factory';
 import { TEXT_ANIMATOR_PRESETS, createTextDecode } from '../../core/textAnimatorPresets';
@@ -10,8 +10,9 @@ import { useEditorStore } from '../../store/editor';
 // the range selector (shape/window/ease/amount/randomize), and reveal timing (which keyframes the
 // selector offset). Writes the whole `animators` array back through the undoable updateLayerProperty.
 
-const SPLITS: { id: TextSplitMode; label: string }[] = [
+const SPLITS: { id: TextAnimatorSplitMode; label: string }[] = [
   { id: 'character', label: 'Char' },
+  { id: 'characterNoSpaces', label: 'No spaces' },
   { id: 'word', label: 'Word' },
   { id: 'line', label: 'Line' },
 ];
@@ -234,6 +235,7 @@ function Editor({ animator, onChange }: { animator: TextAnimator; onChange: (a: 
         <Field label="3D Rot Y °"><Num value={d.rotationY ?? 0} onChange={(v) => setDelta({ rotationY: v })} /></Field>
         <Field label="Blur px"><Num value={d.blur ?? 0} min={0} onChange={(v) => setDelta({ blur: v })} /></Field>
         <Field label="Opacity %"><Num value={(d.opacity ?? 0) * 100} min={-100} max={100} onChange={(v) => setDelta({ opacity: v / 100 })} /></Field>
+        <Field label="Tracking px"><Num value={d.tracking ?? 0} onChange={(v) => setDelta({ tracking: v })} /></Field>
       </Group>
 
       <Group title="Range selector">

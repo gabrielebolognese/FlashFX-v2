@@ -57,7 +57,7 @@ function ensureTextAnimators(raw: unknown): TextAnimator[] | undefined {
   const out: TextAnimator[] = [];
   for (const a of raw) {
     if (!isObject(a) || !isObject(a.selector) || !isObject(a.delta)) continue;
-    const splitMode = a.splitMode === 'word' || a.splitMode === 'line' ? a.splitMode : 'character';
+    const splitMode = a.splitMode === 'word' || a.splitMode === 'line' || a.splitMode === 'characterNoSpaces' ? a.splitMode : 'character';
     out.push({
       enabled: typeof a.enabled === 'boolean' ? a.enabled : true,
       splitMode,
