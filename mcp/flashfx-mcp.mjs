@@ -1,0 +1,337 @@
+#!/usr/bin/env node
+// FlashFX MCP server (stdio). Lets an MCP client (Claude Code, Claude Desktop, any MCP host) drive a
+// real FlashFX editor: it starts the app (Vite dev server, the built dist/, or any URL), opens it in
+// Chrome with WebGPU (headless, or a headed window for screen recording, or an existing Chrome over
+// its debugging port) and maps every tool onto the in-app agent runtime `window.__ffxAgent`
+// (src/agent/runtime.ts), i.e. the whitelisted store actions listed in /agent/features.json.
+//
+// The MCP wire protocol (JSON-RPC 2.0, newline-delimited on stdin/stdout) is implemented here by
+// hand so the repo needs no new dependency. stdout carries ONLY protocol messages; logs go to stderr.
+//
+//   node mcp/flashfx-mcp.mjs [--server dev|dist] [--url URL] [--headed] [--attach PORT]
+//                            [--window 1920x1080] [--profile DIR] [--chrome PATH]
+// See mcp/README.md.
+
+import { createInterface } from 'node:readline';
+import { FlashFxSession, readConfig } from './lib/session.mjs';
+
+const SERVER_INFO = { name: 'flashfx', title: 'FlashFX Studio', version: '1.0.0' };
+const SUPPORTED_PROTOCOLS = ['2025-06-18', '2025-03-26', '2024-11-05'];
+const INSTRUCTIONS = [
+  'Drives a live FlashFX editor (WebGPU motion-graphics app) through its agent runtime.',
+  'Start with list_features to see what exists and the exact action ids + params, then create_project.',
+  'Mutate the project with run_action / run_actions (only whitelisted action ids are accepted; undoable ones are one undo step each).',
+  'New layers: read activeLayerId from the result of editor.add*. Time is in frames, positions in comp pixels (origin top-left).',
+  'In run_actions, a string argument "$N.path" (or "$last.path") is replaced by that value from the Nth earlier result, e.g. "$0.activeLayerId".',
+  'Check your work with screenshot (it returns the image) and get_state; export_mp4 renders through the real exporter.',
+].join(' ');
+
+const config = readConfig();
+const session = new FlashFxSession(config);
+
+// ---------------------------------------------------------------------------------------------
+// Tools
+// ---------------------------------------------------------------------------------------------
+
+const text = (value) => ({ type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value, null, 2) });
+const ok = (value, extra = []) => ({ content: [text(value), ...extra], structuredContent: typeof value === 'object' && value !== null && !Array.isArray(value) ? value : { value } });
+const fail = (message) => ({ content: [text(message)], isError: true });
+
+/** An agent run result -> tool result (ok:false becomes an MCP tool error the model can read). */
+function fromRun(r) {
+  if (!r) return fail('no result from the page');
+  if (r.ok === false) return fail(`${r.actionId}: ${r.error}`);
+  return ok(r);
+}
+
+const resolveRef = (value, results) => {
+  if (typeof value === 'string') {
+    const m = /^\$(\d+|last)\.(.+)$/.exec(value);
+    if (!m) return value;
+    const src = m[1] === 'last' ? results[results.length - 1] : results[Number(m[1])];
+    if (!src) throw new Error(`reference ${value} points at a result that does not exist yet`);
+    let cur = src;
+    for (const k of m[2].split('.')) cur = cur?.[k];
+    if (cur === undefined) throw new Error(`reference ${value} resolved to nothing`);
+    return cur;
+  }
+  if (Array.isArray(value)) return value.map((v) => resolveRef(v, results));
+  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, resolveRef(v, results)]));
+  return value;
+};
+
+function compactManifest(m, area) {
+  const features = m.features.filter((f) => !area || f.area === area);
+  const wanted = new Set(features.flatMap((f) => f.actions));
+  return {
+    version: m.version,
+    gitCommit: m.gitCommit,
+    conventions: m.conventions,
+    areas: [...new Set(m.features.map((f) => f.area))],
+    features: features.map((f) => ({ id: f.id, area: f.area, name: f.name, status: f.status, ui: f.ui, actions: f.actions, ...(f.notes ? { notes: f.notes } : {}) })),
+    actions: m.actions.filter((a) => !area || wanted.has(a.id)).map((a) => ({
+      id: a.id,
+      description: a.description,
+      undoable: a.undoable,
+      params: a.params.map((p) => `${p.name}${p.optional ? '?' : ''}: ${p.values ? p.values.map((v) => JSON.stringify(v)).join(' | ') : p.type}${p.catalog ? ` (catalog ${p.catalog})` : ''}`),
+      ...(a.returns ? { returns: a.returns } : {}),
+    })),
+    catalogs: Object.fromEntries(Object.entries(m.catalogs ?? {}).map(([k, v]) => [k, v.map((e) => e.id)])),
+  };
+}
+
+const TOOLS = [
+  {
+    name: 'list_features',
+    description: 'What FlashFX can do: features (with UI path + status), the whitelisted action ids with their params, and live preset catalogs (from /agent/features.json). compact=false returns the raw manifest.',
+    inputSchema: { type: 'object', properties: { area: { type: 'string', description: 'Only this feature area, e.g. "text", "keyframes", "effects".' }, compact: { type: 'boolean', default: true } } },
+    annotations: { readOnlyHint: true },
+    handler: async ({ area, compact = true }) => {
+      const m = await session.manifest();
+      return ok(compact ? compactManifest(m, area) : m);
+    },
+  },
+  {
+    name: 'get_state',
+    description: 'Compact summary of the open composition: size, fps, duration, playhead, selection, layers (id, name, type, text...), undo/redo availability.',
+    inputSchema: { type: 'object', properties: {} },
+    annotations: { readOnlyHint: true },
+    handler: async () => ok(await session.state()),
+  },
+  {
+    name: 'create_project',
+    description: 'Create a new local FlashFX project and open it in the editor. format long = 1920x1080, short = 1080x1920.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string' },
+        format: { type: 'string', enum: ['long', 'short'], default: 'long' },
+        frameRate: { type: 'number', default: 30 },
+        durationFrames: { type: 'number', default: 150 },
+        uiMode: { type: 'string', enum: ['starter', 'pro'], description: 'Editor layout (pro = Full editor). Omit to keep the current one.' },
+      },
+    },
+    handler: async (a) => fromRun(await session.run('agent.createProject', {
+      name: a.name, format: a.format ?? 'long', frameRate: a.frameRate, durationFrames: a.durationFrames, uiMode: a.uiMode,
+    }, 120000, { retryOnReload: true })),
+  },
+  {
+    name: 'run_action',
+    description: 'Run ONE whitelisted FlashFX action (see list_features for ids and params). args = object keyed by param name, or a positional array.',
+    inputSchema: {
+      type: 'object',
+      required: ['actionId'],
+      properties: {
+        actionId: { type: 'string', description: 'e.g. "editor.addText", "agent.applyTextAnimatorPreset", "editor.addKeyframe".' },
+        args: { description: 'Object keyed by param name, or positional array.', oneOf: [{ type: 'object' }, { type: 'array' }] },
+      },
+    },
+    handler: async ({ actionId, args }) => fromRun(await session.run(actionId, args)),
+  },
+  {
+    name: 'run_actions',
+    description: 'Run several whitelisted actions in order. A string arg "$N.path" / "$last.path" is replaced by that value from an earlier result in this batch (e.g. "$0.activeLayerId" = the layer created by the first action). Stops at the first error unless stopOnError=false.',
+    inputSchema: {
+      type: 'object',
+      required: ['actions'],
+      properties: {
+        actions: {
+          type: 'array',
+          items: { type: 'object', required: ['actionId'], properties: { actionId: { type: 'string' }, args: { oneOf: [{ type: 'object' }, { type: 'array' }] } } },
+        },
+        stopOnError: { type: 'boolean', default: true },
+      },
+    },
+    handler: async ({ actions, stopOnError = true }) => {
+      if (!Array.isArray(actions)) return fail('"actions" must be an array');
+      const results = [];
+      let failed = false;
+      for (const step of actions) {
+        let r;
+        try { r = await session.run(step.actionId, resolveRef(step.args, results)); }
+        catch (e) { r = { ok: false, actionId: step.actionId, error: e.message }; }
+        results.push(r);
+        if (!r?.ok) { failed = true; if (stopOnError) break; }
+      }
+      const summary = { ok: !failed, ran: results.length, of: actions.length, results };
+      return failed ? { ...ok(summary), isError: true } : ok(summary);
+    },
+  },
+  {
+    name: 'seek',
+    description: 'Move the playhead to a frame and render it (agent.seek).',
+    inputSchema: { type: 'object', required: ['frame'], properties: { frame: { type: 'number' } } },
+    handler: async ({ frame }) => fromRun(await session.run('agent.seek', { frame })),
+  },
+  {
+    name: 'play',
+    description: 'Start preview playback (agent.play).',
+    inputSchema: { type: 'object', properties: {} },
+    handler: async () => fromRun(await session.run('agent.play')),
+  },
+  {
+    name: 'pause',
+    description: 'Pause preview playback (agent.pause).',
+    inputSchema: { type: 'object', properties: {} },
+    handler: async () => fromRun(await session.run('agent.pause')),
+  },
+  {
+    name: 'screenshot',
+    description: 'Save a PNG of the editor window (region "window") or only the preview canvas (region "canvas") and return a preview image.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: 'Where to write the PNG (default: a temp file).' },
+        region: { type: 'string', enum: ['window', 'canvas'], default: 'window' },
+        inline: { type: 'boolean', default: true, description: 'Also return a downscaled JPEG in the result.' },
+      },
+    },
+    annotations: { readOnlyHint: true },
+    handler: async ({ path, region, inline = true }) => {
+      const s = await session.screenshot({ path, region, inline });
+      const { inlineJpeg, ...info } = s;
+      return ok(info, inlineJpeg ? [{ type: 'image', data: inlineJpeg, mimeType: 'image/jpeg' }] : []);
+    },
+  },
+  {
+    name: 'export_mp4',
+    description: 'Render the active composition to an MP4 file through FlashFX\'s real exporter (WebGPU + WebCodecs, same as File > Export Video). Defaults to the composition size and fps. Can take minutes for long comps.',
+    inputSchema: {
+      type: 'object',
+      required: ['path'],
+      properties: {
+        path: { type: 'string', description: 'Output .mp4 path on this machine.' },
+        width: { type: 'number' },
+        height: { type: 'number' },
+        frameRate: { type: 'number' },
+        bitrate: { type: 'number', description: 'Bits per second (default 8000000).' },
+        includeAudio: { type: 'boolean', default: true },
+      },
+    },
+    handler: async ({ path, ...opts }) => {
+      if (typeof path !== 'string' || !path) return fail('"path" is required');
+      return fromRun(await session.exportMp4(path, opts));
+    },
+  },
+  {
+    name: 'undo',
+    description: 'Undo the last undoable action (history.undo).',
+    inputSchema: { type: 'object', properties: {} },
+    handler: async () => fromRun(await session.run('history.undo')),
+  },
+  {
+    name: 'redo',
+    description: 'Redo the last undone action (history.redo).',
+    inputSchema: { type: 'object', properties: {} },
+    handler: async () => fromRun(await session.run('history.redo')),
+  },
+  {
+    name: 'close_browser',
+    description: 'Close the FlashFX browser (the next tool call relaunches it). Unsaved changes in the open project are autosaved by the app.',
+    inputSchema: { type: 'object', properties: {} },
+    handler: async () => { await session.closeBrowser(); return ok({ closed: true }); },
+  },
+];
+
+const TOOL_BY_NAME = new Map(TOOLS.map((t) => [t.name, t]));
+
+// ---------------------------------------------------------------------------------------------
+// Resources
+// ---------------------------------------------------------------------------------------------
+
+const RESOURCES = [
+  { uri: 'flashfx://manifest', name: 'features.json', title: 'FlashFX agent manifest', description: 'Features, whitelisted actions and live catalogs (/agent/features.json).', mimeType: 'application/json' },
+  { uri: 'flashfx://state', name: 'state', title: 'FlashFX editor state', description: 'Live summary of the open composition (same as get_state).', mimeType: 'application/json' },
+];
+
+async function readResource(uri) {
+  if (uri === 'flashfx://manifest') return JSON.stringify(await session.manifest(), null, 2);
+  if (uri === 'flashfx://state') return JSON.stringify(await session.state(), null, 2);
+  const e = new Error(`unknown resource ${uri}`);
+  e.code = -32002;
+  throw e;
+}
+
+// ---------------------------------------------------------------------------------------------
+// JSON-RPC over stdio
+// ---------------------------------------------------------------------------------------------
+
+const write = (msg) => process.stdout.write(`${JSON.stringify(msg)}\n`);
+const reply = (id, result) => write({ jsonrpc: '2.0', id, result });
+const replyError = (id, code, message) => write({ jsonrpc: '2.0', id, error: { code, message } });
+
+// Tool calls and resource reads touch the one browser tab: run them strictly in order.
+let queue = Promise.resolve();
+const serial = (fn) => { const p = queue.then(fn, fn); queue = p.catch(() => {}); return p; };
+
+async function handle(msg) {
+  const { id, method, params = {} } = msg;
+  const isRequest = id !== undefined && id !== null;
+  if (!method) return; // a response to something we never send
+  try {
+    switch (method) {
+      case 'initialize': {
+        const asked = params.protocolVersion;
+        reply(id, {
+          protocolVersion: SUPPORTED_PROTOCOLS.includes(asked) ? asked : SUPPORTED_PROTOCOLS[0],
+          capabilities: { tools: { listChanged: false }, resources: { listChanged: false, subscribe: false } },
+          serverInfo: SERVER_INFO,
+          instructions: INSTRUCTIONS,
+        });
+        return;
+      }
+      case 'ping': reply(id, {}); return;
+      case 'tools/list':
+        reply(id, { tools: TOOLS.map(({ handler: _h, ...t }) => t) });
+        return;
+      case 'tools/call': {
+        const tool = TOOL_BY_NAME.get(params.name);
+        if (!tool) { replyError(id, -32602, `unknown tool: ${params.name}`); return; }
+        const result = await serial(async () => {
+          try { return await tool.handler(params.arguments ?? {}); }
+          catch (e) {
+            const logs = session.recentLogs(5);
+            return fail(`${tool.name} failed: ${e.message}${logs.length ? `\nrecent page errors:\n${logs.join('\n')}` : ''}`);
+          }
+        });
+        reply(id, result);
+        return;
+      }
+      case 'resources/list': reply(id, { resources: RESOURCES }); return;
+      case 'resources/templates/list': reply(id, { resourceTemplates: [] }); return;
+      case 'resources/read': {
+        const uri = params.uri;
+        const body = await serial(() => readResource(uri));
+        reply(id, { contents: [{ uri, mimeType: 'application/json', text: body }] });
+        return;
+      }
+      case 'prompts/list': reply(id, { prompts: [] }); return;
+      default:
+        if (method.startsWith('notifications/')) return; // initialized, cancelled, ... nothing to do
+        if (isRequest) replyError(id, -32601, `method not found: ${method}`);
+    }
+  } catch (e) {
+    if (isRequest) replyError(id, typeof e.code === 'number' ? e.code : -32603, e.message);
+  }
+}
+
+const rl = createInterface({ input: process.stdin, crlfDelay: Infinity });
+rl.on('line', (line) => {
+  if (!line.trim()) return;
+  let msg;
+  try { msg = JSON.parse(line); } catch { replyError(null, -32700, 'parse error'); return; }
+  for (const m of Array.isArray(msg) ? msg : [msg]) void handle(m);
+});
+
+let shuttingDown = false;
+async function shutdown() {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  try { await queue; } catch { /* ignore */ }
+  await session.shutdown().catch(() => {});
+  process.exit(0);
+}
+rl.on('close', shutdown);
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);
+process.stderr.write(`[flashfx-mcp] ready (${config.url ? `url ${config.url}` : `server ${config.server}`}, ${config.attachPort ? `attach :${config.attachPort}` : config.headed ? 'headed' : 'headless'})\n`);

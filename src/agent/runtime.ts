@@ -16,6 +16,12 @@ import { useHistoryStore } from '../store/history';
 import { useExpressionStore } from '../expressions/store';
 import { expressionManager } from '../expressions/manager';
 import { TEXT_ANIMATOR_PRESETS, createTextDecode } from '../core/textAnimatorPresets';
+import { useProjectStore } from '../project-system/hooks/useProjectStore';
+import { loadProjectScene } from '../project-system/services/projects';
+import { useOnboardingStore } from '../onboarding/store';
+import { usePanelStore, type UiMode } from '../store/panels';
+import { playbackController, useTimelineStore } from '../store/timeline';
+import { exportToMp4, type ExportSettings } from '../codec/exporter';
 import type { Layer, TextLayer } from '../core/types';
 import {
   AGENT_ACTIONS,
@@ -59,11 +65,23 @@ export type AgentRunResult =
   | { ok: true; actionId: string; result: unknown; activeLayerId: string | null; undoDepth: number }
   | { ok: false; actionId: string; error: string };
 
+export interface AgentExportChunk {
+  /** Base64 of bytes [offset, offset + length) of the exported file. */
+  base64: string;
+  offset: number;
+  length: number;
+  total: number;
+}
+
 export interface FfxAgentApi {
   version: string;
   listFeatures: () => AgentManifest & { catalogs: AgentCatalogs };
   getState: () => AgentStateSummary;
   run: (actionId: string, args?: unknown) => Promise<AgentRunResult>;
+  /** Read a slice of a finished `agent.exportMp4` file (so a CDP / MCP bridge can stream it out). */
+  readExport: (exportId: string, offset: number, length: number) => Promise<AgentExportChunk>;
+  /** Free a finished export's bytes. Returns false when the id is unknown. */
+  releaseExport: (exportId: string) => boolean;
 }
 
 declare global {
@@ -100,8 +118,10 @@ export function getAgentState(): AgentStateSummary {
     height: comp.settings.height,
     fps: comp.settings.frameRate,
     durationFrames: comp.settings.durationFrames,
-    currentFrame: ed.currentFrame,
-    isPlaying: ed.isPlaying,
+    // The real playhead lives in the timeline store / playbackController (the editor store's
+    // currentFrame / isPlaying fields are not what the preview follows).
+    currentFrame: useTimelineStore.getState().currentFrame,
+    isPlaying: useTimelineStore.getState().isPlaying,
     selectedIds: [...ed.selection.selectedIds],
     activeLayerId: ed.selection.activeId,
     layers: comp.layers.map(summarizeLayer),
@@ -155,7 +175,22 @@ function requireTextLayer(layerId: unknown): TextLayer {
   return layer;
 }
 
-/** Composite helpers: each is one undoable step built on real store actions / history commands. */
+const PROJECT_FORMATS = {
+  long: { width: 1920, height: 1080 },
+  short: { width: 1080, height: 1920 },
+} as const;
+
+// rAF is paused in hidden / occluded tabs (a headed automation window behind others), so never wait on
+// it alone: whichever comes first, the next frame or a short timeout.
+const nextFrame = () => new Promise<void>((r) => { requestAnimationFrame(() => r()); setTimeout(r, 100); });
+const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/** Finished exports held for readExport (keyed by a counter id, never by time). */
+const finishedExports = new Map<string, Blob>();
+let exportSeq = 0;
+
+/** Composite helpers: each is one undoable step built on real store actions / history commands.
+ *  (createProject / exportMp4 are session-level and not undoable, like their UI counterparts.) */
 const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
   setTextContent: (layerId, text) => {
     const layer = requireTextLayer(layerId);
@@ -212,6 +247,67 @@ const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
     });
     const validationError = await expressionManager.validate(trimmed);
     return { validationError };
+  },
+
+  seek: async (frame) => {
+    if (typeof frame !== 'number' || !Number.isFinite(frame)) throw new Error('"frame" must be a number');
+    useTimelineStore.getState().seekTo(Math.round(frame)); // clamps + renders, like dragging the playhead
+    await nextFrame();
+    return useTimelineStore.getState().currentFrame;
+  },
+
+  play: () => {
+    useTimelineStore.getState().play();
+    return useTimelineStore.getState().isPlaying;
+  },
+
+  pause: () => {
+    useTimelineStore.getState().pause();
+    return useTimelineStore.getState().currentFrame;
+  },
+
+  createProject: async (name, format, frameRate, durationFrames, uiMode) => {
+    const fmt = format === undefined ? 'long' : format;
+    if (fmt !== 'long' && fmt !== 'short') throw new Error('"format" must be long or short');
+    const size = PROJECT_FORMATS[fmt];
+    const fps = typeof frameRate === 'number' && frameRate > 0 ? frameRate : 30;
+    const frames = typeof durationFrames === 'number' && durationFrames > 0 ? Math.round(durationFrames) : 150;
+    const projectName = typeof name === 'string' && name.trim() ? name.trim() : 'Agent project';
+    // A first-run onboarding wizard replaces the whole app; an agent creating a project skips it.
+    if (useOnboardingStore.getState().active) useOnboardingStore.getState().complete();
+    const projects = useProjectStore.getState();
+    if (projects.view === 'editor') await projects.closeProject(); // saves the open project first
+    await useProjectStore.getState().createAndOpenProject({
+      name: projectName, width: size.width, height: size.height, frameRate: fps, durationFrames: frames, videoFormat: fmt,
+    });
+    const projectId = useProjectStore.getState().activeProjectId;
+    if (!projectId || useProjectStore.getState().view !== 'editor') throw new Error('the project was created but could not be opened');
+    if (uiMode === 'starter' || uiMode === 'pro') usePanelStore.getState().setUiMode(uiMode as UiMode);
+    // ProjectApp installs the saved document asynchronously: wait until the editor holds it.
+    const doc = await loadProjectScene(projectId);
+    if (!doc) throw new Error('the new project scene could not be read back');
+    for (let i = 0; i < 200 && useEditorStore.getState().rootCompositionId !== doc.rootCompositionId; i++) await delay(50);
+    if (useEditorStore.getState().rootCompositionId !== doc.rootCompositionId) throw new Error('timed out waiting for the editor to open the new project');
+    await nextFrame();
+    await nextFrame();
+    playbackController.renderCurrentFrame();
+    const comp = useEditorStore.getState().composition;
+    return { projectId, compositionId: comp.id, width: comp.settings.width, height: comp.settings.height, fps: comp.settings.frameRate, durationFrames: comp.settings.durationFrames };
+  },
+
+  exportMp4: async (width, height, frameRate, bitrate, includeAudio) => {
+    const ed = useEditorStore.getState();
+    const settings: Partial<ExportSettings> = {};
+    if (typeof width === 'number') settings.width = width;
+    if (typeof height === 'number') settings.height = height;
+    if (typeof frameRate === 'number') settings.frameRate = frameRate;
+    if (typeof bitrate === 'number') settings.bitrate = bitrate;
+    settings.includeAudio = includeAudio !== false;
+    // The same exporter + registry lookup the Export modal uses (precomps resolve, audio is mixed).
+    const { blob, audioDropped } = await exportToMp4(ed.composition, settings, undefined, undefined, ed.getComposition);
+    const exportId = `export-${++exportSeq}`;
+    finishedExports.set(exportId, blob);
+    return { exportId, bytes: blob.size, mimeType: blob.type || 'video/mp4', audioDropped };
   },
 
   removeExpression: (layerId, propertyName) => {
@@ -275,6 +371,17 @@ export function listAgentFeatures(): AgentManifest & { catalogs: AgentCatalogs }
   return { ...buildAgentManifest(), catalogs: buildAgentCatalogs() };
 }
 
+async function readAgentExport(exportId: string, offset: number, length: number): Promise<AgentExportChunk> {
+  const blob = finishedExports.get(exportId);
+  if (!blob) throw new Error(`no finished export with id "${exportId}"`);
+  const start = Math.max(0, Math.floor(offset));
+  const end = Math.min(blob.size, start + Math.max(0, Math.floor(length)));
+  const bytes = new Uint8Array(await blob.slice(start, end).arrayBuffer());
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return { base64: btoa(binary), offset: start, length: bytes.length, total: blob.size };
+}
+
 /** Install `window.__ffxAgent` (idempotent). Called once from src/main.tsx. */
 export function installAgentRuntime(): void {
   if (typeof window === 'undefined' || window.__ffxAgent) return;
@@ -283,5 +390,7 @@ export function installAgentRuntime(): void {
     listFeatures: listAgentFeatures,
     getState: getAgentState,
     run: runAgentAction,
+    readExport: readAgentExport,
+    releaseExport: (exportId: string) => finishedExports.delete(exportId),
   };
 }

@@ -31,7 +31,12 @@ export type AgentHelperMethod =
   | 'applyTextDecode'
   | 'setTextContent'
   | 'setExpression'
-  | 'removeExpression';
+  | 'removeExpression'
+  | 'createProject'
+  | 'exportMp4'
+  | 'seek'
+  | 'play'
+  | 'pause';
 
 export type FeatureStatus = 'shipped' | 'browser-gated' | 'partial';
 
@@ -140,6 +145,28 @@ export const AGENT_ACTIONS: readonly AgentActionSpec[] = [
   { id: 'history.undo', store: 'history', method: 'undo', params: [], undoable: false, description: 'Undo the last undoable command.' },
   { id: 'history.redo', store: 'history', method: 'redo', params: [], undoable: false, description: 'Redo the last undone command.' },
 
+  // ----- project / session -----
+  { id: 'agent.createProject', store: 'agent', method: 'createProject', undoable: false,
+    returns: '{ projectId, compositionId, width, height, fps, durationFrames }',
+    description: 'Create a new local project and open it in the editor (like Dashboard > New Project). Saves and closes any open project first; skips the first-run onboarding.',
+    params: [
+      { name: 'name', type: 'string', optional: true },
+      { name: 'format', type: 'string', optional: true, values: ['long', 'short'], description: 'long = 1920x1080 (default), short = 1080x1920.' },
+      { name: 'frameRate', type: 'number', optional: true, description: 'Default 30.' },
+      { name: 'durationFrames', type: 'number', optional: true, description: 'Default 150.' },
+      { name: 'uiMode', type: 'string', optional: true, values: ['starter', 'pro'], description: 'Editor layout: Starter or Full (pro). Omit to keep the current one.' },
+    ] },
+  { id: 'agent.exportMp4', store: 'agent', method: 'exportMp4', undoable: false,
+    returns: '{ exportId, bytes, mimeType, audioDropped }; read the file with __ffxAgent.readExport(exportId, offset, length)',
+    description: 'Render the active composition to MP4 through the real exporter (WebGPU + WebCodecs, same path as File > Export Video). Defaults to the composition size and fps.',
+    params: [
+      { name: 'width', type: 'number', optional: true },
+      { name: 'height', type: 'number', optional: true },
+      { name: 'frameRate', type: 'number', optional: true },
+      { name: 'bitrate', type: 'number', optional: true, description: 'Bits per second, default 8000000.' },
+      { name: 'includeAudio', type: 'boolean', optional: true, description: 'Default true (only matters when the comp has audio).' },
+    ] },
+
   // ----- composition / playback -----
   { id: 'editor.setCompositionSetting', store: 'editor', method: 'setCompositionSetting', undoable: true,
     description: 'Change a numeric composition setting.',
@@ -147,10 +174,14 @@ export const AGENT_ACTIONS: readonly AgentActionSpec[] = [
   { id: 'editor.setCompositionSize', store: 'editor', method: 'setCompositionSize', undoable: true,
     description: 'Resize the frame (e.g. 1920x1080) and reflow top-level layers by their constraints.',
     params: [{ name: 'width', type: 'number' }, { name: 'height', type: 'number' }] },
-  { id: 'editor.setCurrentFrame', store: 'editor', method: 'setCurrentFrame', undoable: false,
-    description: 'Move the playhead.', params: [{ name: 'frame', type: 'number' }] },
-  { id: 'editor.setPlaying', store: 'editor', method: 'setPlaying', undoable: false,
-    description: 'Start or stop preview playback.', params: [{ name: 'playing', type: 'boolean' }] },
+  // The playhead is owned by the timeline store's playbackController (the editor store's
+  // setCurrentFrame / setPlaying only set fields the preview does not follow, so they are not listed).
+  { id: 'agent.seek', store: 'agent', method: 'seek', undoable: false, returns: 'the clamped current frame',
+    description: 'Move the playhead and render that frame (same as dragging the timeline playhead).', params: [{ name: 'frame', type: 'number' }] },
+  { id: 'agent.play', store: 'agent', method: 'play', undoable: false, returns: 'isPlaying',
+    description: 'Start preview playback (Space).', params: [] },
+  { id: 'agent.pause', store: 'agent', method: 'pause', undoable: false, returns: 'the current frame',
+    description: 'Pause preview playback.', params: [] },
   { id: 'editor.addBackgroundLayer', store: 'editor', method: 'addBackgroundLayer', undoable: true, params: [],
     description: 'Add a solid/gradient background layer to the composition background stack.' },
   { id: 'editor.updateBackgroundLayer', store: 'editor', method: 'updateBackgroundLayer', undoable: true,
@@ -390,6 +421,9 @@ export const AGENT_ACTIONS: readonly AgentActionSpec[] = [
 
 export const AGENT_FEATURES: readonly AgentFeature[] = [
   // composition
+  { id: 'composition.project', area: 'composition', name: 'Create a project',
+    description: 'Start a new local project (16:9 long form or 9:16 short form) and open it in the editor.',
+    ui: 'Dashboard > New Project (pick Long form / Short form)', actions: ['agent.createProject'], status: 'shipped' },
   { id: 'composition.settings', area: 'composition', name: 'Composition size, fps and duration',
     description: 'Set the frame size (e.g. 1920x1080 or 1080x1920), frame rate and minimum duration.',
     ui: 'File > Project Settings... (or the composition settings in the Inspector with nothing selected)',
@@ -399,7 +433,7 @@ export const AGENT_FEATURES: readonly AgentFeature[] = [
     actions: ['editor.addBackgroundLayer', 'editor.updateBackgroundLayer'], status: 'shipped' },
   { id: 'composition.playback', area: 'composition', name: 'Playhead and preview',
     description: 'Scrub, play and pause the WebGPU preview.', ui: 'Timeline playhead; Space to play/pause',
-    actions: ['editor.setCurrentFrame', 'editor.setPlaying'], status: 'browser-gated', notes: 'Preview renders through WebGPU.' },
+    actions: ['agent.seek', 'agent.play', 'agent.pause'], status: 'browser-gated', notes: 'Preview renders through WebGPU.' },
   { id: 'composition.markers', area: 'composition', name: 'Timeline markers',
     description: 'Named markers / ranges on the timeline.', ui: 'Right-click the timeline ruler > Add Marker',
     actions: ['editor.addMarker'], status: 'shipped' },
@@ -574,8 +608,8 @@ export const AGENT_FEATURES: readonly AgentFeature[] = [
   // export
   { id: 'export.video', area: 'export', name: 'Export MP4',
     description: 'Render the composition to MP4 (H.264 + AAC) through WebGPU + WebCodecs.',
-    ui: 'File > Export Video... (Ctrl+E)', actions: [], status: 'browser-gated',
-    notes: 'UI-only: open the Export modal and press Export.' },
+    ui: 'File > Export Video... (Ctrl+E)', actions: ['agent.exportMp4'], status: 'browser-gated',
+    notes: 'Needs WebGPU + WebCodecs in the tab. agent.exportMp4 runs the same exporter; stream the bytes out with __ffxAgent.readExport.' },
   { id: 'export.project', area: 'export', name: 'Save / download project',
     description: 'Projects autosave to IndexedDB; download as a .ffx file.', ui: 'File > Save (Ctrl+S) / Download Project (.ffx)',
     actions: [], status: 'shipped' },
@@ -607,6 +641,8 @@ export function buildAgentManifest(): AgentManifest {
       scale: 'Scale is a [sx, sy] multiplier: 1 = 100%.',
       runtime: 'In the editor tab: window.__ffxAgent.listFeatures(), .getState(), .run(actionId, args). args is an object keyed by param name or a positional array.',
       undo: 'Actions marked undoable push one normal history command; history.undo reverts it.',
+      textStyle: 'Text: font size / line height / letter spacing / stroke width are animatable and live in animOverrides (set path "animOverrides.fontSize.defaultValue", keyframe path "animOverrides.fontSize"). Colour, font family, weight and gradient fill live in "content.spans.0.style.*" (e.g. "content.spans.0.style.color").',
+      mcp: 'A local MCP server (mcp/flashfx-mcp.mjs in the repo, npm run mcp:flashfx) drives this runtime over the Chrome DevTools Protocol: list_features, get_state, create_project, run_action(s), seek, play, pause, screenshot, export_mp4, undo.',
     },
     features: AGENT_FEATURES,
     actions: AGENT_ACTIONS,
