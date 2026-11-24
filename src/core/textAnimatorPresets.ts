@@ -126,7 +126,77 @@ export function tumbleInByCharacter(startFrame = 0, durationFrames = 30): TextAn
   };
 }
 
-export const TEXT_ANIMATOR_PRESETS: { id: string; label: string; build: (start?: number, dur?: number) => TextAnimator }[] = [
+// ---- Kinetic title styles (the four "N styles" of a Bricks-style text tutorial). Each is built only
+// from range-selector features (split / deltas / shape / ease), so a viewer can rebuild it by hand in
+// the Animators panel. The selector window sweeps left to right; ease low/high soften each unit's
+// settle ("fast start, long settle"). Turn the layer's Motion Blur on for the streaks.
+
+/** Style 1: words rise 80 px and fade in, one after another, with a soft settle. */
+export function riseFadeByWord(startFrame = 0, durationFrames = 30): TextAnimator {
+  return {
+    enabled: true,
+    splitMode: 'word',
+    selector: { ...defaultRangeSelector(), shape: 'rampUp', start: 0, end: 0.4, easeLow: 1, easeHigh: 0.2 },
+    offset: revealOffset(startFrame, durationFrames, -0.4),
+    delta: { opacity: -1, position: [0, 80] },
+  };
+}
+
+/** Style 2: letters (spaces skipped) scale up from 20 % while rising 140 px and fading in. */
+export function scaleRiseByLetter(startFrame = 0, durationFrames = 30): TextAnimator {
+  return {
+    enabled: true,
+    splitMode: 'characterNoSpaces',
+    selector: { ...defaultRangeSelector(), shape: 'smooth', start: 0, end: 0.3, easeLow: 1 },
+    offset: revealOffset(startFrame, durationFrames, -0.3),
+    delta: { opacity: -1, position: [0, 140], scale: [-0.8, -0.8] },
+  };
+}
+
+/** Style 3: tracking burst - letters start piled together (negative tracking), small and tilted,
+ *  then spring apart into place left to right. */
+export function trackingBurst(startFrame = 0, durationFrames = 30): TextAnimator {
+  return {
+    enabled: true,
+    splitMode: 'characterNoSpaces',
+    selector: { ...defaultRangeSelector(), shape: 'rampUp', start: 0, end: 0.5, easeLow: 1, easeHigh: 0.3 },
+    offset: revealOffset(startFrame, durationFrames, -0.5),
+    delta: { opacity: -1, tracking: -0.55, scale: [-0.6, -0.6], rotation: 30 },
+  };
+}
+
+/** Style 4 (two stacked animators): a soft fade sweeps across first, while a slower second selector
+ *  settles blur, scale and rotation - letters are visible early and keep resolving. */
+export function blurSettleStack(startFrame = 0, durationFrames = 30): TextAnimator[] {
+  const fadeDur = Math.max(1, Math.round(durationFrames * 0.66));
+  return [
+    {
+      enabled: true,
+      splitMode: 'characterNoSpaces',
+      selector: { ...defaultRangeSelector(), shape: 'rampUp', start: 0, end: 0.5 },
+      offset: revealOffset(startFrame, fadeDur, -0.5),
+      delta: { opacity: -1 },
+    },
+    {
+      enabled: true,
+      splitMode: 'characterNoSpaces',
+      selector: { ...defaultRangeSelector(), shape: 'rampUp', start: 0, end: 1, easeLow: 1 },
+      offset: revealOffset(startFrame, durationFrames, -1),
+      delta: { scale: [-0.4, -0.4], rotation: 15, blur: 15 },
+    },
+  ];
+}
+
+/** A preset builds one animator, or a stack of them (applied together, in order). */
+export type TextAnimatorPresetBuild = (start?: number, dur?: number) => TextAnimator | TextAnimator[];
+
+/** The animators a preset adds, always as a list. */
+export function buildTextAnimatorPreset(build: TextAnimatorPresetBuild, start?: number, dur?: number): TextAnimator[] {
+  const out = build(start, dur);
+  return Array.isArray(out) ? out : [out];
+}
+
+export const TEXT_ANIMATOR_PRESETS: { id: string; label: string; build: TextAnimatorPresetBuild }[] = [
   { id: 'type-on', label: 'Type on (typewriter)', build: typeOnByCharacter },
   { id: 'fade-in', label: 'Fade in by character', build: fadeInByCharacter },
   { id: 'pop-in', label: 'Pop in by character', build: popInByCharacter },
@@ -135,4 +205,8 @@ export const TEXT_ANIMATOR_PRESETS: { id: string; label: string; build: (start?:
   { id: 'rise-line', label: 'Rise by line', build: riseByLine },
   { id: 'blur-in', label: 'Blur in by character', build: blurInByCharacter },
   { id: 'tumble-in', label: 'Tumble in by character', build: tumbleInByCharacter },
+  { id: 'rise-fade-word', label: 'Kinetic 1: rise + fade by word', build: riseFadeByWord },
+  { id: 'scale-rise-letter', label: 'Kinetic 2: scale up by letter', build: scaleRiseByLetter },
+  { id: 'tracking-burst', label: 'Kinetic 3: tracking burst', build: trackingBurst },
+  { id: 'blur-settle', label: 'Kinetic 4: fade + blur settle (2 animators)', build: blurSettleStack },
 ];

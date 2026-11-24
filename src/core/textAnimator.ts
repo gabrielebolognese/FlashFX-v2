@@ -21,7 +21,7 @@ export interface GlyphDelta {
   ry: number;
   /** Per-character gaussian blur radius in px (B9d), added to the layer's base blur on each stamp. */
   blur: number;
-  /** Extra tracking in px after this character (summed over animators); see trackingShifts. */
+  /** Extra tracking in em after this character (summed over animators); see trackingShifts. */
   tracking: number;
 }
 
@@ -108,22 +108,22 @@ export function accumulateGlyphDeltas(content: string, animators: ResolvedTextAn
 }
 
 /**
- * Per-glyph X shift (px) from animator tracking on ONE line. Tracking adds `deltas[k].tracking` of
- * space after character k, so glyph j moves right by the sum over k < j. The line then re-aligns the
+ * Per-glyph X shift (px) from animator tracking on ONE line. Tracking adds `deltas[k].tracking` em
+ * (times `emPx`, the font size in px) of space after character k, so glyph j moves right by the sum over k < j. The line then re-aligns the
  * way the layout does: left text keeps its left edge, centre text shifts back by half the added width,
  * right text by all of it (the added width is the spacing between the first and last glyph). With a
  * uniform tracking of minus each glyph's advance, every glyph of a centred line lands on (nearly) one
  * point (glyph centres differ only by half their own widths).
  * Returns all zeros (fast) when no glyph carries tracking.
  */
-export function trackingShifts(deltas: readonly GlyphDelta[], align: 'left' | 'center' | 'right' | string): number[] {
+export function trackingShifts(deltas: readonly GlyphDelta[], align: 'left' | 'center' | 'right' | string, emPx = 1): number[] {
   const n = deltas.length;
   const out = new Array<number>(n).fill(0);
   if (!deltas.some((d) => d.tracking !== 0)) return out;
   let acc = 0;
   for (let j = 0; j < n; j++) {
     out[j] = acc;
-    acc += deltas[j].tracking;
+    acc += deltas[j].tracking * emPx;
   }
   const total = n > 0 ? out[n - 1] : 0; // spacing up to the last glyph (trailing space excluded)
   const back = align === 'center' ? total / 2 : align === 'right' ? total : 0;

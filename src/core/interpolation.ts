@@ -579,11 +579,11 @@ function expandTextGlyphs(
 
   const deltas = accumulateGlyphDeltas(content, resolveTextAnimatorsAt(active, frame));
   // Animator tracking: per-glyph X shift, re-aligned like the layout (all zeros without tracking).
-  const shifts = trackingShifts(deltas, baseText.textAlign);
+  const shifts = trackingShifts(deltas, baseText.textAlign, baseText.fontSize);
   // Per-glyph motion blur: the same glyph one frame earlier (animator deltas + tracking at prevFrame,
   // under the layer's previous world transform). Only when the layer has motion blur on.
   const prevDeltas = glyphBlur && active.length > 0 ? accumulateGlyphDeltas(content, resolveTextAnimatorsAt(active, glyphBlur.prevFrame)) : null;
-  const prevShifts = prevDeltas ? trackingShifts(prevDeltas, baseText.textAlign) : null;
+  const prevShifts = prevDeltas ? trackingShifts(prevDeltas, baseText.textAlign, baseText.fontSize) : null;
 
   // Stamps draw plain run-less text; a run's stamps take that run's face + fill.
   const plainText: ResolvedText = { ...baseText };

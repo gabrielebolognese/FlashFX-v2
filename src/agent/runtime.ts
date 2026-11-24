@@ -15,7 +15,7 @@ import { useEditorStore } from '../store/editor';
 import { useHistoryStore } from '../store/history';
 import { useExpressionStore } from '../expressions/store';
 import { expressionManager } from '../expressions/manager';
-import { TEXT_ANIMATOR_PRESETS, createTextDecode } from '../core/textAnimatorPresets';
+import { TEXT_ANIMATOR_PRESETS, createTextDecode, buildTextAnimatorPreset } from '../core/textAnimatorPresets';
 import { useProjectStore } from '../project-system/hooks/useProjectStore';
 import { loadProjectScene } from '../project-system/services/projects';
 import { useOnboardingStore } from '../onboarding/store';
@@ -208,9 +208,10 @@ const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
     const start = typeof startFrame === 'number' ? startFrame : 0;
     const dur = typeof durationFrames === 'number' ? durationFrames : 30;
     const existing = replace === true ? [] : (layer.animators ?? []);
-    const next = [...existing, preset.build(start, dur)];
+    const added = buildTextAnimatorPreset(preset.build, start, dur);
+    const next = [...existing, ...added];
     useEditorStore.getState().updateLayerProperty(layer.id, 'animators', next);
-    return { animatorIndex: next.length - 1 };
+    return { animatorIndex: next.length - 1, added: added.length };
   },
 
   applyTextDecode: (layerId, startFrame, durationFrames) => {

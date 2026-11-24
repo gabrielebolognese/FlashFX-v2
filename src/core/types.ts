@@ -600,9 +600,10 @@ export interface TextAnimatorDelta {
   /** Per-character gaussian blur radius in px at full weight (B9d) - e.g. blur-in reveals. */
   blur?: number;
   /**
-   * Tracking in px at full weight (AE's animator "Tracking Amount"): extra space after each selected
-   * unit, so later glyphs shift and the line re-aligns (centre text stays centred). A large negative
-   * value collapses the letters onto one point - the "tracking burst" reveal.
+   * Tracking in em (a fraction of the font size) at full weight, like AE's animator "Tracking Amount"
+   * (which is in 1/1000 em): extra space after each selected unit, so later glyphs shift and the line
+   * re-aligns (centre text stays centred). About -0.55 (minus one average advance) collapses the
+   * letters onto one point - the "tracking burst" reveal - at any font size.
    */
   tracking?: number;
 }

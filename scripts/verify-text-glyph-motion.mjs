@@ -25,6 +25,7 @@ let passed = 0;
 const check = (name, fn) => { fn(); passed++; console.log(`  ✓ ${name}`); };
 const SETTINGS = { width: 1920, height: 1080, frameRate: 30, durationFrames: 120, backgroundColor: [0, 0, 0, 1] };
 const GLYPH_W = 12;
+const FONT_PX = 48; // createTextLayer's default font size: animator tracking is in em (x FONT_PX = px)
 const approx = (a, b, eps = 1e-6) => Math.abs(a - b) < eps;
 
 try {
@@ -34,6 +35,7 @@ try {
         export { resolveFrame } from './src/core/interpolation';
         export { createComposition, createTextLayer, createProperty, createKeyframe } from './src/core/factory';
         export { defaultRangeSelector } from './src/text/rangeSelector';
+        export { TEXT_ANIMATOR_PRESETS, buildTextAnimatorPreset } from './src/core/textAnimatorPresets';
       `,
       resolveDir: process.cwd(),
       sourcefile: 'entry.ts',
@@ -51,7 +53,7 @@ try {
   };
 
   const m = await import(pathToFileURL(outfile).href);
-  const { resolveFrame, createComposition, createTextLayer, createProperty, createKeyframe, defaultRangeSelector } = m;
+  const { resolveFrame, createComposition, createTextLayer, createProperty, createKeyframe, defaultRangeSelector, TEXT_ANIMATOR_PRESETS, buildTextAnimatorPreset } = m;
 
   const offsetKf = (f0, v0, f1, v1) => {
     const p = createProperty('Animator Offset', 'number', 0);
@@ -141,7 +143,7 @@ try {
 
   check('tracking: centred text re-aligns symmetrically (+10 px tracking spreads about the centre)', () => {
     const base = build1({ motionBlur: false, animators: [{ enabled: true, splitMode: 'character', selector: { ...defaultRangeSelector(), shape: 'square', offset: -2 }, delta: { opacity: 0.0001 } }] });
-    const spread = build1({ motionBlur: false, animators: [{ enabled: true, splitMode: 'character', selector: { ...defaultRangeSelector(), shape: 'square', offset: -2 }, delta: { tracking: 10 } }] });
+    const spread = build1({ motionBlur: false, animators: [{ enabled: true, splitMode: 'character', selector: { ...defaultRangeSelector(), shape: 'square', offset: -2 }, delta: { tracking: 10 / FONT_PX } }] });
     base.layer.layoutConfig.horizontalAlign = 'center';
     spread.layer.layoutConfig.horizontalAlign = 'center';
     const a = stampsOf(resolveFrame(base.comp, 10), base.layer).sort((x, y) => glyphIndex(x) - glyphIndex(y));
@@ -154,7 +156,7 @@ try {
   });
 
   check('tracking burst: tracking = -advance collapses a centred word onto one point', () => {
-    const { comp, layer } = build1({ motionBlur: false, animators: [{ enabled: true, splitMode: 'characterNoSpaces', selector: { ...defaultRangeSelector(), shape: 'square', offset: -2 }, delta: { tracking: -GLYPH_W } }] });
+    const { comp, layer } = build1({ motionBlur: false, animators: [{ enabled: true, splitMode: 'characterNoSpaces', selector: { ...defaultRangeSelector(), shape: 'square', offset: -2 }, delta: { tracking: -GLYPH_W / FONT_PX } }] });
     layer.layoutConfig.horizontalAlign = 'center';
     const st = stampsOf(resolveFrame(comp, 10), layer);
     assert.equal(st.length, 5);
@@ -167,7 +169,7 @@ try {
       enabled: true, splitMode: 'characterNoSpaces',
       selector: { ...defaultRangeSelector(), shape: 'square', start: 0, end: 1 },
       offset: offsetKf(0, 0, 20, 1), // window slides off the letters: tracking releases over 20 frames
-      delta: { tracking: -GLYPH_W },
+      delta: { tracking: -GLYPH_W / FONT_PX },
     };
     const { comp, layer } = build1({ animators: [burst] });
     layer.layoutConfig.horizontalAlign = 'center';
@@ -184,6 +186,49 @@ try {
     resolveFrame(comp, 90);
     const b = JSON.stringify(resolveFrame(comp, 17).layers);
     assert.equal(a, b);
+  });
+
+  // ---------- the four kinetic title presets (Bricks-style "N styles") ----------
+  const KINETIC = ['rise-fade-word', 'scale-rise-letter', 'tracking-burst', 'blur-settle'];
+  const preset = (id) => TEXT_ANIMATOR_PRESETS.find((x) => x.id === id);
+
+  check('kinetic presets exist; blur-settle is a 2-animator stack, the others one animator', () => {
+    for (const id of KINETIC) {
+      assert.ok(preset(id), `preset ${id}`);
+      assert.equal(buildTextAnimatorPreset(preset(id).build, 0, 30).length, id === 'blur-settle' ? 2 : 1);
+    }
+  });
+
+  check('kinetic presets: hidden at the start, streaking mid-way, fully settled at the end', () => {
+    for (const id of KINETIC) {
+      const { comp, layer } = build1({ animators: buildTextAnimatorPreset(preset(id).build, 10, 30), text: 'MAKE IT' });
+      const before = stampsOf(resolveFrame(comp, 10), layer);
+      assert.ok(before.every((s) => s.transform.opacity < 0.5), `${id}: nothing fully shown at its start frame`);
+      let streakFrames = 0;
+      for (let f = 11; f < 40; f++) if (stampsOf(resolveFrame(comp, f), layer).some((s) => s.motionBlur)) streakFrames++;
+      assert.ok(streakFrames >= 10, `${id}: glyphs streak through the reveal (${streakFrames} frames)`);
+      const end = stampsOf(resolveFrame(comp, 45), layer);
+      assert.equal(end.length, 6, `${id}: all 6 letters visible at the end`);
+      for (const s of end) {
+        assert.ok(approx(s.transform.opacity, 1), `${id}: settled opacity`);
+        assert.ok(approx(s.transform.scaleX, 1) && approx(s.transform.rotation, 0), `${id}: settled scale/rotation`);
+        assert.equal(s.motionBlur, undefined, `${id}: no blur once settled`);
+        assert.ok(!s.blur || s.blur.radius === 0, `${id}: no residual glyph blur`);
+      }
+    }
+  });
+
+  check('tracking-burst starts collapsed: early glyph spread is far tighter than at rest', () => {
+    const { comp, layer } = build1({ motionBlur: false, animators: buildTextAnimatorPreset(preset('tracking-burst').build, 0, 30), text: 'BURST' });
+    layer.layoutConfig.horizontalAlign = 'center';
+    // A realistic advance/size ratio: the 12 px stub glyph is 0.55 em at this size (preset: -0.55 em).
+    layer.animOverrides.fontSize.defaultValue = GLYPH_W / 0.55;
+    const spread = (f) => { const xs = stampsOf(resolveFrame(comp, f), layer).map(pivotX); return Math.max(...xs) - Math.min(...xs); };
+    const rest = spread(60);
+    // The fade hides most glyphs early, so measure the layout with the fade removed.
+    layer.animators = layer.animators.map((a) => ({ ...a, delta: { ...a.delta, opacity: 0 } }));
+    const early = spread(2);
+    assert.ok(early < rest * 0.5, `early spread ${early} vs rest ${rest}`);
   });
 
   console.log(`\ntext-glyph-motion: all ${passed} checks passed`);

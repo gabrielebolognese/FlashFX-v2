@@ -143,6 +143,11 @@ try {
     const sh = trackingShifts(d, 'center');
     [10, 30, 50, 70].forEach((c, j) => assert.ok(approx(c + sh[j], 40), `centre ${c + sh[j]} should collapse to 40`));
   });
+  check('trackingShifts: tracking is in em - emPx (the font size) scales it to px', () => {
+    const d = [{ tracking: 0.5 }, { tracking: 0.5 }, { tracking: 0.5 }];
+    assert.deepEqual(trackingShifts(d, 'left', 48), [0, 24, 48]);
+    assert.deepEqual(trackingShifts(d, 'center', 48), [-24, 0, 24]);
+  });
   check('trackingShifts: no tracking -> all zeros (the unchanged path)', () => {
     assert.deepEqual(trackingShifts([{ tracking: 0 }, { tracking: 0 }], 'center'), [0, 0]);
   });

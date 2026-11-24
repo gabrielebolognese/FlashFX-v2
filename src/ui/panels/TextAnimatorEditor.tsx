@@ -3,7 +3,7 @@ import { ChevronDown, ChevronRight, Plus, RotateCcw } from 'lucide-react';
 import type { TextLayer, TextAnimator, TextAnimatorDelta, TextAnimatorSplitMode, TextDecode, TextPathBinding, Vec2 } from '../../core/types';
 import type { SelectorShape } from '../../text/rangeSelector';
 import { createProperty, createKeyframe } from '../../core/factory';
-import { TEXT_ANIMATOR_PRESETS, createTextDecode } from '../../core/textAnimatorPresets';
+import { TEXT_ANIMATOR_PRESETS, createTextDecode, buildTextAnimatorPreset, type TextAnimatorPresetBuild } from '../../core/textAnimatorPresets';
 import { useEditorStore } from '../../store/editor';
 
 // Full per-character text-animator editor: split mode, the transform deltas each unit animates by,
@@ -34,8 +34,8 @@ export function TextAnimatorsSection({ layer, updateLayerProperty }: {
   const [open, setOpen] = useState<number | null>(animators.length ? 0 : null);
   const write = (next: TextAnimator[]) => updateLayerProperty(layer.id, 'animators', next);
 
-  const addPreset = (build: (s?: number, d?: number) => TextAnimator) => {
-    write([...animators, build(0, 30)]);
+  const addPreset = (build: TextAnimatorPresetBuild) => {
+    write([...animators, ...buildTextAnimatorPreset(build, 0, 30)]);
     setOpen(animators.length);
   };
   const update = (i: number, a: TextAnimator) => write(animators.map((x, j) => (j === i ? a : x)));
@@ -235,7 +235,7 @@ function Editor({ animator, onChange }: { animator: TextAnimator; onChange: (a: 
         <Field label="3D Rot Y °"><Num value={d.rotationY ?? 0} onChange={(v) => setDelta({ rotationY: v })} /></Field>
         <Field label="Blur px"><Num value={d.blur ?? 0} min={0} onChange={(v) => setDelta({ blur: v })} /></Field>
         <Field label="Opacity %"><Num value={(d.opacity ?? 0) * 100} min={-100} max={100} onChange={(v) => setDelta({ opacity: v / 100 })} /></Field>
-        <Field label="Tracking px"><Num value={d.tracking ?? 0} onChange={(v) => setDelta({ tracking: v })} /></Field>
+        <Field label="Tracking em"><Num value={d.tracking ?? 0} step={0.05} onChange={(v) => setDelta({ tracking: v })} /></Field>
       </Group>
 
       <Group title="Range selector">
@@ -279,8 +279,8 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-function Num({ value, onChange, min, max, suffix, width = 'w-14' }: {
-  value: number; onChange: (v: number) => void; min?: number; max?: number; suffix?: string; width?: string;
+function Num({ value, onChange, min, max, step, suffix, width = 'w-14' }: {
+  value: number; onChange: (v: number) => void; min?: number; max?: number; step?: number; suffix?: string; width?: string;
 }) {
   return (
     <div className="flex items-center gap-0.5">
@@ -289,6 +289,7 @@ function Num({ value, onChange, min, max, suffix, width = 'w-14' }: {
         value={Number.isFinite(value) ? Math.round(value * 100) / 100 : 0}
         min={min}
         max={max}
+        step={step}
         onChange={(e) => { const n = parseFloat(e.target.value); if (!Number.isNaN(n)) onChange(min != null || max != null ? Math.min(max ?? Infinity, Math.max(min ?? -Infinity, n)) : n); }}
         className={`${width} rounded border border-hairline bg-[#0e1726] px-1.5 py-0.5 text-right text-[11px] text-slate-200 focus:border-accent focus:outline-none`}
       />
