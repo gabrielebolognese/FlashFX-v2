@@ -5,7 +5,8 @@
 // Mirrors the scripts/verify-*.mjs convention: bundle the REAL TypeScript with the installed esbuild,
 // import it in Node, serialize. Reproducible: `version` / `generatedAt` come from the git HEAD commit
 // (hash + commit date), never from Date.now(), so the same commit always yields the same file.
-// Runs automatically before `dev` and `build` (predev/prebuild); manual: npm run agent:manifest.
+// Runs as the first step of `npm run dev` / `npm run build` (not as a pre-hook: the committed .npmrc
+// sets ignore-scripts=true, which also disables npm pre/post hooks); manual: npm run agent:manifest.
 
 import { build } from 'esbuild';
 import { execSync } from 'node:child_process';
