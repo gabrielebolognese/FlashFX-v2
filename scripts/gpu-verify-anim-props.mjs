@@ -19,7 +19,7 @@
 //     measureString measures without a layer, getState lists background + tracks + animProps.
 
 import assert from 'node:assert/strict';
-import { rmSync } from 'node:fs';
+import { rmSync, writeFileSync } from 'node:fs';
 import { bundleEntry, makeTempDir, withHeadlessPage } from './lib/headless-gpu.mjs';
 
 const ENTRY = String.raw`
@@ -246,6 +246,25 @@ window.__animGpu = async () => {
   const strip = (await run('agent.renderStrip', { frames: [0, 15, 30], columns: 3, tileWidth: 160 })).result;
   out.strip = { w: strip.width, h: strip.height, cols: strip.columns, tile: [strip.tileWidth, strip.tileHeight] };
   out.renderNoDom = document.querySelectorAll('canvas').length;
+  // Optional evidence sheet (ANIM_PROPS_SHEET=<png path>): each feature's own layers at 7 frames, one row per feature.
+  if (window.__wantSheet) {
+    const rows = [['fill colour', [A]], ['blur radius', [B]], ['glow', [C]], ['text colour', [T]], ['invert param', [A, ADJ]], ['shape morph', [D]]];
+    const fr = [0, 5, 10, 15, 20, 25, 30];
+    const sheet = new OffscreenCanvas(fr.length * (W / 2 + 4) + 4, rows.length * (H / 2 + 4) + 4);
+    const g = sheet.getContext('2d');
+    g.fillStyle = '#333'; g.fillRect(0, 0, sheet.width, sheet.height);
+    for (let ri = 0; ri < rows.length; ri++) {
+      for (let fi = 0; fi < fr.length; fi++) {
+        await render(R, compOf(rows[ri][1]), fr[fi]);
+        const x = 4 + fi * (W / 2 + 4), y = 4 + ri * (H / 2 + 4);
+        g.drawImage(R.getOffscreenCanvas(), x, y, W / 2, H / 2);
+        g.fillStyle = '#ffffffcc'; g.font = '10px monospace'; g.fillText(rows[ri][0] + ' f' + fr[fi], x + 3, y + 11);
+      }
+    }
+    const blob = await sheet.convertToBlob({ type: 'image/png' });
+    const u8 = new Uint8Array(await blob.arrayBuffer()); let bin = ''; for (let i = 0; i < u8.length; i += 0x8000) bin += String.fromCharCode(...u8.subarray(i, i + 0x8000));
+    out.sheet = btoa(bin);
+  }
   return out;
 };
 window.__ready = true;
@@ -258,6 +277,7 @@ try {
     await page.evaluate("import('/bundle.js').then(() => true)");
     for (let i = 0; i < 100 && !(await page.evaluate('window.__ready === true')); i++) await new Promise((res) => setTimeout(res, 100));
     if (!(await page.evaluate('window.__ready === true'))) throw new Error(`bundle failed to load:\n${page.logs.join('\n')}`);
+    if (process.env.ANIM_PROPS_SHEET) await page.evaluate('window.__wantSheet = true');
     try {
       return await page.evaluate('window.__animGpu()');
     } catch (e) {
@@ -265,6 +285,7 @@ try {
     }
   });
   if (r.noAdapter) { console.log('SKIP: no WebGPU adapter in headless Chrome on this machine'); process.exit(0); }
+  if (r.sheet && process.env.ANIM_PROPS_SHEET) { writeFileSync(process.env.ANIM_PROPS_SHEET, Buffer.from(r.sheet, 'base64')); console.log(`evidence sheet: ${process.env.ANIM_PROPS_SHEET}`); delete r.sheet; }
   let passed = 0;
   const check = (name, fn) => { fn(); passed++; console.log(`  ✓ ${name}`); };
   const sc = r.scenes;
