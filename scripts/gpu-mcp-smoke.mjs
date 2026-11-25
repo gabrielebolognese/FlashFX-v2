@@ -22,6 +22,7 @@ mkdirSync(OUT_DIR, { recursive: true });
 const SHOT = process.env.FLASHFX_SMOKE_OUT ?? join(OUT_DIR, 'mcp-smoke.png');
 const EMPTY_SHOT = join(OUT_DIR, 'mcp-smoke-empty.png');
 const MP4 = join(OUT_DIR, 'mcp-smoke.mp4');
+const FFX = join(OUT_DIR, 'mcp-smoke.ffx');
 
 /** Minimal PNG decoder (8-bit RGB / RGBA, non-interlaced: what Chrome's captureScreenshot writes). */
 function decodePng(buf) {
@@ -123,7 +124,7 @@ try {
   const { tools } = await request('tools/list', {});
   check('tools/list exposes the FlashFX tool set', () => {
     const names = tools.map((t) => t.name);
-    for (const n of ['list_features', 'get_state', 'create_project', 'run_action', 'run_actions', 'seek', 'play', 'pause', 'screenshot', 'export_mp4', 'undo']) {
+    for (const n of ['list_features', 'get_state', 'get_layer', 'measure_text', 'create_project', 'run_action', 'run_actions', 'seek', 'play', 'pause', 'screenshot', 'export_mp4', 'export_project', 'import_project', 'import_image', 'save_project', 'undo']) {
       assert.ok(names.includes(n), `missing tool ${n}`);
     }
     assert.ok(tools.every((t) => t.inputSchema?.type === 'object'));
@@ -197,6 +198,38 @@ try {
   check('undo reverts the last action (one history step)', () => {
     assert.equal(undone.ok, true);
     assert.ok(afterUndo.canRedo);
+  });
+
+  const full = json(await call('get_layer', { layerId }));
+  const measured = json(await call('measure_text', { layerId, frame: 20 }));
+  check('get_layer returns the full layer; measure_text returns the laid-out text box', () => {
+    assert.equal(full.result.id, layerId);
+    assert.equal(full.result.animOverrides.fontSize.defaultValue, 220);
+    assert.equal(full.result.transform.opacity.keyframes.length, 2);
+    assert.ok(measured.result.ink.width > 400 && measured.result.ink.width < 1900, `ink width ${measured.result.ink.width}`);
+    assert.deepEqual(measured.result.lines, ['FlashFX MCP']);
+  });
+
+  const img = json(await call('import_image', { path: join(ROOT, 'public/flashfx-mark.svg'), rasterSize: 256, x: 300, y: 300 }));
+  const withImage = json(await call('get_state'));
+  check('import_image brings an SVG in (rasterized) and places it as an image layer', () => {
+    assert.equal(img.result.width, 256);
+    assert.ok(img.result.assetId);
+    const placed = withImage.layers.find((l) => l.id === img.activeLayerId);
+    assert.ok(placed && placed.type === 'image', 'no image layer placed');
+  });
+
+  rmSync(FFX, { force: true });
+  const saved = json(await call('export_project', { path: FFX }));
+  const bundle = JSON.parse(readFileSync(FFX, 'utf8'));
+  const reopened = json(await call('import_project', { path: FFX }));
+  const reState = json(await call('get_state'));
+  check(`export_project writes an editable .ffx (${saved.result.bytes} bytes) and import_project re-opens it`, () => {
+    assert.equal(bundle.format, 'flashfx-project');
+    assert.ok(bundle.assets.length >= 1, 'the imported image must travel inside the .ffx');
+    assert.notEqual(reopened.result.projectId, created.result.projectId);
+    assert.equal(reState.layers.length, withImage.layers.length);
+    assert.ok(reState.layers.some((l) => l.text === 'FlashFX MCP'));
   });
 
   if (process.env.FLASHFX_SMOKE_EXPORT !== '0') {

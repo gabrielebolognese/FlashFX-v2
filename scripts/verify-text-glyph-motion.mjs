@@ -246,6 +246,26 @@ try {
     assert.ok(early < rest * 0.5, `early spread ${early} vs rest ${rest}`);
   });
 
+  check('layer masks reach every glyph stamp (words rising out of a mask); unmasked stamps stay mask-free', () => {
+    const { comp, layer } = build1({ motionBlur: false });
+    const plain = stampsOf(resolveFrame(comp, 15), layer);
+    assert.ok(plain.length > 0 && plain.every((s) => !s.masks || s.masks.length === 0), 'no masks without layer masks');
+    const ps = (name, v) => createProperty(name, Array.isArray(v) ? 'vec2' : 'number', v);
+    layer.masks = [{
+      id: 'm1', name: 'Mask', type: 'rectangle', enabled: true, inverted: false, mode: 'add', points: 6,
+      position: ps('Mask Position', [960, 540]), size: ps('Mask Size', [800, 120]), rotation: ps('Mask Rotation', 0),
+      feather: ps('Mask Feather', 0), opacity: ps('Mask Opacity', 1), innerRadius: ps('Inner Radius', 10), expansion: ps('Mask Expansion', 0),
+    }];
+    const st = stampsOf(resolveFrame(comp, 15), layer);
+    assert.ok(st.length > 0);
+    for (const s of st) {
+      assert.equal(s.masks?.length, 1, `${s.id} carries the layer mask`);
+      assert.equal(s.masks[0].centerX, 960);
+      assert.equal(s.masks[0].sizeY, 120);
+      assert.ok(s.mask, `${s.id} carries the legacy single mask too`);
+    }
+  });
+
   console.log(`\ntext-glyph-motion: all ${passed} checks passed`);
 } finally {
   rmSync(tmp, { recursive: true, force: true });

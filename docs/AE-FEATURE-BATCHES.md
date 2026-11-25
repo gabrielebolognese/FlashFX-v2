@@ -104,6 +104,12 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | B41 | Background gradients - renderer drops stops 5-6 (bug) + 4-corner (mesh-like) gradient (Bricks gap #10) | ⬜ (browser) | light |
 | B42 | Orbit / custom 2.5D debug view + bundle true italic serif faces for accent words (Bricks gap #11) | ⬜ | light |
 | B43 | Text raster bounds: synthesized-italic (oblique) glyphs are clipped at the left/right of the text box, e.g. a word-initial italic "f" loses its hook (found in tutorial sample-01) | ⬜ (browser) | light |
+| B44 | Agent/MCP: one stacking model - render order follows track order, so `reorderLayers` (agent AND the UI's Bring to Front / Send to Back) has no visible effect; make it move the clip's track, add agent stack actions (MCP audit F10) | ⬜ | light |
+| B45 | Agent/MCP: text layout correctness for agents - fixed / fixedWidth text boxes misplace per-glyph (animated, accent) stamps; range reveal presets (type-on, blur-in) show the first glyph before startFrame; optional agent clip length = comp length (MCP audit F9, F12, F13) | ⬜ | medium |
+| B46 | Agent/MCP: authoring ergonomics - `agent.setKeyframes` with per-keyframe ease (bezier / named / hold) in one call, `agent.addShape` with clean defaults (no stroke, name, fill, radius), `agent.measureString` (no layer), background stack ids + tracks in get_state (MCP audit F14, F16, F21, F22) | ⬜ | light |
+| B47 | Agent/MCP: animatable effect parameters - glow intensity / radius / colour, shadow offset / blur / opacity as AnimatableProperty (pulses, logo stings), reachable via addKeyframe (MCP audit F15; colour part shares B33) | ⬜ | medium |
+| B48 | Agent/MCP: full-resolution frame render tool - `agent.renderFrame(frame, w?, h?)` / MCP `render_frame` + `render_strip` (offscreen renderer at comp size, export-quality motion blur, no DOM), for pixel-true taste checks and side-by-sides with reference videos (MCP audit F17) | ⬜ (browser) | medium |
+| B49 | Agent/MCP: session speed and robustness - warm boot (dist by default for production, reuse the tab across create_project), no 10 s first seek / first text batch, video + audio file import headless (`import_media {path}`) (MCP audit F3 remainder, F19) | ⬜ | medium |
 | PB1 | Playback: decoded-frame LRU on the mediabunny path (backward/oscillating scrubs hit the cache instead of re-walking the GOP) | ✅ | medium |
 | PB2a | Playback: keyframe-snap-then-refine on far seeks (kills the scrub freeze) | ✅ | medium |
 | PB2b | Playback: real half-res proxy decode (cuts 4K upload/convert cost during scrub) | ✅ | heavy |
@@ -693,3 +699,58 @@ Source: the YouTube tutorial-channel project compared every technique in the 4 B
 - **Perf weight:** light.
 - **Likely files:** `src/text/` raster/measure code, the per-glyph stamp path.
 - **Verification:** gates + headless screenshot of "free project file" with an italic accent on "free" (no clipped pixels at the box edge).
+
+---
+
+## Agent / MCP gaps (B44-B49, from the Nov 2026 MCP audit)
+
+Source: [`docs/MCP-AUDIT.md`](./MCP-AUDIT.md) - three pieces (kinetic title, lower third, logo reveal) built end to end through the FlashFX MCP server (`mcp/examples/build-*.mjs`). Small blockers were fixed in the audit itself (project save / import, image import, get_layer, measure_text, configureParticles, masks on animated text, black first frame, clean screenshots). These are the bigger ones. Every batch keeps the agent manifest in sync (`AGENT_ACTIONS` + a feature, `verify:agent-manifest`) and extends `gpu:mcp` when it adds an MCP tool.
+
+## B44 - One stacking model (track order vs layer array) ⬜
+- **Delivers:** `editor.reorderLayers` (used by the agent AND by the UI's Bring to Front / Send to Back, `menuDefinitions.ts:400`) only reorders `composition.layers`, but `resolveFrame` stacks by track order (`interpolation.ts` getStructuralCache: highest track order on top, ties by in-point), so the call has no visible effect when layers sit on separate tracks (every newly created layer does). Make reorder move the layers' tracks (reuse `reorderClipToTrackPosition` semantics in one history command), keep array order and track order consistent, and expose `agent.bringToFront` / `sendToBack` / `setStackIndex`.
+- **Source beats:** MCP audit F10 (lower third: shapes created after the texts could not be sent behind them; worked around by creating back to front).
+- **Depends on:** nothing.
+- **Perf weight:** light.
+- **Likely files:** `src/store/editor.ts` (reorderLayers, reorderClipToTrackPosition), `src/core/interpolation.ts` (only to confirm the sort), `src/ui/context-menu/menuDefinitions.ts`, `src/agent/*`.
+- **Verification:** gates + `scripts/verify-stack-order.mjs` (bring-to-front / send-to-back change the resolved draw order; undo restores; timeline tracks stay valid) + `gpu:mcp` check.
+
+## B45 - Text layout correctness for agents ⬜
+- **Delivers:** (a) per-glyph stamps honour `layoutConfig.boundingBox` fixed / fixedWidth and horizontalAlign (today an animated or accent-styled text in a fixed-width box lands at the box top, partly outside its mask); (b) range-selector reveal presets (type-on, blur-in, likely others built on `revealOffset`) hide the first unit before startFrame (today it shows); (c) an agent option on `agent.createProject` (or per call) so new layers span the comp instead of the UI's 4-second clip (today the agent must stretch every layer's outPoint or it vanishes at 4 s).
+- **Source beats:** MCP audit F9, F12, F13 (lower third texts misplaced in a fixed-width box; caption and tagline first glyph visible before their reveal; lower third vanished at frame 120 of 150).
+- **Depends on:** nothing (B36 multi-line stamps can reuse the box placement).
+- **Perf weight:** medium (stamp placement path).
+- **Likely files:** `src/core/interpolation.ts` (expandTextGlyphs), `src/core/textAnimatorPresets.ts`, `src/agent/runtime.ts`, `src/store/editor.ts` (defaultClipFrames caller option).
+- **Verification:** gates + extend `verify:text-glyph-motion` (fixedWidth left / right placement, first glyph hidden before start for every reveal preset) + `gpu:text-kinetic` screenshot.
+
+## B46 - Agent authoring ergonomics ⬜
+- **Delivers:** `agent.setKeyframes(layerId, path, [{ frame, value, ease }])` where ease is a cubic-bezier quad, a named ease or "hold", applied per segment in ONE undo step (today `setKeyframeInterpolation` writes one handle pair to every target, so per-segment eases need one call per segment); `agent.addShape({ type, x, y, w, h, fill, stroke?, radius, name })` with clean defaults (no 1 px grey stroke); `agent.measureString({ text, fontFamily, fontSize, fontWeight, letterSpacing })` without a layer (today: create probe layers, measure, delete); `getState()` adds the background stack (ids, types) and tracks.
+- **Source beats:** MCP audit F14, F16, F21, F22.
+- **Depends on:** nothing.
+- **Perf weight:** light.
+- **Likely files:** `src/agent/runtime.ts`, `src/agent/featureManifest.ts`, `mcp/flashfx-mcp.mjs`, `mcp/AUTHORING.md`.
+- **Verification:** gates + `verify:agent-manifest` + `gpu:agent-runtime` / `gpu:mcp` checks for each new action.
+
+## B47 - Animatable effect parameters ⬜
+- **Delivers:** glow (intensity, radius, colour, threshold) and drop shadow (offset, blur, opacity, colour) as `AnimatableProperty` with a legacy-number migration, resolved per frame, keyframable via `editor.addKeyframe` ("glow.intensity"), Inspector stopwatches.
+- **Source beats:** MCP audit F15 (logo reveal: a glow pulse on the landing is not possible; glow is a static number).
+- **Depends on:** B33 for the colour interpolation (ship the scalar params without it).
+- **Perf weight:** medium (resolve path; keep the static fast path).
+- **Likely files:** `src/core/types.ts`, `src/core/interpolation.ts` (computeGlow / computeShadow), `src/project-system/services/validation.ts`, the Inspector effects panel, `src/agent/featureManifest.ts`.
+- **Verification:** gates + `scripts/verify-effect-keyframes.mjs` (interpolation, legacy projects byte-identical, frame purity).
+
+## B48 - Full-resolution frame render tool ⬜ (browser)
+- **Delivers:** `agent.renderFrame(frame, width?, height?)` rendering one frame through an offscreen `WebGPURenderer` at comp size with export-quality motion blur and no DOM, returned as PNG bytes (streamed like exports); MCP `render_frame { frame, path }` and `render_strip { frames, path }` (a contact sheet). Today `screenshot` captures the scaled preview canvas (about 1392 px wide in a 1920 window) with preview motion blur (a few stepped copies).
+- **Source beats:** MCP audit F17; needed for frame-by-frame replication of the owner's reference videos (side-by-side diffs).
+- **Depends on:** nothing (reuse `initializeOffscreen` + `renderFrameAsync` + readback from the `gpu:*` harnesses).
+- **Perf weight:** medium.
+- **Likely files:** `src/agent/runtime.ts`, `src/engine/renderer.ts` (offscreen path), `src/codec/exporter.ts` (motion-blur sampling), `mcp/flashfx-mcp.mjs`, `mcp/lib/session.mjs`.
+- **Verification:** gates + `gpu:mcp` check: render_frame at frame N equals the exported MP4 frame N within codec tolerance.
+
+## B49 - MCP session speed and robustness ⬜
+- **Delivers:** warm boot (serve `dist` by default when it is fresher than the sources, reuse the tab across `create_project`); remove the 10 s first `seek` and the 8-10 s first text batch on the dev server (prewarm fonts and the text path during boot); headless video / audio import (`import_media { path }` streaming the file into the asset manager in chunks), so footage-based pieces are agent-buildable.
+- **Source beats:** MCP audit F3 (video / audio still UI-only), F19 (timings: create_project 29-34 s, first text batch 8-9 s, first seek about 10 s on dev; steady actions 25-50 ms; 4 s 1080p export 5-12 s).
+- **Depends on:** nothing.
+- **Perf weight:** medium.
+- **Likely files:** `mcp/lib/session.mjs`, `src/agent/runtime.ts`, `src/engine/media/assetManager.ts`, `src/engine/fonts.ts`.
+- **Verification:** `gpu:mcp` timing assertions (cold create_project under a budget on dist) + an import_media check (a short MP4 imports, places and exports).
+

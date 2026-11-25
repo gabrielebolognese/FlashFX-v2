@@ -18,11 +18,16 @@ import { expressionManager } from '../expressions/manager';
 import { TEXT_ANIMATOR_PRESETS, createTextDecode, buildTextAnimatorPreset } from '../core/textAnimatorPresets';
 import { useProjectStore } from '../project-system/hooks/useProjectStore';
 import { loadProjectScene } from '../project-system/services/projects';
+import { buildProjectBundle } from '../project-system/services/ffx';
+import { mediaAssetManager } from '../engine/media/assetManager';
 import { useOnboardingStore } from '../onboarding/store';
 import { usePanelStore, type UiMode } from '../store/panels';
 import { playbackController, useTimelineStore } from '../store/timeline';
 import { exportToMp4, type ExportSettings } from '../codec/exporter';
-import type { Layer, TextLayer } from '../core/types';
+import { PARTICLE_PRESETS } from '../particles/presets';
+import { resolveFrame } from '../core/interpolation';
+import { getTextLayout, measureStringWidth } from '../engine/textAtlas';
+import type { Layer, ParticleLayer, TextLayer } from '../core/types';
 import {
   AGENT_ACTIONS,
   AGENT_MANIFEST_SCHEMA_VERSION,
@@ -78,7 +83,7 @@ export interface FfxAgentApi {
   listFeatures: () => AgentManifest & { catalogs: AgentCatalogs };
   getState: () => AgentStateSummary;
   run: (actionId: string, args?: unknown) => Promise<AgentRunResult>;
-  /** Read a slice of a finished `agent.exportMp4` file (so a CDP / MCP bridge can stream it out). */
+  /** Read a slice of a finished `agent.exportMp4` / `agent.exportProject` file (so a CDP / MCP bridge can stream it out). */
   readExport: (exportId: string, offset: number, length: number) => Promise<AgentExportChunk>;
   /** Free a finished export's bytes. Returns false when the id is unknown. */
   releaseExport: (exportId: string) => boolean;
@@ -185,9 +190,71 @@ const PROJECT_FORMATS = {
 const nextFrame = () => new Promise<void>((r) => { requestAnimationFrame(() => r()); setTimeout(r, 100); });
 const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-/** Finished exports held for readExport (keyed by a counter id, never by time). */
+/** Finished exports (MP4 renders and .ffx project bundles) held for readExport (keyed by a counter id, never by time). */
 const finishedExports = new Map<string, Blob>();
 let exportSeq = 0;
+
+/** Decode base64 (optionally a data: URL) into bytes. */
+function base64ToBytes(data: unknown): Uint8Array<ArrayBuffer> {
+  if (typeof data !== 'string' || !data) throw new Error('"data" must be a non-empty base64 string');
+  const comma = data.startsWith('data:') ? data.indexOf(',') : -1;
+  const binary = atob(comma >= 0 ? data.slice(comma + 1) : data);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+const IMAGE_MIME_BY_EXT: Record<string, string> = {
+  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif', svg: 'image/svg+xml', avif: 'image/avif',
+};
+
+/** SVG cannot go through createImageBitmap(blob): rasterize it to a PNG whose longest side is `size` px. */
+async function rasterizeSvg(svg: Blob, size: number): Promise<Blob> {
+  const url = URL.createObjectURL(svg);
+  try {
+    const img = new Image();
+    img.decoding = 'async';
+    img.src = url;
+    await img.decode();
+    const nw = img.naturalWidth || size;
+    const nh = img.naturalHeight || size;
+    const k = size / Math.max(nw, nh);
+    const w = Math.max(1, Math.round(nw * k));
+    const h = Math.max(1, Math.round(nh * k));
+    const canvas = new OffscreenCanvas(w, h);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('no 2D canvas to rasterize the SVG');
+    ctx.drawImage(img, 0, 0, w, h);
+    return await canvas.convertToBlob({ type: 'image/png' });
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+function requireActiveProjectId(): string {
+  const { activeProjectId, view } = useProjectStore.getState();
+  if (!activeProjectId || view !== 'editor') throw new Error('no project is open (call agent.createProject first)');
+  return activeProjectId;
+}
+
+/** The Viewport attaches its WebGPU renderer asynchronously (after the project opens and the device
+ *  initializes). Until then a seek renders nothing and a screenshot is black, so wait for it. */
+async function waitForRenderer(timeoutMs = 30000): Promise<boolean> {
+  for (let waited = 0; waited < timeoutMs && !playbackController.getRenderer(); waited += 50) await delay(50);
+  return playbackController.getRenderer() !== null;
+}
+
+/** Wait until the editor holds the document of `projectId` (ProjectApp installs it asynchronously). */
+async function waitForOpenedProject(projectId: string): Promise<void> {
+  const doc = await loadProjectScene(projectId);
+  if (!doc) throw new Error('the project scene could not be read back');
+  for (let i = 0; i < 200 && useEditorStore.getState().rootCompositionId !== doc.rootCompositionId; i++) await delay(50);
+  if (useEditorStore.getState().rootCompositionId !== doc.rootCompositionId) throw new Error('timed out waiting for the editor to open the project');
+  await waitForRenderer();
+  await nextFrame();
+  await nextFrame();
+  playbackController.renderCurrentFrame();
+}
 
 /** Composite helpers: each is one undoable step built on real store actions / history commands.
  *  (createProject / exportMp4 are session-level and not undoable, like their UI counterparts.) */
@@ -252,6 +319,7 @@ const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
 
   seek: async (frame) => {
     if (typeof frame !== 'number' || !Number.isFinite(frame)) throw new Error('"frame" must be a number');
+    if (!playbackController.getRenderer() && !(await waitForRenderer())) throw new Error('the preview renderer is not ready (WebGPU did not initialize)');
     useTimelineStore.getState().seekTo(Math.round(frame)); // clamps + renders, like dragging the playhead
     await nextFrame();
     return useTimelineStore.getState().currentFrame;
@@ -285,13 +353,7 @@ const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
     if (!projectId || useProjectStore.getState().view !== 'editor') throw new Error('the project was created but could not be opened');
     if (uiMode === 'starter' || uiMode === 'pro') usePanelStore.getState().setUiMode(uiMode as UiMode);
     // ProjectApp installs the saved document asynchronously: wait until the editor holds it.
-    const doc = await loadProjectScene(projectId);
-    if (!doc) throw new Error('the new project scene could not be read back');
-    for (let i = 0; i < 200 && useEditorStore.getState().rootCompositionId !== doc.rootCompositionId; i++) await delay(50);
-    if (useEditorStore.getState().rootCompositionId !== doc.rootCompositionId) throw new Error('timed out waiting for the editor to open the new project');
-    await nextFrame();
-    await nextFrame();
-    playbackController.renderCurrentFrame();
+    await waitForOpenedProject(projectId);
     const comp = useEditorStore.getState().composition;
     return { projectId, compositionId: comp.id, width: comp.settings.width, height: comp.settings.height, fps: comp.settings.frameRate, durationFrames: comp.settings.durationFrames };
   },
@@ -309,6 +371,121 @@ const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
     const exportId = `export-${++exportSeq}`;
     finishedExports.set(exportId, blob);
     return { exportId, bytes: blob.size, mimeType: blob.type || 'video/mp4', audioDropped };
+  },
+
+  configureParticles: (layerId, presetId, overrides, seed) => {
+    const layer = requireLayer(layerId);
+    if (layer.type !== 'particle') throw new Error(`layer "${String(layerId)}" is a ${layer.type}, not a particle layer`);
+    const particle = (layer as ParticleLayer).particle;
+    let base: Record<string, unknown>;
+    let preset = particle.preset;
+    if (presetId !== undefined && presetId !== null) {
+      const make = typeof presetId === 'string' ? PARTICLE_PRESETS[presetId] : undefined;
+      if (!make) throw new Error(`unknown particle preset "${String(presetId)}"; try ${Object.keys(PARTICLE_PRESETS).join(', ')}`);
+      base = make() as unknown as Record<string, unknown>;
+      preset = presetId as string;
+    } else {
+      try { base = JSON.parse(particle.emitterConfig) as Record<string, unknown>; } catch { base = {}; }
+    }
+    if (overrides !== undefined && (typeof overrides !== 'object' || overrides === null || Array.isArray(overrides))) {
+      throw new Error('"overrides" must be an object of EmitterConfig fields (src/particles/types.ts)');
+    }
+    const next = { ...base, ...(overrides as Record<string, unknown> | undefined) };
+    const nextSeed = typeof seed === 'number' && Number.isFinite(seed) ? Math.round(seed) : particle.seed;
+    // One field write = one undo step (preset name, seed and the emitter JSON change together).
+    useEditorStore.getState().updateLayerProperty(layer.id, 'particle', { preset, seed: nextSeed, emitterConfig: JSON.stringify(next) });
+    return { preset, seed: nextSeed, config: next };
+  },
+
+  measureText: (layerId, frame) => {
+    const layer = requireTextLayer(layerId);
+    const ed = useEditorStore.getState();
+    const f = typeof frame === 'number' && Number.isFinite(frame) ? Math.round(frame) : useTimelineStore.getState().currentFrame;
+    // Resolve exactly like the renderer, with animators / decode stripped and the spans collapsed to the
+    // base style so the layer resolves to ONE text quad (animated or mixed-style text otherwise expands
+    // into per-glyph stamps). An accent word in another face can shift the real width slightly.
+    const fullText = layer.content.spans.map((sp) => sp.text).join('');
+    const first = layer.content.spans[0];
+    const content = first ? { ...layer.content, spans: [{ ...first, text: fullText }] } : layer.content;
+    const probe = { ...layer, content, animators: [], decode: undefined, masks: [], textPath: undefined, inPoint: Math.min(layer.inPoint, f), outPoint: Math.max(layer.outPoint, f + 1) };
+    const comp = { ...ed.composition, layers: ed.composition.layers.map((l) => (l.id === layer.id ? probe : l)) };
+    const resolved = resolveFrame(comp, f, { getComposition: ed.getComposition }).layers.find((l) => l.id === layer.id);
+    if (!resolved?.text) throw new Error('the text did not resolve at this frame');
+    const layout = getTextLayout(resolved.text);
+    const lineWidths = layout.lines.map((line) => measureStringWidth(resolved.text!, line));
+    const t = resolved.transform;
+    const inkWidth = Math.max(0, ...lineWidths);
+    const inkHeight = layout.lines.length * layout.lineHeightPx;
+    // The renderer centres the text quad on the layer position (scale 1, no rotation assumed here).
+    const cx = t.positionX;
+    const cy = t.positionY;
+    return {
+      frame: f,
+      center: [cx, cy],
+      box: { width: layout.canvasWidth, height: layout.canvasHeight, left: cx - layout.canvasWidth / 2, top: cy - layout.canvasHeight / 2 },
+      ink: { width: inkWidth, height: inkHeight, left: cx - inkWidth / 2, right: cx + inkWidth / 2, top: cy - inkHeight / 2, bottom: cy + inkHeight / 2 },
+      lines: layout.lines,
+      lineWidths,
+      lineHeightPx: layout.lineHeightPx,
+      fontSize: resolved.text.fontSize,
+      scale: [t.scaleX, t.scaleY],
+      rotation: t.rotation,
+    };
+  },
+
+  getLayer: (layerId) => {
+    // Read-only: the full layer JSON (every property path an agent can set or keyframe), deep-copied
+    // so the caller can never mutate store state through it.
+    return structuredClone(requireLayer(layerId));
+  },
+
+  saveProject: async () => {
+    const projectId = requireActiveProjectId();
+    await useProjectStore.getState().saveCurrentProject();
+    return { projectId, compositions: Object.keys(useEditorStore.getState().getDocument().compositions).length };
+  },
+
+  exportProject: async () => {
+    const projectId = requireActiveProjectId();
+    // Persist first (so IndexedDB matches), then bundle the LIVE document: every composition, the
+    // project's media binaries and the preview, exactly what File > Download Project (.ffx) writes.
+    await useProjectStore.getState().saveCurrentProject();
+    const { blob, fileName } = await buildProjectBundle(projectId, useEditorStore.getState().getDocument());
+    const exportId = `export-${++exportSeq}`;
+    finishedExports.set(exportId, blob);
+    return { exportId, bytes: blob.size, fileName, projectId, mimeType: 'application/json' };
+  },
+
+  importProject: async (data, fileName) => {
+    const name = typeof fileName === 'string' && fileName.trim() ? fileName.trim() : 'project.ffx';
+    const file = new File([base64ToBytes(data)], name, { type: 'application/json' });
+    if (useOnboardingStore.getState().active) useOnboardingStore.getState().complete();
+    const projects = useProjectStore.getState();
+    if (projects.view === 'editor') await projects.closeProject(); // saves the open project first
+    const metadata = await useProjectStore.getState().importProject(file);
+    await useProjectStore.getState().openProject(metadata.id);
+    if (useProjectStore.getState().activeProjectId !== metadata.id) throw new Error('the project was imported but could not be opened');
+    await waitForOpenedProject(metadata.id);
+    const comp = useEditorStore.getState().composition;
+    return { projectId: metadata.id, name: metadata.name, compositionId: comp.id, layers: comp.layers.length, width: comp.settings.width, height: comp.settings.height };
+  },
+
+  importImage: async (data, fileName, mimeType, rasterSize) => {
+    const projectId = requireActiveProjectId();
+    const name = typeof fileName === 'string' && fileName.trim() ? fileName.trim() : 'image.png';
+    const ext = name.split('.').pop()?.toLowerCase() ?? '';
+    const type = typeof mimeType === 'string' && mimeType ? mimeType : IMAGE_MIME_BY_EXT[ext];
+    if (!type || !type.startsWith('image/')) throw new Error(`cannot tell the image type of "${name}"; pass mimeType (png, jpeg, webp, gif, svg)`);
+    let blob: Blob = new Blob([base64ToBytes(data)], { type });
+    let finalName = name;
+    if (type === 'image/svg+xml') {
+      const size = typeof rasterSize === 'number' && rasterSize > 0 ? Math.min(8192, Math.round(rasterSize)) : 1024;
+      blob = await rasterizeSvg(blob, size);
+      finalName = `${name.replace(/\.svg$/i, '')}.png`;
+    }
+    const file = new File([blob], finalName, { type: blob.type || type });
+    const { assetId, metadata } = await mediaAssetManager.importImage(file, projectId);
+    return { assetId, width: metadata.width, height: metadata.height, name: finalName };
   },
 
   removeExpression: (layerId, propertyName) => {

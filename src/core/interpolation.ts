@@ -1356,7 +1356,15 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
         const glyphBlurCtx = glyphMotionBlurContext(layer, layers, motionPaths, frame, settings.shutterAngle, settings.shutterPhase);
         const glyphStamps = expandTextGlyphs(layer, resolvedText, worldTransform, frame, common, textPathData, glyphBlurCtx);
         if (glyphStamps) {
-          resolvedLayers.push(...glyphStamps);
+          // Layer masks are composition-space, so every glyph stamp carries the layer's resolved masks
+          // unchanged (words rising out of a mask). Without this, adding an animator dropped the masks.
+          const stampMasks = resolveMasks(layer.masks, frame);
+          if (stampMasks.length > 0) {
+            const stampMask = resolveMask(layer.masks, frame);
+            resolvedLayers.push(...glyphStamps.map((s) => ({ ...s, mask: stampMask, masks: stampMasks })));
+          } else {
+            resolvedLayers.push(...glyphStamps);
+          }
         } else {
           resolvedLayers.push({
             id: layer.id,

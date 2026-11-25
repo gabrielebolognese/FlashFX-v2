@@ -24,6 +24,8 @@ const INSTRUCTIONS = [
   'New layers: read activeLayerId from the result of editor.add*. Time is in frames, positions in comp pixels (origin top-left).',
   'In run_actions, a string argument "$N.path" (or "$last.path") is replaced by that value from the Nth earlier result, e.g. "$0.activeLayerId".',
   'Check your work with screenshot (it returns the image) and get_state; export_mp4 renders through the real exporter.',
+  'Save the editable project with export_project {path} (a .ffx file the owner can open in FlashFX); import_project {path} re-opens one; import_image {path} brings a PNG/JPEG/WebP/SVG into the project.',
+  'Authoring guide: mcp/AUTHORING.md in the FlashFX repo.',
 ].join(' ');
 
 const config = readConfig();
@@ -97,6 +99,20 @@ const TOOLS = [
     inputSchema: { type: 'object', properties: {} },
     annotations: { readOnlyHint: true },
     handler: async () => ok(await session.state()),
+  },
+  {
+    name: 'get_layer',
+    description: 'Full JSON of one layer (agent.getLayer): transform, text content / shape geometry, animators, masks, effects and every keyframe. Use it to find the exact dot-paths for updateLayerProperty / addKeyframe and to verify an edit.',
+    inputSchema: { type: 'object', required: ['layerId'], properties: { layerId: { type: 'string' } } },
+    annotations: { readOnlyHint: true },
+    handler: async ({ layerId }) => fromRun(await session.run('agent.getLayer', { layerId })),
+  },
+  {
+    name: 'measure_text',
+    description: 'Measure a text layer as the renderer lays it out (agent.measureText): centre, ink box (left/right/top/bottom of the lines), per-line widths, line height. Use it to align shapes, size masks and cards, or left-align text by computing its centre.',
+    inputSchema: { type: 'object', required: ['layerId'], properties: { layerId: { type: 'string' }, frame: { type: 'number', description: 'Default: the playhead.' } } },
+    annotations: { readOnlyHint: true },
+    handler: async ({ layerId, frame }) => fromRun(await session.run('agent.measureText', frame === undefined ? { layerId } : { layerId, frame })),
   },
   {
     name: 'create_project',
@@ -184,11 +200,12 @@ const TOOLS = [
         path: { type: 'string', description: 'Where to write the PNG (default: a temp file).' },
         region: { type: 'string', enum: ['window', 'canvas'], default: 'window' },
         inline: { type: 'boolean', default: true, description: 'Also return a downscaled JPEG in the result.' },
+        clean: { type: 'boolean', description: 'Hide DOM overlays (selection handles, the Flash character, toasts) during the capture. Default: true for region "canvas", false for "window".' },
       },
     },
     annotations: { readOnlyHint: true },
-    handler: async ({ path, region, inline = true }) => {
-      const s = await session.screenshot({ path, region, inline });
+    handler: async ({ path, region, inline = true, clean }) => {
+      const s = await session.screenshot({ path, region, inline, clean });
       const { inlineJpeg, ...info } = s;
       return ok(info, inlineJpeg ? [{ type: 'image', data: inlineJpeg, mimeType: 'image/jpeg' }] : []);
     },
@@ -211,6 +228,64 @@ const TOOLS = [
     handler: async ({ path, ...opts }) => {
       if (typeof path !== 'string' || !path) return fail('"path" is required');
       return fromRun(await session.exportMp4(path, opts));
+    },
+  },
+  {
+    name: 'save_project',
+    description: 'Save the open project to the app local storage now (File > Save). The app also autosaves.',
+    inputSchema: { type: 'object', properties: {} },
+    handler: async () => fromRun(await session.run('agent.saveProject')),
+  },
+  {
+    name: 'export_project',
+    description: 'Write the open project to disk as an editable .ffx file (every composition + imported media), the same file as File > Download Project. Open it in FlashFX with File > Import Project, or with import_project.',
+    inputSchema: {
+      type: 'object',
+      required: ['path'],
+      properties: { path: { type: 'string', description: 'Output .ffx path on this machine.' } },
+    },
+    handler: async ({ path }) => {
+      if (typeof path !== 'string' || !path) return fail('"path" is required');
+      return fromRun(await session.exportProject(path));
+    },
+  },
+  {
+    name: 'import_project',
+    description: 'Import a .ffx project file from disk as a new local project and open it in the editor (File > Import Project). Saves and closes the open project first.',
+    inputSchema: {
+      type: 'object',
+      required: ['path'],
+      properties: { path: { type: 'string', description: '.ffx file on this machine.' } },
+    },
+    handler: async ({ path }) => {
+      if (typeof path !== 'string' || !path) return fail('"path" is required');
+      return fromRun(await session.importFile('agent.importProject', path));
+    },
+  },
+  {
+    name: 'import_image',
+    description: 'Import an image file from disk (PNG, JPEG, WebP, GIF, or SVG, which is rasterized) into the open project and, by default, place it as a new image layer. Returns assetId (and the new layer id as activeLayerId when placed).',
+    inputSchema: {
+      type: 'object',
+      required: ['path'],
+      properties: {
+        path: { type: 'string', description: 'Image file on this machine.' },
+        place: { type: 'boolean', default: true, description: 'Also add it as an image layer (editor.addImageFromAsset).' },
+        x: { type: 'number', description: 'Layer centre X in comp px (default: comp centre).' },
+        y: { type: 'number', description: 'Layer centre Y in comp px (default: comp centre).' },
+        rasterSize: { type: 'number', description: 'SVG only: longest side of the rasterized PNG in px (default 1024).' },
+      },
+    },
+    handler: async ({ path, place = true, x, y, rasterSize }) => {
+      if (typeof path !== 'string' || !path) return fail('"path" is required');
+      const imp = await session.importFile('agent.importImage', path, rasterSize === undefined ? {} : { rasterSize });
+      if (!imp?.ok || !place) return fromRun(imp);
+      const st = await session.state();
+      const placed = await session.run('editor.addImageFromAsset', {
+        assetId: imp.result.assetId, x: x ?? Math.round(st.width / 2), y: y ?? Math.round(st.height / 2),
+      });
+      if (!placed?.ok) return fromRun(placed);
+      return ok({ ...imp, placed: true, activeLayerId: placed.activeLayerId, undoDepth: placed.undoDepth });
     },
   },
   {

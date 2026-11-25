@@ -34,6 +34,13 @@ export type AgentHelperMethod =
   | 'removeExpression'
   | 'createProject'
   | 'exportMp4'
+  | 'getLayer'
+  | 'measureText'
+  | 'configureParticles'
+  | 'saveProject'
+  | 'exportProject'
+  | 'importProject'
+  | 'importImage'
   | 'seek'
   | 'play'
   | 'pause';
@@ -165,6 +172,39 @@ export const AGENT_ACTIONS: readonly AgentActionSpec[] = [
       { name: 'frameRate', type: 'number', optional: true },
       { name: 'bitrate', type: 'number', optional: true, description: 'Bits per second, default 8000000.' },
       { name: 'includeAudio', type: 'boolean', optional: true, description: 'Default true (only matters when the comp has audio).' },
+    ] },
+
+  { id: 'agent.getLayer', store: 'agent', method: 'getLayer', undoable: false,
+    returns: 'the full layer object (deep copy): transform, content / shape, animators, masks, effects, keyframes',
+    description: 'Read every field of one layer, so you can see the exact dot-paths updateLayerProperty / addKeyframe accept and verify what an action produced. Read-only.',
+    params: [LAYER_ID] },
+  { id: 'agent.measureText', store: 'agent', method: 'measureText', undoable: false,
+    returns: '{ frame, center, box {width,height,left,top}, ink {width,height,left,right,top,bottom}, lines, lineWidths, lineHeightPx, fontSize, scale, rotation }',
+    description: 'Measure a text layer exactly as the renderer lays it out (comp px), so you can align other layers, size masks and cards, or left-align by centre. ink = the lines (width of the widest line x line count); box = the drawn quad incl. padding. Assumes scale 1 / no rotation for the edges. Read-only.',
+    params: [LAYER_ID, { name: 'frame', type: 'number', optional: true, description: 'Default: the playhead.' }] },
+  { id: 'agent.saveProject', store: 'agent', method: 'saveProject', undoable: false,
+    returns: '{ projectId, compositions }',
+    description: 'Save the open project (every composition) to local storage now (like File > Save, Ctrl+S). The app also autosaves.',
+    params: [] },
+  { id: 'agent.exportProject', store: 'agent', method: 'exportProject', undoable: false,
+    returns: '{ exportId, bytes, fileName, projectId, mimeType }; read the file with __ffxAgent.readExport(exportId, offset, length)',
+    description: 'Save, then bundle the open project as an editable .ffx file (every composition + imported media + preview), the same bundle as File > Download Project (.ffx). Re-open it with agent.importProject or File > Import Project.',
+    params: [] },
+  { id: 'agent.importProject', store: 'agent', method: 'importProject', undoable: false,
+    returns: '{ projectId, name, compositionId, layers, width, height }',
+    description: 'Import a .ffx project (base64 of the file bytes) as a new local project and open it in the editor (like File > Import Project). Saves and closes any open project first.',
+    params: [
+      { name: 'data', type: 'string', description: 'Base64 of the .ffx file (a data: URL is accepted too).' },
+      { name: 'fileName', type: 'string', optional: true },
+    ] },
+  { id: 'agent.importImage', store: 'agent', method: 'importImage', undoable: false,
+    returns: '{ assetId, width, height, name }; place it with editor.addImageFromAsset(assetId, x, y)',
+    description: 'Import an image (base64 bytes: PNG, JPEG, WebP, GIF or SVG) into the open project media pool. SVG is rasterized to a PNG whose longest side is rasterSize px (default 1024).',
+    params: [
+      { name: 'data', type: 'string', description: 'Base64 of the image file (a data: URL is accepted too).' },
+      { name: 'fileName', type: 'string', description: 'Used for the asset name and, without mimeType, to infer the type from the extension.' },
+      { name: 'mimeType', type: 'string', optional: true },
+      { name: 'rasterSize', type: 'number', optional: true, description: 'SVG only: longest side of the rasterized PNG in px (default 1024, max 8192).' },
     ] },
 
   // ----- composition / playback -----
@@ -338,6 +378,11 @@ export const AGENT_ACTIONS: readonly AgentActionSpec[] = [
   // ----- particles / procedural / patterns -----
   { id: 'editor.addParticleLayer', store: 'editor', method: 'addParticleLayer', undoable: true, params: [], returns: 'new layer id (activeLayerId)',
     description: 'Add a particle emitter layer.' },
+  { id: 'agent.configureParticles', store: 'agent', method: 'configureParticles', undoable: true,
+    returns: '{ preset, seed, config } (the full emitter config now on the layer)',
+    description: 'Set a particle layer emitter in one undo step: start from a preset (or the current config when presetId is null) and merge EmitterConfig overrides, e.g. { spawnRate: 0, burstCount: 120, emitterShape: "circle", emitterRadius: 40, colorOverLife: [...] }. Fields: src/particles/types.ts.',
+    params: [LAYER_ID, { name: 'presetId', type: 'string | null', optional: true, catalog: 'particlePresets' },
+      { name: 'overrides', type: 'Partial<EmitterConfig>', optional: true }, { name: 'seed', type: 'number', optional: true }] },
   { id: 'editor.addProceduralBinding', store: 'editor', method: 'addProceduralBinding', undoable: true,
     description: 'Attach a procedural motion preset (oscillate, orbit, noise drift...) to a layer.',
     params: [LAYER_ID, { name: 'presetName', type: 'string', catalog: 'proceduralPresets' }] },
@@ -459,7 +504,7 @@ export const AGENT_FEATURES: readonly AgentFeature[] = [
   { id: 'layers.edit', area: 'layers', name: 'Select, rename, delete, duplicate, reorder',
     description: 'Core layer management and any property edit by dot-path.',
     ui: 'Canvas / timeline selection; Edit menu; Object > Bring to Front / Send to Back; Inspector fields',
-    actions: ['editor.selectLayer', 'editor.selectAllLayers', 'editor.deselectAll', 'editor.updateLayerProperty', 'editor.renameLayer', 'editor.removeLayer', 'editor.removeLayers', 'editor.duplicateSelection', 'editor.reorderLayers'],
+    actions: ['agent.getLayer', 'editor.selectLayer', 'editor.selectAllLayers', 'editor.deselectAll', 'editor.updateLayerProperty', 'editor.renameLayer', 'editor.removeLayer', 'editor.removeLayers', 'editor.duplicateSelection', 'editor.reorderLayers'],
     status: 'shipped' },
   { id: 'layers.groups-parenting', area: 'layers', name: 'Groups, parenting and anchor point',
     description: 'Group layers, parent one layer to another, move the pivot.',
@@ -473,7 +518,7 @@ export const AGENT_FEATURES: readonly AgentFeature[] = [
   { id: 'text.add', area: 'text', name: 'Text layers',
     description: 'Point or paragraph text with per-span font, weight, size, colour, stroke, letter spacing, line height.',
     ui: 'Canvas toolbar > Text (T), click the canvas and type; style in Inspector > Text',
-    actions: ['editor.addText', 'editor.createQuickText', 'agent.setTextContent', 'editor.updateLayerProperty'], status: 'shipped' },
+    actions: ['editor.addText', 'editor.createQuickText', 'agent.setTextContent', 'agent.measureText', 'editor.updateLayerProperty'], status: 'shipped' },
   { id: 'text.animators', area: 'text', name: 'Text animators (range selectors)',
     description: 'After-Effects-style per-character / word / line animators driven by a range selector: type-on, fade, pop, cascade, slide, rise, blur, tumble. Split by character, character excluding spaces, word or line; deltas for position, scale, rotation, 3D rotation, blur, opacity and tracking in em (tracking burst); selector shapes (ramp up/down, triangle, round, smooth, square) with ease high/low; animators stack.',
     ui: 'Select a text layer > Inspector (properties) > Animators section > pick a preset (edit split, deltas incl. Tracking em, selector shape / ease / reveal timing there)',
@@ -559,7 +604,8 @@ export const AGENT_FEATURES: readonly AgentFeature[] = [
   // particles / procedural
   { id: 'particles.emitter', area: 'particles', name: 'Particles',
     description: 'GPU particle emitter with presets (confetti, sparks, snow, smoke...).',
-    ui: 'Canvas toolbar > Particle; Inspector > Particles', actions: ['editor.addParticleLayer', 'editor.updateLayerProperty'], status: 'browser-gated' },
+    ui: 'Canvas toolbar > Particle; Inspector > Particles', actions: ['editor.addParticleLayer', 'agent.configureParticles', 'editor.updateLayerProperty'], status: 'browser-gated',
+    notes: 'A new particle layer starts as the "fire" preset. Use agent.configureParticles(layerId, presetId, overrides) instead of hand-writing particle.emitterConfig (a JSON string).' },
   { id: 'particles.procedural', area: 'particles', name: 'Procedural motion',
     description: 'Attach procedural motion (oscillation, orbit, noise drift) without keyframes.',
     ui: 'Inspector > Loop tab', actions: ['editor.addProceduralBinding'], status: 'shipped' },
@@ -621,8 +667,8 @@ export const AGENT_FEATURES: readonly AgentFeature[] = [
   // media
   { id: 'media.import', area: 'media', name: 'Import images, video, audio',
     description: 'Import files (drag & drop or toolbar) into the media pool; WebCodecs decode.',
-    ui: 'Canvas toolbar > Image / Video; drag files onto the canvas; Media Pool', actions: [], status: 'browser-gated',
-    notes: 'File import needs a real File from the browser; place imported assets with the actions below.' },
+    ui: 'Canvas toolbar > Image / Video; drag files onto the canvas; Media Pool', actions: ['agent.importImage'], status: 'partial',
+    notes: 'Images (incl. SVG, rasterized) import headlessly with agent.importImage (MCP: import_image {path}); place them with editor.addImageFromAsset. Video and audio import still need a real File from the browser (UI only).' },
   { id: 'media.place', area: 'media', name: 'Place imported media',
     description: 'Put an imported asset on the canvas and fit it.', ui: 'Drag from the Media Pool',
     actions: ['editor.addImageFromAsset', 'editor.addVideoFromAsset', 'editor.fitLayerToCanvas'], status: 'shipped' },
@@ -633,8 +679,9 @@ export const AGENT_FEATURES: readonly AgentFeature[] = [
     ui: 'File > Export Video... (Ctrl+E)', actions: ['agent.exportMp4'], status: 'browser-gated',
     notes: 'Needs WebGPU + WebCodecs in the tab. agent.exportMp4 runs the same exporter; stream the bytes out with __ffxAgent.readExport.' },
   { id: 'export.project', area: 'export', name: 'Save / download project',
-    description: 'Projects autosave to IndexedDB; download as a .ffx file.', ui: 'File > Save (Ctrl+S) / Download Project (.ffx)',
-    actions: [], status: 'shipped' },
+    description: 'Projects autosave to IndexedDB; download as an editable .ffx file and import it back.', ui: 'File > Save (Ctrl+S) / Download Project (.ffx) / Import Project (.ffx)',
+    actions: ['agent.saveProject', 'agent.exportProject', 'agent.importProject'], status: 'shipped',
+    notes: 'MCP: save_project, export_project {path} writes the .ffx to disk, import_project {path} opens one. The .ffx holds every composition plus imported media, so the agent-built piece stays fully editable in the app.' },
 
   // templates
   { id: 'templates.animation', area: 'templates', name: 'Animation templates',
@@ -659,12 +706,15 @@ export function buildAgentManifest(): AgentManifest {
     app: { name: 'FlashFX Studio', url: 'https://editor.flashfx.app' },
     conventions: {
       units: 'Positions and sizes are composition pixels, origin top-left, Y down. Time is in frames (see getState().fps).',
+      timing: 'New layers are 4-second clips (outPoint = inPoint + 4 s, capped at the comp length), like the UI. In a longer comp set editor.updateLayerProperty(layerId, "outPoint", durationFrames) or the layer disappears after 4 s.',
+      textBox: 'createQuickText / addText make an auto-size text box centred on x (y = the line box centre). An auto box is exactly as wide as the text, so horizontalAlign "left" only takes effect with a fixed box: layoutConfig.boundingBox = { type: "fixedWidth", width } and x = left edge + width / 2.',
+      shapes: 'addShapeWithDimensions takes the shape CENTRE. New shapes carry a 1 px grey stroke: set "shape.strokeWidth.defaultValue" to 0 for clean fills.',
       colors: 'RGBA arrays with components 0..1, e.g. [1, 0.8, 0.2, 1].',
       scale: 'Scale is a [sx, sy] multiplier: 1 = 100%.',
       runtime: 'In the editor tab: window.__ffxAgent.listFeatures(), .getState(), .run(actionId, args). args is an object keyed by param name or a positional array.',
       undo: 'Actions marked undoable push one normal history command; history.undo reverts it.',
       textStyle: 'Text: font size / line height / letter spacing / stroke width are animatable and live in animOverrides (set path "animOverrides.fontSize.defaultValue", keyframe path "animOverrides.fontSize"). Colour, font family, weight and gradient fill live in "content.spans.0.style.*" (e.g. "content.spans.0.style.color").',
-      mcp: 'A local MCP server (mcp/flashfx-mcp.mjs in the repo, npm run mcp:flashfx) drives this runtime over the Chrome DevTools Protocol: list_features, get_state, create_project, run_action(s), seek, play, pause, screenshot, export_mp4, undo.',
+      mcp: 'A local MCP server (mcp/flashfx-mcp.mjs in the repo, npm run mcp:flashfx) drives this runtime over the Chrome DevTools Protocol: list_features, get_state, create_project, run_action(s), seek, play, pause, screenshot, export_mp4, export_project, import_project, import_image, save_project, undo.',
     },
     features: AGENT_FEATURES,
     actions: AGENT_ACTIONS,

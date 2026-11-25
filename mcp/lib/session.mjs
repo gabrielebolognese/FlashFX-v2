@@ -12,7 +12,7 @@ import { createWriteStream, existsSync, mkdirSync, mkdtempSync, readFileSync, rm
 import { createServer } from 'node:http';
 import { createServer as createNetServer } from 'node:net';
 import { tmpdir } from 'node:os';
-import { dirname, extname, join, normalize, resolve } from 'node:path';
+import { basename, dirname, extname, join, normalize, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { findChrome } from '../../scripts/lib/headless-gpu.mjs';
 
@@ -328,8 +328,20 @@ export class FlashFxSession {
   }
 
   /** PNG of the window (or just the preview canvas). Returns { path, width, height, canvasRect, inlineJpeg }. */
-  async screenshot({ path, region = 'window', inline = true } = {}) {
+  async screenshot({ path, region = 'window', inline = true, clean } = {}) {
     await this.ensure();
+    // clean (default for region "canvas"): hide every DOM overlay (selection gizmos, the Flash character,
+    // toasts) for the capture so the PNG is only the rendered frame.
+    const hide = clean ?? region === 'canvas';
+    if (hide) await this.cdp.evaluate(`(() => { let s = document.getElementById('__ffx_clean_shot'); if (!s) { s = document.createElement('style'); s.id = '__ffx_clean_shot'; document.head.appendChild(s); } s.textContent = 'body * { visibility: hidden !important; } canvas[data-ffx-canvas] { visibility: visible !important; }'; return true; })()`);
+    try {
+      return await this.captureScreenshot({ path, region, inline });
+    } finally {
+      if (hide) await this.cdp.evaluate(`(() => { document.getElementById('__ffx_clean_shot')?.remove(); return true; })()`).catch(() => {});
+    }
+  }
+
+  async captureScreenshot({ path, region, inline }) {
     await this.cdp.evaluate(raf2);
     // The preview canvas is tagged data-ffx-canvas in Viewport.tsx; clamp it to the visible window.
     const canvasRect = await this.cdp.evaluate(`(() => {
@@ -367,6 +379,30 @@ export class FlashFxSession {
     const r = await this.run('agent.exportMp4', opts, timeoutMs);
     if (!r?.ok) return r;
     const { exportId, bytes, audioDropped } = r.result;
+    const outPath = await this.streamExport(exportId, bytes, path);
+    return { ok: true, actionId: 'agent.exportMp4', result: { path: outPath, bytes, audioDropped } };
+  }
+
+  /** Bundle the open project as an editable .ffx (agent.exportProject) and write it to `path`. */
+  async exportProject(path, timeoutMs = 600000) {
+    const r = await this.run('agent.exportProject', undefined, timeoutMs);
+    if (!r?.ok) return r;
+    const { exportId, bytes, fileName, projectId } = r.result;
+    const outPath = await this.streamExport(exportId, bytes, path);
+    return { ok: true, actionId: 'agent.exportProject', result: { path: outPath, bytes, fileName, projectId } };
+  }
+
+  /** Read a local file and pass it to an agent import action as base64. */
+  async importFile(actionId, path, extraArgs = {}, timeoutMs = 600000) {
+    const inPath = resolve(path);
+    if (!existsSync(inPath)) throw new Error(`no such file: ${inPath}`);
+    const data = readFileSync(inPath).toString('base64');
+    const fileName = basename(inPath);
+    return this.run(actionId, { data, fileName, ...extraArgs }, timeoutMs, { retryOnReload: false });
+  }
+
+  /** Stream a finished in-page export (readExport chunks) to a file, then free it in the page. */
+  async streamExport(exportId, bytes, path) {
     const outPath = resolve(path);
     mkdirSync(dirname(outPath), { recursive: true });
     const out = createWriteStream(outPath);
@@ -380,7 +416,7 @@ export class FlashFxSession {
       await new Promise((res) => out.end(res));
       await this.cdp.evaluate(`window.__ffxAgent.releaseExport(${JSON.stringify(exportId)})`).catch(() => {});
     }
-    return { ok: true, actionId: 'agent.exportMp4', result: { path: outPath, bytes, audioDropped } };
+    return outPath;
   }
 
   recentLogs(n = 20) { return this.cdp ? this.cdp.logs.slice(-n) : []; }

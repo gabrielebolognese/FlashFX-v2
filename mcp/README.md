@@ -69,13 +69,19 @@ seen (through `localStorage`, before the app loads). An existing choice is never
 | --- | --- | --- |
 | `list_features {area?, compact?}` | `/agent/features.json` | Features (UI path, status), action ids with params, live preset catalogs. Start here. |
 | `get_state` | `__ffxAgent.getState()` | Size, fps, duration, playhead, selection, layers (id, name, type, text), undo/redo. |
+| `get_layer {layerId}` | `agent.getLayer` | Full JSON of one layer: every property path you can set or keyframe. |
+| `measure_text {layerId, frame?}` | `agent.measureText` | Text laid out exactly like the renderer: centre, ink box, line widths. For alignment and sizing. |
 | `create_project {name?, format: long\|short, frameRate?, durationFrames?, uiMode?}` | `agent.createProject` | long = 1920x1080, short = 1080x1920. Saves and closes any open project first. |
 | `run_action {actionId, args?}` | `__ffxAgent.run` | One whitelisted action. args are keyed by param name, or a positional array. |
 | `run_actions {actions[], stopOnError?}` | `__ffxAgent.run` x N | In order. A string arg `"$N.path"` / `"$last.path"` is replaced from an earlier result, e.g. `"$0.activeLayerId"`. |
 | `seek {frame}` | `agent.seek` | Moves the real playhead (timeline `playbackController`) and renders. |
 | `play` / `pause` | `agent.play` / `agent.pause` | Preview playback. |
-| `screenshot {path?, region: window\|canvas, inline?}` | CDP `Page.captureScreenshot` | Writes a PNG, returns a downscaled JPEG preview plus the preview canvas rect. |
+| `screenshot {path?, region: window\|canvas, inline?, clean?}` | CDP `Page.captureScreenshot` | Writes a PNG, returns a downscaled JPEG preview plus the preview canvas rect. `clean` (default for `canvas`) hides DOM overlays during the capture. |
 | `export_mp4 {path, width?, height?, frameRate?, bitrate?, includeAudio?}` | `agent.exportMp4` | The real exporter (WebGPU + WebCodecs, same as File > Export Video). The bytes are streamed out with `__ffxAgent.readExport`. |
+| `export_project {path}` | `agent.exportProject` | Writes the editable `.ffx` (every composition + imported media), the same file as File > Download Project. |
+| `import_project {path}` | `agent.importProject` | Opens a `.ffx` from disk as a new project. |
+| `save_project` | `agent.saveProject` | Saves to the app's local storage now (the app also autosaves). |
+| `import_image {path, place?, x?, y?, rasterSize?}` | `agent.importImage` (+ `editor.addImageFromAsset`) | PNG / JPEG / WebP / GIF, or SVG rasterized to `rasterSize` px (default 1024). |
 | `undo` / `redo` | `history.undo` / `history.redo` | |
 | `close_browser` | | Closes Chrome. The next call relaunches it. |
 
@@ -108,13 +114,23 @@ FLASHFX_HEADED=1 FLASHFX_SERVER=dist npm run gpu:mcp   # watch it in a real wind
 
 It spawns the server over real MCP stdio, creates a project, adds a styled and keyframed text layer with
 `run_actions`, seeks, screenshots, checks that the text changed the preview canvas pixels, tests
-undo/redo, and exports a 1-second MP4 through the real exporter (`FLASHFX_SMOKE_EXPORT=0` skips that).
+undo/redo, reads the layer back (`get_layer`, `measure_text`), imports the FlashFX SVG mark, writes the
+project to a `.ffx` and re-opens it, and exports a 1-second MP4 through the real exporter
+(`FLASHFX_SMOKE_EXPORT=0` skips that).
+
+## Authoring
+
+How to build clean pieces through these tools (comp setup, naming, timing grid, easing, masks,
+checks, saving): [`AUTHORING.md`](./AUTHORING.md). Reference builds: `mcp/examples/build-*.mjs`
+(`node mcp/examples/build-a-kinetic-title.mjs <outDir>`). Audit and known gaps:
+[`docs/MCP-AUDIT.md`](../docs/MCP-AUDIT.md).
 Like every `gpu:*` script it needs Chrome and a GPU, so it is local-only and not part of `npm test`.
 
 ## Limits
 
-- File import, auto-captions (in-browser Whisper) and pen drawing are UI-only (see `list_features`
-  notes). Place already-imported media with the `editor.add*FromAsset` actions.
+- Video / audio import, auto-captions (in-browser Whisper) and pen drawing are UI-only (see
+  `list_features` notes). Images import with `import_image`; place already-imported media with the
+  `editor.add*FromAsset` actions.
 - One tab per server. Tool calls run strictly in order.
 - Exports are held in page memory until they are streamed out, as in the app's Export modal, so very
   long 1080p exports need RAM.
