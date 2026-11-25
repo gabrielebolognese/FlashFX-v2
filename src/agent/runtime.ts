@@ -32,6 +32,8 @@ import { frameScheduler } from '../engine/video/frameScheduler';
 import { PARTICLE_PRESETS } from '../particles/presets';
 import { resolveFrame } from '../core/interpolation';
 import { getTextLayout, measureStringWidth } from '../engine/textAtlas';
+import { ensureCompositionFonts, ensureFontFace } from '../engine/fonts';
+import { MAX_FONT_BYTES, hydrateCustomFonts, useCustomFontStore } from '../engine/customFonts';
 import type { Layer, ParticleLayer, ResolvedText, TextLayer } from '../core/types';
 import {
   AGENT_ACTIONS,
@@ -338,6 +340,8 @@ async function renderCompFrame(frame: number, w: number, h: number): Promise<Off
     const ed = useEditorStore.getState();
     const comp = ed.composition;
     const f = Math.max(0, Math.min(comp.settings.durationFrames - 1, Math.round(frame)));
+    // B52: lazy font faces load before the frame is resolved (measured) and rasterized.
+    await ensureCompositionFonts(comp, ed.getComposition);
     const data = resolveFrame(comp, f, { getComposition: ed.getComposition, depth: 0, visited: new Set() });
     // Full-resolution source frames (the exporter's path), never a buffered half-res preview proxy.
     const decodes = collectExportVideoDecodes(data.layers);
@@ -438,6 +442,8 @@ const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
   seek: async (frame) => {
     if (typeof frame !== 'number' || !Number.isFinite(frame)) throw new Error('"frame" must be a number');
     if (!playbackController.getRenderer() && !(await waitForRenderer())) throw new Error('the preview renderer is not ready (WebGPU did not initialize)');
+    const seekEd = useEditorStore.getState();
+    await ensureCompositionFonts(seekEd.composition, seekEd.getComposition); // B52: no fallback-face screenshots
     useTimelineStore.getState().seekTo(Math.round(frame)); // clamps + renders, like dragging the playhead
     await nextFrame();
     return useTimelineStore.getState().currentFrame;
@@ -515,8 +521,9 @@ const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
     return { preset, seed: nextSeed, config: next };
   },
 
-  measureText: (layerId, frame) => {
+  measureText: async (layerId, frame) => {
     const layer = requireTextLayer(layerId);
+    await ensureCompositionFonts(layer); // B52: measure in the real (lazy-loaded) face, not the fallback
     const ed = useEditorStore.getState();
     const f = typeof frame === 'number' && Number.isFinite(frame) ? Math.round(frame) : useTimelineStore.getState().currentFrame;
     // Resolve exactly like the renderer, with animators / decode stripped and the spans collapsed to the
@@ -551,7 +558,7 @@ const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
     };
   },
 
-  measureString: (text, fontFamily, fontSize, fontWeight, fontStyle, letterSpacing, lineHeight) => {
+  measureString: async (text, fontFamily, fontSize, fontWeight, fontStyle, letterSpacing, lineHeight) => {
     // Measure without a layer: a throwaway ResolvedText laid out by the SAME code the renderer uses.
     if (typeof text !== 'string') throw new Error('"text" must be a string');
     const size = typeof fontSize === 'number' && fontSize > 0 ? fontSize : 48;
@@ -575,6 +582,7 @@ const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
       measuredWidth: 0,
       measuredHeight: 0,
     };
+    await ensureFontFace(probe.fontFamily, probe.fontWeight, probe.fontStyle); // B52: lazy faces load first
     const layout = getTextLayout(probe);
     const lineWidths = layout.lines.map((line) => measureStringWidth(probe, line));
     return {
@@ -684,6 +692,27 @@ const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
     return { assetId, width: metadata.width, height: metadata.height, name: finalName };
   },
 
+  importFont: async (data, fileName, family, weight, style) => {
+    // B52: the same import as Inspector > Font > Import (engine/customFonts.ts): stored in the
+    // browser's font library (IndexedDB, shared by every project, survives reloads) and registered
+    // with the browser, so the family renders through the normal text path once a span uses it.
+    const name = typeof fileName === 'string' && fileName.trim() ? fileName.trim() : 'font.woff2';
+    if (family !== undefined && family !== null && (typeof family !== 'string' || !family.trim())) throw new Error('"family" must be a non-empty string');
+    if (weight !== undefined && weight !== null && (typeof weight !== 'number' || !(weight >= 1 && weight <= 1000))) throw new Error('"weight" must be a number from 1 to 1000');
+    if (style !== undefined && style !== null && style !== 'normal' && style !== 'italic') throw new Error('"style" must be normal or italic');
+    const bytes = base64ToBytes(data);
+    if (bytes.byteLength > MAX_FONT_BYTES) throw new Error(`the font is larger than ${MAX_FONT_BYTES / 1024 / 1024} MB`);
+    await hydrateCustomFonts(); // the stored library first, so this import is not overwritten by a late hydrate
+    const face = await useCustomFontStore.getState().importFontFace(new File([bytes], name), {
+      family: typeof family === 'string' ? family : undefined,
+      weight: typeof weight === 'number' ? weight : undefined,
+      style: style === 'normal' || style === 'italic' ? style : undefined,
+    });
+    // Re-render the preview so text already set in this family switches to it now.
+    if (playbackController.getRenderer()) playbackController.renderCurrentFrame();
+    return { ...face, use: `set "content.spans.0.style.fontFamily" to "${face.family}" (or pass it to editor.styleTextWord / agent.measureString)` };
+  },
+
   removeExpression: (layerId, propertyName) => {
     const layer = requireLayer(layerId);
     if (typeof propertyName !== 'string') throw new Error('"propertyName" must be a string');
@@ -742,7 +771,13 @@ export async function runAgentAction(actionId: string, args?: unknown): Promise<
 }
 
 export function listAgentFeatures(): AgentManifest & { catalogs: AgentCatalogs } {
-  return { ...buildAgentManifest(), catalogs: buildAgentCatalogs() };
+  const catalogs = buildAgentCatalogs();
+  // B52: fonts imported into this browser (agent.importFont / Inspector) join the bundled families.
+  const known = new Set(catalogs.fontFamilies.map((e) => e.id));
+  const custom = [...new Set(useCustomFontStore.getState().fonts.map((f) => f.family))]
+    .filter((f) => !known.has(f))
+    .map((f) => ({ id: f, label: f, category: 'Custom', description: 'Imported font (agent.importFont / Inspector), stored in this browser.' }));
+  return { ...buildAgentManifest(), catalogs: { ...catalogs, fontFamilies: [...catalogs.fontFamilies, ...custom] } };
 }
 
 async function readAgentExport(exportId: string, offset: number, length: number): Promise<AgentExportChunk> {

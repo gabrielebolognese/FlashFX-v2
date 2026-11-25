@@ -44,6 +44,7 @@ export type AgentHelperMethod =
   | 'exportProject'
   | 'importProject'
   | 'importImage'
+  | 'importFont'
   | 'seek'
   | 'play'
   | 'pause';
@@ -79,7 +80,8 @@ export type CatalogId =
   | 'animationItems'
   | 'proceduralPresets'
   | 'vfxElements'
-  | 'easings';
+  | 'easings'
+  | 'fontFamilies';
 
 export interface AgentParam {
   name: string;
@@ -228,6 +230,16 @@ export const AGENT_ACTIONS: readonly AgentActionSpec[] = [
       { name: 'fileName', type: 'string', description: 'Used for the asset name and, without mimeType, to infer the type from the extension.' },
       { name: 'mimeType', type: 'string', optional: true },
       { name: 'rasterSize', type: 'number', optional: true, description: 'SVG only: longest side of the rasterized PNG in px (default 1024, max 8192).' },
+    ] },
+  { id: 'agent.importFont', store: 'agent', method: 'importFont', undoable: false,
+    returns: '{ id, family, fileName, weight, style, format, persisted, use }; put `family` in "content.spans.0.style.fontFamily" (or editor.styleTextWord / agent.measureString)',
+    description: 'Import a font file (base64 bytes: WOFF2, WOFF, TTF or OTF) into the browser font library, like Inspector > Font > Import: stored in IndexedDB (every project in this browser, survives reloads) and registered with the browser, so text set in the returned family renders in it (preview, renderFrame, MP4). Import several files under one family with their weight / style to get a real Bold / Italic. Bundled families are listed in listFeatures().catalogs.fontFamilies.',
+    params: [
+      { name: 'data', type: 'string', description: 'Base64 of the font file (a data: URL is accepted too). Max 20 MB.' },
+      { name: 'fileName', type: 'string', description: 'Used for the family name when the font has no readable name table (always the case for WOFF2) and no family is given.' },
+      { name: 'family', type: 'string', optional: true, description: 'Family name to register it under (recommended for WOFF2).' },
+      { name: 'weight', type: 'number', optional: true, description: 'Weight descriptor 1..1000 (default: read from the font when it is TTF / OTF / WOFF, else any weight resolves to it).' },
+      { name: 'style', type: 'string', optional: true, values: ['normal', 'italic'], description: 'Default: read from the font when possible.' },
     ] },
 
   // ----- composition / playback -----
@@ -565,6 +577,11 @@ export const AGENT_FEATURES: readonly AgentFeature[] = [
     ui: 'Select a text layer > Inspector > Font > Accent (pick the word, then its font / italic / colour)',
     actions: ['editor.styleTextWord', 'editor.styleTextRange', 'editor.clearTextStyles'], status: 'shipped',
     notes: 'Drawn per glyph on single-line text; wrapped / multi-line text keeps the base style. Editing the base font / colour in the Inspector restyles every base span and keeps the accent. agent.setTextContent resets to one style.' },
+  { id: 'text.fonts', area: 'text', name: 'Font library + font import',
+    description: 'Bundled OFL families (incl. Inter 400-700, Inter Tight, Archivo Expanded wide grotesque, Montserrat Alternates, Unbounded, Nunito, Instrument Serif + true italic, Playfair Display + true italic, Damion script, VT323 / Silkscreen pixel, Space Mono) and importing any WOFF2 / WOFF / TTF / OTF. A weight between bundled ones resolves to the nearest face like CSS (500 -> 500 or 400, 600 -> 600 or 700); italic uses a true italic face when bundled, else a synthesized oblique.',
+    ui: 'Select a text layer > Inspector > Font > Family (grouped list; the upload button imports a font file)',
+    actions: ['agent.importFont', 'agent.measureString', 'editor.updateLayerProperty', 'editor.styleTextWord'], status: 'shipped',
+    notes: 'Family names: listFeatures().catalogs.fontFamilies (bundled weights / italics per family in each description; the in-page window.__ffxAgent.listFeatures() also lists fonts imported in this browser). Set the face with editor.updateLayerProperty(layerId, "content.spans.0.style.fontFamily" | "content.spans.0.style.fontWeight" | "content.spans.0.style.fontStyle", value). New families load on first use; renderFrame / exportMp4 / seek / measureString wait for them. MCP: import_font {path, family?}. Imported fonts live in the browser font library, not inside the .ffx project file.' },
   { id: 'text.decode', area: 'text', name: 'Text decode / scramble reveal',
     description: 'Characters flicker through random glyphs before resolving (hacker text).',
     ui: 'Select a text layer > Inspector > Animators section > Decode', actions: ['agent.applyTextDecode'], status: 'shipped' },

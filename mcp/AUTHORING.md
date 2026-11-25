@@ -159,6 +159,50 @@ Never leave real motion on linear (the default for `addKeyframe`), except progre
   layer at opacity 0 until the reveal starts (two keyframes, the first set to `hold`).
 - Per-glyph animators work on single-line text: one text layer per line.
 
+### Fonts (B52)
+
+- Pick the face with `content.spans.0.style.fontFamily` / `.fontWeight` / `.fontStyle` (an accent
+  word: `editor.styleTextWord { style: { fontFamily, fontWeight, fontStyle } }`). The exact family
+  names are in `list_features` -> `catalogs.fontFamilies` (`compact: false` adds each family's
+  bundled weights and italics).
+- Bundled families (SIL OFL; licences in `public/fonts/LICENSES.md`). The ones marked lazy load
+  on first use; `render_frame`, `export_mp4`, `seek` and `measureString` wait for them:
+
+| Family | Weights | Italic | Look / use |
+| --- | --- | --- | --- |
+| Inter | 400, 500 (lazy), 600 (lazy), 700 | oblique | neo-grotesque UI / titles; medium 500 and semibold 600 are real faces |
+| Inter Tight (lazy) | 400, 500, 600, 700 | oblique | tight neo-grotesque titles (SF Pro Display feel) |
+| Archivo Expanded (lazy) | 400, 500, 600, 700, 800 | oblique | wide grotesque titles ("Motion Designer." look) |
+| Montserrat Alternates (lazy) | 400, 500, 600, 700, 800 | oblique | geometric with single-storey a, curly y, curved-foot t |
+| Unbounded (lazy) | 400, 700, 900 | oblique | wide rounded heavy display ("make") |
+| Nunito (lazy) | 400, 700, 900 | oblique | rounded friendly sans |
+| Instrument Serif (lazy) | 400 | **true italic 400** | condensed high-contrast serif accent words |
+| Playfair Display | 400, 700 | **true italic 400, 700** (lazy) | classic high-contrast serif accents |
+| Damion (lazy) | 400 | - | monoline brush script accents (Yellowtail class) |
+| VT323 (lazy) | 400 | - | thin pixel / LCD ("404 NOT FOUND.") |
+| Silkscreen (lazy) | 400, 700 | - | blocky 8-bit pixel caps |
+| Space Mono (lazy) | 400, 700 | oblique | wide-tracked mono caps |
+| Roboto, Open Sans, Lato, DM Sans, Manrope, Plus Jakarta Sans | 400, 700 | oblique | workhorse sans |
+| Montserrat, Poppins, Raleway, Space Grotesk, Oswald | 400, 700 | oblique | display sans |
+| Bebas Neue | 400 | - | condensed all-caps |
+
+- A weight between bundled faces resolves like CSS: 500 asks for 500, else 400; 600 asks for 600,
+  else 700; 300 falls to 400 only when nothing lighter exists. 600+ on a family whose nearest
+  face is lighter is a synthesized bold. "oblique" = italic is the upright face sheared (looks
+  fake on serifs): use Instrument Serif or Playfair Display for italic accents.
+- **Any other face:** `import_font { path, family? }` (WOFF2 / WOFF / TTF / OTF), then use the
+  returned `result.family`. WOFF2 has no readable name table here, so pass `family`. For a real
+  Bold / Italic import each file under the same family with `weight` / `style`
+  (`import_font { path: ".../Foo-Bold.woff2", family: "Foo", weight: 700 }`). Imported fonts live
+  in the browser font library (IndexedDB, every project in that browser); they are NOT inside the
+  `.ffx`, so a project using one needs the font imported again on another machine.
+
+```json
+{ "actionId": "editor.updateLayerProperty", "args": { "layerId": "<id>", "path": "content.spans.0.style.fontFamily", "value": "Archivo Expanded" } }
+{ "actionId": "editor.updateLayerProperty", "args": { "layerId": "<id>", "path": "content.spans.0.style.fontWeight", "value": 800 } }
+{ "actionId": "editor.styleTextWord", "args": { "layerId": "<id>", "wordIndex": 2, "style": { "fontFamily": "Instrument Serif", "fontStyle": "italic" }, "exclusive": true } }
+```
+
 ## 6. Shapes and colour
 
 - `editor.addShapeLayer { opts: { type, x, y, width, height, fill, radius, name, stroke?, strokeWidth? } }`
