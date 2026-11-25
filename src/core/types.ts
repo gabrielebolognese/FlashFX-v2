@@ -29,7 +29,7 @@ export type InterpolationType = 'linear' | 'bezier' | 'hold' | 'spring';
 
 export interface Keyframe {
   frame: number;
-  value: number | Vec2;
+  value: number | Vec2 | Vec4;
   interpolation: InterpolationType;
   handleIn: Vec2;
   handleOut: Vec2;
