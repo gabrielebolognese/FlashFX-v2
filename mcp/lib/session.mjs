@@ -193,6 +193,7 @@ export class FlashFxSession {
     this.cdp = null;
     this.devPort = null;
     this.starting = null;
+    this.uploadSeq = 0;
   }
 
   /** The FlashFX base URL (starts the local server if needed, but not Chrome). */
@@ -419,6 +420,30 @@ export class FlashFxSession {
     const data = readFileSync(inPath).toString('base64');
     const fileName = basename(inPath);
     return this.run(actionId, { data, fileName, ...extraArgs }, timeoutMs, { retryOnReload: false });
+  }
+
+  /**
+   * Import a (possibly large) media file: stream it into the page in 4 MB chunks with
+   * __ffxAgent.writeUpload, then run `actionId` with { uploadId, fileName, ...extraArgs }.
+   */
+  async importFileChunked(actionId, path, extraArgs = {}, timeoutMs = 600000) {
+    const inPath = resolve(path);
+    if (!existsSync(inPath)) throw new Error(`no such file: ${inPath}`);
+    await this.ensure();
+    const bytes = readFileSync(inPath);
+    const uploadId = `up-${process.pid}-${++this.uploadSeq}`;
+    // FLASHFX_UPLOAD_CHUNK (bytes) lets the smoke test force several chunks with a small file.
+    const CHUNK = Number(process.env.FLASHFX_UPLOAD_CHUNK) > 0 ? Number(process.env.FLASHFX_UPLOAD_CHUNK) : 4 * 1024 * 1024;
+    try {
+      for (let off = 0; off < bytes.length; off += CHUNK) {
+        const b64 = bytes.subarray(off, off + CHUNK).toString('base64');
+        await this.cdp.evaluate(`window.__ffxAgent.writeUpload(${JSON.stringify(uploadId)}, ${off}, ${JSON.stringify(b64)})`, 120000);
+      }
+    } catch (e) {
+      await this.cdp.evaluate(`window.__ffxAgent.discardUpload(${JSON.stringify(uploadId)})`).catch(() => {});
+      throw e;
+    }
+    return this.run(actionId, { uploadId, fileName: basename(inPath), ...extraArgs }, timeoutMs, { retryOnReload: false });
   }
 
   /** Stream a finished in-page export (readExport chunks) to a file, then free it in the page. */

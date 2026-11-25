@@ -44,6 +44,7 @@ export type AgentHelperMethod =
   | 'exportProject'
   | 'importProject'
   | 'importImage'
+  | 'importMedia'
   | 'seek'
   | 'play'
   | 'pause';
@@ -228,6 +229,16 @@ export const AGENT_ACTIONS: readonly AgentActionSpec[] = [
       { name: 'fileName', type: 'string', description: 'Used for the asset name and, without mimeType, to infer the type from the extension.' },
       { name: 'mimeType', type: 'string', optional: true },
       { name: 'rasterSize', type: 'number', optional: true, description: 'SVG only: longest side of the rasterized PNG in px (default 1024, max 8192).' },
+    ] },
+  { id: 'agent.importMedia', store: 'agent', method: 'importMedia', undoable: false,
+    returns: '{ kind: "video" | "audio" | "image", assetId, name, ... } (video: width, height, duration s, frameRate, hasAudio, codec, compFrames; audio: duration, sampleRate, channels, compFrames; image: width, height). Place it with editor.addVideoFromAsset / editor.addAudioFromAsset / editor.addImageFromAsset',
+    description: 'Import a video (MP4, MOV, WebM, MKV), audio (MP3, WAV, M4A, AAC, OGG, FLAC) or image file into the open project media pool, headless (the same import the Media Pool uses; persisted with the project and carried by export_project). The type comes from mimeType or the file extension. Large files: stage the bytes in order with __ffxAgent.writeUpload(uploadId, offset, base64) and pass uploadId (the MCP import_media tool does this for you); small files can pass data inline.',
+    params: [
+      { name: 'data', type: 'string', optional: true, description: 'Base64 of the whole file (omit when passing uploadId).' },
+      { name: 'fileName', type: 'string', description: 'Asset name; its extension tells the media type when mimeType is omitted.' },
+      { name: 'mimeType', type: 'string', optional: true },
+      { name: 'uploadId', type: 'string', optional: true, description: 'Id of an upload staged with __ffxAgent.writeUpload (consumed by the import).' },
+      { name: 'rasterSize', type: 'number', optional: true, description: 'SVG only: longest side of the rasterized PNG in px (default 1024).' },
     ] },
 
   // ----- composition / playback -----
@@ -496,6 +507,8 @@ export const AGENT_ACTIONS: readonly AgentActionSpec[] = [
   { id: 'editor.addVideoFromAsset', store: 'editor', method: 'addVideoFromAsset', undoable: true,
     description: 'Place an already-imported video asset.',
     params: [{ name: 'assetId', type: 'string' }, { name: 'x', type: 'number' }, { name: 'y', type: 'number' }, { name: 'playbackMode', type: 'string', optional: true }] },
+  { id: 'editor.addAudioFromAsset', store: 'editor', method: 'addAudioFromAsset', undoable: true,
+    description: 'Place an already-imported audio asset as an audio layer from frame 0 (its clip spans the audio duration).', params: [{ name: 'assetId', type: 'string' }] },
   { id: 'editor.fitLayerToCanvas', store: 'editor', method: 'fitLayerToCanvas', undoable: true,
     description: 'Scale an image/video layer to fit the canvas.', params: [LAYER_ID] },
 
@@ -720,11 +733,11 @@ export const AGENT_FEATURES: readonly AgentFeature[] = [
   // media
   { id: 'media.import', area: 'media', name: 'Import images, video, audio',
     description: 'Import files (drag & drop or toolbar) into the media pool; WebCodecs decode.',
-    ui: 'Canvas toolbar > Image / Video; drag files onto the canvas; Media Pool', actions: ['agent.importImage'], status: 'partial',
-    notes: 'Images (incl. SVG, rasterized) import headlessly with agent.importImage (MCP: import_image {path}); place them with editor.addImageFromAsset. Video and audio import still need a real File from the browser (UI only).' },
+    ui: 'Canvas toolbar > Image / Video; drag files onto the canvas; Media Pool', actions: ['agent.importImage', 'agent.importMedia'], status: 'shipped',
+    notes: 'Headless: agent.importMedia imports video (MP4, MOV, WebM, MKV), audio (MP3, WAV, M4A, AAC, OGG, FLAC) and images (MCP: import_media {path}, which streams big files in chunks); agent.importImage is the image-only shortcut (MCP: import_image). Place with editor.addVideoFromAsset / editor.addAudioFromAsset / editor.addImageFromAsset.' },
   { id: 'media.place', area: 'media', name: 'Place imported media',
     description: 'Put an imported asset on the canvas and fit it.', ui: 'Drag from the Media Pool',
-    actions: ['editor.addImageFromAsset', 'editor.addVideoFromAsset', 'editor.fitLayerToCanvas'], status: 'shipped' },
+    actions: ['editor.addImageFromAsset', 'editor.addVideoFromAsset', 'editor.addAudioFromAsset', 'editor.fitLayerToCanvas'], status: 'shipped' },
 
   // export
   { id: 'export.frame', area: 'export', name: 'Render a frame / contact sheet (PNG)',

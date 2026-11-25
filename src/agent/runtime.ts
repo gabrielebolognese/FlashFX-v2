@@ -116,6 +116,10 @@ export interface FfxAgentApi {
   readExport: (exportId: string, offset: number, length: number) => Promise<AgentExportChunk>;
   /** Free a finished export's bytes. Returns false when the id is unknown. */
   releaseExport: (exportId: string) => boolean;
+  /** Stage a chunk of a media file for agent.importMedia (chunks in order, offset = bytes so far). */
+  writeUpload: (uploadId: string, offset: number, base64: string) => { uploadId: string; bytes: number };
+  /** Drop a staged upload that will not be imported. Returns false when the id is unknown. */
+  discardUpload: (uploadId: string) => boolean;
 }
 
 declare global {
@@ -248,6 +252,74 @@ function base64ToBytes(data: unknown): Uint8Array<ArrayBuffer> {
 const IMAGE_MIME_BY_EXT: Record<string, string> = {
   png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif', svg: 'image/svg+xml', avif: 'image/avif',
 };
+
+// B49: headless video / audio import. Files can be large, so the bridge stages them in chunks with
+// __ffxAgent.writeUpload(uploadId, offset, base64) (no single huge CDP message), then calls
+// agent.importMedia with the uploadId. Small files can still pass `data` inline.
+const VIDEO_MIME_BY_EXT: Record<string, string> = {
+  mp4: 'video/mp4', m4v: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm', mkv: 'video/x-matroska', avi: 'video/x-msvideo',
+};
+const AUDIO_MIME_BY_EXT: Record<string, string> = {
+  mp3: 'audio/mpeg', wav: 'audio/wav', m4a: 'audio/mp4', aac: 'audio/aac', ogg: 'audio/ogg', oga: 'audio/ogg', opus: 'audio/ogg', flac: 'audio/flac',
+};
+
+/** Staged chunked uploads, keyed by a bridge-chosen id. Bytes must arrive in order. */
+const stagedUploads = new Map<string, { parts: Uint8Array<ArrayBuffer>[]; bytes: number }>();
+/** Cap on everything staged at once (a runaway bridge must not exhaust the tab's memory). */
+const MAX_STAGED_BYTES = 2 * 1024 * 1024 * 1024;
+
+function writeUpload(uploadId: string, offset: number, base64: string): { uploadId: string; bytes: number } {
+  if (typeof uploadId !== 'string' || !uploadId) throw new Error('uploadId must be a non-empty string');
+  let entry = stagedUploads.get(uploadId);
+  if (!entry) {
+    if (offset !== 0) throw new Error(`upload "${uploadId}" must start at offset 0`);
+    entry = { parts: [], bytes: 0 };
+    stagedUploads.set(uploadId, entry);
+  }
+  if (offset !== entry.bytes) throw new Error(`upload "${uploadId}": expected offset ${entry.bytes}, got ${offset}`);
+  const chunk = base64ToBytes(base64);
+  let total = chunk.length;
+  for (const e of stagedUploads.values()) total += e.bytes;
+  if (total > MAX_STAGED_BYTES) throw new Error('staged uploads exceed 2 GB; import or discard some first');
+  entry.parts.push(chunk);
+  entry.bytes += chunk.length;
+  return { uploadId, bytes: entry.bytes };
+}
+
+/** The bytes of a staged upload (consumed) or of inline base64 `data`. */
+function takeMediaBytes(data: unknown, uploadId: unknown): BlobPart[] {
+  if (typeof uploadId === 'string' && uploadId) {
+    const entry = stagedUploads.get(uploadId);
+    if (!entry) throw new Error(`no staged upload "${uploadId}" (send it with __ffxAgent.writeUpload first)`);
+    stagedUploads.delete(uploadId);
+    return entry.parts;
+  }
+  return [base64ToBytes(data)];
+}
+
+function mediaKindOf(fileName: string, mimeType: unknown): { kind: 'video' | 'audio' | 'image'; type: string } {
+  const ext = fileName.split('.').pop()?.toLowerCase() ?? '';
+  const type = typeof mimeType === 'string' && mimeType ? mimeType : (VIDEO_MIME_BY_EXT[ext] ?? AUDIO_MIME_BY_EXT[ext] ?? IMAGE_MIME_BY_EXT[ext]);
+  if (!type) throw new Error(`cannot tell the media type of "${fileName}"; pass mimeType (video/mp4, audio/mpeg, image/png, ...)`);
+  if (type.startsWith('video/')) return { kind: 'video', type };
+  if (type.startsWith('audio/')) return { kind: 'audio', type };
+  if (type.startsWith('image/')) return { kind: 'image', type };
+  throw new Error(`"${type}" is not a video, audio or image type`);
+}
+
+/** Import an image blob (SVG rasterized first) into the open project's media pool. */
+async function importImageBlob(projectId: string, blob: Blob, name: string, type: string, rasterSize: unknown) {
+  let finalBlob = blob;
+  let finalName = name;
+  if (type === 'image/svg+xml') {
+    const size = typeof rasterSize === 'number' && rasterSize > 0 ? Math.min(8192, Math.round(rasterSize)) : 1024;
+    finalBlob = await rasterizeSvg(blob, size);
+    finalName = `${name.replace(/\.svg$/i, '')}.png`;
+  }
+  const file = new File([finalBlob], finalName, { type: finalBlob.type || type });
+  const { assetId, metadata } = await mediaAssetManager.importImage(file, projectId);
+  return { assetId, width: metadata.width, height: metadata.height, name: finalName };
+}
 
 /** SVG cannot go through createImageBitmap(blob): rasterize it to a PNG whose longest side is `size` px. */
 async function rasterizeSvg(svg: Blob, size: number): Promise<Blob> {
@@ -672,16 +744,33 @@ const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
     const ext = name.split('.').pop()?.toLowerCase() ?? '';
     const type = typeof mimeType === 'string' && mimeType ? mimeType : IMAGE_MIME_BY_EXT[ext];
     if (!type || !type.startsWith('image/')) throw new Error(`cannot tell the image type of "${name}"; pass mimeType (png, jpeg, webp, gif, svg)`);
-    let blob: Blob = new Blob([base64ToBytes(data)], { type });
-    let finalName = name;
-    if (type === 'image/svg+xml') {
-      const size = typeof rasterSize === 'number' && rasterSize > 0 ? Math.min(8192, Math.round(rasterSize)) : 1024;
-      blob = await rasterizeSvg(blob, size);
-      finalName = `${name.replace(/\.svg$/i, '')}.png`;
+    return importImageBlob(projectId, new Blob([base64ToBytes(data)], { type }), name, type, rasterSize);
+  },
+
+  importMedia: async (data, fileName, mimeType, uploadId, rasterSize) => {
+    const projectId = requireActiveProjectId();
+    if (typeof fileName !== 'string' || !fileName.trim()) throw new Error('"fileName" is required (its extension tells the media type)');
+    const name = fileName.trim();
+    if ((typeof uploadId !== 'string' || !uploadId) && (typeof data !== 'string' || !data)) throw new Error('pass either "data" (base64) or "uploadId" (staged with __ffxAgent.writeUpload)');
+    const { kind, type } = mediaKindOf(name, mimeType);
+    const blob = new Blob(takeMediaBytes(data, uploadId), { type });
+    if (blob.size === 0) throw new Error('the media file is empty');
+    const fps = useEditorStore.getState().composition.settings.frameRate;
+    if (kind === 'image') return { kind, ...(await importImageBlob(projectId, blob, name, type, rasterSize)) };
+    const file = new File([blob], name, { type });
+    if (kind === 'video') {
+      const { assetId, metadata } = await mediaAssetManager.importVideo(file, projectId);
+      return {
+        kind, assetId, name, width: metadata.width, height: metadata.height, duration: metadata.duration,
+        frameRate: metadata.frameRate, hasAudio: metadata.hasAudio, codec: metadata.codec, bytes: metadata.fileSize,
+        compFrames: Math.ceil(metadata.duration * fps),
+      };
     }
-    const file = new File([blob], finalName, { type: blob.type || type });
-    const { assetId, metadata } = await mediaAssetManager.importImage(file, projectId);
-    return { assetId, width: metadata.width, height: metadata.height, name: finalName };
+    const { assetId, metadata } = await mediaAssetManager.importAudio(file, projectId);
+    return {
+      kind, assetId, name, duration: metadata.duration, sampleRate: metadata.sampleRate, channels: metadata.channels,
+      bytes: metadata.fileSize, compFrames: Math.ceil(metadata.duration * fps),
+    };
   },
 
   removeExpression: (layerId, propertyName) => {
@@ -766,5 +855,7 @@ export function installAgentRuntime(): void {
     run: runAgentAction,
     readExport: readAgentExport,
     releaseExport: (exportId: string) => finishedExports.delete(exportId),
+    writeUpload,
+    discardUpload: (uploadId: string) => stagedUploads.delete(uploadId),
   };
 }

@@ -236,6 +236,19 @@ Never leave real motion on linear (the default for `addKeyframe`), except progre
   These render byte-identically to the same values set statically (`npm run gpu:anim-props`).
 - Images and logos: `import_image { path, rasterSize?, x?, y? }` imports PNG / JPEG / WebP / GIF /
   SVG (rasterized) and places it. Scale it with `transform.scale` = target px / `result.width`.
+- **Video and audio (B49).** `import_media { path, place?, fit?, x?, y? }` imports an MP4 / MOV /
+  WebM / MKV clip, an MP3 / WAV / M4A / AAC / OGG / FLAC track or an image, streamed into the tab
+  in 4 MB chunks (big clips are fine), persisted with the project and carried by `export_project`.
+  By default a video is placed at the comp centre and fitted to the canvas (pass `x` / `y` to place
+  it unscaled at a point, or `fit: false`); audio becomes an audio layer from frame 0. The result
+  has `kind`, `assetId`, `duration` (s), `width` / `height`, `frameRate`, `compFrames` (clip length
+  in comp frames) and `activeLayerId`. A clip inside a card or a portal (r05, r07): place it, size it
+  with `transform.scale`, then mask it or nest it in a precomp. Move it in time with
+  `editor.moveClipInTime { newInPoint }`. Without the MCP bridge: `agent.importMedia` takes
+  `{ fileName, data }` (base64) or `{ fileName, uploadId }` after staging the bytes with
+  `__ffxAgent.writeUpload(uploadId, offset, base64)`; place with `editor.addVideoFromAsset` /
+  `editor.addAudioFromAsset` / `editor.addImageFromAsset`. `render_frame` decodes the exact
+  source frame at full resolution (the exporter path), so side-by-sides of footage are true.
 - Particles: `editor.addParticleLayer`, then
   `agent.configureParticles { layerId, presetId, overrides, seed }` (one undo step; overrides are
   `EmitterConfig` fields, e.g. `{ spawnRate: 0, burstCount: 140, emitterShape: "circle" }`).

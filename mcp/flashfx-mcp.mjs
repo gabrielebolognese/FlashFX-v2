@@ -25,7 +25,7 @@ const INSTRUCTIONS = [
   'New layers: read activeLayerId from the result of editor.add*. Time is in frames, positions in comp pixels (origin top-left).',
   'In run_actions, a string argument "$N.path" (or "$last.path") is replaced by that value from the Nth earlier result, e.g. "$0.activeLayerId".',
   'Check your work with screenshot (it returns the image) and get_state; export_mp4 renders through the real exporter.',
-  'Save the editable project with export_project {path} (a .ffx file the owner can open in FlashFX); import_project {path} re-opens one; import_image {path} brings a PNG/JPEG/WebP/SVG into the project.',
+  'Save the editable project with export_project {path} (a .ffx file the owner can open in FlashFX); import_project {path} re-opens one; import_image {path} brings a PNG/JPEG/WebP/SVG into the project; import_media {path} imports video, audio or images.',
   'Authoring guide: mcp/AUTHORING.md in the FlashFX repo.',
 ].join(' ');
 
@@ -335,6 +335,40 @@ const TOOLS = [
         assetId: imp.result.assetId, x: x ?? Math.round(st.width / 2), y: y ?? Math.round(st.height / 2),
       });
       if (!placed?.ok) return fromRun(placed);
+      return ok({ ...imp, placed: true, activeLayerId: placed.activeLayerId, undoDepth: placed.undoDepth });
+    },
+  },
+  {
+    name: 'import_media',
+    description: 'Import a video (MP4, MOV, WebM, MKV), audio (MP3, WAV, M4A, AAC, OGG, FLAC) or image file from disk into the open project (streamed in chunks, so big clips work) and, by default, place it: video as a video layer (fit to the canvas unless fit=false), audio as an audio layer, images as an image layer. Returns the import result (kind, assetId, duration, size, compFrames) plus activeLayerId of the placed layer. The clip starts at frame 0; move it in time with editor.moveClipInTime.',
+    inputSchema: {
+      type: 'object',
+      required: ['path'],
+      properties: {
+        path: { type: 'string', description: 'Media file on this machine.' },
+        place: { type: 'boolean', default: true, description: 'Also add it as a layer.' },
+        fit: { type: 'boolean', default: true, description: 'Video / image: scale the placed layer to fit the canvas (editor.fitLayerToCanvas).' },
+        x: { type: 'number', description: 'Video / image centre X in comp px (default: comp centre).' },
+        y: { type: 'number', description: 'Video / image centre Y in comp px (default: comp centre).' },
+        mimeType: { type: 'string', description: 'Override the type inferred from the extension.' },
+      },
+    },
+    handler: async ({ path, place = true, fit = true, x, y, mimeType }) => {
+      if (typeof path !== 'string' || !path) return fail('"path" is required');
+      const imp = await session.importFileChunked('agent.importMedia', path, mimeType ? { mimeType } : {});
+      if (!imp?.ok || !place) return fromRun(imp);
+      const { kind, assetId } = imp.result;
+      const st = await session.state();
+      const cx = x ?? Math.round(st.width / 2);
+      const cy = y ?? Math.round(st.height / 2);
+      const placed = kind === 'audio'
+        ? await session.run('editor.addAudioFromAsset', { assetId })
+        : await session.run(kind === 'video' ? 'editor.addVideoFromAsset' : 'editor.addImageFromAsset', { assetId, x: cx, y: cy });
+      if (!placed?.ok) return fromRun(placed);
+      if (kind !== 'audio' && fit && x === undefined && y === undefined) {
+        const fitted = await session.run('editor.fitLayerToCanvas', { layerId: placed.activeLayerId });
+        if (!fitted?.ok) return fromRun(fitted);
+      }
       return ok({ ...imp, placed: true, activeLayerId: placed.activeLayerId, undoDepth: placed.undoDepth });
     },
   },
