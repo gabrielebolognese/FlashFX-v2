@@ -373,6 +373,28 @@ const TOOLS = [
     },
   },
   {
+    name: 'import_font',
+    description: 'Import a font file from disk (WOFF2, WOFF, TTF or OTF) into the browser font library (agent.importFont, like Inspector > Font > Import). Returns the family name to put in "content.spans.0.style.fontFamily". Pass family for WOFF2 (its name table is not readable here); import Regular / Bold / Italic files under one family with weight / style. Bundled families: list_features catalogs.fontFamilies.',
+    inputSchema: {
+      type: 'object',
+      required: ['path'],
+      properties: {
+        path: { type: 'string', description: 'Font file on this machine.' },
+        family: { type: 'string', description: 'Family name to register it under (default: the font name table, else the file name).' },
+        weight: { type: 'number', description: 'Weight descriptor 1..1000 (default: read from the font when possible).' },
+        style: { type: 'string', enum: ['normal', 'italic'], description: 'Style descriptor (default: read from the font when possible).' },
+      },
+    },
+    handler: async ({ path, family, weight, style }) => {
+      if (typeof path !== 'string' || !path) return fail('"path" is required');
+      const extra = {};
+      if (family !== undefined) extra.family = family;
+      if (weight !== undefined) extra.weight = weight;
+      if (style !== undefined) extra.style = style;
+      return fromRun(await session.importFile('agent.importFont', path, extra));
+    },
+  },
+  {
     name: 'undo',
     description: 'Undo the last undoable action (history.undo).',
     inputSchema: { type: 'object', properties: {} },

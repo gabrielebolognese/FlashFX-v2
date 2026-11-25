@@ -32,7 +32,7 @@ const FALLBACK_TEXT_LAYOUT: TextLayoutConfig = {
   overflow: 'visible', baselineShift: 0, perGlyphAnimation: false,
 };
 import { evaluateProperty, evaluateNumber, measureLayerPreferredSize } from '../../core/interpolation';
-import { FONT_MANIFEST, defaultTrackingPx } from '../../engine/fonts';
+import { FONT_MANIFEST, FONT_CATEGORY_ORDER, defaultTrackingPx } from '../../engine/fonts';
 import { useCustomFontStore } from '../../engine/customFonts';
 import { autoCaptionAudioLayers, useAutoCaptionStore } from '../../store/autoCaption';
 import { createProperty, createKeyframe, createTextAnimOverrides } from '../../core/factory';
@@ -78,7 +78,7 @@ import type { SplitMode } from '../../core/textExplode';
 
 // Font menu, grouped by category, sourced from the single font manifest (engine/fonts.ts) so
 // the dropdown, the loader and the outline op can't drift apart.
-const FONT_GROUPS: { category: string; families: string[] }[] = (['Sans', 'Display', 'Serif', 'Mono', 'System'] as const)
+const FONT_GROUPS: { category: string; families: string[] }[] = FONT_CATEGORY_ORDER
   .map((cat) => ({ category: cat, families: FONT_MANIFEST.filter((f) => f.category === cat).map((f) => f.family) }))
   .filter((g) => g.families.length > 0);
 

@@ -84,6 +84,7 @@ seen (through `localStorage`, before the app loads). An existing choice is never
 | `import_project {path}` | `agent.importProject` | Opens a `.ffx` from disk as a new project. |
 | `save_project` | `agent.saveProject` | Saves to the app's local storage now (the app also autosaves). |
 | `import_image {path, place?, x?, y?, rasterSize?}` | `agent.importImage` (+ `editor.addImageFromAsset`) | PNG / JPEG / WebP / GIF, or SVG rasterized to `rasterSize` px (default 1024). |
+| `import_font {path, family?, weight?, style?}` | `agent.importFont` | WOFF2 / WOFF / TTF / OTF into the browser font library; returns the `family` to use in text styles (see AUTHORING.md section 5, Fonts). |
 | `undo` / `redo` | `history.undo` / `history.redo` | |
 | `close_browser` | | Closes Chrome. The next call relaunches it. |
 

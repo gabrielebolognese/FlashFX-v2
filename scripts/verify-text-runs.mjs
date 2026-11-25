@@ -29,6 +29,7 @@ try {
         export { resolveFrame } from './src/core/interpolation';
         export { createComposition, createTextLayer, createProperty, createKeyframe } from './src/core/factory';
         export { defaultRangeSelector } from './src/text/rangeSelector';
+        export { matchBundledFace } from './src/engine/fonts';
       `,
       resolveDir: process.cwd(),
       sourcefile: 'entry.ts',
@@ -48,7 +49,7 @@ try {
   };
 
   const m = await import(pathToFileURL(outfile).href);
-  const { textRunsFromSpans, styleTextRange, clearTextStyles, setBaseSpanStyle, wordRanges, runAt, resolveFrame, createComposition, createTextLayer, createProperty, createKeyframe, defaultRangeSelector } = m;
+  const { textRunsFromSpans, styleTextRange, clearTextStyles, setBaseSpanStyle, wordRanges, runAt, resolveFrame, createComposition, createTextLayer, createProperty, createKeyframe, defaultRangeSelector, matchBundledFace } = m;
 
   const WHITE = [1, 1, 1, 1];
   const GOLD = [0.85, 0.65, 0.13, 1];
@@ -221,6 +222,26 @@ try {
     const mid = stampsOf(resolveFrame(comp, 26), layer).find((s) => s.id.endsWith('#g3'));
     assert.ok(mid && mid.transform.opacity > 0 && mid.transform.opacity < 1, `accent glyph mid-fade (opacity ${mid?.transform.opacity})`);
     assert.equal(mid.text.fontFamily, 'Playfair Display');
+  });
+
+  check('B52 faces: an italic Playfair accent draws the bundled TRUE italic (no synthesized oblique); a 600 Inter accent the real 600 face', () => {
+    const spans = styleTextRange(styleTextRange([span('make it smooth now')], 8, 14, ACCENT), 15, 18, { fontWeight: 600 });
+    const { comp, layer } = buildComp(spans);
+    const st = stampsOf(resolveFrame(comp, 0), layer);
+    const face = (s) => matchBundledFace(s.text.fontFamily, s.text.fontWeight, s.text.fontStyle);
+    const accent = st.filter((s) => s.text.fontFamily === 'Playfair Display');
+    assert.equal(accent.length, 6);
+    for (const s of accent) {
+      const f = face(s);
+      assert.equal(f.url, '/fonts/playfair-display-400-italic.woff');
+      assert.equal(f.italic, true);
+      assert.equal(f.syntheticOblique, false);
+    }
+    const semibold = st.filter((s) => s.text.fontWeight === 600);
+    assert.equal(semibold.length, 3);
+    for (const s of semibold) assert.equal(face(s).url, '/fonts/inter-600.woff');
+    const base = st.find((s) => s.id.endsWith('#g0'));
+    assert.equal(face(base).url, '/fonts/inter-400.woff');
   });
 
   console.log(`\ntext-runs: all ${passed} checks passed`);

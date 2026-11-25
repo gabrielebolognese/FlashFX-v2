@@ -41,8 +41,19 @@ export function textCacheKey(text: ResolvedText): string {
   return `${fontEpoch}|${text.content}|${text.fontFamily}|${text.fontWeight}|${text.fontStyle}|${text.fontSize}|${text.lineHeight}|${text.letterSpacing}|${text.textAlign}|${text.fillColor.join(',')}|${fillKey(text)}|${text.strokeColor.join(',')}|${text.strokeWidth}|${text.underline}|${text.strikethrough}|${text.mode}|${text.boxWidth}|${text.boxHeight}`;
 }
 
+// B52: lazy font faces. engine/fonts.ts installs a requester that loads the bundled face a text draws
+// with on first use (then bumps the epoch above so the text re-rasterizes). Every measure / raster
+// path builds its CSS font string here, so this is the one place that sees every face in use.
+// Unset (Node harnesses, workers) = no-op.
+type FontFaceRequester = (family: string, weight: number, style: 'normal' | 'italic') => void;
+let fontFaceRequester: FontFaceRequester | null = null;
+export function setFontFaceRequester(fn: FontFaceRequester | null): void {
+  fontFaceRequester = fn;
+}
+
 export function buildFontString(text: ResolvedText): string {
   const style = text.fontStyle === 'italic' ? 'italic' : 'normal';
+  fontFaceRequester?.(text.fontFamily, text.fontWeight, style);
   return `${style} ${text.fontWeight} ${text.fontSize}px "${text.fontFamily}", sans-serif`;
 }
 

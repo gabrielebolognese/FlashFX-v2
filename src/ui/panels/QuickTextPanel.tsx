@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { X, Sparkles } from 'lucide-react';
 import { useQuickTextStore } from '../../store/quickText';
 import { useEditorStore } from '../../store/editor';
-import { FONT_MANIFEST } from '../../engine/fonts';
+import { FONT_MANIFEST, FONT_CATEGORY_ORDER } from '../../engine/fonts';
 import { useCustomFontStore } from '../../engine/customFonts';
 
 // Fast-text panel: opened by Shift-placing with the text tool. A compact, non-modal popover to
@@ -26,8 +26,6 @@ const GRANULARITIES: { label: string; value: Granularity }[] = [
   { label: 'Per word', value: 'word' },
   { label: 'Per char', value: 'character' },
 ];
-
-const FONT_CATEGORY_ORDER = ['Sans', 'Display', 'Serif', 'Mono', 'System'] as const;
 
 export function QuickTextPanel() {
   const target = useQuickTextStore((s) => s.target);
