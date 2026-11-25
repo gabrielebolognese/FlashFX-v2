@@ -13,6 +13,7 @@
 // See mcp/README.md.
 
 import { createInterface } from 'node:readline';
+import { readFileSync } from 'node:fs';
 import { FlashFxSession, readConfig } from './lib/session.mjs';
 
 const SERVER_INFO = { name: 'flashfx', title: 'FlashFX Studio', version: '1.0.0' };
@@ -40,6 +41,12 @@ const ok = (value, extra = []) => ({ content: [text(value), ...extra], structure
 const fail = (message) => ({ content: [text(message)], isError: true });
 
 /** An agent run result -> tool result (ok:false becomes an MCP tool error the model can read). */
+/** An MCP image block for a written PNG (when asked and under 3 MB). */
+function inlinePng(result, inline) {
+  if (!inline || !result?.path || result.bytes > 3 * 1024 * 1024) return [];
+  return [{ type: 'image', data: readFileSync(result.path).toString('base64'), mimeType: 'image/png' }];
+}
+
 function fromRun(r) {
   if (!r) return fail('no result from the page');
   if (r.ok === false) return fail(`${r.actionId}: ${r.error}`);
@@ -208,6 +215,49 @@ const TOOLS = [
       const s = await session.screenshot({ path, region, inline, clean });
       const { inlineJpeg, ...info } = s;
       return ok(info, inlineJpeg ? [{ type: 'image', data: inlineJpeg, mimeType: 'image/jpeg' }] : []);
+    },
+  },
+  {
+    name: 'render_frame',
+    description: 'Render ONE frame of the active composition at full resolution to a PNG through an offscreen WebGPU renderer, exactly like export (export motion blur, full-res video, no UI overlays, not the scaled preview). Use it for pixel-true checks and side-by-sides with reference frames. Returns the image inline when it is small enough.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        frame: { type: 'number', description: 'Default: the playhead.' },
+        path: { type: 'string', description: 'Where to write the PNG (default: a temp file).' },
+        width: { type: 'number', description: 'Default: the composition width (height alone keeps the aspect).' },
+        height: { type: 'number' },
+        inline: { type: 'boolean', default: true, description: 'Also return the PNG in the result (skipped above 3 MB).' },
+      },
+    },
+    annotations: { readOnlyHint: true },
+    handler: async ({ path, inline = true, ...opts }) => {
+      const r = await session.renderFrame(path, opts);
+      if (!r?.ok) return fromRun(r);
+      return ok(r.result, inlinePng(r.result, inline));
+    },
+  },
+  {
+    name: 'render_strip',
+    description: 'Render several frames (the export path, like render_frame) into one labelled contact-sheet PNG, e.g. frames [0, 8, 16, 24, 40, 60] to check an entrance, the rest and the exit in one look.',
+    inputSchema: {
+      type: 'object',
+      required: ['frames'],
+      properties: {
+        frames: { type: 'array', items: { type: 'number' }, description: 'Up to 64 frame numbers.' },
+        path: { type: 'string', description: 'Where to write the PNG (default: a temp file).' },
+        columns: { type: 'number', description: 'Default min(4, frames).' },
+        tileWidth: { type: 'number', description: 'Width of each tile in px (default min(480, comp width)).' },
+        labels: { type: 'boolean', default: true },
+        inline: { type: 'boolean', default: true },
+      },
+    },
+    annotations: { readOnlyHint: true },
+    handler: async ({ path, inline = true, ...opts }) => {
+      if (!Array.isArray(opts.frames) || !opts.frames.length) return fail('"frames" is required');
+      const r = await session.renderStrip(path, opts);
+      if (!r?.ok) return fromRun(r);
+      return ok(r.result, inlinePng(r.result, inline));
     },
   },
   {

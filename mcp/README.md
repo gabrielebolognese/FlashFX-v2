@@ -77,6 +77,8 @@ seen (through `localStorage`, before the app loads). An existing choice is never
 | `seek {frame}` | `agent.seek` | Moves the real playhead (timeline `playbackController`) and renders. |
 | `play` / `pause` | `agent.play` / `agent.pause` | Preview playback. |
 | `screenshot {path?, region: window\|canvas, inline?, clean?}` | CDP `Page.captureScreenshot` | Writes a PNG, returns a downscaled JPEG preview plus the preview canvas rect. `clean` (default for `canvas`) hides DOM overlays during the capture. |
+| `render_frame {frame?, path?, width?, height?, inline?}` | `agent.renderFrame` | One full-resolution PNG rendered offscreen exactly like the exporter (export motion blur, no UI, not the scaled preview); returned inline when under 3 MB. For pixel-true checks and side-by-sides. |
+| `render_strip {frames[], path?, columns?, tileWidth?, labels?, inline?}` | `agent.renderStrip` | Several frames in one labelled contact-sheet PNG (same render path). |
 | `export_mp4 {path, width?, height?, frameRate?, bitrate?, includeAudio?}` | `agent.exportMp4` | The real exporter (WebGPU + WebCodecs, same as File > Export Video). The bytes are streamed out with `__ffxAgent.readExport`. |
 | `export_project {path}` | `agent.exportProject` | Writes the editable `.ffx` (every composition + imported media), the same file as File > Download Project. |
 | `import_project {path}` | `agent.importProject` | Opens a `.ffx` from disk as a new project. |

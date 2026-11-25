@@ -210,6 +210,27 @@ try {
     assert.deepEqual(measured.result.lines, ['FlashFX MCP']);
   });
 
+  // B46 + B33 + B48 over the real MCP: a colour curve with per-key eases, then full-resolution renders.
+  const colour = json(await call('run_action', { actionId: 'editor.setKeyframes', args: { layerId, propertyPath: 'text.color', keyframes: [
+    { frame: 0, value: [1, 1, 1, 1], ease: 'hold' }, { frame: 20, value: [1, 0.2, 0.1, 1] }] } }));
+  const FRAME_PNG = join(OUT_DIR, 'mcp-render-frame.png');
+  const STRIP_PNG = join(OUT_DIR, 'mcp-render-strip.png');
+  const rfRes = await call('render_frame', { frame: 20, width: 960, path: FRAME_PNG });
+  const rf = json(rfRes);
+  const strip = json(await call('render_strip', { frames: [0, 10, 20], columns: 3, tileWidth: 320, path: STRIP_PNG, inline: false }));
+  check('render_frame writes a full-resolution PNG of the exact frame (keyed text colour visible); render_strip a contact sheet', () => {
+    assert.equal(colour.ok, true, JSON.stringify(colour));
+    assert.deepEqual([rf.width, rf.height], [960, 540]);
+    assert.ok(rfRes.content.some((c) => c.type === 'image' && c.mimeType === 'image/png'));
+    const png = decodePng(readFileSync(FRAME_PNG));
+    assert.deepEqual([png.width, png.height], [960, 540]);
+    let red = 0;
+    for (let i = 0; i < png.px.length; i += 4) if (png.px[i] > 200 && png.px[i + 1] < 90 && png.px[i + 2] < 90) red++;
+    assert.ok(red > 500, `the frame-20 render should show the red text (${red} red px)`);
+    const sheet = decodePng(readFileSync(STRIP_PNG));
+    assert.deepEqual([sheet.width, sheet.height], [3 * 320 + 16, 180 + 8]);
+  });
+
   const img = json(await call('import_image', { path: join(ROOT, 'public/flashfx-mark.svg'), rasterSize: 256, x: 300, y: 300 }));
   const withImage = json(await call('get_state'));
   check('import_image brings an SVG in (rasterized) and places it as an image layer', () => {

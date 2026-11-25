@@ -208,7 +208,24 @@ window.__animGpu = async () => {
   const e1 = await render(R, emptied, 15), e2 = await render(R, stripped, 15);
   out.legacyDiff = maxDiff(e1.px, e2.px);
 
-  // Undo the whole build: every action above that is undoable unwinds cleanly.
+  // ── B48 renderFrame / renderStrip: the agent's full-resolution PNG equals a direct offscreen render ──
+  const pngPixels = async (exportId, bytes) => {
+    const c = await a.readExport(exportId, 0, bytes);
+    const bin = atob(c.base64); const u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+    const bmp = await createImageBitmap(new Blob([u8], { type: 'image/png' }));
+    const cv = new OffscreenCanvas(bmp.width, bmp.height); const g = cv.getContext('2d'); g.drawImage(bmp, 0, 0);
+    return { w: bmp.width, h: bmp.height, px: Array.from(g.getImageData(0, 0, bmp.width, bmp.height).data) };
+  };
+  const rf = (await run('agent.renderFrame', { frame: 15 })).result;
+  const rfPx = await pngPixels(rf.exportId, rf.bytes);
+  const full = structuredClone(useEditorStore.getState().composition);
+  const direct = await render(R, full, 15);
+  out.renderFrame = { w: rfPx.w, h: rfPx.h, diff: maxDiff(rfPx.px, direct.px), mime: rf.mimeType };
+  const rf2 = (await run('agent.renderFrame', { frame: 30, width: 160 })).result;
+  out.renderFrameHalf = [rf2.width, rf2.height];
+  const strip = (await run('agent.renderStrip', { frames: [0, 15, 30], columns: 3, tileWidth: 160 })).result;
+  out.strip = { w: strip.width, h: strip.height, cols: strip.columns, tile: [strip.tileWidth, strip.tileHeight] };
+  out.renderNoDom = document.querySelectorAll('canvas').length;
   return out;
 };
 window.__ready = true;
@@ -294,6 +311,16 @@ try {
     assert.deepEqual(e(30).slice(0, 3), [255, 0, 255]);
   });
   check('legacy: empty override tracks render byte-identically to none', () => assert.equal(r.legacyDiff, 0));
+  check('B48 agent.renderFrame: full-resolution PNG at comp size equals a direct offscreen render; no DOM canvas', () => {
+    assert.equal(r.renderFrame.mime, 'image/png');
+    assert.deepEqual([r.renderFrame.w, r.renderFrame.h], [320, 180]);
+    assert.equal(r.renderFrame.diff, 0, `renderFrame vs direct render max diff ${r.renderFrame.diff}`);
+    assert.deepEqual(r.renderFrameHalf, [160, 90], 'width alone keeps the aspect');
+    assert.equal(r.renderNoDom, 0);
+  });
+  check('B48 agent.renderStrip: a labelled 3-up contact sheet with the right geometry', () => {
+    assert.deepEqual(r.strip, { w: 3 * 160 + 4 * 4, h: 90 + 2 * 4, cols: 3, tile: [160, 90] });
+  });
 
   console.log(`\ngpu:anim-props - ${passed} checks passed`);
 } finally {

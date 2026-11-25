@@ -232,9 +232,12 @@ Never leave real motion on linear (the default for `addKeyframe`), except progre
   rest, mid-hold, mid-exit, last frame.
 - Look for: elements visible before they should be, stubs (2 px shapes), clipped glyphs,
   overlapping elements, text that runs into shapes, colour blowing out under glow.
-- The preview screenshot is the scaled preview canvas (about 1392 px wide in a 1920 window); for
-  pixel checks compare against frames extracted from the exported MP4
-  (`ffmpeg -i out.mp4 -vf "select=eq(n\,60)" -vframes 1 f60.png`).
+- The preview screenshot is the scaled preview canvas (about 1392 px wide in a 1920 window). For
+  pixel-true checks use **`render_frame { frame, path, width? }`** (B48): a full-resolution PNG
+  rendered offscreen exactly like the exporter (export motion blur, no UI), returned inline too.
+  **`render_strip { frames: [0, 8, 16, 24, 40], tileWidth: 480 }`** puts several frames in one
+  labelled contact sheet: the fastest way to review a whole move, and to set side by side with
+  frames of a reference video at the same frame numbers.
 
 ## 10. Save and export
 

@@ -24,6 +24,11 @@ import { useOnboardingStore } from '../onboarding/store';
 import { usePanelStore, type UiMode } from '../store/panels';
 import { playbackController, useTimelineStore } from '../store/timeline';
 import { exportToMp4, type ExportSettings } from '../codec/exporter';
+import { collectExportVideoDecodes } from '../codec/exportMath';
+import { WebGPURenderer } from '../engine/renderer';
+import { EXPORT_MOTION_BLUR_SAMPLES } from '../store/preview';
+import { videoDecoderPool } from '../engine/video/videoDecoderPool';
+import { frameScheduler } from '../engine/video/frameScheduler';
 import { PARTICLE_PRESETS } from '../particles/presets';
 import { resolveFrame } from '../core/interpolation';
 import { getTextLayout, measureStringWidth } from '../engine/textAtlas';
@@ -292,6 +297,83 @@ async function waitForOpenedProject(projectId: string): Promise<void> {
   playbackController.renderCurrentFrame();
 }
 
+// ---------------------------------------------------------------------------------------------
+// B48: full-resolution frame renders (pixel-true checks and side-by-sides with reference videos)
+// ---------------------------------------------------------------------------------------------
+
+/** One offscreen renderer reused across renderFrame calls (re-created when the size changes). */
+let frameRenderer: { renderer: WebGPURenderer; width: number; height: number } | null = null;
+/** Serialize frame renders: they share the renderer and its canvas. */
+let frameRenderChain: Promise<unknown> = Promise.resolve();
+
+const MAX_RENDER_SIDE = 4096;
+
+function renderSize(width: unknown, height: unknown): { w: number; h: number } {
+  const comp = useEditorStore.getState().composition;
+  const cw = comp.settings.width, ch = comp.settings.height;
+  let w = typeof width === 'number' && width > 0 ? Math.round(width) : 0;
+  let h = typeof height === 'number' && height > 0 ? Math.round(height) : 0;
+  if (!w && !h) { w = cw; h = ch; } else if (!h) h = Math.round((w * ch) / cw); else if (!w) w = Math.round((h * cw) / ch);
+  if (w > MAX_RENDER_SIDE || h > MAX_RENDER_SIDE) throw new Error(`render size ${w}x${h} exceeds ${MAX_RENDER_SIDE} px`);
+  return { w: Math.max(2, w), h: Math.max(2, h) };
+}
+
+/**
+ * Render one composition frame through an offscreen WebGPURenderer exactly like the MP4 exporter does
+ * (same resolve context, export-quality motion blur, full-resolution video decode, images resident),
+ * then copy it to a fresh canvas. Never touches the DOM or the preview.
+ */
+async function renderCompFrame(frame: number, w: number, h: number): Promise<OffscreenCanvas> {
+  const job = frameRenderChain.then(async () => {
+    if (!frameRenderer || frameRenderer.width !== w || frameRenderer.height !== h) {
+      frameRenderer?.renderer.destroy();
+      frameRenderer = null;
+      const r = new WebGPURenderer();
+      if (!(await r.initializeOffscreen(w, h))) throw new Error('WebGPU is not available for an offscreen render');
+      r.setMotionBlurSamples(EXPORT_MOTION_BLUR_SAMPLES);
+      r.setExportMode(true);
+      frameRenderer = { renderer: r, width: w, height: h };
+    }
+    const r = frameRenderer.renderer;
+    const ed = useEditorStore.getState();
+    const comp = ed.composition;
+    const f = Math.max(0, Math.min(comp.settings.durationFrames - 1, Math.round(frame)));
+    const data = resolveFrame(comp, f, { getComposition: ed.getComposition, depth: 0, visited: new Set() });
+    // Full-resolution source frames (the exporter's path), never a buffered half-res preview proxy.
+    const decodes = collectExportVideoDecodes(data.layers);
+    if (decodes.length) {
+      frameScheduler.releaseBufferedFrames();
+      await Promise.all(decodes.map(async ({ assetId, frame: sf }) => {
+        if (frameScheduler.getFrame(assetId, sf)) return;
+        frameScheduler.injectFrame(assetId, sf, await videoDecoderPool.decodeFrameForExport(assetId, sf));
+      }));
+    }
+    await Promise.all(data.layers.filter((l) => l.layerType === 'image' && l.image?.assetId).map((l) => mediaAssetManager.ensureImageBitmap(l.image!.assetId)));
+    try {
+      await r.renderFrameAsync(data, 'offscreen');
+    } finally {
+      // Like the exporter's cleanup: do not leave full-resolution frames in the shared scheduler.
+      if (decodes.length) frameScheduler.releaseBufferedFrames();
+    }
+    const src = r.getOffscreenCanvas();
+    if (!src) throw new Error('the offscreen renderer has no canvas');
+    const copy = new OffscreenCanvas(w, h);
+    const g = copy.getContext('2d');
+    if (!g) throw new Error('no 2D canvas to read the frame back');
+    g.drawImage(src, 0, 0);
+    return copy;
+  });
+  frameRenderChain = job.catch(() => undefined);
+  return job;
+}
+
+async function keepPng(canvas: OffscreenCanvas): Promise<{ exportId: string; bytes: number }> {
+  const blob = await canvas.convertToBlob({ type: 'image/png' });
+  const exportId = `export-${++exportSeq}`;
+  finishedExports.set(exportId, blob);
+  return { exportId, bytes: blob.size };
+}
+
 /** Composite helpers: each is one undoable step built on real store actions / history commands.
  *  (createProject / exportMp4 are session-level and not undoable, like their UI counterparts.) */
 const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
@@ -505,6 +587,46 @@ const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
       fontFamily: probe.fontFamily,
       fontSize: size,
     };
+  },
+
+  renderFrame: async (frame, width, height) => {
+    const f = typeof frame === 'number' && Number.isFinite(frame) ? frame : useTimelineStore.getState().currentFrame;
+    const { w, h } = renderSize(width, height);
+    const canvas = await renderCompFrame(f, w, h);
+    const kept = await keepPng(canvas);
+    return { ...kept, frame: Math.round(f), width: w, height: h, mimeType: 'image/png' };
+  },
+
+  renderStrip: async (frames, columns, tileWidth, labels) => {
+    if (!Array.isArray(frames) || frames.length === 0 || !frames.every((x) => typeof x === 'number' && Number.isFinite(x))) throw new Error('"frames" must be a non-empty array of frame numbers');
+    if (frames.length > 64) throw new Error('at most 64 frames per strip');
+    const comp = useEditorStore.getState().composition;
+    const tw = typeof tileWidth === 'number' && tileWidth > 0 ? Math.round(tileWidth) : Math.min(480, comp.settings.width);
+    const { w, h } = renderSize(tw, undefined);
+    const cols = typeof columns === 'number' && columns > 0 ? Math.min(Math.round(columns), frames.length) : Math.min(frames.length, 4);
+    const rows = Math.ceil(frames.length / cols);
+    const gap = 4;
+    const sheet = new OffscreenCanvas(cols * w + (cols + 1) * gap, rows * h + (rows + 1) * gap);
+    const g = sheet.getContext('2d');
+    if (!g) throw new Error('no 2D canvas for the strip');
+    g.fillStyle = '#202020';
+    g.fillRect(0, 0, sheet.width, sheet.height);
+    for (let i = 0; i < frames.length; i++) {
+      const tile = await renderCompFrame(frames[i] as number, w, h);
+      const x = gap + (i % cols) * (w + gap), y = gap + Math.floor(i / cols) * (h + gap);
+      g.drawImage(tile, x, y);
+      if (labels !== false) {
+        const label = `f${Math.round(frames[i] as number)}`;
+        g.font = `${Math.max(11, Math.round(h / 14))}px monospace`;
+        const m = g.measureText(label);
+        g.fillStyle = 'rgba(0,0,0,0.65)';
+        g.fillRect(x, y, m.width + 10, Math.max(11, Math.round(h / 14)) + 8);
+        g.fillStyle = '#ffffff';
+        g.fillText(label, x + 5, y + Math.max(11, Math.round(h / 14)) + 2);
+      }
+    }
+    const kept = await keepPng(sheet);
+    return { ...kept, frames: frames.map((x) => Math.round(x as number)), columns: cols, tileWidth: w, tileHeight: h, width: sheet.width, height: sheet.height, mimeType: 'image/png' };
   },
 
   getLayer: (layerId) => {

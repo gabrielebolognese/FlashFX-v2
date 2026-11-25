@@ -37,6 +37,8 @@ export type AgentHelperMethod =
   | 'getLayer'
   | 'measureText'
   | 'measureString'
+  | 'renderFrame'
+  | 'renderStrip'
   | 'configureParticles'
   | 'saveProject'
   | 'exportProject'
@@ -186,6 +188,16 @@ export const AGENT_ACTIONS: readonly AgentActionSpec[] = [
     returns: '{ frame, center, box {width,height,left,top}, ink {width,height,left,right,top,bottom}, lines, lineWidths, lineHeightPx, fontSize, scale, rotation }',
     description: 'Measure a text layer exactly as the renderer lays it out (comp px), so you can align other layers, size masks and cards, or left-align by centre. ink = the lines (width of the widest line x line count); box = the drawn quad incl. padding. Assumes scale 1 / no rotation for the edges. Read-only.',
     params: [LAYER_ID, { name: 'frame', type: 'number', optional: true, description: 'Default: the playhead.' }] },
+  { id: 'agent.renderFrame', store: 'agent', method: 'renderFrame', undoable: false,
+    returns: '{ exportId, bytes, frame, width, height, mimeType: "image/png" }; read the PNG with __ffxAgent.readExport(exportId, offset, length)',
+    description: 'Render ONE frame of the active composition at full resolution through an offscreen WebGPU renderer, exactly like the MP4 exporter (export-quality motion blur, full-resolution video, no UI overlays, not the scaled preview), as a PNG. For pixel-true checks and side-by-sides with reference frames. Default size = the composition; pass width or height alone to keep the aspect.',
+    params: [{ name: 'frame', type: 'number', optional: true, description: 'Default: the playhead.' }, { name: 'width', type: 'number', optional: true }, { name: 'height', type: 'number', optional: true }] },
+  { id: 'agent.renderStrip', store: 'agent', method: 'renderStrip', undoable: false,
+    returns: '{ exportId, bytes, frames, columns, tileWidth, tileHeight, width, height, mimeType: "image/png" }',
+    description: 'Render several frames (the exporter path, like renderFrame) into one labelled contact sheet PNG: a quick way to check a whole move (entrance, rest, exit) in one image.',
+    params: [{ name: 'frames', type: 'number[]', description: 'Up to 64 frame numbers.' }, { name: 'columns', type: 'number', optional: true, description: 'Default min(4, frames).' },
+      { name: 'tileWidth', type: 'number', optional: true, description: 'Width of each tile in px (default min(480, comp width)).' },
+      { name: 'labels', type: 'boolean', optional: true, description: 'Draw the frame number on each tile (default true).' }] },
   { id: 'agent.measureString', store: 'agent', method: 'measureString', undoable: false,
     returns: '{ width, height, lines, lineWidths, lineHeightPx, box {width, height}, fontFamily, fontSize }',
     description: 'Measure a string in a font WITHOUT creating a layer (same layout code as the renderer, comp px), e.g. to size a pill or a caret before building it. letterSpacing / lineHeight use the same units as the text layer animOverrides. Read-only.',
@@ -705,6 +717,11 @@ export const AGENT_FEATURES: readonly AgentFeature[] = [
     actions: ['editor.addImageFromAsset', 'editor.addVideoFromAsset', 'editor.fitLayerToCanvas'], status: 'shipped' },
 
   // export
+  { id: 'export.frame', area: 'export', name: 'Render a frame / contact sheet (PNG)',
+    description: 'Full-resolution PNG of one frame, or a labelled contact sheet of several, rendered offscreen through the exporter path (export motion blur, no UI, not the scaled preview).',
+    ui: 'Agent / MCP only (render_frame, render_strip). In the app: File > Export Video and step through it.',
+    actions: ['agent.renderFrame', 'agent.renderStrip'], status: 'browser-gated',
+    notes: 'Needs WebGPU. Proven against the real renderer headless by npm run gpu:anim-props (renderFrame of a frame equals a direct offscreen render).' },
   { id: 'export.video', area: 'export', name: 'Export MP4',
     description: 'Render the composition to MP4 (H.264 + AAC) through WebGPU + WebCodecs.',
     ui: 'File > Export Video... (Ctrl+E)', actions: ['agent.exportMp4'], status: 'browser-gated',

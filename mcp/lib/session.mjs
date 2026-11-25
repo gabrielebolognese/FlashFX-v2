@@ -383,6 +383,26 @@ export class FlashFxSession {
     return { ok: true, actionId: 'agent.exportMp4', result: { path: outPath, bytes, audioDropped } };
   }
 
+  /** Render one full-resolution frame (agent.renderFrame) and write the PNG to `path`. */
+  async renderFrame(path, opts = {}, timeoutMs = 300000) {
+    const r = await this.run('agent.renderFrame', opts, timeoutMs);
+    if (!r?.ok) return r;
+    const { exportId, bytes, frame, width, height } = r.result;
+    const outPath = resolve(path ?? join(tmpdir(), 'flashfx-mcp', `frame-${frame}.png`));
+    await this.streamExport(exportId, bytes, outPath);
+    return { ok: true, actionId: 'agent.renderFrame', result: { path: outPath, bytes, frame, width, height } };
+  }
+
+  /** Render a labelled contact sheet of several frames (agent.renderStrip) and write the PNG to `path`. */
+  async renderStrip(path, opts = {}, timeoutMs = 900000) {
+    const r = await this.run('agent.renderStrip', opts, timeoutMs);
+    if (!r?.ok) return r;
+    const { exportId, bytes, ...info } = r.result;
+    const outPath = resolve(path ?? join(tmpdir(), 'flashfx-mcp', `strip-${info.frames.join('-').slice(0, 60)}.png`));
+    await this.streamExport(exportId, bytes, outPath);
+    return { ok: true, actionId: 'agent.renderStrip', result: { path: outPath, bytes, ...info } };
+  }
+
   /** Bundle the open project as an editable .ffx (agent.exportProject) and write it to `path`. */
   async exportProject(path, timeoutMs = 600000) {
     const r = await this.run('agent.exportProject', undefined, timeoutMs);
