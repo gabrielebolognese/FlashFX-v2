@@ -110,6 +110,7 @@ interface StructuralCache {
   soloing: boolean;
   hasLayoutLayers: boolean;
   hasThreeDLayers: boolean;
+  hasCornerPins: boolean;
 }
 const _structCacheByLayers = new WeakMap<Layer[], StructuralCache>();
 
@@ -137,6 +138,7 @@ function getStructuralCache(layers: Layer[], tracks: Track[]): StructuralCache {
     ),
     // 2.5D - skip the per-frame world-matrix pass entirely for all-2D comps (the common case).
     hasThreeDLayers: layers.some((l) => l.is3D === true),
+    hasCornerPins: layers.some((l) => l.cornerPin !== undefined),
   };
   _structCacheByLayers.set(layers, cache);
   return cache;
@@ -2054,6 +2056,16 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
     for (const rl of resolvedLayers) {
       const src = _layerById.get(rl.id);
       if (src?.is3D) { rl.worldMatrix = worldMatrixFor(rl.id, frame); rl.is3D = true; }
+    }
+  }
+
+  // Corner pin (B53): resolve the four pins (comp px) on layers that carry one. Keyed by source id, so
+  // per-glyph text stamps (`<id>#g<i>`) are not pinned (a pin warps the layer's single quad). No-op
+  // when no layer has a pin.
+  if (struct.hasCornerPins) {
+    for (const rl of resolvedLayers) {
+      const pin = _layerById.get(rl.id)?.cornerPin;
+      if (pin) rl.cornerPin = [evaluateVec2(pin.topLeft, frame), evaluateVec2(pin.topRight, frame), evaluateVec2(pin.bottomRight, frame), evaluateVec2(pin.bottomLeft, frame)];
     }
   }
 

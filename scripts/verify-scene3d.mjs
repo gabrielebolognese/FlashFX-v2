@@ -72,7 +72,8 @@ try {
   check('camera eye position (transform + positionZ) round-trips', () => {
     const c = round.layers.find((l) => l.type === 'camera');
     assert.ok(c.transform.positionZ, 'camera has a Z position prop');
-    assert.ok(near(c.transform.positionZ.defaultValue, -H), 'default camera eye at z=-compH');
+    // B53: a new camera sits at z = -zoom (AE 50mm: 50*W/36), which frames z = 0 at 1:1 (was -compH, a ~2.5x punch-in).
+    assert.ok(near(c.transform.positionZ.defaultValue, -(50 * W) / 36), 'default camera eye at z=-zoom (50mm)');
   });
 
   check('3D layer keeps is3D and all depth transform values', () => {
