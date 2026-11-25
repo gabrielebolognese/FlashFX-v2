@@ -4,6 +4,11 @@
 //   - the accent word renders in its own colour (gold pixels appear on the canvas);
 //   - mid-reveal, per-glyph motion blur visibly changes the frame vs the same frame with blur off,
 //     while the settled frame is identical either way (blur only where glyphs move).
+// B45 / B36 (wave 1B), rendered through render_frame (the exporter path, full resolution):
+//   - create_project clipLength "comp": a new layer spans the whole composition;
+//   - a two-line caption and a left-aligned fixedWidth box drawn as glyph stamps land on the plain text;
+//   - a per-word animator runs across BOTH lines (line 2 empty, then partial, then full);
+//   - type-on and blur-in draw nothing at (and before) their start frame, the first glyph included.
 // Local only (needs Chrome + a GPU), like every gpu:* script:  npm run gpu:text-kinetic
 // Env: FLASHFX_SERVER=dev|dist (default dev), FLASHFX_KINETIC_OUT=<dir for the PNGs>.
 
@@ -115,7 +120,7 @@ try {
   console.log('gpu:text-kinetic');
   await request('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'gpu-text-kinetic', version: '1' } });
   server.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' })}\n`);
-  await call('create_project', { name: 'Kinetic text proof', format: 'long', durationFrames: 60, uiMode: 'pro' }, 400000);
+  await call('create_project', { name: 'Kinetic text proof', format: 'long', durationFrames: 180, uiMode: 'pro', clipLength: 'comp' }, 400000);
 
   const batch = await call('run_actions', {
     actions: [
@@ -173,6 +178,90 @@ try {
     assert.ok(midDiff > 0.0005, `motion blur did not change the moving glyphs (${midDiff})`);
     assert.ok(restDiff < midDiff / 4, `settled frame changed too much (${restDiff} vs ${midDiff})`);
   });
+
+  // ----- B45 / B36 (wave 1B) -----
+  const titleLayer = (await call('get_layer', { layerId })).result;
+  check(`clipLength "comp": the new layer spans the whole 180-frame comp (outPoint ${titleLayer.outPoint}, a 4 s clip would end at 120)`, () => {
+    assert.equal(titleLayer.inPoint, 0);
+    assert.equal(titleLayer.outPoint, 180);
+  });
+  await call('run_action', { actionId: 'editor.updateLayerProperty', args: { layerId, path: 'visible', value: false } });
+
+  const render = async (frame, name) => {
+    await call('render_frame', { frame, path: shotPath(name), inline: false });
+    return decodePng(readFileSync(shotPath(name)));
+  };
+  const FULL = { x: 0, y: 0, width: 1920, height: 1080 };
+  const cap = await call('run_actions', {
+    actions: [
+      { actionId: 'editor.addText', args: { content: 'students and\nstaff alike' } },
+      { actionId: 'editor.updateLayerProperty', args: { layerId: '$0.activeLayerId', path: 'animOverrides.fontSize.defaultValue', value: 120 } },
+      { actionId: 'editor.updateLayerProperty', args: { layerId: '$0.activeLayerId', path: 'content.spans.0.style.color', value: [1, 1, 1, 1] } },
+    ],
+  });
+  const capId = cap.results[0].activeLayerId;
+  const setAnimators = (value) => call('run_action', { actionId: 'editor.updateLayerProperty', args: { layerId: capId, path: 'animators', value } });
+  const placement = async (label, name) => {
+    await setAnimators([]);
+    const plainImg = await render(50, `${name}-plain`);
+    await setAnimators([noop]);
+    const stampImg = await render(50, `${name}-stamps`);
+    const ink = stats(plainImg, FULL).white;
+    const moved = stats(stampImg, FULL, plainImg).changed;
+    check(`${label}: glyph stamps land on the plain text (${(moved * 100).toFixed(3)}% px differ; text covers ${(ink * 100).toFixed(2)}%)`, () => {
+      assert.ok(ink > 0.005, `the plain text did not render (${ink})`);
+      assert.ok(moved < ink * 0.15, `stamped text is misplaced (${moved} differs vs ${ink} ink)`);
+    });
+  };
+  await placement('two-line caption (centred)', 'multiline');
+  await call('run_actions', {
+    actions: [
+      { actionId: 'editor.updateLayerProperty', args: { layerId: capId, path: 'layoutConfig.boundingBox', value: { type: 'fixedWidth', width: 1400 } } },
+      { actionId: 'editor.updateLayerProperty', args: { layerId: capId, path: 'layoutConfig.horizontalAlign', value: 'left' } },
+      // A fixedWidth box is 200 px tall and its raster clips there; stamps skip only lines that START
+      // below the box, so keep both lines inside it (2 x 84 px).
+      { actionId: 'editor.updateLayerProperty', args: { layerId: capId, path: 'animOverrides.fontSize.defaultValue', value: 70 } },
+    ],
+  });
+  await placement('fixedWidth box, left-aligned, two lines', 'fixedwidth-left');
+  await call('run_actions', {
+    actions: [
+      { actionId: 'editor.updateLayerProperty', args: { layerId: capId, path: 'layoutConfig.boundingBox', value: { type: 'auto' } } },
+      { actionId: 'editor.updateLayerProperty', args: { layerId: capId, path: 'layoutConfig.horizontalAlign', value: 'center' } },
+      { actionId: 'editor.updateLayerProperty', args: { layerId: capId, path: 'animOverrides.fontSize.defaultValue', value: 120 } },
+    ],
+  });
+
+  // Per-word animation across both lines: 4 words, line 2 = words 3 and 4.
+  const m = (await call('measure_text', { layerId: capId, frame: 50 })).result;
+  const top = m.box.top + 2;
+  const band = (li) => ({ x: 0, width: 1920, y: top + li * m.lineHeightPx + 4, height: m.lineHeightPx * 0.85 });
+  await call('run_action', { actionId: 'agent.applyTextAnimatorPreset', args: { layerId: capId, presetId: 'rise-fade-word', startFrame: 0, durationFrames: 30, replace: true } });
+  const restImg = await render(40, 'perword-rest');
+  const earlyImg = await render(12, 'perword-f12');
+  const laterImg = await render(22, 'perword-f22');
+  const l1 = (img) => stats(img, band(0)).white;
+  const l2 = (img) => stats(img, band(1)).white;
+  check(`multi-line per-word reveal: line 1 shows first (${(l1(earlyImg) / l1(restImg) * 100).toFixed(0)}% of its ink at f12), line 2 empty at f12 (${(l2(earlyImg) / l2(restImg) * 100).toFixed(0)}%), partial at f22 (${(l2(laterImg) / l2(restImg) * 100).toFixed(0)}%), full at rest`, () => {
+    assert.ok(l1(restImg) > 0.01 && l2(restImg) > 0.01, `both lines drawn at rest (${l1(restImg)}, ${l2(restImg)})`);
+    assert.ok(l1(earlyImg) > l1(restImg) * 0.5, 'line 1 mostly in by f12');
+    assert.ok(l2(earlyImg) < l2(restImg) * 0.1, 'line 2 still hidden at f12');
+    assert.ok(l2(laterImg) > l2(restImg) * 0.15 && l2(laterImg) < l2(restImg) * 0.9, 'line 2 word by word at f22');
+  });
+
+  // No early first glyph: nothing drawn at or before the start frame.
+  for (const presetId of ['type-on', 'blur-in']) {
+    await call('run_action', { actionId: 'agent.applyTextAnimatorPreset', args: { layerId: capId, presetId, startFrame: 20, durationFrames: 20, replace: true } });
+    const before = await render(19, `${presetId}-f19`);
+    const atStart = await render(20, `${presetId}-f20`);
+    const after = await render(45, `${presetId}-f45`);
+    const box = { x: m.box.left - 40, y: m.box.top - 40, width: m.box.width + 80, height: m.box.height + 80 };
+    check(`${presetId}: no glyph before or at its start frame (ink f19 ${(stats(before, box).white * 100).toFixed(3)}%, f20 ${(stats(atStart, box).white * 100).toFixed(3)}%, f45 ${(stats(after, box).white * 100).toFixed(2)}%)`, () => {
+      assert.equal(stats(before, box).white, 0, 'f19 is empty');
+      assert.equal(stats(atStart, box).white, 0, 'f20 (start) is empty');
+      assert.ok(stats(after, box).white > 0.01, 'fully typed afterwards');
+    });
+  }
 
   console.log(`\n${passed} checks passed. PNGs: ${OUT_DIR}`);
 } catch (e) {

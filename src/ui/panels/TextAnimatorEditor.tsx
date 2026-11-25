@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { ChevronDown, ChevronRight, Plus, RotateCcw } from 'lucide-react';
-import type { TextLayer, TextAnimator, TextAnimatorDelta, TextAnimatorSplitMode, TextDecode, TextPathBinding, Vec2 } from '../../core/types';
+import type { TextLayer, TextAnimator, TextAnimatorDelta, TextAnimatorSplitMode, TextDecode, TextPathBinding, Vec2, Vec4 } from '../../core/types';
+import { hexToVec4, vec4ToHex } from '../../core/material';
 import type { SelectorShape } from '../../text/rangeSelector';
 import { createProperty, createKeyframe } from '../../core/factory';
 import { TEXT_ANIMATOR_PRESETS, createTextDecode, buildTextAnimatorPreset, type TextAnimatorPresetBuild } from '../../core/textAnimatorPresets';
@@ -45,7 +46,17 @@ export function TextAnimatorsSection({ layer, updateLayerProperty }: {
     <div className="border-t border-hairline px-3 py-2.5">
       <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">Animators</div>
       {animators.length === 0 && (
-        <p className="mb-2 text-[10.5px] leading-snug text-slate-600">Per-character animation (single-line text).</p>
+        <p className="mb-2 text-[10.5px] leading-snug text-slate-600">Per-character, word or line animation (any text, incl. multi-line and boxes).</p>
+      )}
+      {animators.length > 0 && (
+        <div className="mb-1.5 flex items-center gap-2" title="Hidden glyphs take no space: a centred type-on / delete stays centred (After Effects keeps the full-line layout)">
+          <button
+            type="button"
+            onClick={() => updateLayerProperty(layer.id, 'reflowHidden', !layer.reflowHidden)}
+            className={`h-3 w-3 flex-shrink-0 rounded-sm border ${layer.reflowHidden ? 'border-accent bg-accent' : 'border-hairline'}`}
+          />
+          <span className="text-[10.5px] text-slate-500">Re-centre on visible glyphs</span>
+        </div>
       )}
 
       <div className="space-y-1.5">
@@ -84,7 +95,7 @@ export function TextAnimatorsSection({ layer, updateLayerProperty }: {
 }
 
 // Text on a path (B9b) - flow glyphs along a MotionPath (interpreted in the layer's local space).
-// Single-line text; exact placement is browser-eyeballed like all text stamps.
+// Single-line text (multi-line text on a path keeps the plain render).
 function TextPathSection({ layer, updateLayerProperty }: {
   layer: TextLayer;
   updateLayerProperty: (layerId: string, path: string, value: unknown) => void;
@@ -192,7 +203,7 @@ function DecodeSection({ layer, updateLayerProperty }: {
               className="w-32 rounded border border-hairline bg-[#0e1726] px-1.5 py-0.5 text-[10px] text-slate-200 focus:border-accent focus:outline-none"
             />
           </Field>
-          <p className="text-[9.5px] leading-snug text-slate-600">Glyphs flicker through the charset, locking left→right over the reveal. Single-line text.</p>
+          <p className="text-[9.5px] leading-snug text-slate-600">Glyphs flicker through the charset, locking left→right over the reveal.</p>
         </div>
       )}
     </div>
@@ -204,6 +215,7 @@ function Editor({ animator, onChange }: { animator: TextAnimator; onChange: (a: 
   const d = animator.delta;
   const pos: Vec2 = d.position ?? [0, 0];
   const scl: Vec2 = d.scale ?? [0, 0];
+  const scatter: Vec2 = d.scatter ?? [0, 0];
 
   const setSel = (patch: Partial<typeof sel>) => onChange({ ...animator, selector: { ...sel, ...patch } });
   const setDelta = (patch: TextAnimatorDelta) => onChange({ ...animator, delta: { ...d, ...patch } });
@@ -236,12 +248,34 @@ function Editor({ animator, onChange }: { animator: TextAnimator; onChange: (a: 
         <Field label="Blur px"><Num value={d.blur ?? 0} min={0} onChange={(v) => setDelta({ blur: v })} /></Field>
         <Field label="Opacity %"><Num value={(d.opacity ?? 0) * 100} min={-100} max={100} onChange={(v) => setDelta({ opacity: v / 100 })} /></Field>
         <Field label="Tracking em"><Num value={d.tracking ?? 0} step={0.05} onChange={(v) => setDelta({ tracking: v })} /></Field>
+        <Field label="Skew °"><Num value={d.skew ?? 0} min={-80} max={80} onChange={(v) => setDelta({ skew: v })} /></Field>
+        <Field label="Scatter px"><Num value={scatter[0]} min={0} onChange={(v) => setDelta({ scatter: [v, scatter[1]] })} suffix="x" /><Num value={scatter[1]} min={0} onChange={(v) => setDelta({ scatter: [scatter[0], v] })} suffix="y" /></Field>
+        <Field label="Fill colour">
+          <button
+            type="button"
+            title="Animate the fill colour"
+            onClick={() => onChange({ ...animator, delta: toggleFill(d) })}
+            className={`h-3 w-3 rounded-sm border ${d.fillColor ? 'border-accent bg-accent' : 'border-hairline'}`}
+          />
+          {d.fillColor && (
+            <input
+              type="color"
+              value={vec4ToHex(d.fillColor)}
+              onChange={(e) => setDelta({ fillColor: hexToVec4(e.target.value, d.fillColor?.[3] ?? 1) })}
+              className="h-5 w-8 cursor-pointer rounded border border-hairline bg-transparent"
+            />
+          )}
+        </Field>
       </Group>
 
       <Group title="Range selector">
         <Field label="Shape"><Select options={SHAPES} value={sel.shape} onChange={(v) => setSel({ shape: v })} /></Field>
-        <Field label="Start"><Slider value={sel.start} min={0} max={1} step={0.01} onChange={(v) => setSel({ start: v })} /></Field>
-        <Field label="End"><Slider value={sel.end} min={0} max={1} step={0.01} onChange={(v) => setSel({ end: v })} /></Field>
+        {animator.start?.keyframes.length
+          ? <Field label="Start"><span className="text-[10px] text-slate-500">keyframed ({animator.start.keyframes.length})</span></Field>
+          : <Field label="Start"><Slider value={sel.start} min={0} max={1} step={0.01} onChange={(v) => setSel({ start: v })} /></Field>}
+        {animator.end?.keyframes.length
+          ? <Field label="End"><span className="text-[10px] text-slate-500">keyframed ({animator.end.keyframes.length})</span></Field>
+          : <Field label="End"><Slider value={sel.end} min={0} max={1} step={0.01} onChange={(v) => setSel({ end: v })} /></Field>}
         <Field label="Ease low"><Slider value={sel.easeLow} min={-1} max={1} step={0.05} onChange={(v) => setSel({ easeLow: v })} /></Field>
         <Field label="Ease high"><Slider value={sel.easeHigh} min={-1} max={1} step={0.05} onChange={(v) => setSel({ easeHigh: v })} /></Field>
         <Field label="Amount %"><Num value={sel.amount * 100} min={-100} max={100} onChange={(v) => setSel({ amount: v / 100 })} /></Field>
@@ -258,6 +292,15 @@ function Editor({ animator, onChange }: { animator: TextAnimator; onChange: (a: 
       </Group>
     </div>
   );
+}
+
+/** Fill-colour delta on / off (B36): on starts at a lime pulse colour; off removes the key. */
+const FILL_DEFAULT: Vec4 = [0.78, 1, 0.24, 1];
+function toggleFill(d: TextAnimatorDelta): TextAnimatorDelta {
+  if (!d.fillColor) return { ...d, fillColor: [...FILL_DEFAULT] as Vec4 };
+  const next = { ...d };
+  delete next.fillColor;
+  return next;
 }
 
 // ── controls ──

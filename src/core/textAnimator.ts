@@ -1,6 +1,6 @@
 import type { RangeSelectorConfig } from '../text/rangeSelector';
 import { selectorWeights } from '../text/rangeSelector';
-import type { TextAnimatorDelta, TextAnimatorSplitMode } from './types';
+import type { TextAnimatorDelta, TextAnimatorSplitMode, Vec4 } from './types';
 
 // Pure per-character text-animation core. Given the string and a set of frame-resolved animators
 // (offset already baked into each selector), it produces a per-character transform/opacity delta by
@@ -23,6 +23,14 @@ export interface GlyphDelta {
   blur: number;
   /** Extra tracking in em after this character (summed over animators); see trackingShifts. */
   tracking: number;
+  /** Horizontal skew in degrees (B36), summed over animators. */
+  skew: number;
+  /**
+   * Fill-colour mixes (B36), in animator order: the glyph's fill = its own colour mixed towards each
+   * `color` by `w` in turn (linear light, applied at resolve time where the base colour is known).
+   * Absent when no fill-colour animator selects this glyph.
+   */
+  fills?: { color: Vec4; w: number }[];
 }
 
 /** A frame-resolved animator: selector.offset already evaluated for the current frame. */
@@ -32,7 +40,7 @@ export interface ResolvedTextAnimator {
   delta: TextAnimatorDelta;
 }
 
-const identity = (): GlyphDelta => ({ tx: 0, ty: 0, sx: 1, sy: 1, rotation: 0, opacity: 1, rx: 0, ry: 0, blur: 0, tracking: 0 });
+const identity = (): GlyphDelta => ({ tx: 0, ty: 0, sx: 1, sy: 1, rotation: 0, opacity: 1, rx: 0, ry: 0, blur: 0, tracking: 0, skew: 0 });
 const isWhitespace = (c: string): boolean => c === ' ' || c === '\t' || c === '\n' || c === '\r';
 const clamp01 = (x: number): number => (x < 0 ? 0 : x > 1 ? 1 : x);
 
@@ -81,6 +89,18 @@ export function splitTextUnits(content: string, mode: TextAnimatorSplitMode): { 
 }
 
 /**
+ * Seeded per-unit random in [-1, 1) for scatter (B36): a house mulberry32 step on a hash of
+ * (seed, unit, axis). Frame-pure (no Math.random), so a scattered reveal scrubs byte-identically.
+ */
+export function unitRandom(seed: number, unit: number, axis: number): number {
+  let a = (Math.imul(seed | 0, 0x9e3779b1) ^ Math.imul(unit + 1, 0x85ebca77) ^ Math.imul(axis + 1, 0xc2b2ae3d)) >>> 0;
+  a = (a + 0x6d2b79f5) | 0;
+  let t = Math.imul(a ^ (a >>> 15), 1 | a);
+  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+  return (((t ^ (t >>> 14)) >>> 0) / 4294967296) * 2 - 1;
+}
+
+/**
  * Accumulate every animator into a per-character GlyphDelta array. Positions and rotations add;
  * scale and opacity multiply. Deterministic given the same inputs.
  */
@@ -102,6 +122,16 @@ export function accumulateGlyphDeltas(content: string, animators: ResolvedTextAn
       if (d.opacity) g.opacity = clamp01(g.opacity * (1 + d.opacity * w));
       if (d.blur) g.blur = Math.max(0, g.blur + d.blur * w);
       if (d.tracking) g.tracking += d.tracking * w;
+      if (d.skew) g.skew += d.skew * w;
+      if (d.scatter) {
+        const u = unitOf[i];
+        g.tx += d.scatter[0] * unitRandom(anim.selector.seed, u, 0) * w;
+        g.ty += d.scatter[1] * unitRandom(anim.selector.seed, u, 1) * w;
+      }
+      if (d.fillColor) {
+        const fw = clamp01(w);
+        if (fw > 0) (g.fills ??= []).push({ color: d.fillColor, w: fw });
+      }
     }
   }
   return out;

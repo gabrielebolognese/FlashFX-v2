@@ -66,6 +66,9 @@ function ensureTextAnimators(raw: unknown): TextAnimator[] | undefined {
       selector: a.selector as unknown as TextAnimator['selector'],
       delta: a.delta as unknown as TextAnimator['delta'],
       ...(isObject(a.offset) ? { offset: a.offset as unknown as TextAnimator['offset'] } : {}),
+      // B36: keyframable selector start / end.
+      ...(isObject(a.start) ? { start: a.start as unknown as TextAnimator['start'] } : {}),
+      ...(isObject(a.end) ? { end: a.end as unknown as TextAnimator['end'] } : {}),
     });
   }
   return out.length ? out : undefined;
@@ -581,6 +584,7 @@ function validateLayer(raw: unknown): Layer | null {
         ...(animators ? { animators } : {}),
         ...(decode ? { decode } : {}),
         ...(textPath ? { textPath } : {}),
+        ...(r.reflowHidden === true ? { reflowHidden: true } : {}),
       } as TextLayer;
     }
     case 'group': {

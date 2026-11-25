@@ -26,7 +26,7 @@ try {
     entryPoints: ['src/core/textAnimator.ts'],
     outfile, bundle: true, format: 'esm', platform: 'neutral', logLevel: 'silent',
   });
-  const { splitTextUnits, accumulateGlyphDeltas, trackingShifts } = await import(pathToFileURL(outfile).href);
+  const { splitTextUnits, accumulateGlyphDeltas, trackingShifts, unitRandom } = await import(pathToFileURL(outfile).href);
 
   // --- split unit assignment ---
   check('character split: one unit per char', () => {
@@ -84,7 +84,7 @@ try {
   });
   check('zero weight leaves the identity delta untouched', () => {
     const g = accumulateGlyphDeltas('abc', [{ splitMode: 'character', selector: sel(), delta: { position: [10, 5], rotation: 90, scale: [1, 1], opacity: -1 } }]);
-    assert.deepEqual(g[0], { tx: 0, ty: 0, sx: 1, sy: 1, rotation: 0, opacity: 1, rx: 0, ry: 0, blur: 0, tracking: 0 });
+    assert.deepEqual(g[0], { tx: 0, ty: 0, sx: 1, sy: 1, rotation: 0, opacity: 1, rx: 0, ry: 0, blur: 0, tracking: 0, skew: 0 });
   });
   check('word split shares one weight across a whole word', () => {
     // "ab cd": 2 words → weights [0, 1]; both chars of word 1 get weight 1.
@@ -150,6 +150,46 @@ try {
   });
   check('trackingShifts: no tracking -> all zeros (the unchanged path)', () => {
     assert.deepEqual(trackingShifts([{ tracking: 0 }, { tracking: 0 }], 'center'), [0, 0]);
+  });
+
+  // --- B36: skew, fill colour, seeded scatter ---
+  check('skew delta scales by weight and adds across animators (B36)', () => {
+    const g = accumulateGlyphDeltas('abc', [
+      { splitMode: 'character', selector: sel(), delta: { skew: 20 } },
+      { splitMode: 'character', selector: sel(), delta: { skew: -4 } },
+    ]);
+    assert.ok(approx(g[0].skew, 0) && approx(g[1].skew, 8) && approx(g[2].skew, 16));
+  });
+  check('fill colour: one mix per selecting animator, in order, weight clamped to 0..1; unselected glyphs carry none (B36)', () => {
+    const lime = [0.8, 1, 0.2, 1];
+    const red = [1, 0, 0, 1];
+    const g = accumulateGlyphDeltas('abc', [
+      { splitMode: 'character', selector: sel(), delta: { fillColor: lime } },
+      { splitMode: 'character', selector: sel({ amount: -1 }), delta: { fillColor: red } },
+    ]);
+    assert.equal(g[0].fills, undefined, 'weight 0: no mix (the base colour stays exact)');
+    assert.deepEqual(g[1].fills, [{ color: lime, w: 0.5 }], 'a negative weight never mixes');
+    assert.deepEqual(g[2].fills, [{ color: lime, w: 1 }]);
+  });
+  check('scatter: seeded per unit, bounded by the scatter size, scaled by weight, shared across a word (B36)', () => {
+    const a = (seed) => ({ splitMode: 'word', selector: sel({ shape: 'square', offset: -2, seed }), delta: { scatter: [100, 50] } });
+    const g = accumulateGlyphDeltas('ab cd ef', [a(3)]);
+    assert.ok(g.every((x) => Math.abs(x.tx) <= 100 && Math.abs(x.ty) <= 50), 'within +-scatter');
+    assert.ok(approx(g[0].tx, g[1].tx) && approx(g[0].ty, g[1].ty), 'one offset per word');
+    assert.ok(!approx(g[0].tx, g[3].tx), 'words scatter differently');
+    assert.deepEqual(accumulateGlyphDeltas('ab cd ef', [a(3)]), g, 'deterministic');
+    const other = accumulateGlyphDeltas('ab cd ef', [a(4)]);
+    assert.ok(other.some((x, i) => !approx(x.tx, g[i].tx)), 'a different seed scatters differently');
+    const half = accumulateGlyphDeltas('ab cd ef', [{ ...a(3), selector: sel({ shape: 'square', offset: -2, seed: 3, amount: 0.5 }) }]);
+    half.forEach((x, i) => assert.ok(approx(x.tx, g[i].tx / 2), 'scaled by weight'));
+  });
+  check('unitRandom: in [-1, 1), spread over the range, pure', () => {
+    const xs = Array.from({ length: 2000 }, (_, i) => unitRandom(7, i, i % 2));
+    assert.ok(xs.every((x) => x >= -1 && x < 1));
+    const mean = xs.reduce((s, x) => s + x, 0) / xs.length;
+    assert.ok(Math.abs(mean) < 0.08, `roughly centred (mean ${mean})`);
+    assert.ok(xs.some((x) => x > 0.9) && xs.some((x) => x < -0.9), 'covers the range');
+    assert.equal(unitRandom(7, 12, 1), unitRandom(7, 12, 1));
   });
 
   console.log(`\ntext-animator: all ${passed} checks passed`);

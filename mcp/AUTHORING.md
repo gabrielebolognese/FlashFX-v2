@@ -22,7 +22,7 @@ build ends with an `.ffx` project file, not only an MP4.
 ## 1. Composition setup
 
 ```json
-{ "name": "create_project", "arguments": { "name": "Launch title", "format": "long", "frameRate": 30, "durationFrames": 120 } }
+{ "name": "create_project", "arguments": { "name": "Launch title", "format": "long", "frameRate": 30, "durationFrames": 120, "clipLength": "comp" } }
 ```
 
 - `long` = 1920x1080, `short` = 1080x1920. 30 fps is the house default.
@@ -35,8 +35,10 @@ build ends with an `.ffx` project file, not only an MP4.
   "stops": [ { "color": [0.09, 0.1, 0.13], "position": 0, "opacity": 1 }, { "color": [0.015, 0.016, 0.02], "position": 1, "opacity": 1 } ] } } }
 ```
 
-- **Clip length (important).** New layers are 4-second clips, like in the UI. In a longer comp,
-  finish the build by stretching every layer, or it disappears after 4 s:
+- **Clip length (important).** Pass `clipLength: "comp"` to `create_project` and every new layer
+  spans the whole composition (kept for the session, also across `create_project` calls; switch any
+  time with `editor.setDefaultClipLength { mode: "comp" | "default" }`). Without it new layers are
+  4-second clips like in the UI, and in a longer comp they vanish after 4 s unless you stretch them:
 
 ```js
 const st = await call('get_state');
@@ -142,7 +144,10 @@ Never leave real motion on linear (the default for `addKeyframe`), except progre
 - **Measure, do not guess:** `measure_text { layerId }` returns the centre, the ink box
   (`left/right/top/bottom`), per-line widths and line height, exactly as the renderer lays it out.
   Left-align by putting the centre at `left + ink.width / 2` (`horizontalAlign` alone does nothing
-  on an auto box, and a fixed-width box misplaces animated glyphs today, queued as B45).
+  on an auto box). In a fixed / fixedWidth box (`layoutConfig.boundingBox`) `horizontalAlign` aligns
+  inside the box, and animated or accent-styled glyphs land exactly where the static text does.
+  A fixedWidth box is 200 px tall and clips there: for more lines use `{ type: "fixed", width, height }`
+  (a line that starts inside the box but overflows it is clipped statically, drawn whole when animated).
 - Accent word: `editor.styleTextWord { wordIndex, style: { color, fontStyle } }` or
   `editor.styleTextRange { start, end, style }`.
 - Per-word / per-character motion: apply a preset, then tune it in place:
@@ -155,9 +160,31 @@ Never leave real motion on linear (the default for `addKeyframe`), except progre
 
   Words rising out of a line: delta position about one line height, no opacity delta, plus a
   rectangle mask around the line (section 7). `motionBlur: true` streaks each glyph.
-- Known leak: `type-on` and `blur-in` show the first glyph before their start frame (B45). Hold the
-  layer at opacity 0 until the reveal starts (two keyframes, the first set to `hold`).
-- Per-glyph animators work on single-line text: one text layer per line.
+- Reveal presets (everything except `color-wave` and `delete-char`) hide every unit, the first
+  included, up to `startFrame`; no opacity hold is needed.
+- Per-glyph animators work on any text: hard line breaks (`"two\nlines"`), wrapped boxes and fixed
+  boxes. A multi-line caption is ONE layer; `rise-fade-word` / `cascade-word` run word by word across
+  the lines, `rise-line` line by line.
+- More animator deltas (all `animators.<i>.delta.*`, scaled by the selector weight):
+  `fillColor` `[r, g, b, a]` (each glyph mixes from its colour towards it; `color-wave` preset),
+  `skew` (degrees, positive leans the top right), `scatter` `[x, y]` px (each unit flies from its own
+  seeded random offset; `scatter-in` preset), plus position, scale, rotation, blur, opacity, tracking.
+- Seeded random order: `animators.<i>.selector.randomizeOrder: true` + `selector.seed` (frame-pure:
+  the same seed always gives the same order).
+- Keyframe the selector window itself (AE "Start / End", like Offset): `editor.setKeyframes` on
+  `animators.<i>.start`, `animators.<i>.end` or `animators.<i>.offset` (created on first use):
+
+```json
+{ "actionId": "editor.updateLayerProperty", "args": { "layerId": "<id>", "path": "animators.0.selector.randomizeOrder", "value": true } }
+{ "actionId": "editor.updateLayerProperty", "args": { "layerId": "<id>", "path": "animators.0.delta.fillColor", "value": [0.78, 1, 0.24, 1] } }
+{ "actionId": "editor.setKeyframes", "args": { "layerId": "<id>", "propertyPath": "animators.0.end", "keyframes": [ { "frame": 0, "value": 0, "ease": "expoOut" }, { "frame": 24, "value": 1 } ] } }
+```
+
+- Type and delete in a centred field (search bar): `type-on` then `delete-char` (one animator each,
+  stacked, or keyframe one offset up then down), and set the layer path `reflowHidden: true` so the
+  visible characters stay centred as they appear / vanish (off by default, like After Effects).
+  Delete from the left instead: an animator with `shape: "rampDown"`, start 0, end 0.001, delta
+  opacity -1 and its offset keyed -0.001 to 1.
 
 ### Fonts (B52)
 

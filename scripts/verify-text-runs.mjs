@@ -202,11 +202,16 @@ try {
     assert.ok(approx(mid, plainMid), `mixed line midpoint ${mid} vs single-style ${plainMid}`);
   });
 
-  check('wrapped / multi-line mixed text falls back to one whole-layer render (no wrong placement)', () => {
+  check('multi-line mixed text draws per glyph on both lines (B36): accent face kept, line 2 one line below', () => {
     const { comp, layer } = buildComp(styleTextRange([span('line one\nline two')], 0, 4, ACCENT));
-    const rf = resolveFrame(comp, 0);
-    assert.equal(stampsOf(rf, layer).length, 0);
-    assert.ok(rf.layers.find((l) => l.id === layer.id)?.text?.runs, 'runs still resolved on the layer');
+    const st = stampsOf(resolveFrame(comp, 0), layer);
+    assert.equal(st.length, 14, 'every non-space glyph of both lines is a stamp');
+    const g = (j) => st.find((s) => s.id.endsWith(`#g${j}`));
+    assert.equal(g(0).text.fontFamily, 'Playfair Display', 'the accent run keeps its face');
+    assert.equal(g(9).text.fontFamily, 'Inter', 'line 2 is base style');
+    const lh = layer.animOverrides.fontSize.defaultValue * layer.animOverrides.lineHeight.defaultValue; // the size that renders
+    const dy = g(9).transform.positionY - g(0).transform.positionY;
+    assert.ok(approx(dy, lh), `line 2 sits one line height (${lh}) below line 1 (got ${dy})`);
   });
 
   check('accent + animator: stamps carry both the run style and the animator delta', () => {

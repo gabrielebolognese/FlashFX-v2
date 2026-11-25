@@ -1,6 +1,6 @@
 // Acceptance harness for the per-unit range selector (src/text/rangeSelector.ts).
 //
-// No test runner in this repo (see CLAUDE.md); mirrors the scripts/*.mjs convention —
+// No test runner in this repo (see CLAUDE.md); mirrors the scripts/*.mjs convention -
 // bundle the REAL TypeScript with the installed esbuild, assert with node:assert. Run:
 //   node scripts/verify-rangeselector.mjs   (or: npm run verify:rangeselector)
 
@@ -122,6 +122,31 @@ try {
     const one = selectorWeights(1, cfg({ shape: 'rampUp' }));
     assert.equal(one.length, 1);
     assert.ok(one[0] >= 0 && one[0] <= 1);
+  });
+
+  check('seeded randomize order under a type-on sweep (B36): every unit hidden first, revealed exactly once, reveal frames a permutation of the in-order ones', () => {
+    const N = 12;
+    const sweep = (randomizeOrder, seed) => {
+      // The type-on preset's selector, its offset swept -0.001 -> 1 over 60 "frames".
+      const revealAt = new Array(N).fill(-1);
+      for (let f = 0; f <= 60; f++) {
+        const offset = f === 60 ? 1 : -0.001 + (1.001 * f) / 60; // the last key holds exactly 1
+        const w = selectorWeights(N, cfg({ shape: 'square', start: 0, end: 0.001, offset, randomizeOrder, seed }));
+        if (f === 0) assert.ok(w.every((x) => near(x, 1)), 'all hidden at the start');
+        w.forEach((x, i) => {
+          if (near(x, 0) && revealAt[i] < 0) revealAt[i] = f;
+          if (revealAt[i] >= 0) assert.ok(near(x, 0), `unit ${i} stays revealed once shown`);
+        });
+      }
+      assert.ok(revealAt.every((f) => f > 0), 'every unit revealed (after the start frame)');
+      return revealAt;
+    };
+    const ordered = sweep(false, 1);
+    const scattered = sweep(true, 5);
+    for (let i = 1; i < N; i++) assert.ok(ordered[i] >= ordered[i - 1], 'in order without randomize');
+    assert.deepEqual([...scattered].sort((a, b) => a - b), ordered, 'same reveal frames, permuted');
+    assert.notDeepEqual(scattered, ordered, 'the seed scrambles who comes first');
+    assert.deepEqual(sweep(true, 5), scattered, 'frame-pure: the same seed replays identically');
   });
 
   check('selectorWeight(index) agrees with selectorWeights(...)[index]', () => {
