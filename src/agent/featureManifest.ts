@@ -36,6 +36,7 @@ export type AgentHelperMethod =
   | 'exportMp4'
   | 'getLayer'
   | 'measureText'
+  | 'measureString'
   | 'configureParticles'
   | 'saveProject'
   | 'exportProject'
@@ -135,6 +136,9 @@ const EFFECTOR_TYPES = ['random', 'falloff', 'step', 'time', 'target'] as const;
 const PHYSICS_ROLES = ['kinematic', 'dynamic', 'static', 'ghost'] as const;
 const MOTION_PRINCIPLES = ['anticipation', 'follow-through', 'squash-stretch', 'stagger'] as const;
 const LAYER_FX = ['shadow', 'glow', 'blur'] as const;
+/** Friendly paths of the animated overrides (core/animProps.ts ANIM_PROP_DEFS: kept in sync by verify:anim-props). */
+export const ANIM_COLOR_PATHS = ['shape.fillColor', 'shape.strokeColor', 'text.color', 'text.strokeColor', 'glow.color', 'shadow.color'] as const;
+export const ANIM_FX_PATHS = ['glow.intensity', 'glow.radius', 'glow.threshold', 'shadow.blurRadius', 'shadow.lightDistance', 'shadow.lightAngle', 'shadow.shadowScale', 'blur.radius', 'blur.strength', 'blur.angle'] as const;
 
 const KF_TARGETS: AgentParam = {
   name: 'targets',
@@ -182,6 +186,13 @@ export const AGENT_ACTIONS: readonly AgentActionSpec[] = [
     returns: '{ frame, center, box {width,height,left,top}, ink {width,height,left,right,top,bottom}, lines, lineWidths, lineHeightPx, fontSize, scale, rotation }',
     description: 'Measure a text layer exactly as the renderer lays it out (comp px), so you can align other layers, size masks and cards, or left-align by centre. ink = the lines (width of the widest line x line count); box = the drawn quad incl. padding. Assumes scale 1 / no rotation for the edges. Read-only.',
     params: [LAYER_ID, { name: 'frame', type: 'number', optional: true, description: 'Default: the playhead.' }] },
+  { id: 'agent.measureString', store: 'agent', method: 'measureString', undoable: false,
+    returns: '{ width, height, lines, lineWidths, lineHeightPx, box {width, height}, fontFamily, fontSize }',
+    description: 'Measure a string in a font WITHOUT creating a layer (same layout code as the renderer, comp px), e.g. to size a pill or a caret before building it. letterSpacing / lineHeight use the same units as the text layer animOverrides. Read-only.',
+    params: [{ name: 'text', type: 'string' }, { name: 'fontFamily', type: 'string', optional: true, description: 'Default Inter.' },
+      { name: 'fontSize', type: 'number', optional: true, description: 'px, default 48.' }, { name: 'fontWeight', type: 'number', optional: true },
+      { name: 'fontStyle', type: 'string', optional: true, values: ['normal', 'italic'] }, { name: 'letterSpacing', type: 'number', optional: true },
+      { name: 'lineHeight', type: 'number', optional: true, description: 'Multiplier, default 1.2.' }] },
   { id: 'agent.saveProject', store: 'agent', method: 'saveProject', undoable: false,
     returns: '{ projectId, compositions }',
     description: 'Save the open project (every composition) to local storage now (like File > Save, Ctrl+S). The app also autosaves.',
@@ -308,6 +319,9 @@ export const AGENT_ACTIONS: readonly AgentActionSpec[] = [
   { id: 'editor.addCircle', store: 'editor', method: 'addCircle', undoable: true, params: [], returns: 'new layer id (activeLayerId)', description: 'Add an ellipse.' },
   { id: 'editor.addStar', store: 'editor', method: 'addStar', undoable: true, params: [], returns: 'new layer id (activeLayerId)', description: 'Add a star.' },
   { id: 'editor.addPolygon', store: 'editor', method: 'addPolygon', undoable: true, params: [], returns: 'new layer id (activeLayerId)', description: 'Add a polygon.' },
+  { id: 'editor.addShapeLayer', store: 'editor', method: 'addShapeLayer', undoable: true, returns: 'the new layer id',
+    description: 'Add a shape with explicit geometry and CLEAN defaults in one undo step: no stroke unless you pass stroke / strokeWidth, your fill, corner radius and name. Prefer this over addShapeWithDimensions (which adds the UI default 1 px grey stroke). An ellipse with width != height is a circle stretched by the layer scale.',
+    params: [{ name: 'opts', type: '{ type: "rectangle" | "circle" | "star" | "polygon"; x: number; y: number; width: number; height: number; fill?: [r, g, b, a]; stroke?: [r, g, b, a]; strokeWidth?: number; radius?: number; name?: string; points?: number; innerRatio?: number }', description: 'x, y = centre (comp px); colours RGBA 0..1; fill defaults to white; strokeWidth defaults to 2 when stroke is given, else 0.' }] },
   { id: 'editor.addShapeWithDimensions', store: 'editor', method: 'addShapeWithDimensions', undoable: true, returns: 'new layer id (activeLayerId)',
     description: 'Add a shape with an explicit position and size (comp px).',
     params: [{ name: 'shapeType', type: 'string', values: SHAPE_TYPES }, { name: 'x', type: 'number' }, { name: 'y', type: 'number' }, { name: 'width', type: 'number' }, { name: 'height', type: 'number' }] },
@@ -325,8 +339,13 @@ export const AGENT_ACTIONS: readonly AgentActionSpec[] = [
 
   // ----- keyframes / easing / motion -----
   { id: 'editor.addKeyframe', store: 'editor', method: 'addKeyframe', undoable: true,
-    description: 'Set a keyframe. Paths: "transform.position" [x,y], "transform.scale" [sx,sy] (1 = 100%), "transform.rotation" deg, "transform.opacity" 0..1, "animOverrides.fontSize", "animOverrides.letterSpacing", "shape.width", "modifiers.0.end", etc.',
-    params: [LAYER_ID, { name: 'propertyPath', type: 'string' }, { name: 'frame', type: 'number' }, { name: 'value', type: 'number | [number, number]' }] },
+    description: 'Set a keyframe. Paths: "transform.position" [x,y], "transform.scale" [sx,sy] (1 = 100%), "transform.rotation" deg, "transform.opacity" 0..1, "animOverrides.fontSize", "animOverrides.letterSpacing", "shape.width", "modifiers.0.end", etc. Colour keyframes (RGBA 0..1, mixed in linear light): "shape.fillColor", "shape.strokeColor", "text.color", "text.strokeColor", "glow.color", "shadow.color". Effect params: "glow.intensity" / "glow.radius" / "glow.threshold", "shadow.blurRadius" / "shadow.lightDistance" / "shadow.lightAngle" / "shadow.shadowScale", "blur.radius" / "blur.strength" / "blur.angle", and effect-stack params as "effect.<type>.<paramIndex>" (same ids as setLayerEffectParam). These create an animated override on the first key (it lives under layer.animProps); the effect must be enabled for its keys to show.',
+    params: [LAYER_ID, { name: 'propertyPath', type: 'string' }, { name: 'frame', type: 'number' }, { name: 'value', type: 'number | [number, number] | [r, g, b, a]' }] },
+  { id: 'editor.setKeyframes', store: 'editor', method: 'setKeyframes', undoable: true,
+    description: 'Write a whole animation curve on one property in ONE undo step, each keyframe with its own outgoing ease: [{ frame, value, ease }]. ease (shapes the segment to the NEXT key): "linear" (default) | "hold" | "spring" | a named ease (cubicOut, expoOut, circOut, backOut, elasticOut, ... see the easings catalog) | "ease" | "ease-in" | "ease-out" | "ease-in-out" | a cubic-bezier [x1, y1, x2, y2] (CSS semantics, y may overshoot for pops). Same paths as addKeyframe (incl. colour and effect paths). Without merge the keys REPLACE the property\'s keyframes; merge=true keeps the others. Errors (nothing applied) on an unknown path or a value of the wrong shape.',
+    params: [LAYER_ID, { name: 'propertyPath', type: 'string' },
+      { name: 'keyframes', type: 'Array<{ frame: number; value: number | [number, number] | [r, g, b, a]; ease?: string | [number, number, number, number] }>' },
+      { name: 'merge', type: 'boolean', optional: true, description: 'true = keep keyframes at other frames (default false = replace).' }] },
   { id: 'editor.deleteKeyframes', store: 'editor', method: 'deleteKeyframes', undoable: true,
     description: 'Delete keyframes.', params: [LAYER_ID, KF_TARGETS] },
   { id: 'editor.setKeyframeInterpolation', store: 'editor', method: 'setKeyframeInterpolation', undoable: true,
@@ -518,7 +537,7 @@ export const AGENT_FEATURES: readonly AgentFeature[] = [
   { id: 'text.add', area: 'text', name: 'Text layers',
     description: 'Point or paragraph text with per-span font, weight, size, colour, stroke, letter spacing, line height.',
     ui: 'Canvas toolbar > Text (T), click the canvas and type; style in Inspector > Text',
-    actions: ['editor.addText', 'editor.createQuickText', 'agent.setTextContent', 'agent.measureText', 'editor.updateLayerProperty'], status: 'shipped' },
+    actions: ['editor.addText', 'editor.createQuickText', 'agent.setTextContent', 'agent.measureText', 'agent.measureString', 'editor.updateLayerProperty'], status: 'shipped' },
   { id: 'text.animators', area: 'text', name: 'Text animators (range selectors)',
     description: 'After-Effects-style per-character / word / line animators driven by a range selector: type-on, fade, pop, cascade, slide, rise, blur, tumble. Split by character, character excluding spaces, word or line; deltas for position, scale, rotation, 3D rotation, blur, opacity and tracking in em (tracking burst); selector shapes (ramp up/down, triangle, round, smooth, square) with ease high/low; animators stack.',
     ui: 'Select a text layer > Inspector (properties) > Animators section > pick a preset (edit split, deltas incl. Tracking em, selector shape / ease / reveal timing there)',
@@ -550,7 +569,8 @@ export const AGENT_FEATURES: readonly AgentFeature[] = [
   { id: 'shapes.add', area: 'shapes', name: 'Shapes',
     description: 'Rectangles (rounded), ellipses, stars, polygons with fill, stroke, gradients and materials.',
     ui: 'Canvas toolbar > Rectangle (R) / Ellipse (E) / Star / Polygon, drag on canvas',
-    actions: ['editor.addRectangle', 'editor.addCircle', 'editor.addStar', 'editor.addPolygon', 'editor.addShapeWithDimensions'], status: 'shipped' },
+    actions: ['editor.addShapeLayer', 'editor.addRectangle', 'editor.addCircle', 'editor.addStar', 'editor.addPolygon', 'editor.addShapeWithDimensions'], status: 'shipped',
+    notes: 'Agents: use editor.addShapeLayer (explicit size, fill, radius, name, no default stroke).' },
   { id: 'shapes.modifiers', area: 'shapes', name: 'Path modifiers (Trim Paths, Offset, Roughen, Pucker & Bloat)',
     description: 'Non-destructive outline modifiers; Trim Paths gives line draw-on animation.',
     ui: 'Select a shape > Inspector > Path Modifiers > add', actions: ['editor.addShapeModifier', 'editor.addKeyframe'], status: 'shipped' },
@@ -572,7 +592,13 @@ export const AGENT_FEATURES: readonly AgentFeature[] = [
   { id: 'keyframes.easing', area: 'keyframes', name: 'Easing and the graph editor',
     description: 'Linear / bezier / hold / spring interpolation plus 31 named eases (back, elastic, bounce, expo...).',
     ui: 'Select keyframes > right-click > Easing; graph editor in the timeline',
-    actions: ['editor.setKeyframeInterpolation', 'editor.setKeyframeEasing'], status: 'shipped' },
+    actions: ['editor.setKeyframes', 'editor.setKeyframeInterpolation', 'editor.setKeyframeEasing'], status: 'shipped',
+    notes: 'Agents: editor.setKeyframes writes every key + its own ease (named, CSS keyword or a fitted cubic-bezier quad) in one call and one undo step.' },
+  { id: 'keyframes.color', area: 'keyframes', name: 'Colour keyframes',
+    description: 'Animate shape fill / stroke colour, text colour / stroke colour and glow / shadow colour: eased or hold (step) swaps, mixed in linear light so midpoints do not go muddy.',
+    ui: 'Agent / MCP: editor.addKeyframe or editor.setKeyframes on a colour path; the keys show in the timeline under "Animated" (Inspector colour stopwatch: not yet)',
+    actions: ['editor.setKeyframes', 'editor.addKeyframe', 'editor.deleteKeyframes', 'editor.setKeyframeEasing'], status: 'shipped',
+    notes: `Paths: ${ANIM_COLOR_PATHS.join(', ')}. Values RGBA 0..1. The static colour stays the value before the first key. Stored under layer.animProps (absent in old projects: unchanged). A material / gradient fill on a shape overrides the flat fill colour.` },
   { id: 'keyframes.assistants', area: 'keyframes', name: 'Keyframe assistants',
     description: 'Smoother and Wiggler over selected keyframes; quick fades.',
     ui: 'Select keyframes > right-click > Keyframe Assistant; clip right-click > Fades > Add Fade In / Add Fade Out',
@@ -636,6 +662,11 @@ export const AGENT_FEATURES: readonly AgentFeature[] = [
   { id: 'effects.layer', area: 'effects', name: 'Shadow, glow, blur and the effect stack',
     description: 'Per-layer drop shadow, glow, blur and a stack of stylize / colour / glitch effects.',
     ui: 'Inspector > Effects tab', actions: ['editor.enableLayerEffect', 'editor.setLayerEffectParam', 'editor.toggleLayerEffect', 'editor.removeLayerEffect'], status: 'browser-gated' },
+  { id: 'effects.animated-params', area: 'effects', name: 'Animated glow, shadow, blur and effect params',
+    description: 'Keyframe glow intensity / radius / threshold / colour, shadow distance / angle / blur / scale / colour, the layer blur radius / strength / angle (blur-in and blur-out reveals) and any effect-stack param (pixelate size, RGB split, glitch amount, saturation...).',
+    ui: 'Agent / MCP: enable the effect (editor.enableLayerEffect / editor.setLayerEffectParam), then editor.addKeyframe or editor.setKeyframes on its path; the keys show in the timeline under "Animated"',
+    actions: ['editor.enableLayerEffect', 'editor.setLayerEffectParam', 'editor.setKeyframes', 'editor.addKeyframe'], status: 'shipped',
+    notes: `Paths: ${ANIM_FX_PATHS.join(', ')}, effect.<type>.<paramIndex>. A blur radius keyed to 0 drops the blur pass on those frames. Pixel-proven headless by npm run gpu:anim-props.` },
   { id: 'effects.beam', area: 'effects', name: 'Light beams', description: 'Laser / light beam layer.',
     ui: 'Right-click the canvas > New Beam / Lightning', actions: ['editor.addBeamLayer'], status: 'browser-gated' },
   { id: 'adjustment.layer', area: 'adjustment', name: 'Adjustment layers',

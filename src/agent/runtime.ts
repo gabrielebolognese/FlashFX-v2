@@ -27,7 +27,7 @@ import { exportToMp4, type ExportSettings } from '../codec/exporter';
 import { PARTICLE_PRESETS } from '../particles/presets';
 import { resolveFrame } from '../core/interpolation';
 import { getTextLayout, measureStringWidth } from '../engine/textAtlas';
-import type { Layer, ParticleLayer, TextLayer } from '../core/types';
+import type { Layer, ParticleLayer, ResolvedText, TextLayer } from '../core/types';
 import {
   AGENT_ACTIONS,
   AGENT_MANIFEST_SCHEMA_VERSION,
@@ -48,6 +48,26 @@ export interface AgentLayerSummary {
   outPoint?: number;
   text?: string;
   maskIds?: string[];
+  /** Timeline track the layer's clip sits on (null = none). */
+  trackId?: string | null;
+  /** Properties with animated overrides (B33/B47/B50), e.g. ["fillColor", "glowIntensity", "effect 170_0"]. */
+  animProps?: string[];
+}
+
+export interface AgentBackgroundSummary {
+  id: string;
+  type: string;
+  enabled: boolean;
+  opacity: number;
+}
+
+export interface AgentTrackSummary {
+  id: string;
+  name: string;
+  type: string;
+  order: number;
+  visible: boolean;
+  locked: boolean;
 }
 
 export interface AgentStateSummary {
@@ -62,6 +82,10 @@ export interface AgentStateSummary {
   selectedIds: string[];
   activeLayerId: string | null;
   layers: AgentLayerSummary[];
+  /** The composition background stack, bottom first (edit with editor.updateBackgroundLayer). */
+  background: AgentBackgroundSummary[];
+  /** Timeline tracks (order 0 = top of the timeline). */
+  tracks: AgentTrackSummary[];
   canUndo: boolean;
   canRedo: boolean;
 }
@@ -109,6 +133,16 @@ function summarizeLayer(layer: Layer): AgentLayerSummary {
   if ('outPoint' in layer && typeof layer.outPoint === 'number') out.outPoint = layer.outPoint;
   if (layer.type === 'text') out.text = layer.content.spans.map((s) => s.text).join('');
   if ('masks' in layer && Array.isArray(layer.masks) && layer.masks.length) out.maskIds = layer.masks.map((m) => m.id);
+  if ('trackId' in layer) out.trackId = (layer as { trackId?: string | null }).trackId ?? null;
+  const anim = (layer as { animProps?: Record<string, unknown> }).animProps;
+  if (anim) {
+    const keys: string[] = [];
+    for (const [k, v] of Object.entries(anim)) {
+      if (k === 'effectParams' && v && typeof v === 'object') keys.push(...Object.keys(v).map((e) => `effect ${e}`));
+      else if (v) keys.push(k);
+    }
+    if (keys.length) out.animProps = keys;
+  }
   return out;
 }
 
@@ -130,6 +164,8 @@ export function getAgentState(): AgentStateSummary {
     selectedIds: [...ed.selection.selectedIds],
     activeLayerId: ed.selection.activeId,
     layers: comp.layers.map(summarizeLayer),
+    background: (comp.background?.layers ?? []).map((b) => ({ id: b.id, type: b.type, enabled: b.enabled, opacity: b.opacity })),
+    tracks: comp.tracks.map((t) => ({ id: t.id, name: t.name, type: t.type, order: t.order, visible: t.visible, locked: t.locked })),
     canUndo: hist.undoStack.length > 0,
     canRedo: hist.redoStack.length > 0,
   };
@@ -430,6 +466,44 @@ const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
       fontSize: resolved.text.fontSize,
       scale: [t.scaleX, t.scaleY],
       rotation: t.rotation,
+    };
+  },
+
+  measureString: (text, fontFamily, fontSize, fontWeight, fontStyle, letterSpacing, lineHeight) => {
+    // Measure without a layer: a throwaway ResolvedText laid out by the SAME code the renderer uses.
+    if (typeof text !== 'string') throw new Error('"text" must be a string');
+    const size = typeof fontSize === 'number' && fontSize > 0 ? fontSize : 48;
+    const probe: ResolvedText = {
+      content: text,
+      mode: 'point',
+      boxWidth: 300,
+      boxHeight: 200,
+      fontFamily: typeof fontFamily === 'string' && fontFamily ? fontFamily : 'Inter',
+      fontWeight: typeof fontWeight === 'number' ? fontWeight : 400,
+      fontStyle: fontStyle === 'italic' ? 'italic' : 'normal',
+      fontSize: size,
+      lineHeight: typeof lineHeight === 'number' && lineHeight > 0 ? lineHeight : 1.2,
+      letterSpacing: typeof letterSpacing === 'number' ? letterSpacing : 0,
+      fillColor: [1, 1, 1, 1],
+      strokeColor: [0, 0, 0, 0],
+      strokeWidth: 0,
+      textAlign: 'center',
+      underline: false,
+      strikethrough: false,
+      measuredWidth: 0,
+      measuredHeight: 0,
+    };
+    const layout = getTextLayout(probe);
+    const lineWidths = layout.lines.map((line) => measureStringWidth(probe, line));
+    return {
+      width: Math.max(0, ...lineWidths),
+      height: layout.lines.length * layout.lineHeightPx,
+      lines: layout.lines,
+      lineWidths,
+      lineHeightPx: layout.lineHeightPx,
+      box: { width: layout.canvasWidth, height: layout.canvasHeight },
+      fontFamily: probe.fontFamily,
+      fontSize: size,
     };
   },
 

@@ -100,7 +100,7 @@ export function createShapeRepeater(): ShapeRepeater {
 
 export function createKeyframe(
   frame: number,
-  value: number | Vec2,
+  value: number | Vec2 | Vec4,
   interpolation: Keyframe['interpolation'] = 'linear'
 ): Keyframe {
   return {

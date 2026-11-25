@@ -27,7 +27,8 @@ import type {
   LayoutContainerLayer,
   Track,
 } from './types';
-import type { ResolvedMotionBlur, ResolvedShadow, ResolvedBlur, LayerShadow, LayerGlow, LayerBlur, ResolvedGlow } from './types';
+import type { ResolvedMotionBlur, ResolvedShadow, ResolvedBlur, LayerShadow, LayerGlow, LayerBlur, ResolvedGlow, LayerAnimProps } from './types';
+import type { KeyframeValue } from './keyframeValue';
 import { measureText, getTextLayout, measureAdvance } from '../engine/textAtlas';
 import { accumulateGlyphDeltas, trackingShifts, type GlyphDelta, type ResolvedTextAnimator } from './textAnimator';
 import { decodeCharAt } from './textDecode';
@@ -37,6 +38,7 @@ import { pairTrackMattes, type TrackMatteMode } from './trackMatte';
 import { resolveMaskVertices, resolveMaskFeathers } from './maskPath';
 import { resolveRefineEdge } from './refineEdge';
 import { resolveEffectStack } from './effects/effectStack';
+import { evalAnimColor, evalAnimNumber, evalEffectParam } from './animProps';
 import { resolveAdjustmentCoverage } from './effects/adjustmentCoverage';
 import { adjustmentHasWork, resolveAdjustmentFilters } from './effects/adjustmentComposite';
 import { evaluateMotionPathAtFrame } from './motionPath';
@@ -178,7 +180,7 @@ function tryExpression(prop: AnimatableProperty, keyframedValue: number | Vec2):
 
   const keyframes: KeyframeData[] = prop.keyframes.map((kf) => ({
     frame: kf.frame,
-    value: kf.value,
+    value: asPropValue(kf.value),
   }));
 
   const context: ExpressionContext = {
@@ -201,6 +203,14 @@ function tryExpression(prop: AnimatableProperty, keyframedValue: number | Vec2):
   return result as number | Vec2;
 }
 
+
+// A number / vec2 AnimatableProperty only ever holds number / vec2 keyframes; colour (vec4) keyframes
+// live on AnimatableColor tracks (core/animProps.ts). This narrows the widened Keyframe value type
+// without a cast (a stray vec4 would read as its first two components).
+function asPropValue(v: KeyframeValue): number | Vec2 {
+  if (typeof v === 'number' || v.length === 2) return v;
+  return [v[0], v[1]];
+}
 
 function clamp(v: number, min: number, max: number): number {
   return v < min ? min : v > max ? max : v;
@@ -235,11 +245,11 @@ export function evaluateProperty(prop: AnimatableProperty, frame: number): numbe
   if (keyframes.length === 0) {
     keyframedValue = defaultValue;
   } else if (keyframes.length === 1) {
-    keyframedValue = frame < keyframes[0].frame ? defaultValue : keyframes[0].value;
+    keyframedValue = frame < keyframes[0].frame ? defaultValue : asPropValue(keyframes[0].value);
   } else if (frame <= keyframes[0].frame) {
-    keyframedValue = keyframes[0].value;
+    keyframedValue = asPropValue(keyframes[0].value);
   } else if (frame >= keyframes[keyframes.length - 1].frame) {
-    keyframedValue = keyframes[keyframes.length - 1].value;
+    keyframedValue = asPropValue(keyframes[keyframes.length - 1].value);
   } else {
     // Binary search for the containing segment (byte-identical to the old linear first-match scan);
     // O(log n) matters on densely-keyed properties on long timelines.
@@ -336,8 +346,11 @@ function resolveShapeLayer(layer: ShapeLayer, frame: number, getStyle?: StyleLoo
   const shape = layer.shape;
   const defaultColor: Vec4 = [0.5, 0.5, 0.5, 1];
   // M21 - read fill/stroke THROUGH any linked color style before the material overlay.
-  const fillColor = resolveDominantColor(layer.materialConfig, resolveStyleColor(layer.fillStyleId, shape.fillColor ?? defaultColor, getStyle));
-  const strokeColor = resolveDominantColor(layer.strokeMaterialConfig, resolveStyleColor(layer.strokeStyleId, shape.strokeColor ?? [0, 0, 0, 1], getStyle));
+  // B33 colour keyframes: a keyed animProps track replaces the (style-linked) static colour; absent =
+  // the static colour object itself (byte-identical).
+  const anim = layer.animProps;
+  const fillColor = resolveDominantColor(layer.materialConfig, evalAnimColor(anim?.fillColor, resolveStyleColor(layer.fillStyleId, shape.fillColor ?? defaultColor, getStyle), frame));
+  const strokeColor = resolveDominantColor(layer.strokeMaterialConfig, evalAnimColor(anim?.strokeColor, resolveStyleColor(layer.strokeStyleId, shape.strokeColor ?? [0, 0, 0, 1], getStyle), frame));
   const base: ResolvedShape = {
     renderType: shape.type,
     width: 0,
@@ -743,8 +756,9 @@ function resolveTextLayer(layer: TextLayer, frame: number, getStyle?: StyleLooku
     fontSize: evaluateNumber(layer.animOverrides.fontSize, frame),
     lineHeight: evaluateNumber(layer.animOverrides.lineHeight, frame),
     letterSpacing: evaluateNumber(layer.animOverrides.letterSpacing, frame),
-    fillColor: resolveStyleColor(layer.fillStyleId, style.color, getStyle),
-    strokeColor: resolveStyleColor(layer.strokeStyleId, style.strokeColor, getStyle),
+    // B33: keyed text colour tracks replace the static (style-linked) colours.
+    fillColor: evalAnimColor(layer.animProps?.textColor, resolveStyleColor(layer.fillStyleId, style.color, getStyle), frame),
+    strokeColor: evalAnimColor(layer.animProps?.textStrokeColor, resolveStyleColor(layer.strokeStyleId, style.strokeColor, getStyle), frame),
     strokeWidth: evaluateNumber(layer.animOverrides.strokeWidth, frame),
     textAlign: layer.layoutConfig.horizontalAlign,
     underline: style.underline,
@@ -802,10 +816,10 @@ function resolveVideoLayer(layer: VideoLayer, frame: number, compositionFrameRat
   };
 }
 
-function resolveImageLayer(layer: ImageLayer): ResolvedImage {
-  // Effects are static scalars for now (params copied through). Ordered stack, honoring the
-  // per-effect enable AND the layer master switch (B11a - effectsEnabled was previously a no-op).
-  const effects = resolveEffectStack(layer.effects, layer.effectsEnabled !== false);
+function resolveImageLayer(layer: ImageLayer, frame: number): ResolvedImage {
+  // Ordered stack, honoring the per-effect enable AND the layer master switch (B11a). B50: a param
+  // with a keyed animProps.effectParams track is evaluated at this frame; the rest are copied through.
+  const effects = resolveEffectStack(layer.effects, layer.effectsEnabled !== false, effectParamEvaluator(layer.animProps, frame));
   return {
     assetId: layer.image.assetId,
     sourceWidth: layer.image.sourceWidth,
@@ -972,14 +986,17 @@ function glyphMotionBlurContext(
 function computeShadow(
   shadow: LayerShadow | undefined,
   current: ResolvedTransform,
+  anim: LayerAnimProps | undefined,
+  frame: number,
 ): ResolvedShadow | undefined {
   if (!shadow || !shadow.enabled) return undefined;
+  // B47: keyed animProps tracks override the static numbers (absent = the static values).
   return {
-    color: shadow.color,
-    lightAngle: shadow.lightAngle,
-    lightDistance: shadow.lightDistance,
-    shadowScale: shadow.shadowScale,
-    blurRadius: shadow.blurRadius,
+    color: evalAnimColor(anim?.shadowColor, shadow.color, frame),
+    lightAngle: evalAnimNumber(anim?.shadowAngle, shadow.lightAngle, frame),
+    lightDistance: evalAnimNumber(anim?.shadowDistance, shadow.lightDistance, frame),
+    shadowScale: evalAnimNumber(anim?.shadowScale, shadow.shadowScale, frame),
+    blurRadius: Math.max(0, evalAnimNumber(anim?.shadowBlur, shadow.blurRadius, frame)),
     onlyShadow: shadow.onlyShadow,
     pivotX: current.positionX + current.anchorX,
     pivotY: current.positionY + current.anchorY,
@@ -988,15 +1005,18 @@ function computeShadow(
 
 function computeGlow(
   glow: LayerGlow | undefined,
+  anim: LayerAnimProps | undefined,
+  frame: number,
 ): ResolvedGlow | undefined {
   if (!glow || !glow.enabled) return undefined;
+  // B47: keyed animProps tracks override the static numbers / colour (absent = the static values).
   return {
     mode: glow.mode,
     onlyGlow: glow.onlyGlow,
-    color: glow.color,
-    intensity: glow.intensity,
-    radius: glow.radius,
-    threshold: glow.threshold,
+    color: evalAnimColor(anim?.glowColor, glow.color, frame),
+    intensity: Math.max(0, evalAnimNumber(anim?.glowIntensity, glow.intensity, frame)),
+    radius: Math.max(0, evalAnimNumber(anim?.glowRadius, glow.radius, frame)),
+    threshold: evalAnimNumber(anim?.glowThreshold, glow.threshold, frame),
     // B12: carried for the browser-gated light-wrap / glint passes (absent = off).
     lightWrap: glow.lightWrap,
     glints: glow.glints,
@@ -1007,18 +1027,32 @@ function computeGlow(
 
 function computeBlur(
   blur: LayerBlur | undefined,
+  anim: LayerAnimProps | undefined,
+  frame: number,
 ): ResolvedBlur | undefined {
   if (!blur || !blur.enabled) return undefined;
-  if (blur.radius <= 0 && blur.strength <= 0) return undefined;
+  // B50: keyframable radius / strength / angle (a ramp to 0 drops the pass, like a static 0 radius).
+  const radius = Math.max(0, evalAnimNumber(anim?.blurRadius, blur.radius, frame));
+  const strength = Math.max(0, evalAnimNumber(anim?.blurStrength, blur.strength, frame));
+  if (radius <= 0 && strength <= 0) return undefined;
+  // A keyed gaussian ramped to radius 0 is a passthrough in the shader (radius < 0.5): drop the two
+  // passes on those frames. (A static blur keeps its legacy behaviour exactly.)
+  if (blur.type === 'gaussian' && radius <= 0 && (anim?.blurRadius?.keyframes.length ?? 0) > 0) return undefined;
   return {
     type: blur.type,
-    radius: blur.radius,
-    angle: blur.angle,
+    radius,
+    angle: evalAnimNumber(anim?.blurAngle, blur.angle, frame),
     centerX: blur.centerX,
     centerY: blur.centerY,
-    strength: blur.strength,
+    strength,
     passes: blur.passes,
   };
+}
+
+// B50: per-frame evaluator for keyed effect-stack params (undefined = no overrides, the fast path).
+function effectParamEvaluator(anim: LayerAnimProps | undefined, frame: number): ((type: number, paramIndex: number, value: number) => number) | undefined {
+  if (!anim?.effectParams) return undefined;
+  return (type, paramIndex, value) => evalEffectParam(anim, type, paramIndex, value, frame);
 }
 
 export function measureLayerPreferredSize(layer: Layer, frame: number): { width: number; height: number } {
@@ -1339,9 +1373,10 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
     try {
       const worldTransform = worldTransformAt(layer, layers, motionPaths, frame);
       const motionBlur = computeMotionBlur(layer, worldTransform, layers, motionPaths, frame, settings.shutterAngle, settings.shutterPhase);
-      const shadow = computeShadow((layer as { shadow?: LayerShadow }).shadow, worldTransform);
-      const glow = computeGlow((layer as { glow?: LayerGlow }).glow);
-      const blur = computeBlur((layer as { blur?: LayerBlur }).blur);
+      const fxAnim = (layer as { animProps?: LayerAnimProps }).animProps;
+      const shadow = computeShadow((layer as { shadow?: LayerShadow }).shadow, worldTransform, fxAnim, frame);
+      const glow = computeGlow((layer as { glow?: LayerGlow }).glow, fxAnim, frame);
+      const blur = computeBlur((layer as { blur?: LayerBlur }).blur, fxAnim, frame);
 
       if (layer.type === 'text') {
         const resolvedText = resolveTextLayer(layer, frame, getStyle);
@@ -1415,7 +1450,7 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
           }
         }
       } else if (layer.type === 'image') {
-        const resolvedImage = resolveImageLayer(layer);
+        const resolvedImage = resolveImageLayer(layer, frame);
         const iMasks = resolveMasks(layer.masks, frame);
         const iRefine = resolveRefineEdge(layer.refineEdge, iMasks.length);
         resolvedLayers.push({
@@ -1778,7 +1813,7 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
         // filters so the renderer's apply-below composite (B11b-gpu) can run them over the layers
         // beneath. The coverage (which content layers below it affects, and whether it's a no-op) is
         // filled in by the post-pass below, once the final render order (incl. cloner expansion) is known.
-        const adjEffects = resolveEffectStack(layer.effects, layer.effectsEnabled !== false);
+        const adjEffects = resolveEffectStack(layer.effects, layer.effectsEnabled !== false, effectParamEvaluator(layer.animProps, frame));
         const adjFilters = resolveAdjustmentFilters(layer.filters);
         resolvedLayers.push({
           id: layer.id,

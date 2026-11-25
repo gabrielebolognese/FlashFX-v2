@@ -1,5 +1,6 @@
 import type { Keyframe, AnimatableProperty, Vec2 } from './types';
 import { createKeyframe } from './factory';
+import type { KeyframeValue } from './keyframeValue';
 import { evaluateNumber, evaluateVec2 } from './interpolation';
 
 // Pure keyframe-array transforms used by the keyframe context menu (Batch 3).
@@ -31,7 +32,7 @@ export function reverseSelectedValues(kfs: Keyframe[], selected: Set<number>): K
   const selSorted = kfs.filter((k) => selected.has(k.frame)).sort((a, b) => a.frame - b.frame);
   if (selSorted.length < 2) return kfs;
   const revValues = selSorted.map((k) => k.value).reverse();
-  const frameToValue = new Map<number, number | Vec2>();
+  const frameToValue = new Map<number, KeyframeValue>();
   selSorted.forEach((k, i) => frameToValue.set(k.frame, revValues[i]));
   return kfs.map((k) => (frameToValue.has(k.frame) ? { ...k, value: frameToValue.get(k.frame)! } : k));
 }

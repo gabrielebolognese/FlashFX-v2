@@ -45,6 +45,9 @@ import {
   type TangentMode,
 } from '../core/keyframeOps';
 import { smoothSelected, wiggleSelected, exponentialScaleSelected } from '../core/keyframeAssistants';
+import { cloneValue } from '../core/keyframeValue';
+import { buildKeyframesFromSpecs, type KeyframeSpec, type ValueShape } from '../core/keyframeSpecs';
+import { animPropTarget, canonicalKeyframePath, createAnimProp, staticValueFor } from '../core/animProps';
 import { identityRemapSeconds } from '../core/timeRemap';
 import { generatePresetKeyframes, getPresetById, type PresetContext } from '../core/animationPresets';
 import { getDescendants, getWorldPosition } from '../core/sceneGraph';
@@ -99,8 +102,10 @@ export interface KeyframeTarget {
 function groupTargetFrames(targets: KeyframeTarget[]): Map<string, Set<number>> {
   const byPath = new Map<string, Set<number>>();
   for (const t of targets) {
-    let set = byPath.get(t.propertyPath);
-    if (!set) { set = new Set(); byPath.set(t.propertyPath, set); }
+    // Friendly paths of animated overrides ("shape.fillColor", "glow.intensity") address animProps.*.
+    const path = canonicalKeyframePath(t.propertyPath);
+    let set = byPath.get(path);
+    if (!set) { set = new Set(); byPath.set(path, set); }
     set.add(t.frame);
   }
   return byPath;
@@ -117,6 +122,45 @@ let keyframeClipboard: { propertyPath: string; keyframes: Keyframe[] }[] = [];
  */
 let textEditPreComp: Composition | null = null;
 let textEditPreSel: SelectionState | null = null;
+
+/** Options for `addShapeLayer` (comp px; colours RGBA 0..1). */
+export interface AddShapeOptions {
+  type: 'rectangle' | 'circle' | 'star' | 'polygon';
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  fill?: [number, number, number, number];
+  /** Stroke colour; with strokeWidth > 0 draws a stroke (default: no stroke). */
+  stroke?: [number, number, number, number];
+  strokeWidth?: number;
+  /** Rectangle corner radius (px). */
+  radius?: number;
+  name?: string;
+  /** Star points (default 5) and inner radius ratio (default 0.4). */
+  points?: number;
+  innerRatio?: number;
+}
+
+/**
+ * Locate (creating it when it is an animated override that does not exist yet) the keyframed property
+ * at `propertyPath` on `layer`. Returns the canonical path + the possibly-updated layer, or null when
+ * the path names no animatable property.
+ */
+function ensureKeyframeProperty(layer: Layer, propertyPath: string): { layer: Layer; path: string; prop: AnimatableProperty } | null {
+  const path = canonicalKeyframePath(propertyPath);
+  const found = deepGet(layer, path) as AnimatableProperty | undefined;
+  if (found && Array.isArray(found.keyframes)) return { layer, path, prop: found };
+  const target = animPropTarget(path);
+  if (!target) return null;
+  const created = createAnimProp(target, staticValueFor(layer, target));
+  const updated = deepSet(layer, path, created) as Layer;
+  return { layer: updated, path, prop: deepGet(updated, path) as AnimatableProperty };
+}
+
+function valueShapeOf(prop: { valueType: string }): ValueShape {
+  return prop.valueType === 'color' ? 'color' : prop.valueType === 'vec2' ? 'vec2' : 'number';
+}
 
 /**
  * Apply a per-property transform to the selected keyframes of one layer, returning
@@ -540,7 +584,20 @@ interface EditorState {
   /** Replace a layer's whole effect stack (B11a - used to apply a saved effect preset). Undoable. */
   setLayerEffects: (layerId: string, effects: LayerEffect[]) => void;
   setLayerParent: (childId: string, parentId: string | null) => void;
-  addKeyframe: (layerId: string, propertyPath: string, frame: number, value: number | [number, number]) => void;
+  addKeyframe: (layerId: string, propertyPath: string, frame: number, value: number | [number, number] | [number, number, number, number]) => void;
+  /**
+   * B46: write a property's keyframes in ONE undo step, each with its own outgoing ease (linear / hold /
+   * spring / named / CSS keyword / cubic-bezier quad) - see core/keyframeSpecs.ts. `merge` keeps the
+   * property's other keyframes; otherwise the given keys replace them. Also creates the animated
+   * override for colour / effect paths ("shape.fillColor", "glow.intensity", "effect.<type>.<i>").
+   * Throws on an unknown property or invalid keys (nothing is applied).
+   */
+  setKeyframes: (layerId: string, propertyPath: string, keyframes: KeyframeSpec[], merge?: boolean) => void;
+  /**
+   * B46: add a shape with explicit geometry and clean defaults (no stroke unless asked), in one undo
+   * step. Returns the new layer id and selects it.
+   */
+  addShapeLayer: (opts: AddShapeOptions) => string;
   /** Delete the keyframes at the given (propertyPath, frame) targets (undoable, batched). */
   deleteKeyframes: (layerId: string, targets: KeyframeTarget[]) => void;
   /** Set interpolation (and optional bezier handles) on the given keyframe targets (undoable, batched). */
@@ -805,7 +862,8 @@ function cloneAnimProperty(
     defaultValue: offsetVec(prop.defaultValue),
     keyframes: prop.keyframes.map((kf) => ({
       frame: kf.frame + frameShift,
-      value: offsetVec(kf.value),
+      // A colour (vec4) keyframe is copied as-is: only a vec2 takes the position delta.
+      value: typeof kf.value === 'number' || kf.value.length === 2 ? offsetVec(kf.value) : cloneValue(kf.value),
       interpolation: kf.interpolation,
       handleIn: [kf.handleIn[0], kf.handleIn[1]] as Vec2,
       handleOut: [kf.handleOut[0], kf.handleOut[1]] as Vec2,
@@ -4147,8 +4205,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       const { composition } = get();
       const layers = composition.layers.map((layer) => {
         if (layer.id !== layerId) return layer;
-        const prop = deepGet(layer, propertyPath) as AnimatableProperty;
-        if (!prop || !prop.keyframes) return layer;
+        const at = ensureKeyframeProperty(layer, propertyPath);
+        if (!at) return layer;
+        const prop = at.prop;
         const existing = prop.keyframes.findIndex((k: Keyframe) => k.frame === frame);
         let newKeyframes: Keyframe[];
         if (existing >= 0) {
@@ -4156,7 +4215,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         } else {
           newKeyframes = [...prop.keyframes, createKeyframe(frame, value)].sort((a, b) => a.frame - b.frame);
         }
-        return deepSet(layer, `${propertyPath}.keyframes`, newKeyframes) as Layer;
+        return deepSet(at.layer, `${at.path}.keyframes`, newKeyframes) as Layer;
       });
       set({ composition: { ...composition, layers } });
       return;
@@ -4167,8 +4226,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
     const newLayers = composition.layers.map((layer) => {
       if (layer.id !== layerId) return layer;
-      const prop = deepGet(layer, propertyPath) as AnimatableProperty;
-      if (!prop || !prop.keyframes) return layer;
+      // B33/B47/B50: a colour / effect path creates its animated override track on first key.
+      const at = ensureKeyframeProperty(layer, propertyPath);
+      if (!at) return layer;
+      const prop = at.prop;
 
       const existing = prop.keyframes.findIndex((k: Keyframe) => k.frame === frame);
       let newKeyframes: Keyframe[];
@@ -4182,7 +4243,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         );
       }
 
-      return deepSet(layer, `${propertyPath}.keyframes`, newKeyframes) as Layer;
+      return deepSet(at.layer, `${at.path}.keyframes`, newKeyframes) as Layer;
     });
     const newComp = { ...composition, layers: newLayers };
 
@@ -4191,6 +4252,86 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       execute: () => { set({ composition: newComp }); },
       undo: () => { set({ composition: oldComp }); },
     });
+  },
+
+  setKeyframes: (layerId, propertyPath, keyframes, merge) => {
+    const { composition } = get();
+    const layer = composition.layers.find((l) => l.id === layerId);
+    if (!layer) throw new Error(`no layer with id "${layerId}"`);
+    const at = ensureKeyframeProperty(layer, propertyPath);
+    if (!at) throw new Error(`"${propertyPath}" is not an animatable property of this ${layer.type} layer (see agent.getLayer for its paths)`);
+    const kfs = buildKeyframesFromSpecs(keyframes, { expected: valueShapeOf(at.prop), existing: at.prop.keyframes, merge: merge === true });
+    const updated = deepSet(at.layer, `${at.path}.keyframes`, kfs) as Layer;
+    const oldComp = composition;
+    const newComp = { ...composition, layers: composition.layers.map((l) => (l.id === layerId ? updated : l)) };
+    exec({
+      label: 'Set Keyframes',
+      execute: () => { set({ composition: newComp }); },
+      undo: () => { set({ composition: oldComp }); },
+    });
+  },
+
+  addShapeLayer: (opts) => {
+    const { composition, selection } = get();
+    const oldComp = composition;
+    const oldSel = selection;
+    const num = (v: unknown, name: string): number => {
+      if (typeof v !== 'number' || !Number.isFinite(v)) throw new Error(`"${name}" must be a number`);
+      return v;
+    };
+    const color = (v: unknown, name: string): Vec4 | undefined => {
+      if (v === undefined) return undefined;
+      if (!Array.isArray(v) || v.length !== 4 || !v.every((c) => typeof c === 'number' && Number.isFinite(c))) throw new Error(`"${name}" must be an RGBA colour [r, g, b, a] (0..1)`);
+      return [v[0], v[1], v[2], v[3]];
+    };
+    if (!opts || typeof opts !== 'object') throw new Error('addShapeLayer needs an options object { type, x, y, width, height, ... }');
+    const x = num(opts.x, 'x'), y = num(opts.y, 'y');
+    const w = Math.max(1, num(opts.width, 'width')), h = Math.max(1, num(opts.height, 'height'));
+    const fill = color(opts.fill, 'fill') ?? [1, 1, 1, 1];
+    const stroke = color(opts.stroke, 'stroke');
+    const strokeWidth = opts.strokeWidth === undefined ? (stroke ? 2 : 0) : Math.max(0, num(opts.strokeWidth, 'strokeWidth'));
+    const frames = defaultClipFrames(composition);
+    const count = composition.layers.filter((l) => l.type === 'shape').length;
+    let layer: Layer;
+    switch (opts.type) {
+      case 'rectangle':
+        layer = createRectangleLayer(opts.name ?? `Rectangle ${count + 1}`, x, y, w, h, fill, frames);
+        if (layer.type === 'shape' && layer.shape.type === 'rectangle' && opts.radius !== undefined) layer.shape.borderRadius.defaultValue = Math.max(0, num(opts.radius, 'radius'));
+        break;
+      case 'circle': {
+        // An ellipse: a circle of radius min/2 stretched to w x h by the layer scale (the SDF circle has one radius).
+        const r = Math.min(w, h) / 2;
+        layer = createCircleLayer(opts.name ?? `Ellipse ${count + 1}`, x, y, r, fill, frames);
+        if (w !== h) layer.transform.scale.defaultValue = [w / (2 * r), h / (2 * r)];
+        break;
+      }
+      case 'star': {
+        const outer = Math.min(w, h) / 2;
+        const ratio = opts.innerRatio === undefined ? 0.4 : Math.min(1, Math.max(0.01, num(opts.innerRatio, 'innerRatio')));
+        layer = createStarLayer(opts.name ?? `Star ${count + 1}`, x, y, Math.max(3, Math.round(opts.points ?? 5)), outer, outer * ratio, fill, frames);
+        break;
+      }
+      case 'polygon': {
+        const hw = w / 2, hh = h / 2;
+        const corner = (px: number, py: number) => ({ position: [px, py] as Vec2, handleIn: [0, 0] as Vec2, handleOut: [0, 0] as Vec2, vertexType: 'corner' as const });
+        layer = createPolygonLayer(opts.name ?? `Polygon ${count + 1}`, x, y, [corner(-hw, -hh), corner(hw, -hh), corner(hw, hh), corner(-hw, hh)], true, fill, frames);
+        break;
+      }
+      default:
+        throw new Error('"type" must be rectangle, circle, star or polygon');
+    }
+    if (layer.type === 'shape') {
+      layer.shape.strokeColor = stroke ?? [0, 0, 0, 0];
+      layer.shape.strokeWidth.defaultValue = strokeWidth;
+    }
+    const newComp = settleComposition(ensureLayerHasTrack({ ...composition, layers: [...composition.layers, layer] }, layer));
+    const newSel: SelectionState = sel([layer.id], layer.id);
+    exec({
+      label: `Create ${opts.type}`,
+      execute: () => { set({ composition: newComp, selection: newSel }); },
+      undo: () => { set({ composition: oldComp, selection: oldSel }); },
+    });
+    return layer.id;
   },
 
   deleteKeyframes: (layerId, targets) => {

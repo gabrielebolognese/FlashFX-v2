@@ -2,14 +2,16 @@
 // global hotkeys (F9 easy-ease in App.tsx). Kept out of the component file so both can import it
 // without tripping react-refresh's only-export-components rule.
 import { useEditorStore, type KeyframeTarget } from '../../store/editor';
-import type { Layer, AnimatableProperty, ShapeLayer, TextLayer, AudioLayer } from '../../core/types';
+import type { Layer, AnimatableProperty, AnimatableColor, LayerAnimProps, ShapeLayer, TextLayer, AudioLayer } from '../../core/types';
+import { ANIM_PROP_DEFS } from '../../core/animProps';
 import type { KeyframeMenuContext } from '../context-menu/menuDefinitions';
 
 export interface PropertyTrack {
   id: string;
   name: string;
   propertyPath: string;
-  property: AnimatableProperty;
+  /** Colour tracks (B33) carry RGBA keyframes; the graph editor lists only numeric properties. */
+  property: AnimatableProperty | AnimatableColor;
   groupId: string;
 }
 
@@ -100,6 +102,21 @@ export function extractAnimatableProperties(layer: Layer): PropertyGroup[] {
       ],
     };
     groups.push(audioGroup);
+  }
+
+  // B33/B47/B50 animated overrides (colour keyframes, glow / shadow / blur / effect params): listed once
+  // they carry keyframes, so agent-built animation shows (and edits) in the timeline like any property.
+  const anim = (layer as { animProps?: LayerAnimProps }).animProps;
+  if (anim) {
+    const animGroup: PropertyGroup = { id: 'animated', name: 'Animated', tracks: [] };
+    for (const d of ANIM_PROP_DEFS) {
+      const prop = anim[d.key];
+      if (prop && prop.keyframes.length > 0) animGroup.tracks.push({ id: `ap_${d.key}`, name: d.name, propertyPath: `animProps.${d.key}`, property: prop, groupId: 'animated' });
+    }
+    for (const [k, prop] of Object.entries(anim.effectParams ?? {})) {
+      if (prop.keyframes.length > 0) animGroup.tracks.push({ id: `ap_fx${k}`, name: `Effect ${k.replace('_', ' #')}`, propertyPath: `animProps.effectParams.${k}`, property: prop, groupId: 'animated' });
+    }
+    if (animGroup.tracks.length > 0) groups.push(animGroup);
   }
 
   return groups;

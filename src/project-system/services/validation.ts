@@ -1,3 +1,4 @@
+import { sanitizeAnimProps } from '../../core/animProps';
 import type {
   Composition,
   Layer,
@@ -491,6 +492,9 @@ function validateLayer(raw: unknown): Layer | null {
     ...(isObject(r.glow) ? { glow: r.glow as unknown as LayerGlow } : {}),
     ...(isObject(r.blur) ? { blur: r.blur as unknown as LayerBlur } : {}),
     ...(Array.isArray(r.effects) ? { effects: r.effects as LayerEffect[] } : {}),
+    // B33/B47/B50 animated overrides (colour keyframes, keyed glow / shadow / blur / effect params),
+    // rebuilt with valid tracks only; absent = no field (legacy projects unchanged).
+    ...(() => { const ap = sanitizeAnimProps(r.animProps); return ap ? { animProps: ap } : {}; })(),
   };
 
   switch (r.type) {

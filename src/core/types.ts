@@ -75,6 +75,49 @@ export interface AnimatableProperty {
   keyframesY?: Keyframe[];
 }
 
+/**
+ * B33 - an animatable RGBA colour (0..1, straight alpha). Same keyframe shape as AnimatableProperty
+ * (so every generic keyframe op - easing, hold, delete, move - works on it), but each keyframe value is
+ * a Vec4 and evaluation mixes in LINEAR light (core/animProps.ts). The colour's un-keyframed base is the
+ * layer's existing static field (e.g. `shape.fillColor`); `defaultValue` only records it at creation.
+ */
+export interface AnimatableColor {
+  id: string;
+  name: string;
+  valueType: 'color';
+  defaultValue: Vec4;
+  keyframes: Keyframe[];
+}
+
+/**
+ * B33 / B47 / B50 - per-layer ANIMATED OVERRIDES of fields that are plain values in the layer model
+ * (shape / text colours, glow / shadow / layer-blur numbers, effect-stack params). Each entry, once it
+ * has keyframes, replaces its static field at resolve time; absent (every legacy project) = the static
+ * field, byte-identical. Created on demand by `editor.addKeyframe` / `editor.setKeyframes` on the
+ * friendly paths ("shape.fillColor", "glow.intensity", "effect.<type>.<param>"...): see
+ * core/animProps.ts for the path table.
+ */
+export interface LayerAnimProps {
+  fillColor?: AnimatableColor;
+  strokeColor?: AnimatableColor;
+  textColor?: AnimatableColor;
+  textStrokeColor?: AnimatableColor;
+  glowColor?: AnimatableColor;
+  shadowColor?: AnimatableColor;
+  glowIntensity?: AnimatableProperty;
+  glowRadius?: AnimatableProperty;
+  glowThreshold?: AnimatableProperty;
+  shadowBlur?: AnimatableProperty;
+  shadowDistance?: AnimatableProperty;
+  shadowAngle?: AnimatableProperty;
+  shadowScale?: AnimatableProperty;
+  blurRadius?: AnimatableProperty;
+  blurStrength?: AnimatableProperty;
+  blurAngle?: AnimatableProperty;
+  /** Effect-stack params keyed `${effectType}_${paramIndex}` (the same type id / index setLayerEffectParam takes). */
+  effectParams?: Record<string, AnimatableProperty>;
+}
+
 // Separable W3C blend modes (Compositing and Blending Level 1) + linear-dodge "add". Content-layer
 // rendering of these is browser-gated (B11c-gpu); the mode is authored + persisted + resolved now.
 export type BlendMode =
@@ -554,6 +597,8 @@ export interface ShapeLayer {
   shadow?: LayerShadow;
   glow?: LayerGlow;
   blur?: LayerBlur;
+  /** B33/B47/B50 animated overrides of static colour / effect fields (core/animProps.ts). */
+  animProps?: LayerAnimProps;
   is3D?: boolean;
   blendMode: BlendMode;
   transform: Transform;
@@ -658,6 +703,8 @@ export interface TextLayer {
   shadow?: LayerShadow;
   glow?: LayerGlow;
   blur?: LayerBlur;
+  /** B33/B47/B50 animated overrides of static colour / effect fields (core/animProps.ts). */
+  animProps?: LayerAnimProps;
   is3D?: boolean;
   blendMode: BlendMode;
   transform: Transform;
@@ -716,6 +763,8 @@ export interface VideoLayer {
   shadow?: LayerShadow;
   glow?: LayerGlow;
   blur?: LayerBlur;
+  /** B33/B47/B50 animated overrides of static colour / effect fields (core/animProps.ts). */
+  animProps?: LayerAnimProps;
   is3D?: boolean;
   blendMode: BlendMode;
   transform: Transform;
@@ -826,6 +875,8 @@ export interface ImageLayer {
   shadow?: LayerShadow;
   glow?: LayerGlow;
   blur?: LayerBlur;
+  /** B33/B47/B50 animated overrides of static colour / effect fields (core/animProps.ts). */
+  animProps?: LayerAnimProps;
   is3D?: boolean;
   blendMode: BlendMode;
   transform: Transform;
@@ -964,6 +1015,8 @@ export interface GenerativePatternLayer {
   shadow?: LayerShadow;
   glow?: LayerGlow;
   blur?: LayerBlur;
+  /** B33/B47/B50 animated overrides of static colour / effect fields (core/animProps.ts). */
+  animProps?: LayerAnimProps;
   blendMode: BlendMode;
   transform: Transform;
   // Bounded like a rectangle: the pattern is generated only inside width×height (movable via the
@@ -1002,6 +1055,8 @@ export interface LottieIconLayer {
   shadow?: LayerShadow;
   glow?: LayerGlow;
   blur?: LayerBlur;
+  /** B33/B47/B50 animated overrides of static colour / effect fields (core/animProps.ts). */
+  animProps?: LayerAnimProps;
   is3D?: boolean;
   blendMode: BlendMode;
   transform: Transform;
@@ -1237,6 +1292,8 @@ export interface CameraLayer {
   shadow?: LayerShadow;
   glow?: LayerGlow;
   blur?: LayerBlur;
+  /** B33/B47/B50 animated overrides of static colour / effect fields (core/animProps.ts). */
+  animProps?: LayerAnimProps;
   masks?: Mask[];
   /** Track matte (B10b): this layer is matted by the layer directly above (its alpha/luma). */
   trackMatte?: TrackMatteMode;
@@ -1262,6 +1319,8 @@ export interface PrecompLayer {
   shadow?: LayerShadow;
   glow?: LayerGlow;
   blur?: LayerBlur;
+  /** B33/B47/B50 animated overrides of static colour / effect fields (core/animProps.ts). */
+  animProps?: LayerAnimProps;
   is3D?: boolean;
   masks?: Mask[];
   /** Track matte (B10b): this layer is matted by the layer directly above (its alpha/luma). */
@@ -1295,6 +1354,8 @@ export interface BeamLayer {
   shadow?: LayerShadow;
   glow?: LayerGlow;
   blur?: LayerBlur;
+  /** B33/B47/B50 animated overrides of static colour / effect fields (core/animProps.ts). */
+  animProps?: LayerAnimProps;
   is3D?: boolean;
   masks?: Mask[];
   trackMatte?: TrackMatteMode;
@@ -1351,6 +1412,8 @@ export interface AdjustmentLayer {
   shadow?: LayerShadow;
   glow?: LayerGlow;
   blur?: LayerBlur;
+  /** B33/B47/B50 animated overrides of static colour / effect fields (core/animProps.ts). */
+  animProps?: LayerAnimProps;
   is3D?: boolean;
   masks?: Mask[];
 }
