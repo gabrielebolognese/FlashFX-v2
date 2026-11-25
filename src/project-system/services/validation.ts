@@ -47,6 +47,7 @@ import { isMaskMode } from '../../core/maskCoverage';
 import { sanitizeRefineEdge } from '../../core/refineEdge';
 import { resolveAdjustmentFilters } from '../../core/effects/adjustmentComposite';
 import type { LayerConstraints } from '../../core/reframe';
+import type { CornerPin } from '../../core/types';
 
 function isObject(v: unknown): v is Record<string, unknown> {
   return v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -469,6 +470,16 @@ function refineEdgeField(raw: unknown): { refineEdge?: RefineEdge } {
   return r ? { refineEdge: r } : {};
 }
 
+// B53 corner pin: rebuild the four pins as valid vec2 properties (missing corners default to 0, 0).
+function ensureCornerPin(r: Record<string, unknown>): CornerPin {
+  return {
+    topLeft: ensureAnimatableProperty(r.topLeft, 'Top Left', 'vec2', [0, 0]),
+    topRight: ensureAnimatableProperty(r.topRight, 'Top Right', 'vec2', [0, 0]),
+    bottomRight: ensureAnimatableProperty(r.bottomRight, 'Bottom Right', 'vec2', [0, 0]),
+    bottomLeft: ensureAnimatableProperty(r.bottomLeft, 'Bottom Left', 'vec2', [0, 0]),
+  };
+}
+
 function validateLayer(raw: unknown): Layer | null {
   if (!isObject(raw)) return null;
   const r = raw as Record<string, unknown>;
@@ -495,6 +506,8 @@ function validateLayer(raw: unknown): Layer | null {
     // M14 reframe constraints - preserve through the round-trip (else stripped on save/load,
     // the same data-loss class that bit cloner/precomp).
     ...(isObject(r.constraints) ? { constraints: r.constraints as unknown as LayerConstraints } : {}),
+    // B53 corner pin - four keyframable vec2 pins (else stripped on save/load).
+    ...(isObject(r.cornerPin) ? { cornerPin: ensureCornerPin(r.cornerPin as Record<string, unknown>) } : {}),
     // Per-layer effects are app-generated structured blobs - preserve them
     // through the round-trip rather than dropping them (was a data-loss bug).
     ...(isObject(r.shadow) ? { shadow: r.shadow as unknown as LayerShadow } : {}),

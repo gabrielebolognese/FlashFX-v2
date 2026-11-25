@@ -484,6 +484,17 @@ export const AGENT_ACTIONS: readonly AgentActionSpec[] = [
     description: 'Add a 2.5D camera.' },
   { id: 'editor.toggleLayer3D', store: 'editor', method: 'toggleLayer3D', undoable: true,
     description: 'Make a layer a 3D card (seen by the camera) or flat again.', params: [LAYER_ID] },
+  // B53 - camera beats + corner pin (render proven by gpu:camera-cards).
+  { id: 'editor.cameraMove', store: 'editor', method: 'cameraMove', undoable: true,
+    returns: 'the keyed property paths, e.g. ["transform.position", "transform.positionZ", "camera.zoom"]',
+    description: 'One camera beat in ONE undo step: at `frame`, move the camera over `durationFrames` to the target, with `ease` on the move (same ease specs as setKeyframes). The start key holds the current camera value at `frame`; keys inside the move are dropped, others kept. durationFrames 0 / omitted = a single key at `frame` (arrive there from the previous key). Default camera: eye (W/2, H/2, -zoom) aimed at (W/2, H/2, 0), zoom = 50mm (50*W/36 px), which frames z = 0 at 1:1. Moving the eye closer (z toward 0) pushes in; a larger zoom narrows the lens.',
+    params: [{ name: 'cameraLayerId', type: 'string', description: 'A camera layer id (editor.addCameraLayer returns one).' }, { name: 'frame', type: 'number' },
+      { name: 'to', type: '{ position?: [x, y] | [x, y, z]; pointOfInterest?: [x, y] | [x, y, z]; zoom?: number; orientation?: [rx, ry, rz] }', description: 'position = the eye (comp px, z < 0 in front of the comp plane); pointOfInterest = two-node aim point; zoom px; orientation = one-node aim (degrees).' },
+      { name: 'durationFrames', type: 'number', optional: true, description: 'Default 0 (one key at frame).' },
+      { name: 'ease', type: 'string | [number, number, number, number]', optional: true, catalog: 'easings', description: 'Ease of the move (default linear).' }] },
+  { id: 'editor.setCornerPin', store: 'editor', method: 'setCornerPin', undoable: true,
+    description: 'Corner pin (AE Corner Pin / keystone): warp a shape, text, image, video or precomp layer onto four comp-px points that form a convex quad. While pinned the four pins ARE the placement (position / rotation / scale / anchor / 3D are not applied). Pinned box: the shape width x height (path shapes: vertex bounds), the text drawn box (agent.measureText box), the full image / video / precomp frame. Creates static pins (replacing pin keys); animate them with setKeyframes on cornerPin.topLeft / topRight / bottomRight / bottomLeft. null removes the pin.',
+    params: [LAYER_ID, { name: 'corners', type: '{ topLeft: [x, y]; topRight: [x, y]; bottomRight: [x, y]; bottomLeft: [x, y] } | null' }] },
 
   // ----- captions -----
   { id: 'editor.addCaptionClips', store: 'editor', method: 'addCaptionClips', undoable: true,
@@ -705,8 +716,13 @@ export const AGENT_FEATURES: readonly AgentFeature[] = [
   { id: 'camera.2-5d', area: 'camera-2.5d', name: '2.5D camera',
     description: 'Flat layers as cards in 3D space viewed by an animated camera (After Effects Classic 3D style).',
     ui: 'Canvas toolbar > Camera (3D); Inspector > 3D Layer switch',
-    actions: ['editor.addCameraLayer', 'editor.toggleLayer3D'], status: 'partial',
-    notes: '2.5D only (no full 3D). Some camera features still need a browser eyeball.' },
+    actions: ['editor.addCameraLayer', 'editor.toggleLayer3D', 'editor.cameraMove', 'editor.setKeyframes'], status: 'shipped',
+    notes: '2.5D only (no full 3D). Card render proven on the real WebGPU renderer (gpu:camera-cards, B53): rotated / pushed / scaled cards (shape, path shape, precomp), moved two-node and one-node cameras and the painter depth order land within 1 px of the camera3d projection. Card paths (after toggleLayer3D): transform.rotationX, transform.rotationY, transform.rotation (Z), transform.positionZ (+ = away from the camera), keyed with setKeyframes. Camera paths: transform.position (eye x, y), transform.positionZ (eye z), camera.pointOfInterest, camera.pointOfInterestZ, camera.zoom; editor.cameraMove keys a whole beat in one call. Not pixel-proven: camera depth-of-field blur, per-glyph 3D text animators, the in-app camera UI (gizmo, 3D view).' },
+  { id: 'effects.corner-pin', area: 'effects', name: 'Corner pin',
+    description: 'Pin the four corners of a layer to any four points (keystone, a screen inside a tilted phone, a card leaning in perspective without a camera); each pin keyframable.',
+    ui: 'Agent / MCP only for now (no Inspector panel yet)',
+    actions: ['editor.setCornerPin', 'editor.setKeyframes'], status: 'shipped',
+    notes: 'Reuses the B27 homography (core/tracking/homography.ts) folded into the 2.5D mvp vertex path: exact projective warp, proven within 1 px on shape, text and precomp layers (gpu:camera-cards) + verify:corner-pin. Masks on a pinned layer stay in the unpinned layer space; per-glyph text stamps (text animators) are not pinned.' },
 
   // captions
   { id: 'captions.auto', area: 'captions', name: 'Auto captions',

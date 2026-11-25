@@ -241,6 +241,62 @@ Never leave real motion on linear (the default for `addKeyframe`), except progre
   `EmitterConfig` fields, e.g. `{ spawnRate: 0, burstCount: 140, emitterShape: "circle" }`).
   A burst fires on the layer's first frame: time it with `editor.moveClipInTime { newInPoint }`.
 
+## 8b. Perspective: 3D cards, camera moves, corner pin (B53)
+
+The 2.5D render is pixel-proven on the real renderer (`npm run gpu:camera-cards`: card corners land
+within 1 px of the camera projection). 2.5D only: flat cards in space, no extrusion.
+
+- **Make a card 3D:** `editor.toggleLayer3D { layerId }` (shape, path shape, text, image, video,
+  precomp). It adds the depth paths, all 0, so nothing moves yet. Keying them on a 2D layer errors.
+  - `transform.rotationY` (yaw): **+ swings the RIGHT edge toward the camera**, - the left edge.
+  - `transform.rotationX` (pitch): **+ tips the TOP edge toward the camera** (the bottom recedes).
+  - `transform.rotation` stays the in-plane Z spin; `transform.positionZ`: **+ = away** (smaller).
+  - Rotation pivots on the anchor point (the centre by default). Overlapping 3D cards draw nearest
+    on top regardless of layer order; a 2D layer between them splits the depth sort (AE rule).
+- **No camera layer needed** for tilts: the default camera frames z = 0 at exactly 1:1, so a 3D card
+  at z = 0 with no rotation looks identical to the 2D layer. Add `editor.addCameraLayer` (returns the
+  id as `activeLayerId`) only to move the view. A fresh camera also frames 1:1: eye at
+  (W/2, H/2, -zoom) aimed at (W/2, H/2, 0), zoom = 50 mm = 50 * W / 36 px (2666.7 at 1920 wide).
+- **Card swings in on rotationY** (r07 f763-776: from -45 deg, easeOutCubic, 13 frames), pushed back
+  in depth as it turns:
+
+```json
+{ "actionId": "editor.toggleLayer3D", "args": { "layerId": "<card>" } }
+{ "actionId": "editor.setKeyframes", "args": { "layerId": "<card>", "propertyPath": "transform.rotationY", "keyframes": [
+  { "frame": 0, "value": -45, "ease": [0.33, 1, 0.68, 1] }, { "frame": 13, "value": 0 } ] } }
+{ "actionId": "editor.setKeyframes", "args": { "layerId": "<card>", "propertyPath": "transform.positionZ", "keyframes": [
+  { "frame": 0, "value": 120, "ease": "cubicOut" }, { "frame": 13, "value": 0 } ] } }
+```
+
+  A swing-away exit is the mirror: 0 -> 45 with an ease-in (`[0.26, 0.06, 0.7, 0.1]`), then cut.
+  Text "leaning back" (r05): `rotationX` about 20 to 30 deg settling to 10 with `cubicOut`.
+- **Camera beats: `editor.cameraMove`** writes one move in one call and one undo step:
+  `{ cameraLayerId, frame, to: { position?: [x, y, z?], pointOfInterest?: [x, y, z?], zoom?,
+  orientation?: [rx, ry, rz] }, durationFrames?, ease? }`. The start key holds the camera's current
+  value at `frame`, the end key is the target at `frame + durationFrames`, `ease` shapes the move
+  (same vocabulary as `setKeyframes`); keys inside the move are replaced, others kept, so beats
+  chain. `durationFrames` 0 = one key at `frame`. Push in: move the eye's z toward 0 (-zoom * 0.6 is
+  a 1.7x push); orbit / truck: move x and keep the point of interest on the subject. A new camera
+  is two-node (`pointOfInterest`); `orientation` is for a one-node camera
+  (`updateLayerProperty(camId, "camera.mode", "one-node")`).
+
+```json
+{ "actionId": "editor.cameraMove", "args": { "cameraLayerId": "<cam>", "frame": 30, "durationFrames": 24, "ease": "cubicInOut",
+  "to": { "position": [1100, 480, -1600], "pointOfInterest": [960, 540, 0] } } }
+```
+
+  Fine control: `editor.setKeyframes` on `transform.position` (eye x, y), `transform.positionZ`
+  (eye z), `camera.pointOfInterest`, `camera.pointOfInterestZ`, `camera.zoom`.
+- **Corner pin (keystone, a screen inside a tilted phone):** `editor.setCornerPin { layerId,
+  corners: { topLeft: [x, y], topRight, bottomRight, bottomLeft } }` (comp px, a convex quad; null
+  removes it). While pinned the four pins ARE the placement (position / rotation / scale / 3D are not
+  applied). Pinned box: a shape's width x height (path shapes: the vertex bounds), a text layer's
+  `agent.measureText` `box`, the whole image / video / precomp frame. For a phone screen, precompose
+  the screen content and pin the precomp to the four screen corners. Animate pins with
+  `setKeyframes` on `cornerPin.topLeft` / `topRight` / `bottomRight` / `bottomLeft` (start the keys at
+  the flat corners for an "unfold" or keystone move). Masks on a pinned layer stay in its unpinned
+  space; per-glyph text animators are not pinned.
+
 ## 9. Check your work
 
 - `seek { frame }` then `screenshot { region: "canvas" }`: the canvas capture hides DOM overlays

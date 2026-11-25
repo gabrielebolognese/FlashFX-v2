@@ -57,6 +57,10 @@ export interface AgentLayerSummary {
   trackId?: string | null;
   /** Properties with animated overrides (B33/B47/B50), e.g. ["fillColor", "glowIntensity", "effect 170_0"]. */
   animProps?: string[];
+  /** B53: true on 3D cards (toggleLayer3D) and cameras. */
+  is3D?: boolean;
+  /** B53: true when the layer is corner-pinned (setCornerPin). */
+  cornerPin?: boolean;
 }
 
 export interface AgentBackgroundSummary {
@@ -139,6 +143,8 @@ function summarizeLayer(layer: Layer): AgentLayerSummary {
   if (layer.type === 'text') out.text = layer.content.spans.map((s) => s.text).join('');
   if ('masks' in layer && Array.isArray(layer.masks) && layer.masks.length) out.maskIds = layer.masks.map((m) => m.id);
   if ('trackId' in layer) out.trackId = (layer as { trackId?: string | null }).trackId ?? null;
+  if (layer.is3D) out.is3D = true;
+  if (layer.cornerPin) out.cornerPin = true;
   const anim = (layer as { animProps?: Record<string, unknown> }).animProps;
   if (anim) {
     const keys: string[] = [];

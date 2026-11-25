@@ -47,6 +47,9 @@ import {
 import { smoothSelected, wiggleSelected, exponentialScaleSelected } from '../core/keyframeAssistants';
 import { cloneValue } from '../core/keyframeValue';
 import { buildKeyframesFromSpecs, easeSpecError, CSS_EASES, type KeyframeSpec, type KeyframeEaseSpec, type ValueShape } from '../core/keyframeSpecs';
+import { planCameraMove, type CameraMoveTarget } from '../core/cameraMove';
+import { CORNER_PIN_KEYS, isConvexQuad } from '../core/cornerPin';
+import type { CornerPin } from '../core/types';
 import { outlineFromSpec, type OutlineSpec } from '../core/shapeOutline';
 import { animPropTarget, canonicalKeyframePath, createAnimProp, staticValueFor } from '../core/animProps';
 import { identityRemapSeconds } from '../core/timeRemap';
@@ -131,6 +134,9 @@ export interface MorphPoseSpec {
   /** Ease of the morph from this pose to the next (default linear). "spring" is not supported here. */
   ease?: KeyframeEaseSpec;
 }
+
+/** B53 corner pin corners for `setCornerPin` (comp px). */
+export interface CornerPinCorners { topLeft: Vec2; topRight: Vec2; bottomRight: Vec2; bottomLeft: Vec2 }
 
 /** Options for `addShapeLayer` (comp px; colours RGBA 0..1). */
 export interface AddShapeOptions {
@@ -602,6 +608,19 @@ interface EditorState {
    * Throws on an unknown property or invalid keys (nothing is applied).
    */
   setKeyframes: (layerId: string, propertyPath: string, keyframes: KeyframeSpec[], merge?: boolean) => void;
+  /**
+   * B53: one camera beat in ONE undo step - at `frame`, move the camera over `durationFrames` (0 = a
+   * single key at `frame`) to the target eye `position` [x, y, z?], two-node `pointOfInterest` [x, y, z?],
+   * `zoom` (px) and / or one-node `orientation` [rx, ry, rz], with `ease` on the move (core/cameraMove.ts).
+   * Returns the keyed property paths. Throws on invalid input (nothing is applied).
+   */
+  cameraMove: (cameraLayerId: string, frame: number, to: CameraMoveTarget, durationFrames?: number, ease?: KeyframeEaseSpec) => string[];
+  /**
+   * B53: corner pin - warp the layer onto four comp-px points { topLeft, topRight, bottomRight, bottomLeft }
+   * (a convex quad), or null to remove it. Creates static keyframable pins (replacing any pin keys); key
+   * them with setKeyframes "cornerPin.topLeft" etc. Shape / text / image / video / precomp layers.
+   */
+  setCornerPin: (layerId: string, corners: CornerPinCorners | null) => void;
   /**
    * B46: add a shape with explicit geometry and clean defaults (no stroke unless asked), in one undo
    * step. Returns the new layer id and selects it.
@@ -4276,6 +4295,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const layer = composition.layers.find((l) => l.id === layerId);
     if (!layer) throw new Error(`no layer with id "${layerId}"`);
     const at = ensureKeyframeProperty(layer, propertyPath);
+    if (!at && /^transform\.(positionZ|rotationX|rotationY)$/.test(propertyPath)) throw new Error(`"${propertyPath}" exists on 3D layers only: make it a 3D card first (editor.toggleLayer3D); a camera layer is optional (without one the default camera frames the comp 1:1)`);
+    if (!at && propertyPath.startsWith('cornerPin.')) throw new Error(`"${propertyPath}" needs a corner pin: call editor.setCornerPin(layerId, { topLeft, topRight, bottomRight, bottomLeft }) first`);
     if (!at) throw new Error(`"${propertyPath}" is not an animatable property of this ${layer.type} layer (see agent.getLayer for its paths)`);
     const kfs = buildKeyframesFromSpecs(keyframes, { expected: valueShapeOf(at.prop), existing: at.prop.keyframes, merge: merge === true });
     const updated = deepSet(at.layer, `${at.path}.keyframes`, kfs) as Layer;
@@ -4283,6 +4304,62 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const newComp = { ...composition, layers: composition.layers.map((l) => (l.id === layerId ? updated : l)) };
     exec({
       label: 'Set Keyframes',
+      execute: () => { set({ composition: newComp }); },
+      undo: () => { set({ composition: oldComp }); },
+    });
+  },
+
+  cameraMove: (cameraLayerId, frame, to, durationFrames, ease) => {
+    const { composition } = get();
+    const layer = composition.layers.find((l) => l.id === cameraLayerId);
+    if (!layer) throw new Error(`no layer with id "${cameraLayerId}"`);
+    if (layer.type !== 'camera') throw new Error(`layer "${cameraLayerId}" is a ${layer.type} layer, not a camera (editor.addCameraLayer returns a camera id)`);
+    const evalProp = (p: AnimatableProperty, f: number): number | Vec2 => (p.valueType === 'vec2' ? evaluateVec2(p, f) : evaluateNumber(p, f));
+    const { layer: updated, paths } = planCameraMove(layer, frame, to, durationFrames, ease, evalProp);
+    const oldComp = composition;
+    const newComp = { ...composition, layers: composition.layers.map((l) => (l.id === cameraLayerId ? updated : l)) };
+    exec({
+      label: 'Camera Move',
+      execute: () => { set({ composition: newComp }); },
+      undo: () => { set({ composition: oldComp }); },
+    });
+    return paths;
+  },
+
+  setCornerPin: (layerId, corners) => {
+    const { composition } = get();
+    const layer = composition.layers.find((l) => l.id === layerId);
+    if (!layer) throw new Error(`no layer with id "${layerId}"`);
+    if (!['shape', 'text', 'image', 'video', 'precomp'].includes(layer.type)) throw new Error(`corner pin works on shape, text, image, video and precomp layers (not ${layer.type})`);
+    let pin: CornerPin | undefined;
+    if (corners !== null) {
+      if (!corners || typeof corners !== 'object') throw new Error('corners must be { topLeft, topRight, bottomRight, bottomLeft } ([x, y] comp px each) or null');
+      const pts = CORNER_PIN_KEYS.map((k) => {
+        const v: unknown = corners[k];
+        if (!Array.isArray(v) || v.length !== 2 || !v.every((n) => typeof n === 'number' && Number.isFinite(n))) throw new Error(`corners.${k} must be [x, y] (comp px)`);
+        return [v[0], v[1]] as Vec2;
+      });
+      if (!isConvexQuad([pts[0], pts[1], pts[2], pts[3]])) throw new Error('the four pins must form a convex quad in the order topLeft, topRight, bottomRight, bottomLeft');
+      pin = {
+        topLeft: createProperty('Top Left', 'vec2', pts[0]),
+        topRight: createProperty('Top Right', 'vec2', pts[1]),
+        bottomRight: createProperty('Bottom Right', 'vec2', pts[2]),
+        bottomLeft: createProperty('Bottom Left', 'vec2', pts[3]),
+      };
+    }
+    const oldComp = composition;
+    const newComp = {
+      ...composition,
+      layers: composition.layers.map((l) => {
+        if (l.id !== layerId) return l;
+        if (pin) return { ...l, cornerPin: pin } as Layer;
+        const { cornerPin: _drop, ...rest } = l;
+        void _drop;
+        return rest as Layer;
+      }),
+    };
+    exec({
+      label: corners === null ? 'Remove Corner Pin' : 'Set Corner Pin',
       execute: () => { set({ composition: newComp }); },
       undo: () => { set({ composition: oldComp }); },
     });

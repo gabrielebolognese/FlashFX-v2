@@ -1433,6 +1433,19 @@ export interface LayerDecorations {
   labelColor?: string;
   /** M14 - per-layer reframe pin/scale constraints (top-level layers only). */
   constraints?: LayerConstraints;
+  /** B53 corner pin: warp the layer onto four comp-space points (keyframable vec2s). */
+  cornerPin?: CornerPin;
+}
+
+/** B53 - AE-style Corner Pin. Each corner is a keyframable vec2 in COMP px; while set, the four pins ARE
+ *  the layer's placement (its position / rotation / scale / anchor and 3D switch are not applied). The
+ *  pinned source box: the shape's own width x height (path shapes: the vertex bounds), the text layer's
+ *  drawn box (agent.measureText `box`), the full image / video / precomp frame. */
+export interface CornerPin {
+  topLeft: AnimatableProperty;
+  topRight: AnimatableProperty;
+  bottomRight: AnimatableProperty;
+  bottomLeft: AnimatableProperty;
 }
 
 export type Layer = (ShapeLayer | TextLayer | GroupLayer | VideoLayer | ImageLayer | AudioLayer | ParticleLayer | AnimationItemLayer | FieldSampledLayer | GenerativePatternLayer | LottieIconLayer | LayoutObjectLayer | LayoutContainerLayer | ClonerLayer | PrecompLayer | BeamLayer | CameraLayer | AdjustmentLayer) & LayerDecorations;
@@ -2062,6 +2075,9 @@ export interface ResolvedLayer {
   // 2.5D (M2): true when the source layer's 3D switch is on - the renderer projects it through
   // the frame camera (MVP) and depth-sorts it. Absent/false → the untouched 2D path.
   is3D?: boolean;
+  // Corner pin (B53): the layer's four corners resolved to comp px [TL, TR, BR, BL]. The renderer
+  // warps the layer's quad onto them through the 2.5D mvp vertex path (core/cornerPin.ts).
+  cornerPin?: [Vec2, Vec2, Vec2, Vec2];
   // Track matte (B10b): this layer is matted by `matte.sourceId` (its alpha/luma). Set at resolve
   // time from the pairing; the renderer's matte composite pass (browser-gated) consumes it.
   matte?: import('./trackMatte').MatteRef;
