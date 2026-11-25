@@ -1,4 +1,5 @@
 import { sanitizeAnimProps } from '../../core/animProps';
+import type { EasingName } from '../../core/easings';
 import type {
   Composition,
   Layer,
@@ -240,11 +241,19 @@ function ensureShapeGeometry(val: unknown): ShapeGeometry | null {
             .filter((k): k is Record<string, unknown> => isObject(k) && typeof k.frame === 'number' && Array.isArray(k.vertices))
             .map((k) => {
               const interp: 'hold' | 'linear' | undefined = k.interpolation === 'hold' ? 'hold' : k.interpolation === 'linear' ? 'linear' : undefined;
+              // B62 morph ease (named string or a 4-number cubic-bezier) + auto alignment.
+              const ease = typeof k.ease === 'string'
+                ? { ease: k.ease as EasingName }
+                : Array.isArray(k.ease) && k.ease.length === 4 && k.ease.every((x) => typeof x === 'number' && Number.isFinite(x))
+                  ? { ease: [k.ease[0], k.ease[1], k.ease[2], k.ease[3]] as [number, number, number, number] }
+                  : {};
               return {
                 frame: k.frame as number,
                 vertices: k.vertices as PathVertex[],
                 closed: typeof k.closed === 'boolean' ? k.closed : true,
                 ...(interp ? { interpolation: interp } : {}),
+                ...ease,
+                ...(k.align === 'auto' ? { align: 'auto' as const } : {}),
               };
             })
         : undefined;

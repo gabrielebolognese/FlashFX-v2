@@ -186,6 +186,22 @@ Never leave real motion on linear (the default for `addKeyframe`), except progre
 - Circles: `shape.radius`. A ring: `shape.fillColor` `[0, 0, 0, 0]` plus `shape.strokeColor` and an
   animated `shape.strokeWidth`.
 - Trim-path line draws: `editor.addShapeModifier { type: "trim" }`, keyframe `modifiers.0.end`.
+- **Shape morphs (B62)**: `editor.setShapeMorph { layerId, poses: [{ frame, shape, ease }], align? }`
+  turns any shape layer into a path whose outline morphs through the poses. `shape` (layer-local px,
+  centred on the layer position): `{ type: "rectangle", width, height, radius? }`,
+  `{ type: "ellipse", width, height }`, `{ type: "star", width, height, points?, innerRatio? }`,
+  `{ type: "polygon", width, height, sides? }`, `{ type: "path", points: [[x, y], ...], closed? }`.
+  `ease` shapes the morph to the NEXT pose (same vocabulary as `setKeyframes`; `backOut` or a quad
+  with y > 1 overshoots the outline for a pop; `"hold"` snaps). Auto-alignment (default) keeps
+  outlines from twisting; different vertex counts morph. For the heavy-morph look, pair it with
+  scale / rotation keys on the same eases and a `shape.fillColor` colour key:
+
+```json
+{ "actionId": "editor.setShapeMorph", "args": { "layerId": "<id>", "poses": [
+  { "frame": 0,  "shape": { "type": "rectangle", "width": 220, "height": 220, "radius": 24 }, "ease": [0.65, 0, 0.35, 1] },
+  { "frame": 18, "shape": { "type": "star", "width": 300, "height": 300, "points": 6, "innerRatio": 0.5 }, "ease": "backOut" },
+  { "frame": 36, "shape": { "type": "ellipse", "width": 240, "height": 240 } } ] } }
+```
 
 ## 7. Masks
 

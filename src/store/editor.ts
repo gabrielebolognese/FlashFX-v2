@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Composition, SceneDocument, Layer, AnimatableProperty, Keyframe, Vec2, Vec4, InterpolationType, BackgroundLayer, Track, TrackType, VideoPlaybackMode, PathVertex, VertexType, Mask, MaskType, AnchorEdge, PhysicsBindingDef, PhysicsWorldDef, StaggerBindingDef, LayoutObjectLayer, LayoutContainerLayer, ContainerShapeType, Marker, ShapeLayer, PolygonShape, TextLayer, ShapeModifierType } from '../core/types';
+import type { Composition, SceneDocument, Layer, AnimatableProperty, Keyframe, Vec2, Vec4, InterpolationType, BackgroundLayer, Track, TrackType, VideoPlaybackMode, PathVertex, VertexType, Mask, MaskType, AnchorEdge, PhysicsBindingDef, PhysicsWorldDef, StaggerBindingDef, LayoutObjectLayer, LayoutContainerLayer, ContainerShapeType, Marker, ShapeLayer, PolygonShape, PathKeyframe, TextLayer, ShapeModifierType } from '../core/types';
 import type { EasingName } from '../core/easings';
 import { buildMaskReveal, type MaskRevealKind } from '../core/maskReveal';
 import { insertPointOnSegment, applyVertexType } from '../core/pathVertexOps';
@@ -46,7 +46,8 @@ import {
 } from '../core/keyframeOps';
 import { smoothSelected, wiggleSelected, exponentialScaleSelected } from '../core/keyframeAssistants';
 import { cloneValue } from '../core/keyframeValue';
-import { buildKeyframesFromSpecs, type KeyframeSpec, type ValueShape } from '../core/keyframeSpecs';
+import { buildKeyframesFromSpecs, easeSpecError, CSS_EASES, type KeyframeSpec, type KeyframeEaseSpec, type ValueShape } from '../core/keyframeSpecs';
+import { outlineFromSpec, type OutlineSpec } from '../core/shapeOutline';
 import { animPropTarget, canonicalKeyframePath, createAnimProp, staticValueFor } from '../core/animProps';
 import { identityRemapSeconds } from '../core/timeRemap';
 import { generatePresetKeyframes, getPresetById, type PresetContext } from '../core/animationPresets';
@@ -122,6 +123,14 @@ let keyframeClipboard: { propertyPath: string; keyframes: Keyframe[] }[] = [];
  */
 let textEditPreComp: Composition | null = null;
 let textEditPreSel: SelectionState | null = null;
+
+/** One pose of `setShapeMorph`. */
+export interface MorphPoseSpec {
+  frame: number;
+  shape: OutlineSpec;
+  /** Ease of the morph from this pose to the next (default linear). "spring" is not supported here. */
+  ease?: KeyframeEaseSpec;
+}
 
 /** Options for `addShapeLayer` (comp px; colours RGBA 0..1). */
 export interface AddShapeOptions {
@@ -598,6 +607,14 @@ interface EditorState {
    * step. Returns the new layer id and selects it.
    */
   addShapeLayer: (opts: AddShapeOptions) => string;
+  /**
+   * B62: shape morph in ONE undo step - the layer becomes a path whose outline morphs through the given
+   * poses (rounded rect / ellipse / star / polygon / free points, layer-local px), each pose with the
+   * ease of its morph to the next (named / CSS keyword / cubic-bezier quad / "hold"). `align` (default
+   * true) matches start point + winding between poses so the morph does not twist. Fill, stroke,
+   * materials and transform are kept. Throws on bad input (nothing applied).
+   */
+  setShapeMorph: (layerId: string, poses: MorphPoseSpec[], align?: boolean) => void;
   /** Delete the keyframes at the given (propertyPath, frame) targets (undoable, batched). */
   deleteKeyframes: (layerId: string, targets: KeyframeTarget[]) => void;
   /** Set interpolation (and optional bezier handles) on the given keyframe targets (undoable, batched). */
@@ -4332,6 +4349,49 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       undo: () => { set({ composition: oldComp, selection: oldSel }); },
     });
     return layer.id;
+  },
+
+  setShapeMorph: (layerId, poses, align) => {
+    const { composition } = get();
+    const layer = composition.layers.find((l) => l.id === layerId);
+    if (!layer) throw new Error(`no layer with id "${layerId}"`);
+    if (layer.type !== 'shape') throw new Error(`layer "${layerId}" is a ${layer.type}, not a shape layer`);
+    if (!Array.isArray(poses) || poses.length === 0) throw new Error('poses must be a non-empty array of { frame, shape, ease? }');
+    const byFrame = new Map<number, PathKeyframe>();
+    poses.forEach((p, i) => {
+      if (!p || typeof p !== 'object' || typeof p.frame !== 'number' || !Number.isFinite(p.frame)) throw new Error(`poses[${i}].frame must be a number`);
+      const err = easeSpecError(p.ease);
+      if (err) throw new Error(`poses[${i}].ease: ${err}`);
+      if (p.ease === 'spring') throw new Error(`poses[${i}].ease: "spring" is not supported for morphs; use backOut / elasticOut`);
+      const { vertices, closed } = outlineFromSpec(p.shape);
+      const kf: PathKeyframe = { frame: Math.round(p.frame), vertices, closed };
+      const e = p.ease;
+      if (e === 'hold') kf.interpolation = 'hold';
+      else if (Array.isArray(e)) kf.ease = [e[0], e[1], e[2], e[3]];
+      else if (typeof e === 'string' && e in CSS_EASES) { const q = CSS_EASES[e as keyof typeof CSS_EASES]; kf.ease = [q[0], q[1], q[2], q[3]]; }
+      else if (typeof e === 'string' && e !== 'linear') kf.ease = e as EasingName;
+      if (align !== false) kf.align = 'auto';
+      byFrame.set(kf.frame, kf);
+    });
+    const pathKeyframes = [...byFrame.values()].sort((a, b) => a.frame - b.frame);
+    const prev = layer.shape;
+    const poly: PolygonShape = {
+      ...(prev.type === 'polygon' ? prev : {}),
+      type: 'polygon',
+      vertices: pathKeyframes[0].vertices,
+      closed: pathKeyframes[0].closed,
+      fillColor: prev.fillColor,
+      strokeColor: prev.strokeColor,
+      strokeWidth: prev.strokeWidth,
+      ...(pathKeyframes.length > 1 ? { pathKeyframes } : { pathKeyframes: undefined }),
+    };
+    const oldComp = composition;
+    const newComp = { ...composition, layers: composition.layers.map((l) => (l.id === layerId ? { ...l, shape: poly } as Layer : l)) };
+    exec({
+      label: 'Shape Morph',
+      execute: () => { set({ composition: newComp }); },
+      undo: () => { set({ composition: oldComp }); },
+    });
   },
 
   deleteKeyframes: (layerId, targets) => {

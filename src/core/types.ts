@@ -308,6 +308,12 @@ export interface PathKeyframe {
   vertices: PathVertex[];
   closed: boolean;
   interpolation?: 'linear' | 'hold';
+  /** B62: temporal ease of the morph from this pose to the NEXT one - a named ease or a CSS-style
+   *  cubic-bezier quad [x1, y1, x2, y2]. Absent = linear (the B8b behaviour). */
+  ease?: EasingName | [number, number, number, number];
+  /** B62: 'auto' = match the next pose's start point and winding to this one before morphing (no
+   *  twisting rect -> circle). Absent = index-0 correspondence (B8b, unchanged). */
+  align?: 'auto';
 }
 
 export interface PolygonShape {

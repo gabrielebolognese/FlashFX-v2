@@ -29,6 +29,7 @@ import { useHistoryStore } from '@/store/history';
 import { WebGPURenderer } from '@/engine/renderer';
 import { resolveFrame } from '@/core/interpolation';
 import { evalAnimColor, evalAnimNumber, ANIM_PROP_DEFS } from '@/core/animProps';
+import { evalPathKeyframes } from '@/core/shapeModifiers';
 installAgentRuntime();
 
 const W = 320, H = 180;
@@ -87,6 +88,11 @@ function getPath(obj, path) { return path.split('.').reduce((o, k) => o[k], obj)
 function staticTwin(comp, frame) {
   const c = structuredClone(comp);
   for (const l of c.layers) {
+    // B62 morph: the evaluated outline written as the static path.
+    if (l.type === 'shape' && l.shape.pathKeyframes) {
+      const p = evalPathKeyframes(l.shape.pathKeyframes, frame);
+      l.shape.vertices = p.vertices; l.shape.closed = p.closed; delete l.shape.pathKeyframes;
+    }
     const ap = l.animProps;
     if (!ap) continue;
     for (const d of ANIM_PROP_DEFS) {
@@ -161,6 +167,17 @@ window.__animGpu = async () => {
   await run('editor.setLayerEffectParam', { layerId: ADJ, type: 121, paramIndex: 0, value: 0 });
   await run('editor.setKeyframes', { layerId: ADJ, propertyPath: 'effect.121.0', keyframes: [{ frame: 0, value: 0, ease: 'ease-in-out' }, { frame: 30, value: 1 }] });
 
+  // B62 shape morph: square -> star (backOut pop) -> circle, one undo step.
+  const D = (await run('editor.addShapeLayer', { opts: { type: 'rectangle', x: 160, y: 90, width: 100, height: 100, fill: [0.7, 0.97, 0.15, 1] } })).result;
+  d0 = undoDepth();
+  await run('editor.setShapeMorph', { layerId: D, poses: [
+    { frame: 0, shape: { type: 'rectangle', width: 100, height: 100 }, ease: 'cubicInOut' },
+    { frame: 15, shape: { type: 'star', width: 130, height: 130, points: 5, innerRatio: 0.45 }, ease: 'backOut' },
+    { frame: 30, shape: { type: 'ellipse', width: 100, height: 100 } }] });
+  out.agent.morphUndoSteps = undoDepth() - d0;
+  out.agent.morphPoses = layer(D).shape.pathKeyframes.map((k) => [k.frame, k.ease ?? null, k.align ?? null]);
+  out.agent.morphBad = (await a.run('editor.setShapeMorph', { layerId: D, poses: [{ frame: 0, shape: { type: 'blob' } }] })).ok;
+
   out.agent.measureHi = (await run('agent.measureString', { text: 'HI', fontSize: 110 })).result;
   out.agent.measureLong = (await run('agent.measureString', { text: 'HI THERE', fontSize: 110 })).result.width;
   const st = a.getState();
@@ -198,6 +215,9 @@ window.__animGpu = async () => {
   await scene('text colour', [T], (px) => { let white = 0, orange = 0; for (let i = 0; i < px.length; i += 4) { if (px[i] > 200 && px[i + 1] > 200 && px[i + 2] > 200) white++; if (px[i] > 200 && px[i + 1] > 60 && px[i + 1] < 170 && px[i + 2] < 60) orange++; } return { white, orange }; });
   // Effect param: an adjustment-layer invert ramping over the white swatch C (no glow: use B unblurred? use A).
   await scene('effect param (invert amount)', [A, ADJ], (px) => at(px, 90, 90));
+
+  // Morph: a square corner (lit at f0) vs the circle (dark there at f30); the centre stays lit.
+  await scene('shape morph', [D], (px) => ({ corner: at(px, 114, 44)[1], centre: at(px, 160, 90)[1], tip: at(px, 160, 28)[1] }));
 
   // Legacy: empty tracks == no tracks.
   const legacy = compOf([A, B, C]);
@@ -311,6 +331,17 @@ try {
     assert.deepEqual(e(30).slice(0, 3), [255, 0, 255]);
   });
   check('legacy: empty override tracks render byte-identically to none', () => assert.equal(r.legacyDiff, 0));
+  check('B62 setShapeMorph: one undo step, eases + auto-align stored per pose, bad shape rejected', () => {
+    assert.equal(r.agent.morphUndoSteps, 1);
+    assert.deepEqual(r.agent.morphPoses, [[0, 'cubicInOut', 'auto'], [15, 'backOut', 'auto'], [30, null, 'auto']]);
+    assert.equal(r.agent.morphBad, false);
+  });
+  check('B62 morph renders on screen: square corner lit at f0, star tip at f15, circle (corner dark) at f30', () => {
+    const p = (f) => sc['shape morph'].frames[f].probe;
+    assert.ok(p(0).corner > 200 && p(0).centre > 200, JSON.stringify(p(0)));
+    assert.ok(p(15).tip > 200, `star tip reaches above the square at f15: ${JSON.stringify(p(15))}`);
+    assert.ok(p(30).corner < 10 && p(30).centre > 200, JSON.stringify(p(30)));
+  });
   check('B48 agent.renderFrame: full-resolution PNG at comp size equals a direct offscreen render; no DOM canvas', () => {
     assert.equal(r.renderFrame.mime, 'image/png');
     assert.deepEqual([r.renderFrame.w, r.renderFrame.h], [320, 180]);

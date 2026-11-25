@@ -120,6 +120,7 @@
     "verify:trash": "node scripts/verify-trash.mjs",
     "verify:precomp": "node scripts/verify-precomp.mjs",
     "verify:anim-props": "node scripts/verify-anim-props.mjs",
+    "verify:shape-morph": "node scripts/verify-shape-morph.mjs",
     "verify:pathops": "node scripts/verify-pathops.mjs",
     "verify:beats": "node scripts/verify-beats.mjs",
     "verify:scenes": "node scripts/verify-scenes.mjs",
