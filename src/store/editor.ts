@@ -36,6 +36,7 @@ import { getTemplate as getAnimationTemplate, ANIMATION_TEMPLATES } from '../ani
 import { instantiateTemplate as instantiateAnimationTemplate } from '../animation-templates/instantiate';
 import { getLayerRect } from '../core/snap/bbox';
 import { createDefaultCloner, createEffector } from '../cloner/factory';
+import { selectorKeyPath, withSelectorProperty } from '../core/textAnimatorPresets';
 import type { ClonerEffector } from '../cloner/types';
 import { evaluateVec2, evaluateNumber, buildPhysicsEvaluator } from '../core/interpolation';
 import { compensatePosition } from '../core/anchor';
@@ -160,6 +161,13 @@ function ensureKeyframeProperty(layer: Layer, propertyPath: string): { layer: La
   const path = canonicalKeyframePath(propertyPath);
   const found = deepGet(layer, path) as AnimatableProperty | undefined;
   if (found && Array.isArray(found.keyframes)) return { layer, path, prop: found };
+  // B36: a text animator's selector start / end / offset become keyframable on first use.
+  const selKey = layer.type === 'text' ? selectorKeyPath(path) : null;
+  if (selKey && layer.type === 'text' && layer.animators?.[selKey.index]) {
+    const animators = layer.animators.map((a, i) => (i === selKey.index ? withSelectorProperty(a, selKey.channel) : a));
+    const updated = { ...layer, animators } as Layer;
+    return { layer: updated, path, prop: deepGet(updated, path) as AnimatableProperty };
+  }
   const target = animPropTarget(path);
   if (!target) return null;
   const created = createAnimProp(target, staticValueFor(layer, target));
@@ -302,7 +310,17 @@ function bakeColor(layer: Layer, slot: 'fill' | 'stroke', color: Vec4): Layer {
 }
 
 const DEFAULT_CLIP_SECONDS = 4;
+/** B45: how long new layers are. 'default' = the UI's 4-second clip (capped to the comp); 'comp' = the
+ *  whole composition (an agent building a 10 s piece no longer has to stretch every layer). Session
+ *  state, not saved with the project; set by setDefaultClipLength / agent.createProject's clipLength. */
+export type DefaultClipLength = 'default' | 'comp';
+const CLIP_LENGTH_KEY = 'ffx-default-clip-length';
+// Kept in sessionStorage so a dev-server reload of the tab does not silently drop an agent's setting.
+let defaultClipLength: DefaultClipLength = (() => {
+  try { return typeof sessionStorage !== 'undefined' && sessionStorage.getItem(CLIP_LENGTH_KEY) === 'comp' ? 'comp' : 'default'; } catch { return 'default'; }
+})();
 function defaultClipFrames(comp: Composition): number {
+  if (defaultClipLength === 'comp') return Math.max(1, comp.settings.durationFrames);
   // Cap to user's minimum duration so newly inserted clips don't auto-extend
   // the timeline just by being added; expansion is reserved for explicit
   // user actions like dragging beyond the current end.
@@ -425,6 +443,11 @@ interface EditorState {
   deleteScene: (id: string) => void;
   switchScene: (id: string) => void;
 
+  /**
+   * B45: length of NEW layers for the rest of the session: 'default' (the UI's 4 s clip) or 'comp'
+   * (span the whole composition). Not undoable, not saved with the project. Returns the mode now set.
+   */
+  setDefaultClipLength: (mode: DefaultClipLength) => DefaultClipLength;
   // Undoable actions
   addRectangle: () => void;
   addCircle: () => void;
@@ -2213,6 +2236,13 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       execute: () => { set({ composition: newComp, selection: newSel }); },
       undo: () => { set({ composition: oldComp, selection: oldSel }); },
     });
+  },
+
+  setDefaultClipLength: (mode) => {
+    if (mode !== 'default' && mode !== 'comp') throw new Error('clip length must be "default" (4 s clips) or "comp" (whole composition)');
+    defaultClipLength = mode;
+    try { if (typeof sessionStorage !== 'undefined') sessionStorage.setItem(CLIP_LENGTH_KEY, mode); } catch { /* storage unavailable: session-only */ }
+    return defaultClipLength;
   },
 
   addText: (content = 'Text') => {

@@ -453,9 +453,11 @@ const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
     return useTimelineStore.getState().currentFrame;
   },
 
-  createProject: async (name, format, frameRate, durationFrames, uiMode) => {
+  createProject: async (name, format, frameRate, durationFrames, uiMode, clipLength) => {
     const fmt = format === undefined ? 'long' : format;
     if (fmt !== 'long' && fmt !== 'short') throw new Error('"format" must be long or short');
+    // B45: new layers span the whole comp ('comp') or are the UI's 4 s clips ('default'); session-wide.
+    if (clipLength !== undefined && clipLength !== 'comp' && clipLength !== 'default') throw new Error('"clipLength" must be comp or default');
     const size = PROJECT_FORMATS[fmt];
     const fps = typeof frameRate === 'number' && frameRate > 0 ? frameRate : 30;
     const frames = typeof durationFrames === 'number' && durationFrames > 0 ? Math.round(durationFrames) : 150;
@@ -470,6 +472,7 @@ const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
     const projectId = useProjectStore.getState().activeProjectId;
     if (!projectId || useProjectStore.getState().view !== 'editor') throw new Error('the project was created but could not be opened');
     if (uiMode === 'starter' || uiMode === 'pro') usePanelStore.getState().setUiMode(uiMode as UiMode);
+    if (clipLength === 'comp' || clipLength === 'default') useEditorStore.getState().setDefaultClipLength(clipLength);
     // ProjectApp installs the saved document asynchronously: wait until the editor holds it.
     await waitForOpenedProject(projectId);
     const comp = useEditorStore.getState().composition;

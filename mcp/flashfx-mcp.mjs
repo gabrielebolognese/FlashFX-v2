@@ -132,10 +132,11 @@ const TOOLS = [
         frameRate: { type: 'number', default: 30 },
         durationFrames: { type: 'number', default: 150 },
         uiMode: { type: 'string', enum: ['starter', 'pro'], description: 'Editor layout (pro = Full editor). Omit to keep the current one.' },
+        clipLength: { type: 'string', enum: ['comp', 'default'], description: 'comp = every new layer spans the whole composition (recommended for agent builds); default = 4 s clips like the UI. Kept for the session.' },
       },
     },
     handler: async (a) => fromRun(await session.run('agent.createProject', {
-      name: a.name, format: a.format ?? 'long', frameRate: a.frameRate, durationFrames: a.durationFrames, uiMode: a.uiMode,
+      name: a.name, format: a.format ?? 'long', frameRate: a.frameRate, durationFrames: a.durationFrames, uiMode: a.uiMode, clipLength: a.clipLength,
     }, 120000, { retryOnReload: true })),
   },
   {

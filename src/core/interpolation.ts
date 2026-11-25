@@ -29,7 +29,8 @@ import type {
 } from './types';
 import type { ResolvedMotionBlur, ResolvedShadow, ResolvedBlur, LayerShadow, LayerGlow, LayerBlur, ResolvedGlow, LayerAnimProps } from './types';
 import type { KeyframeValue } from './keyframeValue';
-import { measureText, getTextLayout, measureAdvance } from '../engine/textAtlas';
+import { measureText, getTextLayout, measureAdvance, TEXT_POINT_PADDING } from '../engine/textAtlas';
+import { mapLinesToContent, lineStartX } from './textGlyphLayout';
 import { accumulateGlyphDeltas, trackingShifts, type GlyphDelta, type ResolvedTextAnimator } from './textAnimator';
 import { decodeCharAt } from './textDecode';
 import { textRunsFromSpans, runAt } from './textRuns';
@@ -38,7 +39,7 @@ import { pairTrackMattes, type TrackMatteMode } from './trackMatte';
 import { resolveMaskVertices, resolveMaskFeathers } from './maskPath';
 import { resolveRefineEdge } from './refineEdge';
 import { resolveEffectStack } from './effects/effectStack';
-import { evalAnimColor, evalAnimNumber, evalEffectParam } from './animProps';
+import { evalAnimColor, evalAnimNumber, evalEffectParam, mixColorLinear } from './animProps';
 import { resolveAdjustmentCoverage } from './effects/adjustmentCoverage';
 import { adjustmentHasWork, resolveAdjustmentFilters } from './effects/adjustmentComposite';
 import { evaluateMotionPathAtFrame } from './motionPath';
@@ -547,22 +548,43 @@ interface GlyphBlurContext {
   prevWorld: ResolvedTransform;
 }
 
-/** Resolve a text layer's active animators at one frame (the keyframed offset baked into the selector). */
+/** Resolve a text layer's active animators at one frame (the keyframed offset, and B36 start / end,
+ *  baked into the selector). */
 function resolveTextAnimatorsAt(active: TextAnimator[], frame: number): ResolvedTextAnimator[] {
   return active.map((a) => ({
     splitMode: a.splitMode,
-    selector: a.offset ? { ...a.selector, offset: evaluateNumber(a.offset, frame) } : a.selector,
+    selector: a.offset || a.start || a.end
+      ? {
+          ...a.selector,
+          ...(a.offset ? { offset: evaluateNumber(a.offset, frame) } : {}),
+          ...(a.start ? { start: evaluateNumber(a.start, frame) } : {}),
+          ...(a.end ? { end: evaluateNumber(a.end, frame) } : {}),
+        }
+      : a.selector,
     delta: a.delta,
   }));
 }
 
+/** Where one glyph sits in the layer raster (see expandTextGlyphs): its line's left edge, its centre's
+ *  distance along that line, the line's top and its tracking shifts (this frame / the previous one). */
+interface GlyphSlot {
+  startX: number;
+  centerDist: number;
+  lineTop: number;
+  shift: number;
+  prevShift: number;
+}
+
 // Per-character text animation: expand a text layer with active animators into per-glyph stamps -
 // mirrors the cloner, so the renderer draws each glyph as a normal 1-char text quad (ZERO renderer
-// changes). SINGLE VISUAL LINE ONLY for now (no hard breaks / wrapping); multi-line falls back to a
-// normal single render (returns null) so placement is never wrong. BROWSER-GATED: glyph x/y come
-// from canvas measurement (OffscreenCanvas) and need an in-browser eyeball; the per-glyph delta math
-// is unit-tested (scripts/verify-textanimator.mjs); placement, tracking and per-glyph motion blur
-// through resolveFrame by scripts/verify-text-glyph-motion.mjs (with a measurement stub).
+// changes). Every laid-out LINE is placed like the whole-layer raster draws it (B36 multi-line + wrapped
+// text, B45 fixed / fixedWidth boxes and their horizontal alignment): `mapLinesToContent` maps the
+// canvas word-wrap's lines back onto content indices, each line is aligned inside the layer canvas and
+// each stamp is a POINT-mode 1-glyph text whose own canvas is offset to the line's top. Text on a path
+// stays single-line (multi-line on a path keeps the whole-layer render). BROWSER-GATED measurement:
+// glyph x/y come from canvas measurement (OffscreenCanvas); the per-glyph delta math is unit-tested
+// (scripts/verify-textanimator.mjs); placement, tracking, multi-line / box layout and per-glyph motion
+// blur through resolveFrame by scripts/verify-text-glyph-motion.mjs (with a measurement stub).
 function expandTextGlyphs(
   layer: TextLayer,
   baseText: ResolvedText,
@@ -582,8 +604,15 @@ function expandTextGlyphs(
   if ((active.length === 0 && !decode && !onPath && !runs) || !content) return null;
 
   const layout = getTextLayout(baseText);
-  // Only the clean single-line case: bail (normal render) on hard breaks or word-wrap.
-  if (layout.lines.length !== 1 || content.includes('\n') || layout.lines[0] !== content) return null;
+  const singleLine = layout.lines.length === 1 && !content.includes('\n') && layout.lines[0] === content;
+  // Text on a path flows ONE line along the path: multi-line on a path keeps the whole-layer render.
+  if (onPath && !singleLine) return null;
+  const lineRanges = singleLine ? [{ start: 0, end: content.length }] : mapLinesToContent(content, layout.lines);
+  if (!lineRanges) return null;
+  // Box / multi-line stamps draw their glyph centred in the stamp raster, so the glyph centre IS the
+  // quad centre (left / right drawing sits up to half a pixel off: the raster width is ceil'd). The
+  // legacy single-line point path keeps the layer's alignment (byte-identical resolve).
+  const stampAlign = singleLine && baseText.mode === 'point' ? baseText.textAlign : 'center';
 
   // Decode (B9): the reveal fraction for this frame; each unrevealed glyph shows a seeded scramble char.
   const decProgress = decode ? evaluateNumber(decode.progress, frame) : 1;
@@ -591,12 +620,9 @@ function expandTextGlyphs(
   const pathLen = onPath ? totalPathLength(onPath.nodes, onPath.closed) : 0;
 
   const deltas = accumulateGlyphDeltas(content, resolveTextAnimatorsAt(active, frame));
-  // Animator tracking: per-glyph X shift, re-aligned like the layout (all zeros without tracking).
-  const shifts = trackingShifts(deltas, baseText.textAlign, baseText.fontSize);
   // Per-glyph motion blur: the same glyph one frame earlier (animator deltas + tracking at prevFrame,
   // under the layer's previous world transform). Only when the layer has motion blur on.
   const prevDeltas = glyphBlur && active.length > 0 ? accumulateGlyphDeltas(content, resolveTextAnimatorsAt(active, glyphBlur.prevFrame)) : null;
-  const prevShifts = prevDeltas ? trackingShifts(prevDeltas, baseText.textAlign, baseText.fontSize) : null;
 
   // Stamps draw plain run-less text; a run's stamps take that run's face + fill.
   const plainText: ResolvedText = { ...baseText };
@@ -604,38 +630,64 @@ function expandTextGlyphs(
   const runTexts = runs
     ? runs.map((r): ResolvedText => ({ ...plainText, fontFamily: r.fontFamily, fontWeight: r.fontWeight, fontStyle: r.fontStyle, fillColor: r.fillColor, fill: r.fill }))
     : null;
-  // adv[j] = x advance to reach character j along the line. One style: measured on the whole string
-  // (kerned). Runs: each run measured in its own face (kerned inside the run), runs laid end to end.
-  const adv = new Array<number>(content.length + 1);
-  if (runs && runTexts) {
+  // adv[k] = x advance to reach the k-th of the glyphs `idx` laid end to end on one line. One style:
+  // measured on the joined string (kerned). Runs: each run's stretch measured in its own face (kerned
+  // inside the run), the stretches laid end to end.
+  const advancesOf = (idx: readonly number[]): number[] => {
+    const adv = new Array<number>(idx.length + 1);
     adv[0] = 0;
-    let runOrigin = 0;
-    runs.forEach((r, k) => {
-      const runStr = content.slice(r.start, r.end);
-      for (let i = r.start; i < r.end && i < content.length; i++) adv[i + 1] = runOrigin + measureAdvance(runTexts[k], runStr, i + 1 - r.start);
-      runOrigin = adv[Math.min(r.end, content.length)] ?? runOrigin;
-    });
-    for (let i = 1; i <= content.length; i++) if (adv[i] === undefined) adv[i] = adv[i - 1];
-  } else {
-    for (let j = 0; j <= content.length; j++) adv[j] = measureAdvance(baseText, content, j);
-  }
+    if (!runs || !runTexts) {
+      const str = idx.length === content.length ? content : idx.map((j) => content[j]).join('');
+      for (let k = 1; k <= idx.length; k++) adv[k] = measureAdvance(baseText, str, k);
+      return adv;
+    }
+    for (let k = 0; k < idx.length;) {
+      const ri = runs.indexOf(runAt(runs, idx[k]));
+      let e = k + 1;
+      while (e < idx.length && runs.indexOf(runAt(runs, idx[e])) === ri) e++;
+      const str = idx.slice(k, e).map((j) => content[j]).join('');
+      for (let q = k + 1; q <= e; q++) adv[q] = adv[k] + measureAdvance(runTexts[ri], str, q - k);
+      k = e;
+    }
+    return adv;
+  };
 
-  const { canvasWidth, padding } = layout;
-  const lineW = adv[content.length];
-  const lineStartX =
-    baseText.textAlign === 'center' ? (canvasWidth - lineW) / 2
-    : baseText.textAlign === 'right' ? canvasWidth - padding - lineW
-    : padding;
+  const { canvasWidth, canvasHeight, padding, lineHeightPx } = layout;
+  const spacing = baseText.letterSpacing;
+  // B45 reflow: hidden glyphs take no space, so each line re-aligns to what is visible this frame.
+  const reflow = layer.reflowHidden === true;
+  const slots = new Array<GlyphSlot | undefined>(content.length);
+  lineRanges.forEach((range, li) => {
+    const lineTop = padding + li * lineHeightPx;
+    // A fixed box clips its raster at the box bottom: lines starting below it draw nothing.
+    if (baseText.mode === 'box' && lineTop >= canvasHeight) return;
+    const idx: number[] = [];
+    for (let j = range.start; j < range.end; j++) if (!reflow || deltas[j].opacity > 0.001) idx.push(j);
+    if (idx.length === 0) return;
+    const adv = advancesOf(idx);
+    // The raster's line width has no letter spacing after the last glyph.
+    const lineW = spacing !== 0 ? adv[idx.length] - spacing : adv[idx.length];
+    const startX = lineStartX(baseText.textAlign, canvasWidth, padding, lineW);
+    // Animator tracking: per-glyph X shift, re-aligned per line like the layout (zeros without tracking).
+    const shifts = trackingShifts(idx.map((j) => deltas[j]), baseText.textAlign, baseText.fontSize);
+    const prevShifts = prevDeltas ? trackingShifts(idx.map((j) => prevDeltas[j]), baseText.textAlign, baseText.fontSize) : null;
+    idx.forEach((j, k) => {
+      slots[j] = { startX, centerDist: adv[k] + (adv[k + 1] - adv[k]) / 2, lineTop, shift: shifts[k], prevShift: prevShifts ? prevShifts[k] : 0 };
+    });
+  });
+
   // The glyph's transform relative to the layer (before composing with the world transform).
-  // `centerDist` = the glyph centre's distance along the line. The renderer centres every text quad on
+  // `centerDist` = the glyph centre's distance along its line. The renderer centres every text quad on
   // its position (the anchor is an offset FROM the centre - see the text vertex shader), and a 1-glyph
-  // stamp's canvas is exactly that glyph plus the same padding and line box, so a stamp lands on its
-  // glyph by placing its centre at the glyph centre relative to the layer canvas centre. At rotation 0
-  // the layer quad's placement does not depend on its anchor, so neither does the stamp's.
-  const childTransform = (d: GlyphDelta, shiftX: number, centerDist: number): ResolvedTransform => {
-    const along = centerDist + shiftX;
-    let posX = lineStartX + along - canvasWidth / 2 + d.tx;
-    let posY = d.ty;
+  // point stamp's canvas is that glyph plus the point padding and ONE line box, so a stamp lands on its
+  // glyph by placing its centre at the glyph centre relative to the layer canvas centre: x along the
+  // aligned line, y = the line's top (minus the stamp's own top padding) + half the stamp height. For a
+  // single-line point text the stamp and layer canvases have the same height, so y is exactly 0. At
+  // rotation 0 the layer quad's placement does not depend on its anchor, so neither does the stamp's.
+  const childTransform = (d: GlyphDelta, shiftX: number, slot: GlyphSlot, lineY: number): ResolvedTransform => {
+    const along = slot.centerDist + shiftX;
+    let posX = slot.startX + along - canvasWidth / 2 + d.tx;
+    let posY = lineY === 0 ? d.ty : lineY + d.ty;
     let rot = d.rotation;
     if (onPath) {
       // Text-on-path (B9b): the glyph's along-text distance maps to an arc-length point + tangent on
@@ -665,29 +717,33 @@ function expandTextGlyphs(
 
   const stamps: ResolvedLayer[] = [];
   for (let j = 0; j < content.length; j++) {
-    const advPrev = adv[j];
-    const advNext = adv[j + 1];
+    const slot = slots[j];
     const ch = content[j];
     const d = deltas[j];
-    // Skip whitespace (no glyph) and fully-transparent glyphs (cheap - a reveal hides many).
-    if (ch.trim() !== '' && d.opacity > 0.001) {
+    // Skip whitespace (no glyph), glyphs on no drawn line and fully-transparent glyphs (cheap - a
+    // reveal hides many).
+    if (slot && ch.trim() !== '' && d.opacity > 0.001) {
       // Decode swaps the SHOWN character (position/advance still use the real char, so glyphs flicker
       // in place). Absent: the real char.
       const showCh = decode ? decodeCharAt(ch, j, content.length, decProgress, frame, decode.seed, decode.charset, decode.scrambleHold) : ch;
       const styled = runs && runTexts ? runTexts[runs.indexOf(runAt(runs, j))] : plainText;
-      const stampText: ResolvedText = { ...styled, content: showCh, measuredWidth: 0, measuredHeight: 0 };
+      // A stamp is always a POINT text (a box-mode stamp would rasterize the whole box).
+      const stampText: ResolvedText = { ...styled, content: showCh, mode: 'point', textAlign: stampAlign, measuredWidth: 0, measuredHeight: 0 };
+      // B36 animator skew + fill colour (mixed from the glyph's own colour in linear light).
+      if (d.skew !== 0) stampText.skewX = d.skew;
+      if (d.fills) stampText.fillColor = d.fills.reduce((c, f) => mixColorLinear(c, f.color, f.w), styled.fillColor);
       const m = measureText(stampText);
       stampText.measuredWidth = m.width;
       stampText.measuredHeight = m.height;
-      const centerDist = advPrev + (advNext - advPrev) / 2;
-      const transform = composeTransforms(world, childTransform(d, shifts[j], centerDist));
+      const lineY = slot.lineTop - TEXT_POINT_PADDING + m.height / 2 - canvasHeight / 2;
+      const transform = composeTransforms(world, childTransform(d, slot.shift, slot, lineY));
       // Per-glyph motion blur: velocity of THIS glyph (animator slide/scale/spin + tracking + the layer's
       // own motion), so a static layer whose letters fly in still streaks. Replaces the layer-level
       // descriptor on the stamp; the renderer's existing per-layer blur pass draws it unchanged.
-      const stampMotionBlur = glyphBlur && prevDeltas && prevShifts
+      const stampMotionBlur = glyphBlur && prevDeltas
         ? motionBlurBetween(
             transform,
-            composeTransforms(glyphBlur.prevWorld, childTransform(prevDeltas[j], prevShifts[j], centerDist)),
+            composeTransforms(glyphBlur.prevWorld, childTransform(prevDeltas[j], slot.prevShift, slot, lineY)),
             glyphBlur.shutter,
             glyphBlur.phase,
           )

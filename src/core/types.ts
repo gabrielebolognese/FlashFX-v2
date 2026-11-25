@@ -657,6 +657,20 @@ export interface TextAnimatorDelta {
    * letters onto one point - the "tracking burst" reveal - at any font size.
    */
   tracking?: number;
+  /**
+   * Fill colour (straight RGBA 0..1) at full weight (B36): each glyph's fill mixes from its own colour
+   * towards this one by the selector weight, in linear light (stacked animators mix in order). A
+   * gradient text fill is drawn as-is (the colour applies to solid fills).
+   */
+  fillColor?: Vec4;
+  /** Horizontal skew in degrees at full weight (B36); positive leans the glyph top to the right. */
+  skew?: number;
+  /**
+   * Seeded scatter in px at full weight (B36): each unit moves by its own random offset in
+   * [-scatter, +scatter] per axis (seeded by selector.seed and the unit index, frame-pure), so a
+   * reveal can fly letters in from scattered positions.
+   */
+  scatter?: Vec2;
 }
 
 /**
@@ -671,6 +685,9 @@ export interface TextAnimator {
   selector: RangeSelectorConfig;
   /** Optional keyframed override of selector.offset (the reveal driver). */
   offset?: AnimatableProperty;
+  /** Optional keyframed overrides of selector.start / selector.end (B36), like `offset`. */
+  start?: AnimatableProperty;
+  end?: AnimatableProperty;
   delta: TextAnimatorDelta;
 }
 
@@ -727,6 +744,12 @@ export interface TextLayer {
   /** Text on a path (B9b): flow glyphs along a referenced MotionPath (interpreted in layer space).
    *  Absent/disabled → normal linear layout. */
   textPath?: TextPathBinding;
+  /**
+   * Re-layout hidden glyphs (B45): when on, glyphs an animator hides (opacity 0) take no space and each
+   * line re-aligns to its visible glyphs every frame, so a centred type-on / delete stays centred (After
+   * Effects keeps the full-line layout, which is the default here too). Absent/false: unchanged path.
+   */
+  reflowHidden?: boolean;
   /** M21 - linked color styles for text fill/stroke. */
   fillStyleId?: string;
   strokeStyleId?: string;
@@ -1854,9 +1877,11 @@ export interface ResolvedText {
   /**
    * Mixed styles in one text (core/textRuns.ts): per-character face + fill runs over `content`,
    * present only when the spans differ (the top-level fields above are the first span's style).
-   * Single-line text draws them through the per-glyph stamp path; each stamp is a plain run-less text.
+   * The text draws them through the per-glyph stamp path (any line count); each stamp is a plain run-less text.
    */
   runs?: TextStyleRun[];
+  /** Horizontal skew in degrees (B36 animator skew on a glyph stamp). Absent/0: unskewed raster. */
+  skewX?: number;
   measuredWidth: number;
   measuredHeight: number;
 }
