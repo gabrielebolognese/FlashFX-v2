@@ -43,6 +43,7 @@ import type {
   RefineEdge,
 } from '../../core/types';
 import { DEFAULT_DECODE_CHARSET } from '../../core/textDecode';
+import { normalizeTextCaret } from '../../core/textCaret';
 import { isMaskMode } from '../../core/maskCoverage';
 import { sanitizeRefineEdge } from '../../core/refineEdge';
 import { resolveAdjustmentFilters } from '../../core/effects/adjustmentComposite';
@@ -569,6 +570,7 @@ function validateLayer(raw: unknown): Layer | null {
       const animators = ensureTextAnimators(r.animators);
       const decode = ensureTextDecode(r.decode);
       const textPath = ensureTextPath(r.textPath);
+      const caret = normalizeTextCaret(r.caret);
       return {
         ...baseFields,
         type: 'text',
@@ -581,6 +583,7 @@ function validateLayer(raw: unknown): Layer | null {
         ...(animators ? { animators } : {}),
         ...(decode ? { decode } : {}),
         ...(textPath ? { textPath } : {}),
+        ...(caret ? { caret } : {}),
       } as TextLayer;
     }
     case 'group': {

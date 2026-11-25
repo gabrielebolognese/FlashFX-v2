@@ -241,6 +241,46 @@ Never leave real motion on linear (the default for `addKeyframe`), except progre
   `EmitterConfig` fields, e.g. `{ spawnRate: 0, burstCount: 140, emitterShape: "circle" }`).
   A burst fires on the layer's first frame: time it with `editor.moveClipInTime { newInPoint }`.
 
+## 8a. UI mocks: typing caret, cursor, UI templates (B35 / B51)
+
+- **Typing caret.** Type the text on, then give it a caret; it sits right after the last revealed
+  glyph on every frame (no hand keys), solid while typing and blinking before / after:
+
+```json
+{ "actionId": "agent.applyTextAnimatorPreset", "args": { "layerId": "<id>", "presetId": "type-on", "startFrame": 148, "durationFrames": 22 } }
+{ "actionId": "agent.setTextCaret", "args": { "layerId": "<id>", "caret": { "style": "block", "color": [0.6, 0.85, 0.16, 1], "blinkRate": 1, "endFrame": 200 } } }
+```
+
+  `style`: `bar` (I-beam, 6% of the font size wide), `block` (a character cell, 55%), `underline`.
+  Also `width`, `height`, `gap`, `offsetY`, `radius` (px), `blinkRate` (cycles / s, 0 = solid),
+  `solidWhileTyping` (default true), `startFrame` / `endFrame` (absolute; the blink starts ON at
+  `startFrame`). Later tweaks: `updateLayerProperty(id, "caret.color", [...])`; `caret: null` turns it
+  off. Single-line text only. With the stock `type-on`, the first glyph (and so the caret's first
+  step) shows before the start frame (B45): for an empty field that blinks before typing, key the
+  animator offset from `-1 / length` instead of 0 (`animators.0.offset`).
+- **Cursor.** One call adds it, then script it in time order; every call is one undo step and lands
+  as ordinary keys (the group `transform.position` is the hotspot, `transform.scale` the squash):
+
+```json
+{ "actionId": "agent.addCursor", "args": { "icon": "hand", "x": 1834, "y": 656, "frame": 252, "size": 64 } }
+{ "actionId": "agent.cursorMoveTo", "args": { "cursorId": "$0.result.cursorId", "frame": 252, "x": 1008, "y": 624, "durationFrames": 44, "ease": [0.052, 0.057, 0.232, 0.981] } }
+{ "actionId": "agent.cursorClick", "args": { "cursorId": "$0.result.cursorId", "frame": 300 } }
+{ "actionId": "agent.cursorIcon", "args": { "cursorId": "$0.result.cursorId", "frame": 320, "icon": "ibeam" } }
+```
+
+  The move arrives EXACTLY at `frame + durationFrames` (default: from the distance, 7-14 frames at
+  30 fps) with a ballistic ease-out and an arc (`arc`, fraction of the distance, 0 = straight); pass a
+  measured cubic-bezier as `ease` to match a reference. The click squashes to `squash` (0.82) ON the
+  click frame and adds a "Click ripple" ring layer (`ripple: false` to skip); make the UI react at the
+  returned `responseFrame` (click + 2). Icons: `arrow`, `hand`, `ibeam`. Keep the cursor outside any
+  "camera" group so it stays in screen space.
+- **UI templates.** `editor.insertAnimationTemplate { id }` at the playhead: `search-bar-typing`
+  (pill opens, placeholder, query types on behind a blue caret), `toggle-switch` (a cursor clicks a
+  settings toggle: knob slides, track turns green), `chat-bubbles` (received / sent bubbles with
+  tails pop from their tails, typing dots), `notification-banner` (drops in, holds, slides away).
+  They are plain layers in a group: retype with `agent.setTextContent` (the caret follows), recolour
+  with `updateLayerProperty` / `setKeyframes`, retime in the timeline.
+
 ## 9. Check your work
 
 - `seek { frame }` then `screenshot { region: "canvas" }`: the canvas capture hides DOM overlays

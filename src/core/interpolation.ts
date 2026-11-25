@@ -32,6 +32,7 @@ import type { KeyframeValue } from './keyframeValue';
 import { measureText, getTextLayout, measureAdvance } from '../engine/textAtlas';
 import { accumulateGlyphDeltas, trackingShifts, type GlyphDelta, type ResolvedTextAnimator } from './textAnimator';
 import { decodeCharAt } from './textDecode';
+import { resolveTextCaretStamp } from './textCaret';
 import { textRunsFromSpans, runAt } from './textRuns';
 import { totalPathLength, pointAndAngleAt, glyphPathFraction, type TextPathNode } from './textPath';
 import { pairTrackMattes, type TrackMatteMode } from './trackMatte';
@@ -1409,6 +1410,11 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
             masks: resolveMasks(layer.masks, frame),
             ...common,
           });
+        }
+        // B35 typing caret: one rectangle stamp after the type-on head (core/textCaret.ts).
+        if (layer.caret?.enabled) {
+          const caretStamp = resolveTextCaretStamp(layer, resolvedText, worldTransform, resolveTextAnimatorsAt((layer.animators ?? []).filter((a) => a.enabled), frame), frame, settings.frameRate, common, composeTransforms);
+          if (caretStamp) resolvedLayers.push({ ...caretStamp, mask: resolveMask(layer.masks, frame), masks: resolveMasks(layer.masks, frame) });
         }
       } else if (layer.type === 'video') {
         const resolvedVideo = resolveVideoLayer(layer, frame, settings.frameRate);

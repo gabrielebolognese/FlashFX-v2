@@ -687,6 +687,37 @@ export interface TextDecode {
   scrambleHold: number;         // frames each random char holds (flicker speed), >= 1
 }
 
+/**
+ * B35 - a typing caret on a text layer: one rectangle stamp after the last revealed glyph (the type-on
+ * head), resolved per frame in core/textCaret.ts (frame-pure: blink is a function of the frame only).
+ * Single-line text (the same limit as the per-glyph stamps). Sizes are comp px at scale 1.
+ */
+export interface TextCaret {
+  enabled: boolean;
+  /** 'bar' = thin I-beam line, 'block' = a filled character cell, 'underline' = a low bar under the next cell. */
+  style: 'bar' | 'block' | 'underline';
+  /** RGBA 0..1; absent = the text fill colour. */
+  color?: Vec4;
+  /** px; absent = by style (bar 6% of the font size, block / underline 55%). */
+  width?: number;
+  /** px; absent = by style (bar / block 100% of the font size, underline 8%). */
+  height?: number;
+  /** px between the last revealed glyph and the caret; absent = 5% (bar) / 4% of the font size. */
+  gap?: number;
+  /** px vertical nudge (positive = down). */
+  offsetY?: number;
+  /** Corner radius in px. */
+  radius?: number;
+  /** Full on/off blink cycles per second (default 1; 0 = always on). */
+  blinkRate?: number;
+  /** Stay solid while the head is moving through the text (default true), blink before and after. */
+  solidWhileTyping?: boolean;
+  /** Absolute frame the caret appears from (default: the clip start); the blink cycle starts ON there. */
+  startFrame?: number;
+  /** Absolute frame the caret is gone from (default: the clip end). */
+  endFrame?: number;
+}
+
 /** Text-on-a-path binding (B9b): which MotionPath to flow glyphs along + orientation/margin. */
 export interface TextPathBinding {
   enabled: boolean;
@@ -727,6 +758,8 @@ export interface TextLayer {
   /** Text on a path (B9b): flow glyphs along a referenced MotionPath (interpreted in layer space).
    *  Absent/disabled → normal linear layout. */
   textPath?: TextPathBinding;
+  /** B35 typing caret after the last revealed glyph (core/textCaret.ts). Absent/disabled → unchanged path. */
+  caret?: TextCaret;
   /** M21 - linked color styles for text fill/stroke. */
   fillStyleId?: string;
   strokeStyleId?: string;

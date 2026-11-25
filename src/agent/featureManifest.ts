@@ -46,7 +46,12 @@ export type AgentHelperMethod =
   | 'importImage'
   | 'seek'
   | 'play'
-  | 'pause';
+  | 'pause'
+  | 'addCursor'
+  | 'cursorMoveTo'
+  | 'cursorClick'
+  | 'cursorIcon'
+  | 'setTextCaret';
 
 export type FeatureStatus = 'shipped' | 'browser-gated' | 'partial';
 
@@ -138,6 +143,7 @@ const EFFECTOR_TYPES = ['random', 'falloff', 'step', 'time', 'target'] as const;
 const PHYSICS_ROLES = ['kinematic', 'dynamic', 'static', 'ghost'] as const;
 const MOTION_PRINCIPLES = ['anticipation', 'follow-through', 'squash-stretch', 'stagger'] as const;
 const LAYER_FX = ['shadow', 'glow', 'blur'] as const;
+const CURSOR_ICONS = ['arrow', 'hand', 'ibeam'] as const;
 /** Friendly paths of the animated overrides (core/animProps.ts ANIM_PROP_DEFS: kept in sync by verify:anim-props). */
 export const ANIM_COLOR_PATHS = ['shape.fillColor', 'shape.strokeColor', 'text.color', 'text.strokeColor', 'glow.color', 'shadow.color'] as const;
 export const ANIM_FX_PATHS = ['glow.intensity', 'glow.radius', 'glow.threshold', 'shadow.blurRadius', 'shadow.lightDistance', 'shadow.lightAngle', 'shadow.shadowScale', 'blur.radius', 'blur.strength', 'blur.angle'] as const;
@@ -309,6 +315,11 @@ export const AGENT_ACTIONS: readonly AgentActionSpec[] = [
   { id: 'agent.applyTextDecode', store: 'agent', method: 'applyTextDecode', undoable: true,
     description: 'Scramble/decode reveal (hacker text) over [startFrame, startFrame+durationFrames].',
     params: [LAYER_ID, { name: 'startFrame', type: 'number', optional: true }, { name: 'durationFrames', type: 'number', optional: true }] },
+  { id: 'agent.setTextCaret', store: 'agent', method: 'setTextCaret', undoable: true,
+    returns: 'the caret now on the layer (TextCaret), or null',
+    description: 'Typing caret (B35): a bar, block or underline drawn right after the last revealed glyph, so it rides a type-on (agent.applyTextAnimatorPreset "type-on") frame by frame. Fields merge into the current caret; null turns it off. Solid while typing, blinking before / after (blinkRate cycles per second, 0 = solid). Single-line text. One undo step (updateLayerProperty "caret"; tweak one field later with "caret.<field>").',
+    params: [LAYER_ID, { name: 'caret', type: '{ style?: "bar" | "block" | "underline"; color?: [r, g, b, a]; width?: number; height?: number; gap?: number; offsetY?: number; radius?: number; blinkRate?: number; solidWhileTyping?: boolean; startFrame?: number; endFrame?: number } | null', optional: true,
+      description: 'Defaults: style bar, colour = text colour, bar 6% / block 55% of the font size wide, height = font size, blinkRate 1.' }] },
   { id: 'editor.styleTextRange', store: 'editor', method: 'styleTextRange', undoable: true,
     description: 'Mixed styles: give characters [start, end) of a text layer their own face / weight / italic / colour (raw-text indices).',
     params: [LAYER_ID, { name: 'start', type: 'number' }, { name: 'end', type: 'number' },
@@ -505,6 +516,36 @@ export const AGENT_ACTIONS: readonly AgentActionSpec[] = [
     params: [{ name: 'id', type: 'string', catalog: 'animationTemplates' }, { name: 'center', type: '[number, number]', optional: true }] },
   { id: 'editor.addAnimationItem', store: 'editor', method: 'addAnimationItem', undoable: true, returns: 'new layer id (activeLayerId)',
     description: 'Add an animation item (ready-made animated element).', params: [{ name: 'presetName', type: 'string', catalog: 'animationItems' }] },
+
+  // ----- B51 cursor rig (animation-templates/cursorRig.ts) -----
+  { id: 'agent.addCursor', store: 'agent', method: 'addCursor', undoable: true,
+    returns: '{ cursorId, icons: { arrow, hand, ibeam }, frame }',
+    description: 'Add a pointer cursor: a group (its position = the hotspot, the arrow tip) holding an arrow, a hand and an I-beam icon, one visible. On screen from `frame` to the comp end. Then script it with agent.cursorMoveTo / cursorClick / cursorIcon (author in time order). One undo step.',
+    params: [{ name: 'icon', type: 'string', optional: true, values: CURSOR_ICONS, description: 'Default arrow.' },
+      { name: 'x', type: 'number', optional: true, description: 'Hotspot x (comp px), default the comp centre.' }, { name: 'y', type: 'number', optional: true },
+      { name: 'frame', type: 'number', optional: true, description: 'First frame on screen (default 0).' },
+      { name: 'color', type: '[r, g, b, a]', optional: true, description: 'Icon fill (default white, dark outline).' },
+      { name: 'size', type: 'number', optional: true, description: 'Icon height in px (default 36).' },
+      { name: 'name', type: 'string', optional: true }] },
+  { id: 'agent.cursorMoveTo', store: 'agent', method: 'cursorMoveTo', undoable: true,
+    returns: '{ cursorId, from, to, startFrame, endFrame }',
+    description: 'Move the cursor from wherever it is at `frame` to (x, y): two position keys with a ballistic ease-out (fast start, long settle; the template rig fitted as cubic-bezier [0.38, 1, 0.76, 1]) along a gentle arc (spatial tangents). It ARRIVES exactly at frame + durationFrames. Keys stay editable (timeline / graph editor / editor.setKeyframes on the group "transform.position"). One undo step.',
+    params: [{ name: 'cursorId', type: 'string', description: 'The id agent.addCursor returned.' }, { name: 'frame', type: 'number', description: 'Frame the move starts.' },
+      { name: 'x', type: 'number' }, { name: 'y', type: 'number' },
+      { name: 'durationFrames', type: 'number', optional: true, description: 'Default from the distance like a real hand: 190 ms + 0.32 ms/px, clamped 220..450 ms.' },
+      { name: 'ease', type: 'string | [number, number, number, number]', optional: true, catalog: 'easings', description: 'Any setKeyframes ease (named, CSS keyword, cubic-bezier quad, e.g. a measured one). Default ballistic.' },
+      { name: 'arc', type: 'number', optional: true, description: 'Path bow as a fraction of the distance (default 0.08; negative bows the other way; 0 = straight).' }] },
+  { id: 'agent.cursorClick', store: 'agent', method: 'cursorClick', undoable: true,
+    returns: '{ cursorId, frame, rippleId, responseFrame }: make the clicked UI react at responseFrame (2 frames later reads as software)',
+    description: 'Click: the cursor squashes (scale x squash exactly ON `frame`, pressed over 2 frames, released over 4) and, by default, an expanding ring ("Click ripple" layer) fades out at the hotspot. One undo step.',
+    params: [{ name: 'cursorId', type: 'string' }, { name: 'frame', type: 'number' },
+      { name: 'ripple', type: 'boolean', optional: true, description: 'Default true.' },
+      { name: 'squash', type: 'number', optional: true, description: 'Scale factor at the click frame (default 0.82).' },
+      { name: 'rippleColor', type: '[r, g, b, a]', optional: true, description: 'Ring colour (default white 90%).' }] },
+  { id: 'agent.cursorIcon', store: 'agent', method: 'cursorIcon', undoable: true,
+    returns: '{ cursorId, frame, from, icon }',
+    description: 'Swap the cursor icon on `frame` (hold step on the icon opacities): e.g. hand over a button, I-beam over a text field. One undo step.',
+    params: [{ name: 'cursorId', type: 'string' }, { name: 'frame', type: 'number' }, { name: 'icon', type: 'string', values: CURSOR_ICONS }] },
 ];
 
 // ---------------------------------------------------------------------------------------------
@@ -565,6 +606,11 @@ export const AGENT_FEATURES: readonly AgentFeature[] = [
     ui: 'Select a text layer > Inspector > Font > Accent (pick the word, then its font / italic / colour)',
     actions: ['editor.styleTextWord', 'editor.styleTextRange', 'editor.clearTextStyles'], status: 'shipped',
     notes: 'Drawn per glyph on single-line text; wrapped / multi-line text keeps the base style. Editing the base font / colour in the Inspector restyles every base span and keeps the accent. agent.setTextContent resets to one style.' },
+  { id: 'text.caret', area: 'text', name: 'Typing caret',
+    description: 'A bar (I-beam), block or underline caret that sits right after the last revealed glyph and rides a type-on frame by frame; solid while typing, blinking before and after; colour, size, gap, rounded corners, visible window.',
+    ui: 'Agent / MCP: agent.setTextCaret (Inspector control: not yet)',
+    actions: ['agent.setTextCaret', 'editor.updateLayerProperty'], status: 'shipped',
+    notes: 'Lives in layer.caret (TextCaret in src/core/types.ts), resolved as one rectangle stamp (core/textCaret.ts), frame-pure. Single-line text only (like per-glyph animators); not on text-on-path. Pair with agent.applyTextAnimatorPreset(layerId, "type-on", start, duration). Block caret = style "block" (e.g. lime [0.6, 0.85, 0.16, 1]).' },
   { id: 'text.decode', area: 'text', name: 'Text decode / scramble reveal',
     description: 'Characters flicker through random glyphs before resolving (hacker text).',
     ui: 'Select a text layer > Inspector > Animators section > Decode', actions: ['agent.applyTextDecode'], status: 'shipped' },
@@ -745,6 +791,11 @@ export const AGENT_FEATURES: readonly AgentFeature[] = [
   { id: 'templates.animation', area: 'templates', name: 'Animation templates',
     description: 'Pre-built animated scenes: titles, lower thirds, charts, lists, logo pops, UI mockups.',
     ui: 'Media Pool > Templates tab > click a template', actions: ['editor.insertAnimationTemplate'], status: 'shipped' },
+  { id: 'templates.cursor', area: 'templates', name: 'Cursor + click rig',
+    description: 'A pointer cursor (arrow / hand / I-beam) that moves like a hand (ballistic ease-out along an arc), squashes on clicks with a ripple ring, and swaps icons: for UI demos and product walkthroughs.',
+    ui: 'Agent / MCP only (the recursive-editor template uses the same rig)',
+    actions: ['agent.addCursor', 'agent.cursorMoveTo', 'agent.cursorClick', 'agent.cursorIcon'], status: 'shipped',
+    notes: 'Everything lands as ordinary editable layers and keys: the cursor is a group ("transform.position" = hotspot, "transform.scale" = click squash), the icons are polygon children, each ripple is its own circle layer. Author moves / clicks in time order: a move starts from where the cursor is at its start frame.' },
   { id: 'templates.items', area: 'templates', name: 'Animation items',
     description: 'Ready-made animated elements.', ui: 'Canvas toolbar > Animation Item', actions: ['editor.addAnimationItem'], status: 'shipped' },
 ];

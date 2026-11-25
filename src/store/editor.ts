@@ -484,6 +484,10 @@ interface EditorState {
   addAnimationItem: (presetName: string) => void;
   /** Insert a pre-built animation template (group + keyframed children) at the playhead. */
   insertAnimationTemplate: (id: string, center?: Vec2) => void;
+  /** Replace existing layers (by id) and append new ones (each on a track) as ONE undo step; the
+   *  added layers become the selection (the first is active). Used by composite agent helpers (B51
+   *  cursor rig). Throws (nothing applied) when an updated id does not exist. */
+  applyLayerEdits: (label: string, edits: { add?: Layer[]; update?: Layer[] }) => void;
   /** Insert a template with an ANIMATED build: layers appear one at a time (static), then the
    *  keyframes are applied - used by the AI-panel demo. Committed as one undo step. Returns cancel. */
   insertAnimationTemplateAnimated: (id: string, opts?: { perLayerMs?: number; onLayer?: (shown: number, total: number) => void; onKeyframes?: () => void; onDone?: () => void }) => { cancel: () => void };
@@ -5371,6 +5375,26 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
     exec({
       label: `Insert “${tpl.name}”`,
+      execute: () => { set({ composition: newComp, selection: newSel }); },
+      undo: () => { set({ composition: oldComp, selection: oldSel }); },
+    });
+  },
+
+  applyLayerEdits: (label, edits) => {
+    const { composition, selection } = get();
+    const oldComp = composition;
+    const oldSel = selection;
+    const updates = new Map((edits.update ?? []).map((l) => [l.id, l]));
+    for (const id of updates.keys()) {
+      if (!composition.layers.some((l) => l.id === id)) throw new Error(`no layer with id "${id}"`);
+    }
+    const added = edits.add ?? [];
+    let working: Composition = { ...composition, layers: composition.layers.map((l) => updates.get(l.id) ?? l) };
+    for (const l of added) working = ensureLayerHasTrack({ ...working, layers: [...working.layers, l] }, l);
+    const newComp = settleComposition(working);
+    const newSel: SelectionState = added.length ? sel(added.map((l) => l.id), added[0].id) : oldSel;
+    exec({
+      label,
       execute: () => { set({ composition: newComp, selection: newSel }); },
       undo: () => { set({ composition: oldComp, selection: oldSel }); },
     });

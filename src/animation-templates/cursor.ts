@@ -32,13 +32,15 @@ function corners(pts: Vec2[]): PathVertex[] {
   return pts.map((p) => ({ position: p, handleIn: [0, 0], handleOut: [0, 0], vertexType: 'corner' as const }));
 }
 
-export type CursorIcon = 'arrow' | 'hand' | 'razor' | 'resize';
+export type CursorIcon = 'arrow' | 'hand' | 'razor' | 'resize' | 'ibeam';
+/** The icons a rig carries unless told otherwise (the template set; the agent rig adds 'ibeam'). */
+export const DEFAULT_CURSOR_ICONS: readonly CursorIcon[] = ['arrow', 'hand', 'razor', 'resize'];
 
 export interface CursorRig {
   group: GroupLayer;
   layers: Layer[];
-  icons: Record<CursorIcon, ShapeLayer>;
-  iconKeys: Record<CursorIcon, KeyStep[]>;
+  icons: Partial<Record<CursorIcon, ShapeLayer>>;
+  iconKeys: Partial<Record<CursorIcon, KeyStep[]>>;
   posKeys: KeyStep[];
   scaleKeys: KeyStep[];
   pos: Vec2;
@@ -50,18 +52,19 @@ export interface CursorRig {
 
 function iconShape(kind: CursorIcon, color: Vec4): ShapeLayer {
   // Each icon is a small polygon at the cursor's local origin; only one is opaque at a time.
+  // I-beam (text cursor): hotspot at its centre, serifs top and bottom.
+  if (kind === 'ibeam') return createPolygonLayer('ibeam', 0, 0, corners([[-4, -10], [4, -10], [4, -8], [1, -8], [1, 8], [4, 8], [4, 10], [-4, 10], [-4, 8], [-1, 8], [-1, -8], [-4, -8]]), true, color, 600);
   if (kind === 'razor') return createPolygonLayer('razor', 6, 4, corners([[0, 0], [3, 0], [10, 16], [7, 16]]), true, color, 600);
   if (kind === 'resize') return createPolygonLayer('resize', 0, 8, corners([[0, 5], [7, 0], [7, 3], [17, 3], [17, 0], [24, 5], [17, 10], [17, 7], [7, 7], [7, 10]]), true, color, 600);
   if (kind === 'hand') return createPolygonLayer('hand', 2, 2, corners([[0, 6], [3, 6], [3, 0], [6, 0], [6, 6], [9, 6], [9, 2], [12, 2], [12, 14], [2, 14]]), true, color, 600);
   return createPolygonLayer('arrow', 0, 0, corners(ARROW_PTS), true, color, 600);
 }
 
-/** Build a cursor: a group of four stacked icons (arrow shown), positioned at `start`. */
-export function makeCursor(name: string, color: Vec4, start: Vec2, seed: number): CursorRig {
+/** Build a cursor: a group of stacked icons (arrow shown), positioned at `start`. */
+export function makeCursor(name: string, color: Vec4, start: Vec2, seed: number, kinds: readonly CursorIcon[] = DEFAULT_CURSOR_ICONS): CursorRig {
   const group = createGroupLayer(name, start[0], start[1], 600);
-  const kinds: CursorIcon[] = ['arrow', 'hand', 'razor', 'resize'];
-  const icons = {} as Record<CursorIcon, ShapeLayer>;
-  const iconKeys = {} as Record<CursorIcon, KeyStep[]>;
+  const icons: Partial<Record<CursorIcon, ShapeLayer>> = {};
+  const iconKeys: Partial<Record<CursorIcon, KeyStep[]>> = {};
   const layers: Layer[] = [];
   for (const k of kinds) {
     const s = iconShape(k, color);
@@ -86,10 +89,11 @@ export function park(cur: CursorRig, ms: number): void {
 
 /** Swap the visible icon on a single frame with a tiny scale pop. */
 export function setIcon(cur: CursorRig, kind: CursorIcon): void {
-  if (kind === cur.current) return;
+  const from = cur.iconKeys[cur.current], to = cur.iconKeys[kind];
+  if (kind === cur.current || !from || !to) return;
   const f = cur.frame;
-  cur.iconKeys[cur.current].push({ f: f - 1, v: 1 }, { f, v: 0 });
-  cur.iconKeys[kind].push({ f: f - 1, v: 0 }, { f, v: 1 });
+  from.push({ f: f - 1, v: 1 }, { f, v: 0 });
+  to.push({ f: f - 1, v: 0 }, { f, v: 1 });
   cur.scaleKeys.push({ f: f - 1, v: [1, 1] }, { f: f + 1, v: [1.15, 1.15], ease: EASE_OUT }, { f: f + 3, v: [1, 1], ease: EASE_OUT });
   cur.current = kind;
 }
@@ -142,6 +146,9 @@ export function click(cur: CursorRig): number {
 export function commit(cur: CursorRig): Layer[] {
   setKeys(cur.group.transform.position, cur.posKeys);
   setKeys(cur.group.transform.scale, cur.scaleKeys);
-  for (const k of Object.keys(cur.iconKeys) as CursorIcon[]) setKeys(cur.icons[k].transform.opacity, cur.iconKeys[k]);
+  for (const k of Object.keys(cur.iconKeys) as CursorIcon[]) {
+    const icon = cur.icons[k], keys = cur.iconKeys[k];
+    if (icon && keys) setKeys(icon.transform.opacity, keys);
+  }
   return [cur.group, ...cur.layers];
 }
