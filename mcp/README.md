@@ -51,7 +51,7 @@ Equivalent JSON config (Claude Desktop / `.mcp.json`):
 
 | Flag | Env | Default | Meaning |
 | --- | --- | --- | --- |
-| `--server dev\|dist` | `FLASHFX_SERVER` | `dev` | Start the Vite dev server (always the current code, slower first load; it can reload the tab when Vite re-optimizes deps) or serve the built `dist/` (run `npm run build` first; stable, best for recording). |
+| `--server auto\|dev\|dist` | `FLASHFX_SERVER` | `auto` | `auto` serves the built `dist/` when it is newer than every file in `src/`, `public/` and `index.html` (fast, stable boot) and falls back to the dev server otherwise. `dev`: start the Vite dev server (always the current code, slower first load; it can reload the tab when Vite re-optimizes deps). `dist`: serve the built `dist/` (run `npm run build` first; stable, best for recording). |
 | `--url URL` | `FLASHFX_URL` | none | Use an already running FlashFX (local or `https://editor.flashfx.app`). No local server. |
 | `--headed` | `FLASHFX_HEADED=1` | headless | Show a chromeless app window (no tabs or URL bar) for screen recording. |
 | `--window WxH` | `FLASHFX_WINDOW` | `1920x1080` | Window size (headed) or viewport size (headless). |

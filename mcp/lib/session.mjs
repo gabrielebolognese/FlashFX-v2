@@ -8,7 +8,7 @@
 // scripts/lib/headless-gpu.mjs (whose Chrome finder is reused).
 
 import { spawn } from 'node:child_process';
-import { createWriteStream, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { createWriteStream, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { createServer as createNetServer } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -36,7 +36,7 @@ export function readConfig(argv = process.argv.slice(2), env = process.env) {
     return e !== undefined && e !== '' && e !== '0' && e !== 'false';
   };
   const url = arg('url') ?? env.FLASHFX_URL;
-  const server = arg('server') ?? env.FLASHFX_SERVER ?? (url ? 'none' : 'dev');
+  const server = arg('server') ?? env.FLASHFX_SERVER ?? (url ? 'none' : 'auto');
   const [w, h] = String(arg('window') ?? env.FLASHFX_WINDOW ?? '1920x1080').split('x').map((n) => parseInt(n, 10));
   const attach = arg('attach') ?? env.FLASHFX_CDP_PORT;
   return {
@@ -93,6 +93,31 @@ async function serveDist(dir) {
   });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   return { url: `http://127.0.0.1:${server.address().port}`, stop: () => new Promise((r) => server.close(() => r())) };
+}
+
+/** Newest mtime (ms) of any file under `dir` (recursive). */
+function newestMtime(dir) {
+  let newest = 0;
+  for (const ent of readdirSync(dir, { withFileTypes: true })) {
+    const p = join(dir, ent.name);
+    newest = Math.max(newest, ent.isDirectory() ? newestMtime(p) : statSync(p).mtimeMs);
+  }
+  return newest;
+}
+
+/** dist/ was built after the last change to the app sources (src/, public/ minus the generated agent/, index.html). */
+export function distIsFresh() {
+  const built = join(ROOT, 'dist', 'index.html');
+  if (!existsSync(built)) return false;
+  const builtAt = statSync(built).mtimeMs;
+  let newest = statSync(join(ROOT, 'index.html')).mtimeMs;
+  newest = Math.max(newest, newestMtime(join(ROOT, 'src')));
+  for (const ent of readdirSync(join(ROOT, 'public'), { withFileTypes: true })) {
+    if (ent.name === 'agent') continue;
+    const p = join(ROOT, 'public', ent.name);
+    newest = Math.max(newest, ent.isDirectory() ? newestMtime(p) : statSync(p).mtimeMs);
+  }
+  return builtAt >= newest;
 }
 
 /** Vite dev server from the repo (regenerates /agent/features.json first, like `npm run dev`). */
@@ -200,11 +225,17 @@ export class FlashFxSession {
   async baseUrl() {
     if (this.config.url) return this.config.url;
     if (!this.server) {
-      const mode = this.config.server;
+      let mode = this.config.server;
+      // auto (the default): the built dist/ when it is at least as new as every source file (much
+      // faster boot, no Vite dep re-optimization reloads), else the dev server (always current code).
+      if (mode === 'auto') {
+        mode = distIsFresh() ? 'dist' : 'dev';
+        log(`--server auto picked ${mode}${mode === 'dev' ? ' (dist/ is missing or older than the sources: npm run build for faster boots)' : ''}`);
+      }
       log(`starting the ${mode} app server...`);
       if (mode === 'dist') this.server = await serveDist(join(ROOT, 'dist'));
       else if (mode === 'dev') this.server = await serveDev(this.config.bootTimeoutMs);
-      else throw new Error(`--server must be dev or dist (or pass --url), got "${mode}"`);
+      else throw new Error(`--server must be auto, dev or dist (or pass --url), got "${mode}"`);
       log(`app server at ${this.server.url}`);
     }
     return this.server.url;
