@@ -44,6 +44,12 @@ import {
   type AgentManifest,
 } from './featureManifest';
 import { buildAgentCatalogs, type AgentCatalogs } from './catalogs';
+import {
+  buildAgentCursor, findCursorRig, planCursorMove, planCursorClick, buildClickRipple, planCursorIcon, cursorIconAt,
+  AGENT_CURSOR_ICONS, type AgentCursorIcon,
+} from '../animation-templates/cursorRig';
+import type { KeyframeEaseSpec } from '../core/keyframeSpecs';
+import { normalizeTextCaret } from '../core/textCaret';
 
 export interface AgentLayerSummary {
   id: string;
@@ -824,6 +830,85 @@ const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
       },
     });
     return true;
+  },
+
+  // ----- B51 cursor rig (animation-templates/cursorRig.ts): each call is ONE undo step -----
+  addCursor: (icon, x, y, frame, color, size, name) => {
+    const comp = useEditorStore.getState().composition;
+    const num = (v: unknown, fallback: number, label: string): number => {
+      if (v === undefined || v === null) return fallback;
+      if (typeof v !== 'number' || !Number.isFinite(v)) throw new Error(`"${label}" must be a number`);
+      return v;
+    };
+    if (color !== undefined && !(Array.isArray(color) && color.length === 4 && color.every((c) => typeof c === 'number' && Number.isFinite(c)))) throw new Error('"color" must be an RGBA colour [r, g, b, a] (0..1)');
+    const start = Math.round(num(frame, 0, 'frame'));
+    const layers = buildAgentCursor({
+      icon: (icon ?? 'arrow') as AgentCursorIcon,
+      x: num(x, comp.settings.width / 2, 'x'),
+      y: num(y, comp.settings.height / 2, 'y'),
+      frame: start,
+      endFrame: Math.max(start + 1, comp.settings.durationFrames),
+      color: color as [number, number, number, number] | undefined,
+      size: num(size, 36, 'size'),
+      name: typeof name === 'string' && name.trim() ? name.trim() : undefined,
+    });
+    useEditorStore.getState().applyLayerEdits('Add cursor', { add: layers });
+    const icons: Record<string, string> = {};
+    for (const l of layers.slice(1)) icons[l.name] = l.id;
+    return { cursorId: layers[0].id, icons, frame: start };
+  },
+
+  cursorMoveTo: (cursorId, frame, x, y, durationFrames, ease, arc) => {
+    const ed = useEditorStore.getState();
+    const rig = findCursorRig(ed.composition.layers, String(cursorId));
+    for (const [v, label] of [[frame, 'frame'], [x, 'x'], [y, 'y']] as const) if (typeof v !== 'number' || !Number.isFinite(v)) throw new Error(`"${label}" must be a number`);
+    if (durationFrames !== undefined && (typeof durationFrames !== 'number' || !(durationFrames > 0))) throw new Error('"durationFrames" must be a positive number');
+    if (arc !== undefined && (typeof arc !== 'number' || !Number.isFinite(arc))) throw new Error('"arc" must be a number');
+    const plan = planCursorMove(rig.group, {
+      frame: frame as number, to: [x as number, y as number], fps: ed.composition.settings.frameRate,
+      durationFrames: durationFrames as number | undefined, ease: ease as KeyframeEaseSpec | undefined, arc: arc as number | undefined,
+    });
+    ed.applyLayerEdits('Move cursor', { update: [plan.group] });
+    return { cursorId: rig.group.id, from: plan.from, to: plan.to, startFrame: plan.startFrame, endFrame: plan.endFrame };
+  },
+
+  cursorClick: (cursorId, frame, ripple, squash, rippleColor) => {
+    const ed = useEditorStore.getState();
+    const rig = findCursorRig(ed.composition.layers, String(cursorId));
+    if (typeof frame !== 'number' || !Number.isFinite(frame)) throw new Error('"frame" must be a number');
+    if (squash !== undefined && (typeof squash !== 'number' || !(squash > 0))) throw new Error('"squash" must be a positive scale factor');
+    if (rippleColor !== undefined && !(Array.isArray(rippleColor) && rippleColor.length === 4 && rippleColor.every((c) => typeof c === 'number' && Number.isFinite(c)))) throw new Error('"rippleColor" must be an RGBA colour [r, g, b, a] (0..1)');
+    const f = Math.round(frame);
+    const group = planCursorClick(rig.group, { frame: f, squash: squash as number | undefined });
+    const ring = ripple === false ? null : buildClickRipple(rig.group, f, { color: rippleColor as [number, number, number, number] | undefined });
+    ed.applyLayerEdits('Cursor click', { update: [group], add: ring ? [ring] : [] });
+    if (!ring) useEditorStore.getState().selectLayer(rig.group.id);
+    return { cursorId: rig.group.id, frame: f, rippleId: ring ? ring.id : null, responseFrame: f + 2 };
+  },
+
+  cursorIcon: (cursorId, frame, icon) => {
+    const ed = useEditorStore.getState();
+    const rig = findCursorRig(ed.composition.layers, String(cursorId));
+    if (typeof frame !== 'number' || !Number.isFinite(frame)) throw new Error('"frame" must be a number');
+    if (!AGENT_CURSOR_ICONS.includes(icon as AgentCursorIcon)) throw new Error(`"icon" must be one of ${AGENT_CURSOR_ICONS.join(', ')}`);
+    const before = cursorIconAt(rig, Math.round(frame));
+    ed.applyLayerEdits('Cursor icon', { update: planCursorIcon(rig, frame, icon as AgentCursorIcon) });
+    return { cursorId: rig.group.id, frame: Math.round(frame), from: before, icon };
+  },
+
+  // ----- B35 typing caret on a text layer (core/textCaret.ts) -----
+  setTextCaret: (layerId, caret) => {
+    const layer = requireTextLayer(layerId);
+    if (caret === null) {
+      if (!layer.caret) return null;
+      useEditorStore.getState().updateLayerProperty(layer.id, 'caret', { ...layer.caret, enabled: false });
+      return { ...layer.caret, enabled: false };
+    }
+    if (caret !== undefined && (typeof caret !== 'object' || Array.isArray(caret))) throw new Error('"caret" must be an object (TextCaret fields) or null');
+    const next = normalizeTextCaret({ ...(layer.caret ?? {}), enabled: true, ...(caret as Record<string, unknown> | undefined) });
+    if (!next) throw new Error('invalid caret');
+    useEditorStore.getState().updateLayerProperty(layer.id, 'caret', next);
+    return next;
   },
 };
 
