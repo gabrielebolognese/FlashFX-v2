@@ -7362,8 +7362,11 @@ function deepSet(obj: unknown, path: string, value: unknown): unknown {
   if (rest.length === 0) {
     return cloneWith(obj, head, value);
   }
-  const child = Array.isArray(obj)
-    ? (obj as unknown[])[Number(head)]
-    : (obj as Record<string, unknown>)[head];
+  // A missing intermediate object (e.g. a layer's first animProps.effectParams track) is created.
+  const child = obj == null
+    ? undefined
+    : Array.isArray(obj)
+      ? (obj as unknown[])[Number(head)]
+      : (obj as Record<string, unknown>)[head];
   return cloneWith(obj, head, deepSet(child, rest.join('.'), value));
 }

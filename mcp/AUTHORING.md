@@ -51,9 +51,11 @@ await call('run_actions', { actions: st.layers.map((l) => ({ actionId: 'editor.u
 - **Create back to front.** The renderer stacks by timeline track, and each new layer gets its own
   track on top. `editor.reorderLayers` does NOT change what draws on top today (queued as B44), so
   plan the order: background shapes first, then text, then foreground accents.
-- Need a size from a layer you have not created yet (a card sized to its text)? Create probe
-  layers, `measure_text` them, `removeLayers` them, then build in the right order
-  (`mcp/examples/build-b-lower-third.mjs`).
+- Need a size from a layer you have not created yet (a card sized to its text)? Measure the string
+  first with `agent.measureString { text, fontFamily, fontSize, fontWeight, fontStyle, letterSpacing }`
+  (no layer is created; same layout code as the renderer), size the card, then create back to front.
+- `get_state` lists `layers` (with `trackId` and the `animProps` each one carries), the
+  `background` stack (ids, types) and the timeline `tracks`.
 - **Parenting** (`editor.setLayerParent`) keeps the child's LOCAL position, so after parenting the
   child's position is an offset from the parent: set it explicitly (e.g. `[0, 4]` to centre
   initials on an avatar). After Effects keeps the world position; B34 will.
@@ -75,7 +77,28 @@ frames). Nothing should start and stop together.
 
 ## 4. Easing
 
-Two tools, both per keyframe:
+**Use `editor.setKeyframes` (B46).** One call writes a whole curve on one property, every keyframe
+with its OWN outgoing ease, as one undo step:
+
+```json
+{ "actionId": "editor.setKeyframes", "args": { "layerId": "<id>", "propertyPath": "transform.position", "keyframes": [
+  { "frame": 6,  "value": [960, 640], "ease": [0.16, 1, 0.3, 1] },
+  { "frame": 26, "value": [960, 540], "ease": "hold" },
+  { "frame": 70, "value": [960, 540], "ease": "quartIn" },
+  { "frame": 84, "value": [960, 420] } ] } }
+```
+
+- `ease` shapes the segment from that key to the NEXT one (the last key's ease is ignored):
+  `"linear"` (default), `"hold"` (step), `"spring"`, any named ease from the `easings` catalog
+  (`expoOut`, `circOut`, `backOut`, `elasticOut`, ...), a CSS keyword (`"ease"`, `"ease-in"`,
+  `"ease-out"`, `"ease-in-out"`) or a cubic-bezier quad `[x1, y1, x2, y2]` (CSS semantics; y may go
+  above 1 or below 0 for an overshoot pop). Reference timing sheets (`refs/rNN/timeline.json`) carry
+  fitted quads: pass them straight in.
+- Without `merge` the keys REPLACE the property's keyframes; `"merge": true` keeps keys at other
+  frames. A bad path, ease or value shape is an error and nothing is applied.
+- Works on every animatable path, including the colour and effect paths in sections 6 and 8.
+
+The older per-keyframe tools still work (useful to retouch one key):
 
 1. **Custom cubic-bezier (CSS semantics).** A segment from keyframe A to keyframe B uses
    `A.handleOut = [x1, y1]` and `B.handleIn = [x2, y2]`, i.e. `cubic-bezier(x1, y1, x2, y2)`:
@@ -136,11 +159,28 @@ Never leave real motion on linear (the default for `addKeyframe`), except progre
   layer at opacity 0 until the reveal starts (two keyframes, the first set to `hold`).
 - Per-glyph animators work on single-line text: one text layer per line.
 
-## 6. Shapes
+## 6. Shapes and colour
 
-- `editor.addShapeWithDimensions { shapeType, x, y, width, height }`: x, y are the CENTRE.
-- New shapes carry a 1 px grey stroke: set `shape.strokeWidth.defaultValue` to 0, then
-  `shape.fillColor` (RGBA 0..1), `shape.borderRadius.defaultValue` for rounded rects.
+- `editor.addShapeLayer { opts: { type, x, y, width, height, fill, radius, name, stroke?, strokeWidth? } }`
+  (B46): one undo step, x / y are the CENTRE, colours RGBA 0..1, NO stroke unless you pass one, and it
+  returns the new id. Use it instead of `addShapeWithDimensions` (which adds the UI's 1 px grey stroke:
+  you would have to zero `shape.strokeWidth.defaultValue`). `type: "circle"` with width != height is an
+  ellipse (a circle stretched by the layer scale).
+- **Colour keyframes (B33).** `shape.fillColor`, `shape.strokeColor`, `text.color`,
+  `text.strokeColor`, `glow.color`, `shadow.color` take RGBA keyframes through `editor.setKeyframes` /
+  `editor.addKeyframe`. Mixing is in linear light (black to white passes a clean mid grey, no muddy
+  dip); `"hold"` gives exact swaps (toggle off to on, a word flipping colour on the beat):
+
+```json
+{ "actionId": "editor.setKeyframes", "args": { "layerId": "<toggle>", "propertyPath": "shape.fillColor", "keyframes": [
+  { "frame": 0,  "value": [0.78, 0.8, 0.84, 1], "ease": "hold" },
+  { "frame": 42, "value": [0.18, 0.75, 0.1, 1], "ease": "cubicOut" },
+  { "frame": 50, "value": [0.7, 0.97, 0.15, 1] } ] } }
+```
+
+  The static colour (`shape.fillColor`, `content.spans.0.style.color`) stays the value before the
+  first key. The keys live under `layer.animProps` and show in the timeline under "Animated". A
+  material / gradient fill on a shape wins over the flat fill colour.
 - Grow from an edge: keyframe `shape.width` and `transform.position` together on the same ease
   (the centre moves by half the width). Start at width 0, not 2 (a 2 px stub is visible).
 - Circles: `shape.radius`. A ring: `shape.fillColor` `[0, 0, 0, 0]` plus `shape.strokeColor` and an
@@ -163,7 +203,21 @@ Never leave real motion on linear (the default for `addKeyframe`), except progre
   export uses 16+ samples and is smooth.
 - Glow: `editor.enableLayerEffect { kind: "glow" }`, then `glow.color`, `glow.radius`,
   `glow.intensity`, `glow.threshold`. Keep intensity low (about 0.5) and threshold high (about 0.6)
-  on bright artwork or it blows out. Glow parameters are not animatable yet (B47).
+  on bright artwork or it blows out.
+- **Animated effects (B47 / B50).** Enable the effect first, then keyframe its path with
+  `editor.setKeyframes` / `editor.addKeyframe`:
+  - glow: `glow.intensity`, `glow.radius`, `glow.threshold`, `glow.color` (a glow pulse on a logo
+    landing: intensity 0 -> 1.6 -> 0.6 with `expoOut` then `sineInOut`);
+  - shadow: `shadow.lightDistance`, `shadow.lightAngle`, `shadow.blurRadius`, `shadow.shadowScale`,
+    `shadow.color`;
+  - layer blur: `blur.radius` (gaussian, px), `blur.strength`, `blur.angle`. A blur-in reveal:
+    `enableLayerEffect { kind: "blur" }`, then `blur.radius` 24 -> 0 with `expoOut` together with
+    opacity 0 -> 1. A gaussian keyed to radius 0 drops the pass, so the settled frames are sharp and
+    cost nothing;
+  - effect-stack params: `effect.<type>.<paramIndex>`, the same type id / index as
+    `editor.setLayerEffectParam` (which adds the effect). E.g. an adjustment layer's pixelate size,
+    RGB split amount or invert amount ramping. The effect stack lives on image and adjustment layers.
+  These render byte-identically to the same values set statically (`npm run gpu:anim-props`).
 - Images and logos: `import_image { path, rasterSize?, x?, y? }` imports PNG / JPEG / WebP / GIF /
   SVG (rasterized) and places it. Scale it with `transform.scale` = target px / `result.width`.
 - Particles: `editor.addParticleLayer`, then

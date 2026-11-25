@@ -94,6 +94,7 @@
     "gpu:masks": "node scripts/gpu-verify-masks.mjs",
     "gpu:adjustment": "node scripts/gpu-verify-adjustment.mjs",
     "gpu:agent-runtime": "node scripts/gpu-verify-agent-runtime.mjs",
+    "gpu:anim-props": "node scripts/gpu-verify-anim-props.mjs",
     "gpu:mcp": "node scripts/gpu-mcp-smoke.mjs",
     "gpu:text-kinetic": "node scripts/gpu-text-kinetic.mjs",
     "mcp:flashfx": "node mcp/flashfx-mcp.mjs",
