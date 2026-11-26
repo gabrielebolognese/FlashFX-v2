@@ -16,6 +16,7 @@ import { MASK_REVEAL_KINDS, type MaskRevealKind } from '../../core/maskReveal';
 import { isPathMask, maskPathAt, resolveMaskFeathers, setMaskVertexFeather, toggleMaskPathKeyframe } from '../../core/maskPath';
 import type { TrackMatteMode } from '../../core/trackMatte';
 import type { MaskMode, RefineEdge } from '../../core/types';
+import { replaceSpansText } from '../../core/textRuns';
 import type { ShapeLayer, TextLayer, VideoLayer, ImageLayer, AdjustmentLayer, AudioLayer, ParticleLayer, GenerativePatternLayer, CameraLayer, AnimationItemLayer, LottieIconLayer, AnimatableProperty, Vec2, Vec4, RectangleShape, CircleShape, StarShape, PolygonShape, MotionPathAnchor, MotionPathLoop, Mask, MaskType, Layer, LayerShadow, LayerGlow, LayerBlur, BlurType, GlowMode, LayoutObjectLayer, LayoutContainerLayer, TextSpanStyle, TextLayoutConfig, TextGradientFill, ShapeModifierType, BlendMode } from '../../core/types';
 import { BLEND_MODES, BLEND_MODE_META } from '../../core/effects/blendModes';
 import { GLOW_PRESETS, applyGlowPreset } from '../../core/effects/glowParams';
@@ -2232,7 +2233,7 @@ function TextProperties({
         <div className="flex flex-col gap-1">
           <textarea
             value={fullText}
-            onChange={(e) => updateLayerProperty(layer.id, 'content.spans', [{ text: e.target.value, style: style }])}
+            onChange={(e) => updateLayerProperty(layer.id, 'content.spans', spans.length ? replaceSpansText(spans, e.target.value) : [{ text: e.target.value, style: style }])}
             className="w-full bg-surface-3 text-caption text-slate-300 px-2 py-1.5 rounded border border-hairline focus:border-accent-dim outline-none resize-none min-h-[48px]"
             rows={3}
             maxLength={500}

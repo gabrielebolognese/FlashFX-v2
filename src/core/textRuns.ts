@@ -151,3 +151,39 @@ export function setBaseSpanStyle(spans: readonly TextSpan[], field: keyof TextSp
     ? { text: s.text, style: { ...s.style, [field]: value } as TextSpanStyle }
     : s));
 }
+
+/**
+ * Replace the whole text of a span list (the Inspector's Text Content box) while KEEPING the per-span
+ * styles: the unchanged prefix and suffix keep their spans, and the edited middle takes the style of the
+ * first character it replaces (an insertion takes the character before it, or after it at the start).
+ * So retyping "The AI" as "Your AI" keeps "AI" as the accent word instead of flattening every span to
+ * spans[0]'s style. A single-span text simply gets the new text.
+ */
+export function replaceSpansText(spans: readonly TextSpan[], next: string): TextSpan[] {
+  if (spans.length === 0) return [];
+  if (spans.length === 1) return [{ ...spans[0], text: next }];
+  const owner: number[] = [];
+  spans.forEach((s, i) => { for (let k = 0; k < s.text.length; k++) owner.push(i); });
+  const prev = spans.map((s) => s.text).join('');
+  let pre = 0;
+  while (pre < prev.length && pre < next.length && prev[pre] === next[pre]) pre++;
+  let suf = 0;
+  while (suf < prev.length - pre && suf < next.length - pre && prev[prev.length - 1 - suf] === next[next.length - 1 - suf]) suf++;
+  const midOwner = pre < prev.length - suf ? owner[pre] : (pre > 0 ? owner[pre - 1] : (owner[pre] ?? 0));
+  const nextOwner: number[] = [];
+  for (let k = 0; k < next.length; k++) {
+    if (k < pre) nextOwner.push(owner[k]);
+    else if (k >= next.length - suf) nextOwner.push(owner[prev.length - (next.length - k)]);
+    else nextOwner.push(midOwner);
+  }
+  const out: TextSpan[] = [];
+  let k = 0;
+  while (k < next.length) {
+    let e = k + 1;
+    while (e < next.length && nextOwner[e] === nextOwner[k]) e++;
+    out.push({ ...spans[nextOwner[k]], text: next.slice(k, e) });
+    k = e;
+  }
+  // Empty text: keep the base span (with its style) so the layer still has one span.
+  return out.length ? out : [{ ...spans[0], text: '' }];
+}

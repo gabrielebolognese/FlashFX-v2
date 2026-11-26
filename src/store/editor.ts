@@ -7547,7 +7547,10 @@ function cloneWith(container: unknown, key: string, value: unknown): unknown {
 }
 
 function deepSet(obj: unknown, path: string, value: unknown): unknown {
-  const keys = path.split('.');
+  // The Inspector writes array steps in bracket form (`content.spans[0].style.color`); without this
+  // normalisation that set a bogus "spans[0]" key and every Font / Color control on a single-span text
+  // layer silently did nothing. `a[0].b` and `a.0.b` are the same path.
+  const keys = path.replace(/\[(\d+)\]/g, '.$1').split('.');
   if (keys.length === 0) return value;
   const [head, ...rest] = keys;
   if (rest.length === 0) {

@@ -49,7 +49,7 @@ try {
   };
 
   const m = await import(pathToFileURL(outfile).href);
-  const { textRunsFromSpans, styleTextRange, clearTextStyles, setBaseSpanStyle, wordRanges, runAt, resolveFrame, createComposition, createTextLayer, createProperty, createKeyframe, defaultRangeSelector, matchBundledFace } = m;
+  const { textRunsFromSpans, styleTextRange, clearTextStyles, setBaseSpanStyle, replaceSpansText, wordRanges, runAt, resolveFrame, createComposition, createTextLayer, createProperty, createKeyframe, defaultRangeSelector, matchBundledFace } = m;
 
   const WHITE = [1, 1, 1, 1];
   const GOLD = [0.85, 0.65, 0.13, 1];
@@ -130,6 +130,24 @@ try {
     assert.deepEqual(out.map((s) => s.style.fontFamily), ['Manrope', 'Playfair Display', 'Manrope']);
     const single = setBaseSpanStyle([span('x')], 'fontWeight', 700);
     assert.equal(single[0].style.fontWeight, 700);
+  });
+
+  check('replaceSpansText (Text Content box) keeps the accent word when another word is retyped', () => {
+    const spans = styleTextRange([span('The AI')], 4, 6, ACCENT);
+    const out = replaceSpansText(spans, 'Your AI');
+    assert.deepEqual(out.map((s) => s.text), ['Your ', 'AI']);
+    assert.equal(out[0].style.fontFamily, 'Inter');
+    assert.equal(out[1].style.fontFamily, 'Playfair Display');
+    assert.deepEqual(out[1].style.color, GOLD);
+    // typing inside the accent word stays in the accent; appending after it too
+    assert.deepEqual(replaceSpansText(spans, 'The AIs').map((s) => s.text), ['The ', 'AIs']);
+    // a single span just takes the new text; an emptied box keeps one base span
+    const single = replaceSpansText([span('hello')], 'bye');
+    assert.equal(single.length, 1); assert.equal(single[0].text, 'bye');
+    const empty = replaceSpansText(spans, '');
+    assert.equal(empty.length, 1); assert.equal(empty[0].text, ''); assert.equal(empty[0].style.fontFamily, 'Inter');
+    // the input is not mutated
+    assert.deepEqual(spans.map((s) => s.text), ['The ', 'AI']);
   });
 
   check('wordRanges gives whitespace-delimited words with character ranges', () => {
