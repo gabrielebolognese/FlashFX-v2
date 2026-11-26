@@ -136,7 +136,7 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | B73 | Replicas: render defects to reproduce (low confidence) - `editor.setShapeDash` on a 1 px tall stroked rect or a 2-point open path renders nothing (r01 f206-300); a text selector with shape 'square', start 0 and keyed `end` hides almost every glyph (r01 probe3); transform.rotation keys on some 3D-toggled text layers do not render (r05 f21-32, probe6). Repro each in a headless gpu check before fixing (found replicating r01 r05) | ⬜ (browser) | light |
 | B74 | Refs: conic (angular) gradient fill on shapes with a keyframable start angle - the spinning hue colour-wheel ring (conic exists only on text fills today) (r08) | ✅ (headless-GPU verified) | light |
 | B75 | Refs: styled number counter on a text layer - count between values with decimals, thousands separators / K-M suffix, prefix / suffix, any font and style (italic), eased (r08 view multipliers, follower count) | ✅ (headless-GPU verified) | light |
-| B76 | Refs: design-tool UI kit - pen / crosshair / rotate / direct-select cursor icons, a selection box with handles that follows a layer's bounds, anchor squares, live dX / dY / W / H / angle tooltip readouts, smart-guide labels (extends the B51 cursor rig) (r11) | ⬜ | medium |
+| B76 | Refs: design-tool UI kit - pen / crosshair / rotate / direct-select cursor icons, a selection box with handles that follows a layer's bounds, anchor squares, live dX / dY / W / H / angle tooltip readouts, smart-guide labels (extends the B51 cursor rig) (r11) | ✅ (headless-GPU verified) | medium |
 | B77 | Refs: text style keyframes - hold-keyed font family / weight / style switches on one text layer (type-style switcher) (r10) | ✅ (headless-GPU verified) | light |
 | B78 | Refs: soft freeform matte - a blurred / feathered shape used as a track matte keeps its blur (flower-shaped soft reveal) (r10) | ⬜ (browser) | medium |
 | B79 | Refs: person matte on footage (AI roto) - creator pops out over a divider (r09); fallback a pre-keyed stand-in clip | ⬜ (browser) | **heavy** |
@@ -1225,10 +1225,26 @@ footage-person-matte = B79, outline-imported-fonts = B80.
   span rewritten, per-frame resolve + identical scrub, persistence); `gpu:text-counter` 3/3 through the MCP (an italic
   Instrument Serif counter at f0 / f15 / f30 is pixel-identical to the same layer typed by hand: 0 px differ).
 
-## B76 - Design-tool UI kit ⬜
+## B76 - Design-tool UI kit ✅ (headless-GPU verified)
 - **Delivers:** cursor icons for a design app (pen, crosshair, rotate, direct-select) on the B51 rig, a selection box with corner handles that tracks a target layer's bounds over time, anchor squares on path points, and a number tooltip (dX / dY / W / H / angle) whose value follows the target; agent actions; one undo step each.
 - **Source beats:** r11 every shot (f7-1067).
 - **Verification:** gates + `verify:*` harness (box tracks the target bounds per frame, tooltip text = measured delta).
+- **Built (wave 2, Nov 2026):** `animation-templates/designKit.ts` samples the target from `resolveFrame` on every frame
+  (oriented box, path points; logical anchors via `shapeModifiers.evalPathAnchors` over a morph) and bakes editable layers
+  with sparse linear keys: `agent.addSelectionBox`, `agent.addAnchorSquares`, `agent.addReadout` (counter span with a new
+  per-frame `TextCounter.samples` table, measured line widths), `agent.addGuideLabel`, `agent.addGuideLine` (pen rubber band, Line Extension, centre guide); design icons pen /
+  crosshair / rotate / directSelect / resize join the agent cursor rig on demand (`agent.addCursor` / `agent.cursorIcon`,
+  base rig unchanged) and `agent.addCursor` takes `rimColor` (r11's black arrow with a white rim).
+  `LayerDecorations.rigRole` tags the parts (persisted). Also `editor.setShapeMorph` `align: "vertices"` (`PathKeyframe.align
+  'vertices'`): same-count poses morph vertex for vertex (AE path keyframes), so an r11 anchor drag keeps its sharp corners
+  mid-move; existing morphs unchanged. Feature `templates.design-kit`, recipe `design-chrome`, AUTHORING 15. Started from
+  attempt 1's WIP `dbfee18` (cursor icon outlines kept; its `stackOrder.ts` not taken: B70's agent.bringToFront covers it).
+- **Verified:** `verify:design-kit` 17/17 (box centre / size / rotation and all handles == the target on every frame within
+  0.02 px; squares == vertices; readout text == measured delta; vertex-for-vertex morph; old morphs byte-identical;
+  guide-line ends, resize centring, rim colour, persistence); `gpu:design-kit` 23/23 through the MCP (handles on the 4 corners at rot 0 / 45 / 90, every added pixel within
+  7 px of the outline, one undo byte-identical, squares + guide on a mid-drag morph, glyph edge through the dragged anchor,
+  readout pixel-identical to the hand-typed string, pen / rotate icons, rubber band anchor -> pen, white-rim arrow,
+  export + import byte-identical).
 
 ## B77 - Text style keyframes ✅ (headless-GPU verified)
 - **Delivers:** hold keyframes on a text layer's font family / weight / style (the face switches on the key frame, layout re-flows); agent-reachable.

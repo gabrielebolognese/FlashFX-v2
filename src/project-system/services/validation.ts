@@ -265,7 +265,7 @@ function ensureShapeGeometry(val: unknown): ShapeGeometry | null {
                 closed: typeof k.closed === 'boolean' ? k.closed : true,
                 ...(interp ? { interpolation: interp } : {}),
                 ...ease,
-                ...(k.align === 'auto' ? { align: 'auto' as const } : {}),
+                ...(k.align === 'auto' ? { align: 'auto' as const } : k.align === 'vertices' ? { align: 'vertices' as const } : {}),
               };
             })
         : undefined;
@@ -523,6 +523,8 @@ function validateLayer(raw: unknown): Layer | null {
     // B10b - preserve the track-matte mode (else stripped on save/load).
     ...(r.trackMatte === 'alpha' || r.trackMatte === 'alphaInv' || r.trackMatte === 'luma' || r.trackMatte === 'lumaInv' ? { trackMatte: r.trackMatte } : {}),
     ...(typeof r.labelColor === 'string' ? { labelColor: r.labelColor } : {}),
+    // B76 rig role marker (design-kit parts): preserved so it survives save / load.
+    ...(typeof r.rigRole === 'string' && r.rigRole ? { rigRole: r.rigRole.slice(0, 80) } : {}),
     // M14 reframe constraints - preserve through the round-trip (else stripped on save/load,
     // the same data-loss class that bit cloner/precomp).
     ...(isObject(r.constraints) ? { constraints: r.constraints as unknown as LayerConstraints } : {}),

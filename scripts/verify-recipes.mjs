@@ -40,7 +40,7 @@ const recipes = loadRecipes();
 ok(recipes.size >= 8, `at least 8 recipes (found ${recipes.size})`);
 for (const r of recipes.values()) {
   ok(validateRecipe(r).length === 0, `${r.id} validates`);
-  ok(r.source.some((s) => /\br0\d\b/.test(s)), `${r.id} names the reference(s) it was extracted from`);
+  ok(r.source.some((s) => /\br(0[1-9]|1[01])\b/.test(s)), `${r.id} names the reference(s) it was extracted from (r01-r11)`);
   ok(Object.keys(r.params ?? {}).length >= 3, `${r.id} is parameterized (>= 3 params)`);
   const d = describeRecipe(r);
   ok(d.params && d.description, `${r.id} describes itself`);

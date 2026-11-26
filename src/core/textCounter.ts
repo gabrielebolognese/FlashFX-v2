@@ -34,7 +34,13 @@ export interface TextCounter {
   stepFrames?: number;
   /** Which content span the counter rewrites (default 0). */
   spanIndex?: number;
+  /** B76: a per-frame value table starting at startFrame (a measured readout: dX, W, Angle...). When present it
+   *  replaces from / to / ease: frame f shows samples[f - startFrame], clamped to the first / last entry. */
+  samples?: number[];
 }
+
+/** Longest samples table a counter keeps (a 10 minute comp at 60 fps). */
+export const MAX_COUNTER_SAMPLES = 36000;
 
 const fin = (v: unknown, d: number): number => (typeof v === 'number' && Number.isFinite(v) ? v : d);
 
@@ -65,11 +71,18 @@ export function normalizeTextCounter(raw: unknown): TextCounter | null {
     ...(ease !== undefined ? { ease } : {}),
     stepFrames: Math.max(1, Math.round(fin(r.stepFrames, 1))),
     spanIndex: Math.max(0, Math.round(fin(r.spanIndex, 0))),
+    ...(Array.isArray(r.samples) && r.samples.length > 0
+      ? { samples: (r.samples as unknown[]).slice(0, MAX_COUNTER_SAMPLES).map((v) => fin(v, 0)) }
+      : {}),
   };
 }
 
 /** The counter's numeric value at a frame (clamped before start / after end, eased, stepped). */
 export function counterValueAt(c: TextCounter, frame: number): number {
+  if (c.samples && c.samples.length > 0) {
+    const i = Math.min(c.samples.length - 1, Math.max(0, Math.round(frame) - c.startFrame));
+    return c.samples[i];
+  }
   const step = Math.max(1, c.stepFrames ?? 1);
   const f = c.startFrame + Math.floor((frame - c.startFrame) / step) * step;
   const span = c.endFrame - c.startFrame;

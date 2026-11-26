@@ -401,7 +401,48 @@ export function evalPathKeyframes(kfs: PathKeyframe[], frame: number): { vertice
   if (frame === k1.frame) return clone(k1);
   const span = k1.frame - k0.frame;
   const t = span <= 0 ? 0 : (frame - k0.frame) / span;
-  return morphPaths(k0.vertices, k0.closed, k1.vertices, k1.closed, morphProgress(k0.ease, t), k0.align === 'auto');
+  if (k0.align === 'vertices' && k0.vertices.length === k1.vertices.length) {
+    return { vertices: lerpVertices(k0.vertices, k1.vertices, morphProgress(k0.ease, t)), closed: k0.closed };
+  }
+  // 'vertices' with different counts falls back to the matched (B62 auto) arc-length morph.
+  return morphPaths(k0.vertices, k0.closed, k1.vertices, k1.closed, morphProgress(k0.ease, t), k0.align === 'auto' || k0.align === 'vertices');
+}
+
+/** B76: index-for-index vertex interpolation (positions and bezier handles), keeping vertex types of `a`. */
+export function lerpVertices(a: PathVertex[], b: PathVertex[], t: number): PathVertex[] {
+  const l = (x: number, y: number): number => x + (y - x) * t;
+  return a.map((v, i) => {
+    const w = b[i];
+    return {
+      position: [l(v.position[0], w.position[0]), l(v.position[1], w.position[1])],
+      handleIn: [l(v.handleIn[0], w.handleIn[0]), l(v.handleIn[1], w.handleIn[1])],
+      handleOut: [l(v.handleOut[0], w.handleOut[0]), l(v.handleOut[1], w.handleOut[1])],
+      vertexType: v.vertexType,
+      ...(v.handleMode ? { handleMode: v.handleMode } : {}),
+    };
+  });
+}
+
+/**
+ * B76: the LOGICAL anchor positions of an animated outline at `frame` (layer-local): the same-index pose
+ * vertices interpolated on the pose ease, whatever the drawn morph does in between (the arc-length morph
+ * resamples, so its points are not anchors). Null when the two poses around `frame` differ in vertex count.
+ */
+export function evalPathAnchors(kfs: PathKeyframe[], frame: number): Vec2[] | null {
+  if (kfs.length === 0) return null;
+  const pos = (vs: PathVertex[]): Vec2[] => vs.map((v) => [v.position[0], v.position[1]]);
+  if (kfs.length === 1 || frame <= kfs[0].frame) return pos(kfs[0].vertices);
+  const last = kfs[kfs.length - 1];
+  if (frame >= last.frame) return pos(last.vertices);
+  let i = 0;
+  for (let j = 0; j < kfs.length - 1; j++) if (frame >= kfs[j].frame && frame <= kfs[j + 1].frame) { i = j; break; }
+  const k0 = kfs[i], k1 = kfs[i + 1];
+  if (frame === k0.frame || k0.interpolation === 'hold') return pos(k0.vertices);
+  if (frame === k1.frame) return pos(k1.vertices);
+  if (k0.vertices.length !== k1.vertices.length) return null;
+  const span = k1.frame - k0.frame;
+  const e = morphProgress(k0.ease, span <= 0 ? 0 : (frame - k0.frame) / span);
+  return k0.vertices.map((v, n): Vec2 => [v.position[0] + (k1.vertices[n].position[0] - v.position[0]) * e, v.position[1] + (k1.vertices[n].position[1] - v.position[1]) * e]);
 }
 
 // ── In-shape Repeater (B8d) ──

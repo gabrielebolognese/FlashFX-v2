@@ -690,7 +690,7 @@ interface EditorState {
    * true) matches start point + winding between poses so the morph does not twist. Fill, stroke,
    * materials and transform are kept. Throws on bad input (nothing applied).
    */
-  setShapeMorph: (layerId: string, poses: MorphPoseSpec[], align?: boolean) => void;
+  setShapeMorph: (layerId: string, poses: MorphPoseSpec[], align?: boolean | 'vertices') => void;
   /** Delete the keyframes at the given (propertyPath, frame) targets (undoable, batched). */
   deleteKeyframes: (layerId: string, targets: KeyframeTarget[]) => void;
   /** Set interpolation (and optional bezier handles) on the given keyframe targets (undoable, batched). */
@@ -4626,7 +4626,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       else if (Array.isArray(e)) kf.ease = [e[0], e[1], e[2], e[3]];
       else if (typeof e === 'string' && e in CSS_EASES) { const q = CSS_EASES[e as keyof typeof CSS_EASES]; kf.ease = [q[0], q[1], q[2], q[3]]; }
       else if (typeof e === 'string' && e !== 'linear') kf.ease = e as EasingName;
-      if (align !== false) kf.align = 'auto';
+      if (align === 'vertices') kf.align = 'vertices';
+      else if (align !== false) kf.align = 'auto';
       byFrame.set(kf.frame, kf);
     });
     const pathKeyframes = [...byFrame.values()].sort((a, b) => a.frame - b.frame);

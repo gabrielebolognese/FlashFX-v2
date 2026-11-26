@@ -31,14 +31,14 @@ import { WebGPURenderer } from '../engine/renderer';
 import { EXPORT_MOTION_BLUR_SAMPLES } from '../store/preview';
 import { ExportFrameSource } from '../engine/video/exportFrameSource';
 import { PARTICLE_PRESETS } from '../particles/presets';
-import { resolveFrame } from '../core/interpolation';
+import { evaluateVec2, resolveFrame } from '../core/interpolation';
 import { getTextInkMetrics, getTextLayout, measureStringWidth } from '../engine/textAtlas';
-import { pathFractionAtAngle } from '../core/shapeModifiers';
+import { evalPathAnchors, pathFractionAtAngle } from '../core/shapeModifiers';
 import { planAgentMotionPath } from '../core/agentMotionPath';
 import { uid } from '../core/factory';
 import { ensureCompositionFonts, ensureFontFace } from '../engine/fonts';
 import { MAX_FONT_BYTES, hydrateCustomFonts, useCustomFontStore } from '../engine/customFonts';
-import type { Layer, ParticleLayer, ResolvedText, TextLayer } from '../core/types';
+import type { Layer, ParticleLayer, ResolvedText, TextLayer, Vec2 } from '../core/types';
 import {
   AGENT_ACTIONS,
   AGENT_MANIFEST_SCHEMA_VERSION,
@@ -51,8 +51,12 @@ import { buildAgentCatalogs, type AgentCatalogs } from './catalogs';
 import { didYouMean, missingLayerMessage } from './suggest';
 import {
   buildAgentCursor, findCursorRig, planCursorMove, planCursorClick, buildClickRipple, planCursorIcon, cursorIconAt,
-  AGENT_CURSOR_ICONS, type AgentCursorIcon,
+  ALL_AGENT_CURSOR_ICONS, buildMissingCursorIcon, type AgentCursorIcon,
 } from '../animation-templates/cursorRig';
+import {
+  planSelectionBox, planAnchorSquares, planReadout, planGuideLabel, planGuideLine, sampleFromResolved, readoutValue, readoutCounter,
+  READOUT_PRESETS, READOUT_QUANTITIES, type ReadoutLine, type ReadoutQuantity, type TargetSample,
+} from '../animation-templates/designKit';
 import { buildPixelBlockMask } from '../animation-templates/pixelBlockReveal';
 import { buildPixelSparkle } from '../animation-templates/pixelSparkle';
 import { isPixelBlockOrder } from '../core/pixelBlocks';
@@ -533,6 +537,165 @@ async function keepPng(canvas: OffscreenCanvas): Promise<{ exportId: string; byt
 
 /** Composite helpers: each is one undoable step built on real store actions / history commands.
  *  (createProject / exportMp4 are session-level and not undoable, like their UI counterparts.) */
+// ----- B76 design-tool UI kit: argument checks + target sampling shared by the four actions -----
+function dkOptions(v: unknown): Record<string, unknown> {
+  if (v === undefined || v === null) return {};
+  if (typeof v !== 'object' || Array.isArray(v)) throw new Error('"options" must be an object');
+  return v as Record<string, unknown>;
+}
+function dkNum(v: unknown, label: string): number | undefined {
+  if (v === undefined || v === null) return undefined;
+  if (typeof v !== 'number' || !Number.isFinite(v)) throw new Error(`"${label}" must be a number`);
+  return v;
+}
+function dkColor(v: unknown, label: string): [number, number, number, number] | undefined {
+  if (v === undefined || v === null) return undefined;
+  if (!(Array.isArray(v) && v.length === 4 && v.every((c) => typeof c === 'number' && Number.isFinite(c)))) throw new Error(`"${label}" must be an RGBA colour [r, g, b, a] (0..1)`);
+  return [v[0], v[1], v[2], v[3]];
+}
+function dkVec2(v: unknown, label: string): Vec2 | undefined {
+  if (v === undefined || v === null) return undefined;
+  if (!(Array.isArray(v) && v.length === 2 && v.every((c) => typeof c === 'number' && Number.isFinite(c)))) throw new Error(`"${label}" must be [x, y]`);
+  return [v[0], v[1]];
+}
+function dkName(v: unknown): string | undefined {
+  return typeof v === 'string' && v.trim() ? v.trim() : undefined;
+}
+function dkIndexList(v: unknown, label: string): number[] | undefined {
+  if (v === undefined || v === null) return undefined;
+  if (!Array.isArray(v) || !v.every((i) => typeof i === 'number' && Number.isInteger(i))) throw new Error(`"${label}" must be an array of vertex indices`);
+  return v as number[];
+}
+function dkBox(s: TargetSample): { frame: number; center: Vec2; width: number; height: number; rotation: number; corners: Vec2[] } {
+  const r = (n: number): number => Math.round(n * 100) / 100;
+  return { frame: s.frame, center: [r(s.center[0]), r(s.center[1])], width: r(s.width), height: r(s.height), rotation: r(s.rotation), corners: s.corners.map((c): Vec2 => [r(c[0]), r(c[1])]) };
+}
+/** [start, end) of the kit clip: default the target's own clip; at most 3600 sampled frames. */
+function dkRange(startFrame: unknown, endFrame: unknown, target: Layer): { start: number; end: number } {
+  const start = Math.round(dkNum(startFrame, 'startFrame') ?? target.inPoint);
+  const end = Math.round(dkNum(endFrame, 'endFrame') ?? target.outPoint);
+  if (!(end > start)) throw new Error('"endFrame" must be after "startFrame"');
+  if (end - start > 3600) throw new Error('the range is longer than 3600 frames: split it into shorter kit clips (one per shot)');
+  return { start, end };
+}
+/**
+ * The target's rendered geometry on every frame of [start, end), resolved exactly like the renderer (parents,
+ * motion paths, point-pose morphs). The target is probed visible and on screen for the whole range, so the
+ * kit may run a little before / after the target's own clip.
+ */
+function sampleTarget(target: Layer, start: number, end: number): TargetSample[] {
+  if (target.type === 'text') throw new Error('text layers have no fixed outline here: outline the word first (editor.outlineTextLayer) and target the glyph shape, or put a rectangle on agent.measureText glyphInk');
+  if (target.type === 'group' || target.type === 'audio' || target.type === 'camera') throw new Error(`a ${target.type} layer draws nothing to select: target one of its shape / image / video layers`);
+  const ed = useEditorStore.getState();
+  const probe = { ...target, visible: true, inPoint: Math.min(target.inPoint, start), outPoint: Math.max(target.outPoint, end) } as Layer;
+  const comp = { ...ed.composition, layers: ed.composition.layers.map((l) => (l.id === target.id ? probe : l)) };
+  const out: TargetSample[] = [];
+  for (let f = start; f < end; f++) {
+    const r = resolveFrame(comp, f, { getComposition: ed.getComposition }).layers.find((l) => l.id === target.id);
+    const anchors = target.type === 'shape' && target.shape.type === 'polygon' && target.shape.pathKeyframes && target.shape.pathKeyframes.length > 0
+      ? evalPathAnchors(target.shape.pathKeyframes, f) : null;
+    const s = r ? sampleFromResolved(r, f, anchors) : null;
+    if (!s) throw new Error(`layer "${target.name}" (${target.type}) has no measurable outline at frame ${f} (supported: rectangle, ellipse, star, path / outlined glyph, image, video)`);
+    out.push(s);
+  }
+  return out;
+}
+function dkReadoutLines(preset: unknown, lines: unknown, pointCount: number): ReadoutLine[] {
+  if (lines !== undefined && lines !== null) {
+    if (!Array.isArray(lines) || lines.length === 0) throw new Error('"lines" must be a non-empty array of { label, quantity, unit?, point? }');
+    return lines.map((raw, i) => {
+      if (!raw || typeof raw !== 'object') throw new Error(`lines[${i}] must be an object`);
+      const r = raw as Record<string, unknown>;
+      if (!(READOUT_QUANTITIES as readonly string[]).includes(r.quantity as string)) throw new Error(`lines[${i}].quantity must be one of ${READOUT_QUANTITIES.join(', ')}`);
+      if (r.point !== undefined && (typeof r.point !== 'number' || !Number.isInteger(r.point) || r.point < 0 || r.point >= pointCount)) throw new Error(`lines[${i}].point must be a vertex index 0..${Math.max(0, pointCount - 1)}`);
+      return { label: typeof r.label === 'string' ? r.label.slice(0, 40) : '', quantity: r.quantity as ReadoutQuantity, ...(typeof r.unit === 'string' ? { unit: r.unit.slice(0, 12) } : {}), ...(typeof r.point === 'number' ? { point: r.point } : {}) };
+    });
+  }
+  const key = preset === undefined || preset === null ? 'move' : preset;
+  if (typeof key !== 'string' || !(key in READOUT_PRESETS)) throw new Error(`"preset" must be one of ${Object.keys(READOUT_PRESETS).join(', ')} (or pass "lines")`);
+  return READOUT_PRESETS[key as keyof typeof READOUT_PRESETS].map((l) => ({ ...l }));
+}
+/** The tooltip's top-left per sampled frame: offset from the target's bottom-right (or the dragged vertex), a layer, or a fixed point. */
+function readoutAnchors(follow: unknown, samples: TargetSample[], lines: ReadoutLine[], offset: Vec2): Vec2[] {
+  if (Array.isArray(follow)) {
+    const p = dkVec2(follow, 'follow');
+    if (!p) throw new Error('"follow" must be "target", a layer id or [x, y]');
+    return samples.map((): Vec2 => [p[0], p[1]]);
+  }
+  if (follow === undefined || follow === null || follow === 'target') {
+    const pt = lines.find((l) => l.point !== undefined)?.point;
+    return samples.map((s): Vec2 => {
+      if (pt !== undefined) return [s.points[pt][0] + offset[0], s.points[pt][1] + offset[1]];
+      const xs = s.corners.map((c) => c[0]), ys = s.corners.map((c) => c[1]);
+      return [Math.max(...xs) + offset[0], Math.max(...ys) + offset[1]];
+    });
+  }
+  if (typeof follow !== 'string') throw new Error('"follow" must be "target", a layer id (e.g. the cursorId) or [x, y]');
+  const layer = requireLayer(follow);
+  const ed = useEditorStore.getState();
+  return samples.map((s): Vec2 => {
+    let p: Vec2;
+    if (layer.type === 'group') p = evaluateVec2(layer.transform.position, s.frame);
+    else {
+      const r = resolveFrame(ed.composition, s.frame, { getComposition: ed.getComposition }).layers.find((l) => l.id === layer.id);
+      p = r ? [r.transform.positionX, r.transform.positionY] : evaluateVec2(layer.transform.position, s.frame);
+    }
+    return [p[0] + offset[0], p[1] + offset[1]];
+  });
+}
+/** Widest of some strings in a face, with the renderer's own layout code. */
+async function measureWidest(strings: string[], fontFamily: string, fontSize: number): Promise<number> {
+  const probe: ResolvedText = {
+    content: '', mode: 'point', boxWidth: 300, boxHeight: 200, fontFamily, fontWeight: 400, fontStyle: 'normal', fontSize, lineHeight: 1.2,
+    letterSpacing: 0, fillColor: [1, 1, 1, 1], strokeColor: [0, 0, 0, 0], strokeWidth: 0, textAlign: 'left', underline: false, strikethrough: false,
+    measuredWidth: 0, measuredHeight: 0,
+  };
+  await ensureFontFace(fontFamily, 400, 'normal');
+  let w = 0;
+  for (const s of strings) w = Math.max(w, measureStringWidth({ ...probe, content: s }, s));
+  return w;
+}
+/** A guide-line end per frame of [start, end): [x, y], or { layerId, point? } (a shape's centre / top / vertex; a
+ *  group, e.g. a cursor, by its position: the hotspot). */
+function guideEndpoint(spec: unknown, label: string, start: number, end: number): Vec2[] {
+  const n = end - start;
+  if (Array.isArray(spec)) {
+    const p = dkVec2(spec, label);
+    if (!p) throw new Error(`"${label}" must be [x, y] or { layerId, point? }`);
+    return Array.from({ length: n }, (): Vec2 => [p[0], p[1]]);
+  }
+  if (!spec || typeof spec !== 'object') throw new Error(`"${label}" must be [x, y] or { layerId, point? }`);
+  const r = spec as Record<string, unknown>;
+  const layer = requireLayer(r.layerId);
+  if (layer.type === 'group') return Array.from({ length: n }, (_, i) => evaluateVec2(layer.transform.position, start + i));
+  const samples = sampleTarget(layer, start, end);
+  const pi = r.point;
+  if (pi !== undefined && pi !== null && pi !== 'center' && pi !== 'top' && pi !== 'bottom' && (typeof pi !== 'number' || !Number.isInteger(pi) || pi < 0 || pi >= samples[0].points.length)) {
+    throw new Error(`"${label}.point" must be "center", "top", "bottom" or a vertex index 0..${Math.max(0, samples[0].points.length - 1)}`);
+  }
+  return samples.map((s): Vec2 => {
+    if (typeof pi === 'number') return [s.points[pi][0], s.points[pi][1]];
+    if (pi === 'top') return [(s.corners[0][0] + s.corners[1][0]) / 2, (s.corners[0][1] + s.corners[1][1]) / 2];
+    if (pi === 'bottom') return [(s.corners[2][0] + s.corners[3][0]) / 2, (s.corners[2][1] + s.corners[3][1]) / 2];
+    return [s.center[0], s.center[1]];
+  });
+}
+
+/** Add kit layers as one undo step: under any cursor rig (the pointer stays on top), else above every layer. */
+function commitDesignKit(label: string, layers: Layer[]): void {
+  const ed = useEditorStore.getState();
+  const cursorIds: string[] = [];
+  for (const l of ed.composition.layers) {
+    if (l.type !== 'group') continue;
+    try {
+      const rig = findCursorRig(ed.composition.layers, l.id);
+      cursorIds.push(rig.group.id, ...Object.values(rig.icons).flatMap((i) => (i ? [i.id] : [])));
+    } catch { /* not a cursor rig */ }
+  }
+  const ids = layers.map((l) => l.id);
+  ed.applyLayerEdits(label, { add: layers, stack: cursorIds.length ? { ids, belowLayerIds: cursorIds } : { ids, top: true as const } });
+}
+
 const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
   setTextContent: (layerId, text) => {
     const layer = requireTextLayer(layerId);
@@ -961,7 +1124,7 @@ const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
   },
 
   // ----- B51 cursor rig (animation-templates/cursorRig.ts): each call is ONE undo step -----
-  addCursor: (icon, x, y, frame, color, size, name, placement) => {
+  addCursor: (icon, x, y, frame, color, size, name, placement, rimColor) => {
     const comp = useEditorStore.getState().composition;
     const num = (v: unknown, fallback: number, label: string): number => {
       if (v === undefined || v === null) return fallback;
@@ -979,6 +1142,7 @@ const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
       color: color as [number, number, number, number] | undefined,
       size: num(size, 36, 'size'),
       name: typeof name === 'string' && name.trim() ? name.trim() : undefined,
+      rim: dkColor(rimColor, 'rimColor'),
     });
     if (placement !== undefined && placement !== null && placement !== 'top' && placement !== 'fit') throw new Error('"placement" must be "top" (default: above every layer) or "fit" (the first free track, like a timeline drop)');
     // B70: a pointer belongs above the shot it clicks in. 'fit' (the old behaviour) drops it onto the first
@@ -1024,10 +1188,159 @@ const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
     const ed = useEditorStore.getState();
     const rig = findCursorRig(ed.composition.layers, String(cursorId));
     if (typeof frame !== 'number' || !Number.isFinite(frame)) throw new Error('"frame" must be a number');
-    if (!AGENT_CURSOR_ICONS.includes(icon as AgentCursorIcon)) throw new Error(`"icon" must be one of ${AGENT_CURSOR_ICONS.join(', ')}`);
+    if (!(ALL_AGENT_CURSOR_ICONS as readonly string[]).includes(icon as string)) throw new Error(`"icon" must be one of ${ALL_AGENT_CURSOR_ICONS.join(', ')}`);
     const before = cursorIconAt(rig, Math.round(frame));
-    ed.applyLayerEdits('Cursor icon', { update: planCursorIcon(rig, frame, icon as AgentCursorIcon) });
-    return { cursorId: rig.group.id, frame: Math.round(frame), from: before, icon };
+    // B76: a design-tool icon (pen, crosshair, rotate, directSelect) the rig lacks joins it in the same undo step.
+    const added = buildMissingCursorIcon(rig, icon as AgentCursorIcon);
+    const withIcon = added ? { ...rig, icons: { ...rig.icons, [icon as AgentCursorIcon]: added } } : rig;
+    const updates = planCursorIcon(withIcon, frame, icon as AgentCursorIcon);
+    const addedLayer = added ? updates.find((l) => l.id === added.id) ?? added : null;
+    ed.applyLayerEdits('Cursor icon', {
+      update: updates.filter((l) => !added || l.id !== added.id),
+      // The new icon goes on its own track above every layer (a pointer belongs on top; one icon shows at a time).
+      ...(addedLayer ? { add: [addedLayer], stack: { ids: [addedLayer.id], top: true as const } } : {}),
+    });
+    return { cursorId: rig.group.id, frame: Math.round(frame), from: before, icon, ...(addedLayer ? { addedIconId: addedLayer.id } : {}) };
+  },
+
+  // ----- B76 design-tool UI kit (animation-templates/designKit.ts): each call is ONE undo step -----
+  addSelectionBox: (targetId, startFrame, endFrame, options) => {
+    const o = dkOptions(options);
+    const target = requireLayer(targetId);
+    const { start, end } = dkRange(startFrame, endFrame, target);
+    const samples = sampleTarget(target, start, end);
+    const handles = o.handles === undefined ? 'all' : o.handles;
+    if (handles !== 'all' && handles !== 'corners' && handles !== 'none') throw new Error('"handles" must be "all", "corners" or "none"');
+    const plan = planSelectionBox(samples, {
+      handles, color: dkColor(o.color, 'color'), handleSize: dkNum(o.handleSize, 'handleSize'), strokeWidth: dkNum(o.strokeWidth, 'strokeWidth'),
+      padding: dkNum(o.padding, 'padding'), name: dkName(o.name), endFrame: end,
+    });
+    commitDesignKit('Add selection box', plan.layers);
+    return { groupId: plan.groupId, outlineId: plan.outlineId, handleIds: plan.handleIds, startFrame: start, endFrame: end, first: dkBox(samples[0]), last: dkBox(samples[samples.length - 1]) };
+  },
+
+  addAnchorSquares: (targetId, startFrame, endFrame, options) => {
+    const o = dkOptions(options);
+    const target = requireLayer(targetId);
+    const { start, end } = dkRange(startFrame, endFrame, target);
+    const samples = sampleTarget(target, start, end);
+    const plan = planAnchorSquares(samples, {
+      points: dkIndexList(o.points, 'points'), highlight: dkIndexList(o.highlight, 'highlight'), color: dkColor(o.color, 'color'),
+      size: dkNum(o.size, 'size'), strokeWidth: dkNum(o.strokeWidth, 'strokeWidth'), name: dkName(o.name), endFrame: end,
+    });
+    commitDesignKit('Add anchor squares', plan.layers);
+    return { groupId: plan.groupId, squareIds: plan.squareIds, points: plan.points, pointCount: samples[0].points.length, startFrame: start, endFrame: end,
+      firstPositions: plan.points.map((i) => samples[0].points[i]) };
+  },
+
+  addReadout: async (targetId, startFrame, endFrame, options) => {
+    const o = dkOptions(options);
+    const target = requireLayer(targetId);
+    const { start, end } = dkRange(startFrame, endFrame, target);
+    const samples = sampleTarget(target, start, end);
+    const lines = dkReadoutLines(o.preset, o.lines, samples[0].points.length);
+    const decimals = Math.round(dkNum(o.decimals, 'decimals') ?? 2);
+    const decimalMark = o.decimalMark === undefined ? ',' : o.decimalMark;
+    if (decimalMark !== '.' && decimalMark !== ',') throw new Error('"decimalMark" must be "." or ","');
+    const fontSize = dkNum(o.fontSize, 'fontSize') ?? 15;
+    const fontFamily = typeof o.fontFamily === 'string' && o.fontFamily ? o.fontFamily : 'Inter';
+    const offset = dkVec2(o.offset, 'offset') ?? [14, 14];
+    const anchors = readoutAnchors(o.follow, samples, lines, offset);
+    // Measure the widest string each line ever shows (the real face), so the tooltip fits every frame.
+    const lineWidths: number[] = [];
+    for (const line of lines) {
+      const c = readoutCounter(samples.map((s) => readoutValue(line, s, samples[0])), start, decimals, decimalMark, 1);
+      const strings = new Set<string>();
+      for (const s of samples) strings.add(`${line.label}${counterTextAt(c, s.frame)}${line.unit ?? ''}`);
+      lineWidths.push(await measureWidest([...strings], fontFamily, fontSize));
+    }
+    const plan = planReadout(samples, {
+      lines, decimals, decimalMark, fontSize, fontFamily, textColor: dkColor(o.textColor, 'textColor'), background: dkColor(o.background, 'background'),
+      padding: dkNum(o.padding, 'padding'), anchors, lineWidths, name: dkName(o.name), endFrame: end,
+    });
+    commitDesignKit('Add readout', plan.layers);
+    const mid = Math.floor(samples.length / 2);
+    return {
+      groupId: plan.groupId, backgroundId: plan.backgroundId, textIds: plan.textIds, size: plan.size, startFrame: start, endFrame: end,
+      sampleText: lines.map((line, li) => {
+        const c = readoutCounter(plan.values[li], start, decimals, decimalMark, 1);
+        const txt = (f: number): string => `${line.label}${counterTextAt(c, f)}${line.unit ?? ''}`;
+        return { start: txt(samples[0].frame), middle: txt(samples[mid].frame), end: txt(samples[samples.length - 1].frame) };
+      }),
+    };
+  },
+
+  addGuideLine: (startFrame, endFrame, options) => {
+    const o = dkOptions(options);
+    const comp = useEditorStore.getState().composition;
+    const start = Math.round(dkNum(startFrame, 'startFrame') ?? 0);
+    const end = Math.round(dkNum(endFrame, 'endFrame') ?? comp.settings.durationFrames);
+    if (!(end > start)) throw new Error('"endFrame" must be after "startFrame"');
+    if (end - start > 3600) throw new Error('the range is longer than 3600 frames: split it');
+    const from = guideEndpoint(o.from, 'from', start, end);
+    const to = guideEndpoint(o.to, 'to', start, end);
+    const extend = dkNum(o.extend, 'extend') ?? 0;
+    const ext = (a: Vec2, b: Vec2): [Vec2, Vec2] => {
+      if (extend === 0) return [a, b];
+      const dx = b[0] - a[0], dy = b[1] - a[1], d = Math.hypot(dx, dy) || 1;
+      return [[a[0] - (dx / d) * extend, a[1] - (dy / d) * extend], [b[0] + (dx / d) * extend, b[1] + (dy / d) * extend]];
+    };
+    const frames: number[] = [], a: Vec2[] = [], b: Vec2[] = [];
+    for (let f = start; f < end; f++) { const [p, q] = ext(from[f - start], to[f - start]); frames.push(f); a.push(p); b.push(q); }
+    const plan = planGuideLine({ from: a, to: b, frames, color: dkColor(o.color, 'color'), width: dkNum(o.width, 'width'), name: dkName(o.name), endFrame: end });
+    commitDesignKit('Add guide line', plan.layers);
+    return { lineId: plan.lineId, startFrame: start, endFrame: end, from: a[0], to: b[0] };
+  },
+
+  addGuideLabel: (text, startFrame, endFrame, options) => {
+    if (typeof text !== 'string' || !text.trim()) throw new Error('"text" must be a non-empty string');
+    const o = dkOptions(options);
+    const offset = dkVec2(o.offset, 'offset') ?? [0, -16];
+    let frames: number[];
+    let points: Vec2[];
+    let start: number;
+    let end: number;
+    if (o.targetId !== undefined && o.targetId !== null) {
+      const target = requireLayer(o.targetId);
+      ({ start, end } = dkRange(startFrame, endFrame, target));
+      const samples = sampleTarget(target, start, end);
+      frames = samples.map((s) => s.frame);
+      const pi = o.point;
+      if (pi !== undefined && pi !== null && pi !== 'center' && pi !== 'top' && (typeof pi !== 'number' || !Number.isInteger(pi) || pi < 0 || pi >= samples[0].points.length)) {
+        throw new Error(`"point" must be "center", "top" or a vertex index 0..${Math.max(0, samples[0].points.length - 1)}`);
+      }
+      points = samples.map((s): Vec2 => {
+        if (typeof pi === 'number') return [s.points[pi][0], s.points[pi][1]];
+        if (pi === 'top') return [(s.corners[0][0] + s.corners[1][0]) / 2, (s.corners[0][1] + s.corners[1][1]) / 2];
+        return [s.center[0], s.center[1]];
+      });
+    } else {
+      const comp = useEditorStore.getState().composition;
+      start = Math.round(dkNum(startFrame, 'startFrame') ?? 0);
+      end = Math.round(dkNum(endFrame, 'endFrame') ?? start + 30);
+      if (!(end > start)) throw new Error('"endFrame" must be after "startFrame"');
+      frames = [start];
+      points = [[dkNum(o.x, 'x') ?? comp.settings.width / 2, dkNum(o.y, 'y') ?? comp.settings.height / 2]];
+    }
+    const fontSize = dkNum(o.fontSize, 'fontSize') ?? 13;
+    const positions = points.map((p): Vec2 => [p[0] + offset[0], p[1] + offset[1]]);
+    const gap = fontSize * 0.7;
+    const line = o.line === true
+      ? {
+        from: positions.map((p, i): Vec2 => {
+          const vx = points[i][0] - p[0], vy = points[i][1] - p[1];
+          const d = Math.hypot(vx, vy) || 1;
+          return [p[0] + (vx / d) * gap, p[1] + (vy / d) * gap];
+        }),
+        to: points,
+      }
+      : undefined;
+    const plan = planGuideLabel({
+      text: text.trim(), positions, frames, color: dkColor(o.color, 'color'), fontSize,
+      fontFamily: typeof o.fontFamily === 'string' && o.fontFamily ? o.fontFamily : undefined, line, name: dkName(o.name), endFrame: end,
+    });
+    commitDesignKit('Add guide label', plan.layers);
+    return { labelId: plan.labelId, lineId: plan.lineId, startFrame: start, endFrame: end, position: positions[0] };
   },
 
   // ----- B67 follow-up (B70): raise layers to the top of the RENDER stack (tracks), in one undo step -----

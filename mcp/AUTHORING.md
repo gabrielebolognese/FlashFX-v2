@@ -326,7 +326,10 @@ Never leave real motion on linear (the default for `addKeyframe`), except progre
   `{ type: "polygon", width, height, sides? }`, `{ type: "path", points: [[x, y], ...], closed? }`.
   `ease` shapes the morph to the NEXT pose (same vocabulary as `setKeyframes`; `backOut` or a quad
   with y > 1 overshoots the outline for a pop; `"hold"` snaps). Auto-alignment (default) keeps
-  outlines from twisting; different vertex counts morph. For the heavy-morph look, pair it with
+  outlines from twisting; different vertex counts morph. `align: "vertices"` (B76) instead moves each
+  vertex (and its handles) straight to the same-index vertex of the next pose, like an After Effects path
+  keyframe: use it for anchor drags and letter edits (corners stay sharp mid-move; same vertex count
+  needed, else it falls back to the matched morph). For the heavy-morph look, pair it with
   scale / rotation keys on the same eases and a `shape.fillColor` colour key:
 
 ```json
@@ -709,3 +712,40 @@ still draws on top, so its fill is the tint and its stroke the hairline edge.
   Not applied on 3D, corner-pinned or matte-source layers (they draw as plain shapes).
 - Check it with render_frame (the preview shows it too). Proof: `npm run gpu:glass`.
 - Adjustment layers take masks too (B69): `editor.addMask` on an adjustment layer limits its effects to the mask.
+
+## 15. Design-tool UI kit (B76)
+
+For edits dressed as a screen capture of a vector app (r11: a glyph rotates, an anchor slides, the app chrome
+follows). Animate the edit FIRST, then add the chrome over the same frames; every part is sampled from the real
+resolved target (parents, motion paths, point-pose morphs), so it sits exactly on the edit. It is baked: re-run
+after re-timing the target (delete the old kit group). Each call is one undo step; kit layers stack under any
+cursor rig.
+
+- Selection box: `agent.addSelectionBox { targetId, startFrame?, endFrame?, options?: { handles: "all" |
+  "corners" | "none", color, handleSize, strokeWidth, padding } }`: 1 px blue outline + white handles on the
+  oriented bounds; a group whose position / rotation and the outline size carry linear keys only where the
+  target moves. Targets: rectangle, ellipse, star, path / outlined glyph, image, video (outline text first with
+  `editor.outlineTextLayer`).
+- Anchor squares: `agent.addAnchorSquares { targetId, ..., options?: { points?: [i...], highlight?: [i...] } }`
+  puts a square on path vertices (read indices from `agent.getLayer` shape.vertices); highlighted ones are filled
+  blue (the dragged anchor). For a drag, morph with `editor.setShapeMorph { ..., align: "vertices" }`: the drawn
+  corner and the square then move together (with the default morph the squares follow the logical anchors
+  while the drawn outline is resampled).
+- Readout tooltip: `agent.addReadout { targetId, ..., options?: { preset: "move" | "size" | "angle" | "position",
+  lines?: [{ label, quantity, unit, point? }], follow: "target" | layerId | [x, y], offset, decimals: 2,
+  decimalMark: "," } }`. Values are measured per frame (deltas against startFrame: "Angle: 2,88deg" at the 20 %
+  point of a 90 deg easeInOutCubic turn, exactly r11's numbers) and stored as a B75 counter span with a
+  `samples` table, so the text keeps its font and can be edited with `agent.setTextCounter`. `follow:
+  cursorId` keeps the tooltip beside the pointer.
+- Guide label: `agent.addGuideLabel { text, startFrame?, endFrame?, options?: { targetId, point: "center" |
+  "top" | i, x, y, offset, line } }`: the magenta word ("anchor", "center", "Line Extension"), optionally with a
+  1 px pin line to the point.
+- Guide line: `agent.addGuideLine { startFrame?, endFrame?, options: { from, to, extend?, color?, width? } }`: a 1 px
+  line whose ends follow `[x, y]` or `{ layerId, point?: "center" | "top" | "bottom" | i }` (a group such as a cursor
+  follows its hotspot): the pen rubber band (`from: { layerId: path, point: lastIndex }, to: { layerId: cursorId }`),
+  a magenta "Line Extension" (`extend: 80`) or the vertical centre guide.
+- Cursors: `agent.addCursor { icon: "pen" | "crosshair" | "rotate" | "directSelect" | "resize", rimColor }` and
+  `agent.cursorIcon { cursorId, frame, icon }` (a design icon an older rig lacks is added to it). r11's macOS
+  pointer: `color: [0, 0, 0, 1], rimColor: [1, 1, 1, 1]`.
+- One call: `apply_recipe { id: 'design-chrome', params: { layerId, readout: 'angle', guide: 'center' } }`.
+- Proofs: `npm run verify:design-kit` (box / squares / readout == target every frame) and `npm run gpu:design-kit`.

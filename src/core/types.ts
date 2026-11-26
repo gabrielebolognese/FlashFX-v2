@@ -319,8 +319,11 @@ export interface PathKeyframe {
    *  cubic-bezier quad [x1, y1, x2, y2]. Absent = linear (the B8b behaviour). */
   ease?: EasingName | [number, number, number, number];
   /** B62: 'auto' = match the next pose's start point and winding to this one before morphing (no
-   *  twisting rect -> circle). Absent = index-0 correspondence (B8b, unchanged). */
-  align?: 'auto';
+   *  twisting rect -> circle). Absent = index-0 correspondence (B8b, unchanged).
+   *  B76: 'vertices' = when the next pose has the same vertex count, move each vertex (and its bezier
+   *  handles) straight to the same-index vertex of the next pose, like an After Effects path keyframe: an
+   *  anchor drag stays a drag (no arc-length resampling, corners stay sharp, the vertex count is kept). */
+  align?: 'auto' | 'vertices';
 }
 
 export interface PolygonShape {
@@ -1594,6 +1597,9 @@ export interface LayerDecorations {
   constraints?: LayerConstraints;
   /** B53 corner pin: warp the layer onto four comp-space points (keyframable vec2s). */
   cornerPin?: CornerPin;
+  /** B76: stable role of a layer inside an agent-built rig ("design.selection.handle.TL", "design.readout"...).
+   *  Marks the part for helpers and the reader; absent on ordinary layers. */
+  rigRole?: string;
 }
 
 /** B53 - AE-style Corner Pin. Each corner is a keyframable vec2 in COMP px; while set, the four pins ARE

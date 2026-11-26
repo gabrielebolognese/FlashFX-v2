@@ -67,7 +67,12 @@ export type AgentHelperMethod =
   | 'setClonerData'
   | 'setTextCounter'
   | 'setTextStyleKeys'
-  | 'setClipTiming';
+  | 'setClipTiming'
+  | 'addSelectionBox'
+  | 'addAnchorSquares'
+  | 'addReadout'
+  | 'addGuideLabel'
+  | 'addGuideLine';
 
 export type FeatureStatus = 'shipped' | 'browser-gated' | 'partial';
 
@@ -160,7 +165,7 @@ const EFFECTOR_TYPES = ['random', 'falloff', 'step', 'time', 'target'] as const;
 const PHYSICS_ROLES = ['kinematic', 'dynamic', 'static', 'ghost'] as const;
 const MOTION_PRINCIPLES = ['anticipation', 'follow-through', 'squash-stretch', 'stagger'] as const;
 const LAYER_FX = ['shadow', 'glow', 'blur'] as const;
-const CURSOR_ICONS = ['arrow', 'hand', 'ibeam'] as const;
+const CURSOR_ICONS = ['arrow', 'hand', 'ibeam', 'pen', 'crosshair', 'rotate', 'directSelect', 'resize'] as const;
 /** Friendly paths of the animated overrides (core/animProps.ts ANIM_PROP_DEFS: kept in sync by verify:anim-props). */
 export const ANIM_COLOR_PATHS = ['shape.fillColor', 'shape.strokeColor', 'text.color', 'text.strokeColor', 'glow.color', 'shadow.color'] as const;
 export const ANIM_FX_PATHS = ['glow.intensity', 'glow.radius', 'glow.threshold', 'shadow.blurRadius', 'shadow.lightDistance', 'shadow.lightAngle', 'shadow.shadowScale', 'blur.radius', 'blur.strength', 'blur.angle'] as const;
@@ -433,7 +438,7 @@ export const AGENT_ACTIONS: readonly AgentActionSpec[] = [
     description: 'Shape morph in one undo step: the shape layer becomes a path whose outline morphs through the poses (square -> circle -> star -> pill ...). Each pose: { frame, shape, ease } where shape is { type: "rectangle", width, height, radius? } | { type: "ellipse", width, height } | { type: "star", width, height, points?, innerRatio? } | { type: "polygon", width, height, sides? } | { type: "path", points: [[x, y], ...], closed? } (layer-local px, centred on the layer position) and ease shapes the morph to the NEXT pose (named ease / CSS keyword / cubic-bezier quad / "hold"; backOut overshoots the shape). align (default true) matches start point and winding so nothing twists. Fill, stroke, gradients and transform are kept.',
     params: [LAYER_ID,
       { name: 'poses', type: 'Array<{ frame: number; shape: OutlineSpec; ease?: string | [number, number, number, number] }>' },
-      { name: 'align', type: 'boolean', optional: true, description: 'Default true (best start point + winding per pose pair).' }] },
+      { name: 'align', type: 'boolean | "vertices"', optional: true, description: 'Default true (best start point + winding per pose pair). "vertices" (B76): poses with the same vertex count morph vertex for vertex (each anchor and its handles move straight to the same-index anchor, like an After Effects path keyframe): use it for anchor drags and letter edits; different counts fall back to the matched morph.' }] },
   { id: 'editor.addShapeModifier', store: 'editor', method: 'addShapeModifier', undoable: true,
     description: 'Add a path modifier (Trim Paths for line draw-on, Offset, Roughen, Pucker & Bloat). Edit params with updateLayerProperty/addKeyframe on "modifiers.<i>.<param>".',
     params: [LAYER_ID, { name: 'type', type: 'string', values: MODIFIER_TYPES }] },
@@ -661,15 +666,16 @@ export const AGENT_ACTIONS: readonly AgentActionSpec[] = [
 
   // ----- B51 cursor rig (animation-templates/cursorRig.ts) -----
   { id: 'agent.addCursor', store: 'agent', method: 'addCursor', undoable: true,
-    returns: '{ cursorId, icons: { arrow, hand, ibeam }, frame, placement }',
-    description: 'Add a pointer cursor: a group (its position = the hotspot: the arrow tip, the hand fingertip, the I-beam centre) holding an arrow, a hand and an I-beam icon, one visible. On screen from `frame` to the comp end, stacked ABOVE every existing layer (placement "top"), so it can be added at any point of the build. Then script it with agent.cursorMoveTo / cursorClick / cursorIcon (author in time order; click ripples stack directly under the cursor). The icons may be renamed: the rig still finds them. One undo step.',
+    returns: '{ cursorId, icons: { arrow, hand, ibeam, (+ the design icon if asked) }, frame, placement }',
+    description: 'Add a pointer cursor: a group (its position = the hotspot: the arrow tip, the hand fingertip, the I-beam centre, the pen nib, the crosshair / rotate centre, the direct-select tip) holding an arrow, a hand and an I-beam icon (plus the B76 design-app icon pen / crosshair / rotate / directSelect / resize when that is the starting icon), one visible. On screen from `frame` to the comp end, stacked ABOVE every existing layer (placement "top"), so it can be added at any point of the build. Then script it with agent.cursorMoveTo / cursorClick / cursorIcon (author in time order; click ripples stack directly under the cursor). The icons may be renamed: the rig still finds them. One undo step.',
     params: [{ name: 'icon', type: 'string', optional: true, values: CURSOR_ICONS, description: 'Default arrow.' },
       { name: 'x', type: 'number', optional: true, description: 'Hotspot x (comp px), default the comp centre.' }, { name: 'y', type: 'number', optional: true },
       { name: 'frame', type: 'number', optional: true, description: 'First frame on screen (default 0).' },
       { name: 'color', type: '[r, g, b, a]', optional: true, description: 'Icon fill (default white, dark outline).' },
       { name: 'size', type: 'number', optional: true, description: 'Icon height in px (default 36).' },
       { name: 'name', type: 'string', optional: true },
-      { name: 'placement', type: 'string', optional: true, values: ['top', 'fit'], description: '"top" (default) = own tracks above every layer; "fit" = the first free track at that time (timeline-drop rules, can land under later backgrounds).' }] },
+      { name: 'placement', type: 'string', optional: true, values: ['top', 'fit'], description: '"top" (default) = own tracks above every layer; "fit" = the first free track at that time (timeline-drop rules, can land under later backgrounds).' },
+      { name: 'rimColor', type: '[r, g, b, a]', optional: true, description: 'B76: icon outline colour (default near-black). color [0, 0, 0, 1] + rimColor [1, 1, 1, 1] = the macOS black arrow with a white rim (r11).' }] },
   { id: 'agent.cursorMoveTo', store: 'agent', method: 'cursorMoveTo', undoable: true,
     returns: '{ cursorId, from, to, startFrame, endFrame }',
     description: 'Move the cursor from wherever it is at `frame` to (x, y): two position keys with a ballistic ease-out (fast start, long settle; the template rig fitted as cubic-bezier [0.38, 1, 0.76, 1]) along a gentle arc (spatial tangents). It ARRIVES exactly at frame + durationFrames. Keys stay editable (timeline / graph editor / editor.setKeyframes on the group "transform.position"). One undo step.',
@@ -687,8 +693,40 @@ export const AGENT_ACTIONS: readonly AgentActionSpec[] = [
       { name: 'rippleColor', type: '[r, g, b, a]', optional: true, description: 'Ring colour (default white 90%).' }] },
   { id: 'agent.cursorIcon', store: 'agent', method: 'cursorIcon', undoable: true,
     returns: '{ cursorId, frame, from, icon }',
-    description: 'Swap the cursor icon on `frame` (hold step on the icon opacities): e.g. hand over a button, I-beam over a text field. One undo step.',
+    description: 'Swap the cursor icon on `frame` (hold step on the icon opacities): e.g. hand over a button, I-beam over a text field; B76 design-app tools: pen (path drawing), crosshair (precision), rotate (rotation handle), directSelect (anchor / direct selection), resize (double arrow, centred). A design icon the rig lacks is added to it (returns addedIconId). One undo step.',
     params: [{ name: 'cursorId', type: 'string' }, { name: 'frame', type: 'number' }, { name: 'icon', type: 'string', values: CURSOR_ICONS }] },
+  // ----- B76 design-tool UI kit (animation-templates/designKit.ts) -----
+  { id: 'agent.addSelectionBox', store: 'agent', method: 'addSelectionBox', undoable: true,
+    returns: '{ groupId, outlineId, handleIds, startFrame, endFrame, first: { center, width, height, rotation, corners }, last }',
+    description: 'Design-app selection box (B76, r11): a 1 px blue outline on the target layer\'s oriented bounds plus white square handles on the corners (and edge midpoints), FOLLOWING the target on every frame of [startFrame, endFrame): it moves, rotates and resizes with it (parents, motion paths and point-pose morphs included, sampled from the real resolved frame). Lands as editable layers: a group (position = box centre, rotation = target rotation) holding the outline rectangle and the handles, with linear keys only where the target moves. Baked: re-run after re-timing the target. Targets: shapes (rectangle, ellipse, star, path / outlined glyph), images, videos; outline text first (editor.outlineTextLayer). Stacked under any cursor rig. One undo step.',
+    params: [{ name: 'targetId', type: 'string' }, { name: 'startFrame', type: 'number', optional: true, description: 'Default the target in-point.' },
+      { name: 'endFrame', type: 'number', optional: true, description: 'Exclusive; default the target out-point (at most 3600 frames).' },
+      { name: 'options', type: '{ handles?: "all" | "corners" | "none"; color?: [r, g, b, a]; handleSize?: number; strokeWidth?: number; padding?: number; name?: string }', optional: true,
+        description: 'Defaults: handles "all" (8), color blue [0.2, 0.52, 1, 1], handleSize 7 px, strokeWidth 1 px, padding 0.' }] },
+  { id: 'agent.addAnchorSquares', store: 'agent', method: 'addAnchorSquares', undoable: true,
+    returns: '{ groupId, squareIds, points, pointCount, startFrame, endFrame, firstPositions }',
+    description: 'Anchor-point squares (B76, r11): a small white square with a blue rim on each chosen path vertex of a path / polygon / outlined-glyph layer, riding the vertex on every frame (point-pose morphs, rotation, parents). `highlight` vertices are filled blue (the selected / dragged anchor). Editable layers in a group, linear keys only where a vertex moves. One undo step.',
+    params: [{ name: 'targetId', type: 'string' }, { name: 'startFrame', type: 'number', optional: true }, { name: 'endFrame', type: 'number', optional: true },
+      { name: 'options', type: '{ points?: number[]; highlight?: number[]; color?: [r, g, b, a]; size?: number; strokeWidth?: number; name?: string }', optional: true,
+        description: 'points: vertex indices (default all; read them with agent.getLayer shape.vertices). size 7 px.' }] },
+  { id: 'agent.addReadout', store: 'agent', method: 'addReadout', undoable: true,
+    returns: '{ groupId, backgroundId, textIds, size, startFrame, endFrame, sampleText: [{ start, middle, end }] }',
+    description: 'Live number tooltip (B76, r11): a translucent rounded box whose lines count with the target ("dX: -157,70 px / dY: -2,00 px", "W: 18,95 px / H: 42,88 px", "Angle: 87,12 deg"). Every value is the MEASURED quantity of that frame (deltas against startFrame), stored as a B75 counter span with a per-frame samples table, so it is exact, keeps its font and stays editable. The box follows the target (top-left offset from its bottom-right, or from the dragged vertex), a cursor / any layer, or sits at a fixed point. One undo step.',
+    params: [{ name: 'targetId', type: 'string' }, { name: 'startFrame', type: 'number', optional: true }, { name: 'endFrame', type: 'number', optional: true },
+      { name: 'options', type: '{ preset?: "move" | "size" | "angle" | "position"; lines?: { label: string; quantity: "dx" | "dy" | "x" | "y" | "w" | "h" | "angle" | "dangle" | "scale"; unit?: string; point?: number }[]; follow?: "target" | string | [x, y]; offset?: [dx, dy]; decimals?: number; decimalMark?: "." | ","; fontSize?: number; fontFamily?: string; textColor?: [r, g, b, a]; background?: [r, g, b, a]; padding?: number; name?: string }', optional: true,
+        description: 'preset move = dX / dY, size = W / H, angle = Angle (rotation delta with a degree sign), position = X / Y (default move); lines overrides it (point = measure that vertex, not the box centre). follow default "target"; a cursorId keeps it beside the pointer. offset [14, 14] px. decimals 2, decimalMark "," (European, as in r11), fontSize 15, Inter, text dark grey, background light grey 85%.' }] },
+  { id: 'agent.addGuideLine', store: 'agent', method: 'addGuideLine', undoable: true,
+    returns: '{ lineId, startFrame, endFrame, from, to }',
+    description: 'Thin guide line whose two ends follow points on every frame (B76, r11): the pen rubber band from the last anchor to the cursor, a magenta "Line Extension" guide along a path segment (extend), the vertical smart guide through a centre. An end is a fixed [x, y] or { layerId, point? }: a shape\'s centre / top / bottom edge midpoint or a path vertex, sampled from the resolved frame; a group (a cursor) by its position = the hotspot. One rectangle layer with sparse linear keys. Stacked under any cursor rig. One undo step.',
+    params: [{ name: 'startFrame', type: 'number', optional: true }, { name: 'endFrame', type: 'number', optional: true, description: 'Exclusive; default the comp end.' },
+      { name: 'options', type: '{ from: [x, y] | { layerId: string; point?: "center" | "top" | "bottom" | number }; to: [x, y] | { layerId: string; point?: "center" | "top" | "bottom" | number }; extend?: number; color?: [r, g, b, a]; width?: number; name?: string }',
+        description: 'extend: px past both ends (0). color default design blue [0.2, 0.52, 1, 1] (smart guides: magenta [0.86, 0.16, 0.82, 1]); width 1 px.' }] },
+  { id: 'agent.addGuideLabel', store: 'agent', method: 'addGuideLabel', undoable: true,
+    returns: '{ labelId, lineId, startFrame, endFrame, position }',
+    description: 'Smart-guide label (B76, r11): a small magenta word ("anchor", "center", "Line Extension", "Shift+X") above a point, optionally with a 1 px pin line to it. Static at (x, y), or following a target\'s centre / top edge / one vertex on every frame. Editable text (+ line) layers. One undo step.',
+    params: [{ name: 'text', type: 'string' }, { name: 'startFrame', type: 'number', optional: true }, { name: 'endFrame', type: 'number', optional: true },
+      { name: 'options', type: '{ targetId?: string; point?: "center" | "top" | number; x?: number; y?: number; offset?: [dx, dy]; line?: boolean; color?: [r, g, b, a]; fontSize?: number; fontFamily?: string; name?: string }', optional: true,
+        description: 'Without targetId the label sits at (x, y) + offset (default the comp centre). offset default [0, -16] (above). color magenta [0.86, 0.16, 0.82, 1], fontSize 13, Inter medium.' }] },
   // ----- B38 glass material -----
   { id: 'editor.setShapeGlass', store: 'editor', method: 'setShapeGlass', undoable: true,
     description: 'Frosted / liquid glass on a shape layer (rectangle, rounded rect, circle, star or path): the composite BELOW the shape is brightened / saturated, blurred and mixed back inside the shape outline (corners follow the radius), the rim bends the backdrop outward like a lens edge and catches a highlight from lightAngle. The shape still draws on top: give it a low-alpha fill as the tint (e.g. [1, 1, 1, 0.08] or [0, 0, 0, 0.1]) and a 1 px light stroke as the hairline edge, or fill alpha 0 for pure glass. A partial patch over the current glass (or the defaults); numbers for blur / refraction / highlight / lightAngle set their base value and keep their keys: animate them with setKeyframes "glass.blur" / "glass.refraction" / "glass.highlight" / "glass.lightAngle" (a rotating lightAngle sweeps the edge light). null removes the glass. One undo step. Not on 3D, corner-pinned or matte layers.',
@@ -999,6 +1037,11 @@ export const AGENT_FEATURES: readonly AgentFeature[] = [
     ui: 'Agent / MCP only (the recursive-editor template uses the same rig)',
     actions: ['agent.addCursor', 'agent.cursorMoveTo', 'agent.cursorClick', 'agent.cursorIcon'], status: 'shipped',
     notes: 'Everything lands as ordinary editable layers and keys: the cursor is a group ("transform.position" = hotspot, "transform.scale" = click squash), the icons are polygon children, each ripple is its own circle layer. Author moves / clicks in time order: a move starts from where the cursor is at its start frame.' },
+  { id: 'templates.design-kit', area: 'templates', name: 'Design-tool UI kit',
+    description: 'The chrome of a vector design app around an edit (B76): pen / crosshair / rotate / direct-select cursors on the cursor rig, a selection box with handles that follows a layer, anchor squares on path points, live dX / dY / W / H / Angle readout tooltips that count with the move, and magenta smart-guide labels. For "animation dressed as a screen capture" edits (letter puns, logo builds, UI walkthroughs).',
+    ui: 'Agent / MCP only (lands as ordinary editable layers)',
+    actions: ['agent.addSelectionBox', 'agent.addAnchorSquares', 'agent.addReadout', 'agent.addGuideLabel', 'agent.addGuideLine', 'agent.cursorIcon'], status: 'shipped',
+    notes: 'Author the edit first (the glyph rotation, the anchor drag), then add the kit over the same frames: the box / squares / tooltip are SAMPLED from the resolved target, so they are exact but baked (re-run after re-timing). Readout values are counter samples: edit them with agent.setTextCounter. Kit layers stack under any cursor rig.' },
   { id: 'templates.items', area: 'templates', name: 'Animation items',
     description: 'Ready-made animated elements.', ui: 'Canvas toolbar > Animation Item', actions: ['editor.addAnimationItem'], status: 'shipped' },
 

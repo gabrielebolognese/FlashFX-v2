@@ -2,7 +2,7 @@ import { createCircleLayer } from '../core/factory';
 import type { AnimatableProperty, GroupLayer, Keyframe, Layer, ShapeLayer, Vec2, Vec4 } from '../core/types';
 import { buildKeyframesFromSpecs, easeSpecError, type CubicBezierQuad, type KeyframeEaseSpec } from '../core/keyframeSpecs';
 import { evaluateNumber, evaluateVec2 } from '../core/interpolation';
-import { cursorIconShape, makeCursor, type CursorIcon } from './cursor';
+import { cursorIconShape, makeCursor, makeCursorIcon, type CursorIcon } from './cursor';
 
 // B51 - the agent-facing cursor rig. Builds on the template cursor (animation-templates/cursor.ts: the
 // same stacked icon polygons, tip at the group origin) but writes SPARSE, editable keyframes on absolute
@@ -13,9 +13,13 @@ import { cursorIconShape, makeCursor, type CursorIcon } from './cursor';
 //   - an icon swap is a hold step on the icons' opacity.
 // Pure (no store): the agent runtime commits each result as ONE undo step via editor.applyLayerEdits.
 
-/** Icons the agent rig carries (one polygon layer each, one visible at a time). */
+/** Icons every agent rig carries (one polygon layer each, one visible at a time). */
 export const AGENT_CURSOR_ICONS = ['arrow', 'hand', 'ibeam'] as const satisfies readonly CursorIcon[];
-export type AgentCursorIcon = (typeof AGENT_CURSOR_ICONS)[number];
+/** B76 design-app tool icons: added to a rig on demand (agent.addCursor with one of them, or agent.cursorIcon). */
+export const DESIGN_CURSOR_ICONS = ['pen', 'crosshair', 'rotate', 'directSelect', 'resize'] as const satisfies readonly CursorIcon[];
+/** Every icon an agent rig may hold. */
+export const ALL_AGENT_CURSOR_ICONS = [...AGENT_CURSOR_ICONS, ...DESIGN_CURSOR_ICONS] as const;
+export type AgentCursorIcon = (typeof ALL_AGENT_CURSOR_ICONS)[number];
 
 /** Ballistic ease-out: the template rig's 1 - (1 - t)^2.6 (70% of the distance in the first ~38% of
  *  the time) fitted as a CSS cubic-bezier (rms error 0.001). */
@@ -24,7 +28,7 @@ export const BALLISTIC_EASE: CubicBezierQuad = [0.38, 1, 0.76, 1];
 /** Natural icon height in px at scale 1 (the arrow outline). */
 const ICON_PX = 20;
 
-const isAgentIcon = (v: unknown): v is AgentCursorIcon => typeof v === 'string' && (AGENT_CURSOR_ICONS as readonly string[]).includes(v);
+const isAgentIcon = (v: unknown): v is AgentCursorIcon => typeof v === 'string' && (ALL_AGENT_CURSOR_ICONS as readonly string[]).includes(v);
 
 /** The template rig's move duration (190 ms + 0.32 ms per px, clamped to 220..450 ms) in frames. */
 export function ballisticMoveFrames(distance: number, fps: number): number {
@@ -41,9 +45,19 @@ export interface AddCursorOptions {
   /** Clip end (exclusive), usually the composition length. */
   endFrame: number;
   color?: Vec4;
+  /** B76: icon outline colour (default near-black; white gives the macOS black-arrow-with-white-rim look). */
+  rim?: Vec4;
   /** Icon height in px (default 36). */
   size?: number;
   name?: string;
+}
+
+/** B76: where an icon sits in the AGENT rig so its hotspot is the group origin (the template resize arrow is
+ *  drawn from its left tip at (0, 8); in a design app the double arrow's hotspot is its centre). */
+export function agentIconOffset(kind: AgentCursorIcon): Vec2 | null {
+  if (kind === 'hand') return AGENT_HAND_OFFSET;
+  if (kind === 'resize') return [-12, -5];
+  return null;
 }
 
 /** B67 follow-up (r06): the hand icon's local position in the AGENT rig, so the index fingertip (the top of the
@@ -55,17 +69,24 @@ export const AGENT_HAND_OFFSET: Vec2 = [-4.5, 0];
  *  fingertip, the I-beam's centre). */
 export function buildAgentCursor(opts: AddCursorOptions): Layer[] {
   const icon = opts.icon ?? 'arrow';
-  if (!isAgentIcon(icon)) throw new Error(`"icon" must be one of ${AGENT_CURSOR_ICONS.join(', ')}`);
-  const rig = makeCursor(opts.name ?? 'Cursor', opts.color ?? [1, 1, 1, 1], [opts.x, opts.y], 1, AGENT_CURSOR_ICONS);
+  if (!isAgentIcon(icon)) throw new Error(`"icon" must be one of ${ALL_AGENT_CURSOR_ICONS.join(', ')}`);
+  // B76: a design-tool icon joins the three base icons only when asked for (old rigs keep their 3 children).
+  const kinds: AgentCursorIcon[] = [...AGENT_CURSOR_ICONS, ...((DESIGN_CURSOR_ICONS as readonly string[]).includes(icon) ? [icon] : [])];
+  const rig = makeCursor(opts.name ?? 'Cursor', opts.color ?? [1, 1, 1, 1], [opts.x, opts.y], 1, kinds);
   const k = (opts.size ?? 36) / ICON_PX;
   rig.group.transform.scale.defaultValue = [k, k];
-  if (rig.icons.hand) rig.icons.hand.transform.position.defaultValue = [AGENT_HAND_OFFSET[0], AGENT_HAND_OFFSET[1]];
+  for (const kind of kinds) {
+    const shape = rig.icons[kind];
+    const off = agentIconOffset(kind);
+    if (shape && off) shape.transform.position.defaultValue = [off[0], off[1]];
+    if (shape && opts.rim && shape.shape.type === 'polygon') shape.shape.strokeColor = [opts.rim[0], opts.rim[1], opts.rim[2], opts.rim[3]];
+  }
   const out: Layer[] = [rig.group, ...rig.layers];
   for (const l of out) {
     l.inPoint = Math.round(opts.frame);
     l.outPoint = Math.max(l.inPoint + 1, Math.round(opts.endFrame));
   }
-  for (const kind of AGENT_CURSOR_ICONS) {
+  for (const kind of kinds) {
     const shape = rig.icons[kind];
     if (shape) shape.transform.opacity.defaultValue = kind === icon ? 1 : 0;
   }
@@ -103,7 +124,7 @@ let iconSignatures: { kind: AgentCursorIcon; pts: Vec2[] }[] | null = null;
 export function cursorIconKindByGeometry(layer: ShapeLayer): AgentCursorIcon | null {
   if (layer.shape.type !== 'polygon') return null;
   const verts = layer.shape.vertices;
-  iconSignatures ??= AGENT_CURSOR_ICONS.map((kind) => {
+  iconSignatures ??= ALL_AGENT_CURSOR_ICONS.map((kind) => {
     const ref = cursorIconShape(kind, [1, 1, 1, 1]).shape;
     return { kind, pts: ref.type === 'polygon' ? ref.vertices.map((v) => v.position) : [] };
   });
@@ -240,10 +261,27 @@ export function buildClickRipple(group: GroupLayer, frame: number, opts: { color
   return ring;
 }
 
+/**
+ * B76: a design-tool icon this rig does not hold yet, as a new hidden child (opacity 0, sized and coloured like
+ * the rig's arrow) so planCursorIcon can show it. Null when the rig already has it.
+ */
+export function buildMissingCursorIcon(rig: CursorRigRef, icon: AgentCursorIcon): ShapeLayer | null {
+  if (rig.icons[icon]) return null;
+  const ref = rig.icons.arrow ?? rig.icons.hand ?? rig.icons.ibeam;
+  const color: Vec4 = ref && ref.shape.type === 'polygon' ? [...ref.shape.fillColor] as Vec4 : [1, 1, 1, 1];
+  const s = makeCursorIcon(icon, color, rig.group.id);
+  if (ref && ref.shape.type === 'polygon' && s.shape.type === 'polygon') s.shape.strokeColor = [...ref.shape.strokeColor] as Vec4;
+  const off = agentIconOffset(icon);
+  if (off) s.transform.position.defaultValue = [off[0], off[1]];
+  s.transform.opacity.defaultValue = 0;
+  if (ref) { s.inPoint = ref.inPoint; s.outPoint = ref.outPoint; } else { s.inPoint = rig.group.inPoint; s.outPoint = rig.group.outPoint; }
+  return s;
+}
+
 /** The icon showing at a frame (the most opaque one). */
 export function cursorIconAt(rig: CursorRigRef, frame: number): AgentCursorIcon | null {
   let best: AgentCursorIcon | null = null, bestOp = -1;
-  for (const kind of AGENT_CURSOR_ICONS) {
+  for (const kind of ALL_AGENT_CURSOR_ICONS) {
     const l = rig.icons[kind];
     if (!l) continue;
     const op = evaluateNumber(l.transform.opacity, frame);
@@ -254,11 +292,11 @@ export function cursorIconAt(rig: CursorRigRef, frame: number): AgentCursorIcon 
 
 /** Hold-step the icons' opacity so `icon` shows from `frame` on (the others hide). Returns the changed icon layers. */
 export function planCursorIcon(rig: CursorRigRef, frame: number, icon: AgentCursorIcon): ShapeLayer[] {
-  if (!isAgentIcon(icon)) throw new Error(`"icon" must be one of ${AGENT_CURSOR_ICONS.join(', ')}`);
+  if (!isAgentIcon(icon)) throw new Error(`"icon" must be one of ${ALL_AGENT_CURSOR_ICONS.join(', ')}`);
   if (!rig.icons[icon]) throw new Error(`this cursor has no "${icon}" icon`);
   const f = Math.round(frame);
   const out: ShapeLayer[] = [];
-  for (const kind of AGENT_CURSOR_ICONS) {
+  for (const kind of ALL_AGENT_CURSOR_ICONS) {
     const l = rig.icons[kind];
     if (!l) continue;
     const prev = evaluateNumber(l.transform.opacity, f - 1);
