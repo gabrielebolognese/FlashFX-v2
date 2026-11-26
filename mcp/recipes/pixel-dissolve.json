@@ -1,0 +1,125 @@
+{
+  "id": "pixel-dissolve",
+  "name": "Pixel-block build-on / dissolve",
+  "category": "transition",
+  "description": "A layer (card, photo, text, video) builds on or dissolves in whole seeded squares, stepped on twos for the 8-bit read. Pass the layer box as rx / ry / rw / rh for directional / centre orders.",
+  "source": [
+    "r01 f300-316 card dissolves out in ~16 px blocks",
+    "r01 f326-358 builds on"
+  ],
+  "taste": [
+    "TASTE.md 3 Timing"
+  ],
+  "params": {
+    "layerId": {
+      "type": "layerId",
+      "description": "The layer to reveal or dissolve (shape, text, image, video, lottieIcon)."
+    },
+    "direction": {
+      "type": "enum",
+      "enum": [
+        "in",
+        "out"
+      ],
+      "default": "out",
+      "description": "in = build-on, out = dissolve."
+    },
+    "order": {
+      "type": "enum",
+      "enum": [
+        "random",
+        "directional",
+        "center"
+      ],
+      "default": "random",
+      "description": "Which blocks go first."
+    },
+    "angle": {
+      "type": "number",
+      "default": 0,
+      "description": "Directional sweep, degrees (0 = left to right)."
+    },
+    "blockSize": {
+      "type": "number",
+      "default": 16,
+      "min": 2,
+      "description": "Block edge px."
+    },
+    "length": {
+      "type": "number",
+      "default": 16,
+      "min": 2,
+      "description": "Transition length, frames at 30 fps."
+    },
+    "seed": {
+      "type": "integer",
+      "default": 1,
+      "description": "Change for a different block order."
+    },
+    "rx": {
+      "type": "number",
+      "default": null,
+      "description": "Region left, comp px (default 0)."
+    },
+    "ry": {
+      "type": "number",
+      "default": null,
+      "description": "Region top, comp px (default 0)."
+    },
+    "rw": {
+      "type": "number",
+      "default": null,
+      "description": "Region width px (default the comp width). Use the layer box for directional / centre orders."
+    },
+    "rh": {
+      "type": "number",
+      "default": null,
+      "description": "Region height px (default the comp height)."
+    }
+  },
+  "length30": "length",
+  "checkFrames30": [
+    "length * 0.5"
+  ],
+  "lets": {
+    "RX": "rx == null ? 0 : rx",
+    "RY": "ry == null ? 0 : ry",
+    "RW": "rw == null ? W : rw",
+    "RH": "rh == null ? H : rh"
+  },
+  "steps": [
+    {
+      "id": "pb",
+      "action": "agent.pixelBlockReveal",
+      "args": {
+        "layerId": "{{layerId}}",
+        "options": {
+          "direction": "{{direction}}",
+          "order": "{{order}}",
+          "angle": "{{angle}}",
+          "startFrame": "{{start}}",
+          "durationFrames": "{{end - start}}",
+          "blockSize": "{{blockSize}}",
+          "seed": "{{seed}}",
+          "stepFrames": "{{f(2)}}",
+          "region": {
+            "x": "{{RX}}",
+            "y": "{{RY}}",
+            "width": "{{RW}}",
+            "height": "{{RH}}"
+          }
+        }
+      }
+    }
+  ],
+  "returns": {
+    "maskId": "{{@pb.result.maskId}}"
+  },
+  "example": {
+    "params": {
+      "layerId": "LAYER",
+      "direction": "out"
+    },
+    "startFrame": 10
+  }
+}

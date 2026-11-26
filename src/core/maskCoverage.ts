@@ -32,6 +32,7 @@ import type { ResolvedMask, PathVertex, Vec2, MaskMode } from './types';
 import type { MaskField } from './refineEdge';
 import { maskPathToComp } from './maskPath';
 import { fitStroke, fitCubicSegment } from './strokeFit';
+import { BLOCKS_MASK_TYPE, BLOCKS_MASK_SLOTS, blocksSlotVisible, packBlocksData } from './pixelBlocks';
 
 export const MASK_SLOTS = 8;
 export const MASK_SLOT_FLOATS = 12;
@@ -67,8 +68,16 @@ const finiteOr0 = (v: number | undefined) => (typeof v === 'number' && Number.is
 
 /** A resolved mask that renders as a freeform outline (has a resolved `vertices` array). */
 export function isFreeformResolved(m: ResolvedMask): m is ResolvedMask & { vertices: PathVertex[] } {
-  return Array.isArray(m.vertices) && m.vertices.length > 0;
+  return !m.blocks && Array.isArray(m.vertices) && m.vertices.length > 0;
 }
+
+/** B54: a resolved pixel-block mask (a fixed 2-slot run: header + data). */
+export function isBlocksResolved(m: ResolvedMask): m is ResolvedMask & { blocks: NonNullable<ResolvedMask['blocks']> } {
+  return !!m.blocks;
+}
+
+/** Fixed slot cost of a non-freeform mask (parametric 1, pixel blocks 2). */
+const fixedSlots = (m: ResolvedMask) => (isBlocksResolved(m) ? BLOCKS_MASK_SLOTS : 1);
 
 /** A freeform outline encoded for the shader. */
 export interface PackedFreeform {
@@ -344,7 +353,7 @@ export function freeformSlotNeed(vertexCount: number): number {
  */
 export function allocateFreeformSlots(masks: ResolvedMask[]): number[] {
   const alloc = new Array<number>(masks.length).fill(0);
-  let remaining = MASK_SLOTS - masks.filter((m) => !isFreeformResolved(m)).length;
+  let remaining = MASK_SLOTS - masks.filter((m) => !isFreeformResolved(m)).reduce((n, m) => n + fixedSlots(m), 0);
   const order = masks
     .map((m, i) => ({ i, need: isFreeformResolved(m) && m.vertices.length >= 3 ? freeformSlotNeed(m.vertices.length) : 0 }))
     .filter((e) => e.need > 0)
@@ -377,6 +386,26 @@ export function packMaskSlots(masks: ResolvedMask[] | undefined, out: Float32Arr
   for (let i = 0; i < masks.length && slot < MASK_SLOTS; i++) {
     const m = masks[i];
     const base = offset + slot * MASK_SLOT_FLOATS;
+    if (isBlocksResolved(m)) {
+      // B54 pixel blocks: header (region + seed) + one data slot (progress / order / direction).
+      if (slot + BLOCKS_MASK_SLOTS > MASK_SLOTS) continue;
+      out[base] = BLOCKS_MASK_TYPE;
+      out[base + 1] = maskModeCode(m);
+      out[base + 2] = m.opacity;
+      out[base + 3] = Math.max(1, m.blocks.size);
+      out[base + 4] = m.centerX;
+      out[base + 5] = m.centerY;
+      out[base + 6] = m.sizeX * 0.5;
+      out[base + 7] = m.sizeY * 0.5;
+      out[base + 8] = m.rotation * (Math.PI / 180);
+      out[base + 9] = m.blocks.seed;
+      out[base + 10] = BLOCKS_MASK_SLOTS;
+      out[base + 11] = 0;
+      const data = packBlocksData(m.blocks);
+      for (let k = 0; k < MASK_SLOT_FLOATS; k++) out[base + MASK_SLOT_FLOATS + k] = data[k];
+      slot += BLOCKS_MASK_SLOTS;
+      continue;
+    }
     if (!isFreeformResolved(m)) {
       out[base] = MASK_TYPE_ID[m.type] ?? 1;
       out[base + 1] = maskModeCode(m);
@@ -590,6 +619,18 @@ function freeformEval(b: ArrayLike<number>, o: number, x: number, y: number, ban
   return inv ? { a, sd: -sd, gx: -gx, gy: -gy, shapeSd: sd } : { a, sd, gx, gy, shapeSd: sd };
 }
 
+// B54 pixel blocks: hard 0 / 1 coverage per block. The "distance" is half a block, signed by
+// visibility (inside the kept region < 0), with no gradient: Refine Edge has no edge to refine there.
+function blocksEval(b: ArrayLike<number>, o: number, x: number, y: number): MaskEval {
+  const vis = blocksSlotVisible(b, o, x, y);
+  const half = Math.max(b[o + 3], 1) * 0.5;
+  const d = vis ? -half : half;
+  let a = vis ? 1 : 0;
+  const inv = decodeInvert(b[o + 1]);
+  if (inv) a = 1 - a;
+  return inv ? { a, sd: -d, gx: 0, gy: 0 } : { a, sd: d, gx: 0, gy: 0 };
+}
+
 /** Freeform coverage at (x, y) for the run whose header is at float `o` (alpha after opacity), plus the
  *  outline's signed distance (after expansion, before invert). */
 export function freeformCoverage(b: ArrayLike<number>, o: number, x: number, y: number): { alpha: number; signedDist: number } {
@@ -620,6 +661,9 @@ export function maskStackField(block: ArrayLike<number>, offset: number, slotCou
     let adv = 1;
     if (t === FREEFORM_MASK_TYPE) {
       ev = freeformEval(block, o, x, y, band);
+      adv = Math.max(Math.round(block[o + 10]), 1);
+    } else if (t === BLOCKS_MASK_TYPE) {
+      ev = blocksEval(block, o, x, y);
       adv = Math.max(Math.round(block[o + 10]), 1);
     } else {
       ev = parametricEval(block, o, x, y, band);

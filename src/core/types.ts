@@ -428,6 +428,44 @@ export interface RefineEdge {
   decontaminate: number;
 }
 
+/**
+ * Pixel-block dissolve / build-on (B54). A mask carrying `blocks` is a seeded block pattern instead of
+ * an analytic shape: its rectangle (position / size / rotation) is the block grid's region (the grid
+ * starts at the region's top-left corner, blocks are `size` px squares in comp space and the grid
+ * continues past the region, so nothing outside it is clipped). Each block gets a threshold in [0, 1)
+ * from its order (seeded random, directional sweep or centre-out, `jitter` mixes randomness into the
+ * last two); at `progress` p a block is shown when threshold < p ('in' = build-on) or hidden ('out' =
+ * dissolve). Evaluated per pixel in the mask WGSL (core/maskCoverage.ts is the CPU twin), so it works
+ * on every masked pipeline. Frame-pure: an integer hash of (seed, block index), no Math.random.
+ */
+export type PixelBlockOrder = 'random' | 'directional' | 'center';
+
+export interface MaskBlocks {
+  /** Block edge in comp px (>= 1). */
+  size: number;
+  /** Integer seed (0 .. 2^24 - 1) of the block thresholds. */
+  seed: number;
+  order: PixelBlockOrder;
+  /** Directional order: sweep direction in degrees (0 = left to right, 90 = top to bottom). */
+  angle: number;
+  /** 0..1 randomness mixed into the directional / centre order (ignored by random). */
+  jitter: number;
+  /** 'in' = blocks appear as progress goes 0 -> 1 (build-on); 'out' = they disappear (dissolve). */
+  direction: 'in' | 'out';
+  /** 0..1, keyframable (agent.pixelBlockReveal keys it). */
+  progress: AnimatableProperty;
+}
+
+export interface ResolvedMaskBlocks {
+  size: number;
+  seed: number;
+  order: PixelBlockOrder;
+  angle: number;
+  jitter: number;
+  direction: 'in' | 'out';
+  progress: number;
+}
+
 export interface Mask {
   id: string;
   name: string;
@@ -454,6 +492,9 @@ export interface Mask {
   mode?: MaskMode;
   // B10e: grow (+) or choke (-) the edge in px without redrawing the outline (AE Mask Expansion).
   expansion?: AnimatableProperty;
+  // B54: pixel-block dissolve / build-on. When present the mask is the seeded block pattern (the
+  // rectangle is its region; feather / expansion / vertices are ignored). Absent = an ordinary mask.
+  blocks?: MaskBlocks;
 }
 
 export interface ResolvedMask {
@@ -475,6 +516,8 @@ export interface ResolvedMask {
   // B10e: combine mode (absent = 'intersect') and the evaluated edge expansion in px (absent = 0).
   mode?: MaskMode;
   expansion?: number;
+  // B54: the evaluated pixel-block pattern (present only on a blocks mask).
+  blocks?: ResolvedMaskBlocks;
 }
 
 // A keyframeable 2.5D projected shadow. The shadow is rendered as a separate

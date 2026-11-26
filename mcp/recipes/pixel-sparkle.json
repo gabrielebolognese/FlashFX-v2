@@ -1,0 +1,33 @@
+{
+  "id": "pixel-sparkle",
+  "name": "8-bit sparkle around a word",
+  "category": "accent",
+  "description": "Stepped lime squares that flicker and crawl in a ring around a target box (a word, a button, a code) without covering it, on twos. Pass the box from measure_text ink (x = left, y = top). Lands as a group of square shape layers with hold keys.",
+  "source": ["r07 f5-55 lime squares around 'Video editors!'", "r07 f926-975 blocks around 'Use my code'"],
+  "taste": ["TASTE.md 3 Timing", "7 Colour"],
+  "params": {
+    "x": { "type": "number", "default": null, "description": "Box left (comp px, default centred)." },
+    "y": { "type": "number", "default": null, "description": "Box top (comp px, default centred)." },
+    "width": { "type": "number", "default": null, "description": "Box width px (default 40 % of the comp width)." },
+    "height": { "type": "number", "default": null, "description": "Box height px (default 12 % of the comp height)." },
+    "color": { "type": "color", "default": "#b8ff2e", "description": "Square colour (the piece's accent)." },
+    "count": { "type": "integer", "default": 12, "min": 1, "description": "Squares." },
+    "blockSize": { "type": "number", "default": null, "description": "Square edge px (default 1.5 % of the short side, at least 8)." },
+    "length": { "type": "number", "default": 50, "min": 4, "description": "Sparkle length, frames at 30 fps." },
+    "seed": { "type": "integer", "default": 7, "description": "Change for a different pattern." }
+  },
+  "length30": "length",
+  "checkFrames30": ["length * 0.2", "length * 0.6"],
+  "lets": {
+    "BW": "width == null ? round(W * 0.4) : width",
+    "BH": "height == null ? round(H * 0.12) : height",
+    "BX": "x == null ? round(CX - BW / 2) : x",
+    "BY": "y == null ? round(CY - BH / 2) : y",
+    "S": "blockSize == null ? max(8, round(min(W, H) * 0.015)) : blockSize"
+  },
+  "steps": [
+    { "id": "sp", "action": "agent.pixelSparkle", "args": { "options": { "box": { "x": "{{BX}}", "y": "{{BY}}", "width": "{{BW}}", "height": "{{BH}}" }, "color": "{{color}}", "startFrame": "{{start}}", "durationFrames": "{{end - start}}", "count": "{{count}}", "blockSize": "{{S}}", "stepFrames": "{{f(2)}}", "seed": "{{seed}}" } } }
+  ],
+  "returns": { "groupId": "{{@sp.result.groupId}}", "squareIds": "{{@sp.result.squareIds}}" },
+  "example": { "params": { "width": 600, "height": 140 }, "startFrame": 0 }
+}

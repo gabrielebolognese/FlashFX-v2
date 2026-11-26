@@ -10,6 +10,7 @@ import type {
   ResolvedImage,
   ResolvedLayer,
   ResolvedMask,
+  ResolvedMaskBlocks,
   RenderFrame,
   Layer,
   Composition,
@@ -924,6 +925,20 @@ function resolveMask(masks: Mask[] | undefined, frame: number): ResolvedMask | u
     innerRadius: Math.max(0, evaluateNumber(mask.innerRadius, frame)),
     ...maskPathFields(mask, frame),
     ...maskModeFields(mask, frame),
+    ...maskBlocksFields(mask, frame),
+  };
+}
+
+// B54 pixel-block mask: evaluate the keyed progress. Empty ({}) for every other mask (unchanged).
+function maskBlocksFields(mask: Mask, frame: number): { blocks?: ResolvedMaskBlocks } {
+  const b = mask.blocks;
+  if (!b) return {};
+  const p = evaluateNumber(b.progress, frame);
+  return {
+    blocks: {
+      size: b.size, seed: b.seed, order: b.order, angle: b.angle, jitter: b.jitter, direction: b.direction,
+      progress: Number.isFinite(p) ? clamp(p, 0, 1) : 0,
+    },
   };
 }
 
@@ -968,6 +983,7 @@ function resolveMasks(masks: Mask[] | undefined, frame: number): ResolvedMask[] 
       innerRadius: Math.max(0, evaluateNumber(mask.innerRadius, frame)),
       ...maskPathFields(mask, frame),
       ...maskModeFields(mask, frame),
+      ...maskBlocksFields(mask, frame),
     });
   }
   return result;

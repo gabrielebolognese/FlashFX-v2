@@ -57,7 +57,9 @@ export type AgentHelperMethod =
   | 'cursorMoveTo'
   | 'cursorClick'
   | 'cursorIcon'
-  | 'setTextCaret';
+  | 'setTextCaret'
+  | 'pixelBlockReveal'
+  | 'pixelSparkle';
 
 export type FeatureStatus = 'shipped' | 'browser-gated' | 'partial';
 
@@ -582,6 +584,18 @@ export const AGENT_ACTIONS: readonly AgentActionSpec[] = [
   { id: 'editor.addAnimationItem', store: 'editor', method: 'addAnimationItem', undoable: true, returns: 'new layer id (activeLayerId)',
     description: 'Add an animation item (ready-made animated element).', params: [{ name: 'presetName', type: 'string', catalog: 'animationItems' }] },
 
+  // ----- B54 pixel-block dissolve / build-on + 8-bit sparkle (core/pixelBlocks.ts, animation-templates/pixelSparkle.ts) -----
+  { id: 'agent.pixelBlockReveal', store: 'agent', method: 'pixelBlockReveal', undoable: true,
+    returns: '{ maskId, maskIndex, region, blockSize, order, direction, keys }',
+    description: 'Pixel-block dissolve ("out") or build-on ("in") on a masked layer (shape, text, image, video, lottieIcon): appends ONE intersect mask whose rectangle is the block grid region and whose keyed "blocks.progress" (0 -> 1) shows or hides whole seeded squares, rendered per pixel on the GPU. Frame-pure (seeded hash, scrubbing is identical). Edit later with editor.updateMaskProperty (path "blocks.size", "blocks.seed", "blocks.order", "blocks.angle", "blocks.jitter", "blocks.direction"; re-time by setting "blocks.progress" or calling this again on a fresh layer). One undo step.',
+    params: [LAYER_ID, { name: 'options', type: '{ direction: "in" | "out"; startFrame: number; durationFrames: number; region?: { x: number; y: number; width: number; height: number }; blockSize?: number; order?: "random" | "directional" | "center"; angle?: number; jitter?: number; seed?: number; stepFrames?: number; name?: string }',
+      description: 'region: comp px, top-left origin, default the whole comp (pass the layer box for directional / centre orders so the sweep spans the layer). blockSize px (default 16). angle: directional sweep in degrees (0 = left to right, 90 = top to bottom). jitter 0..1 (default 0.35). stepFrames 1 = new blocks every frame, 2 = on twos.' }] },
+  { id: 'agent.pixelSparkle', store: 'agent', method: 'pixelSparkle', undoable: true,
+    returns: '{ groupId, squareIds, cells, steps }',
+    description: '8-bit sparkle: stepped, seeded squares that flicker and crawl in a ring around a target box (a word, a button) without covering it. Lands as editable layers: a group at the box centre holding `count` square shape layers with hold keys on position and opacity. Frame-pure. One undo step.',
+    params: [{ name: 'options', type: '{ box: { x: number; y: number; width: number; height: number }; color: [r, g, b, a]; startFrame: number; durationFrames: number; count?: number; blockSize?: number; margin?: number; stepFrames?: number; density?: number; wander?: number; seed?: number; name?: string }',
+      description: 'box: comp px, top-left origin. count default 12, blockSize 16, margin 3 blocks, stepFrames 2, density 0.6 (share of squares on per step), wander 0.65 (chance to crawl to a neighbouring cell instead of jumping).' }] },
+
   // ----- B51 cursor rig (animation-templates/cursorRig.ts) -----
   { id: 'agent.addCursor', store: 'agent', method: 'addCursor', undoable: true,
     returns: '{ cursorId, icons: { arrow, hand, ibeam }, frame }',
@@ -793,6 +807,11 @@ export const AGENT_FEATURES: readonly AgentFeature[] = [
     description: 'Rectangle / ellipse / star / polygon masks with AE modes, feather, expansion, plus one-click iris / wipe reveals.',
     ui: 'Inspector > Masks tab > add a mask; reveal buttons in the same tab',
     actions: ['editor.addMask', 'editor.removeMask', 'editor.updateMaskProperty', 'editor.addMaskKeyframe', 'editor.applyMaskReveal'], status: 'shipped' },
+  { id: 'masks.pixel-blocks', area: 'masks', name: 'Pixel-block dissolve / build-on + 8-bit sparkle',
+    description: 'Seeded pixel-block transitions on any masked layer (random, directional sweep or centre-out; build-on or dissolve; stepped on ones or twos) and an 8-bit sparkle of flickering squares around a target box.',
+    ui: 'Agent / MCP only (the mask lands in the layer Masks list; its progress keys are ordinary keys)',
+    actions: ['agent.pixelBlockReveal', 'agent.pixelSparkle', 'editor.updateMaskProperty'], status: 'shipped',
+    notes: 'A blocks mask takes 2 of the 8 mask slots and combines by intersect with the other masks. Blocks are squares in comp px; region corners round to whole pixels so block edges stay crisp.' },
   { id: 'masks.track-matte', area: 'masks', name: 'Track mattes',
     description: 'Alpha / luma (inverted) matte from the layer above.', ui: 'Inspector (properties) > Matte dropdown',
     actions: ['editor.setTrackMatte'], status: 'shipped' },

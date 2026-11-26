@@ -302,6 +302,17 @@ Never leave real motion on linear (the default for `addKeyframe`), except progre
   the layer, keep the mask still.
 - `editor.updateMaskProperty { path: "position.defaultValue" | "size.defaultValue" | "feather.defaultValue" | "mode" }`;
   keyframe with `editor.addMaskKeyframe`. Masks now clip animated and accent-styled text too.
+- **Pixel-block dissolve / build-on (B54).** `agent.pixelBlockReveal { layerId, options: { direction: "in" | "out",
+  startFrame, durationFrames, region?, blockSize?, order?, angle?, jitter?, seed?, stepFrames? } }` appends one intersect
+  mask whose keyed `blocks.progress` shows ("in") or hides ("out") whole seeded squares, rendered per pixel on the GPU
+  (r01 card dissolve f300-316, build-on f326-358). `region` is comp px, top-left (default the whole comp): pass the layer
+  box for `order: "directional"` (sweep, `angle` 0 = left to right) or `"center"` (centre-out) so the sweep spans the
+  layer. `stepFrames: 2` steps the blocks on twos (8-bit read). Frame-pure: scrubbing is identical. A blocks mask takes 2
+  of the 8 mask slots. Recipe: `pixel-dissolve`.
+- **8-bit sparkle (B54).** `agent.pixelSparkle { options: { box, color, startFrame, durationFrames, count?, blockSize?,
+  margin?, stepFrames?, density?, wander?, seed? } }`: seeded squares flicker and crawl in a ring around `box` (comp px,
+  top-left; use the `measure_text` ink box of a word) and never cover it (r07 lime squares around "Video editors!"). Lands
+  as a group of square shape layers with hold keys (editable). Recipe: `pixel-sparkle`.
 
 ## 8. Effects, images, particles
 

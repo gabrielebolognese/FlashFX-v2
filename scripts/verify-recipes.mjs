@@ -4,7 +4,7 @@
 // layers on the WebGPU renderer) is the taste-proof build, run locally.
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
-import { spawn, execFileSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
@@ -55,9 +55,10 @@ assert.throws(() => normalizeParams(kt, { text: 'x', color: 'red' }), /colour|mu
 ok(normalizeParams(kt, { text: 'x', color: '#ff0000' }).color[0] === 1, 'hex colours are normalised to RGBA');
 
 // ---- 3. Every action a recipe calls is whitelisted --------------------------------------------
-const manifestPath = join(ROOT, 'public/agent/features.json');
-if (!existsSync(manifestPath)) execFileSync(process.execPath, [join(ROOT, 'scripts/gen-agent-manifest.mjs')], { cwd: ROOT, stdio: 'ignore' });
-const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+// Built in memory from the current src/agent/featureManifest.ts: public/agent/features.json is a generated,
+// gitignored file that is only refreshed by dev / build, so reading it could check against a stale whitelist.
+const { generateAgentManifest } = await import(new URL('./gen-agent-manifest.mjs', import.meta.url));
+const manifest = await generateAgentManifest();
 const whitelist = new Map(manifest.actions.map((a) => [a.id, a]));
 const presets = new Set((manifest.catalogs.textAnimatorPresets ?? []).map((p) => p.id));
 const easings = new Set((manifest.catalogs.easings ?? []).map((p) => p.id));
