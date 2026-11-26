@@ -519,8 +519,8 @@ within 1 px of the camera projection). 2.5D only: flat cards in space, no extrus
    A 4 s 1080p piece renders in about 7 s. Comps with video clips export too (B68): the exporter
    and `render_frame` decode their own full-resolution frames (one forward decoder per clip, video
    inside precomps included), so the exported frame at t matches `render_frame(t)`; no need for the
-   old render_frame-per-frame fallback (r07's `render_mp4.mjs`). Pass both `width` and `height` for
-   a scaled export (width alone keeps the comp height).
+   old render_frame-per-frame fallback (r07's `render_mp4.mjs`). Pass `width` (or `height`) alone and
+   the other side follows the comp aspect (540 on a 1080x1920 comp gives 540x960); pass both for an exact size.
 3. Optional proof: `import_project { path }` re-opens the `.ffx` as a new project
    (`mcp/examples/verify-roundtrip.mjs`).
 

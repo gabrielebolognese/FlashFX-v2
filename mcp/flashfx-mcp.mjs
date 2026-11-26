@@ -310,8 +310,8 @@ const TOOLS = [
       required: ['path'],
       properties: {
         path: { type: 'string', description: 'Output .mp4 path on this machine.' },
-        width: { type: 'number' },
-        height: { type: 'number' },
+        width: { type: 'number', description: 'Output width. Alone, the height follows the composition aspect.' },
+        height: { type: 'number', description: 'Output height. Alone, the width follows the composition aspect.' },
         frameRate: { type: 'number' },
         bitrate: { type: 'number', description: 'Bits per second (default 8000000).' },
         includeAudio: { type: 'boolean', default: true },

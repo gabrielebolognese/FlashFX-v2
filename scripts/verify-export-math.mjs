@@ -28,7 +28,18 @@ try {
     MIN_EXPORT_DIM, normalizeExportDimensions, validateExportTiming,
     frameTimestampUs, frameDurationUs, isExportKeyframe,
     collectExportVideoDecodes, exportOutputFrameCount, exportCompFrame, computeExportViewport,
+    resolveRequestedExportSize,
   } = await import(pathToFileURL(outfile).href);
+
+  check('resolveRequestedExportSize: one side follows the comp aspect (export_mp4 { width } is not distorted)', () => {
+    assert.deepEqual(resolveRequestedExportSize(1080, 1920, 540), { width: 540, height: 960 });
+    assert.deepEqual(resolveRequestedExportSize(1080, 1920, undefined, 960), { width: 540, height: 960 });
+    assert.deepEqual(resolveRequestedExportSize(1920, 1080, 1280), { width: 1280, height: 720 });
+    assert.deepEqual(resolveRequestedExportSize(1920, 1080, 1000), { width: 1000, height: 562 }); // even
+    assert.deepEqual(resolveRequestedExportSize(1080, 1920, 600, 600), { width: 600, height: 600 }); // both = as given
+    assert.deepEqual(resolveRequestedExportSize(1080, 1920), { width: 1080, height: 1920 });
+    assert.deepEqual(resolveRequestedExportSize(1080, 1920, Number.NaN), { width: 1080, height: 1920 });
+  });
 
   check('rounds odd dimensions down to even', () => {
     assert.deepEqual(normalizeExportDimensions(1921, 1081), { width: 1920, height: 1080 });

@@ -129,6 +129,11 @@ try {
     check(`r07 project.ffx (5 clips) exports end to end with the real exporter (${rexp.result.bytes} bytes, ${rsecs} s, ffprobe ${rprobe})`, () => {
       assert.ok(statSync(RMP4).size === rexp.result.bytes && rexp.result.bytes > 100000);
     });
+    // width alone: the height follows the comp aspect (1080x1920 -> 540x960, not a distorted 540x1920).
+    const [rpw, rph] = rprobe.split(',').map(Number);
+    check(`r07 width-only export keeps the comp aspect (${rpw}x${rph})`, () => {
+      assert.deepEqual([rpw, rph], [540, 960]);
+    });
     const mid = join(OUT, 'b68-r07-f600.png');
     await mcp.call('render_frame', { frame: 600, width: 540, path: mid, inline: false }, { timeoutMs: 300000 });
     const [rw, rh] = rprobe.split(',').map(Number);

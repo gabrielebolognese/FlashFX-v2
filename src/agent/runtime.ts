@@ -24,7 +24,7 @@ import { useOnboardingStore } from '../onboarding/store';
 import { usePanelStore, type UiMode } from '../store/panels';
 import { playbackController, useTimelineStore } from '../store/timeline';
 import { exportToMp4, type ExportSettings } from '../codec/exporter';
-import { collectExportVideoDecodes } from '../codec/exportMath';
+import { collectExportVideoDecodes, resolveRequestedExportSize } from '../codec/exportMath';
 import { WebGPURenderer } from '../engine/renderer';
 import { EXPORT_MOTION_BLUR_SAMPLES } from '../store/preview';
 import { ExportFrameSource } from '../engine/video/exportFrameSource';
@@ -649,8 +649,13 @@ const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
   exportMp4: async (width, height, frameRate, bitrate, includeAudio) => {
     const ed = useEditorStore.getState();
     const settings: Partial<ExportSettings> = {};
-    if (typeof width === 'number') settings.width = width;
-    if (typeof height === 'number') settings.height = height;
+    if (typeof width === 'number' || typeof height === 'number') {
+      // One side only: the other follows the comp aspect (no distorted 540x1920 from { width: 540 }).
+      const size = resolveRequestedExportSize(ed.composition.settings.width, ed.composition.settings.height,
+        typeof width === 'number' ? width : undefined, typeof height === 'number' ? height : undefined);
+      settings.width = size.width;
+      settings.height = size.height;
+    }
     if (typeof frameRate === 'number') settings.frameRate = frameRate;
     if (typeof bitrate === 'number') settings.bitrate = bitrate;
     settings.includeAudio = includeAudio !== false;

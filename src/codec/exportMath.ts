@@ -21,6 +21,20 @@ export function normalizeExportDimensions(reqWidth: number, reqHeight: number): 
   };
 }
 
+/** Requested export size for the agent path (export_mp4): a missing side follows the comp aspect, so
+ *  `{ width: 540 }` on a 1080x1920 comp gives 540x960 instead of a distorted 540x1920. Both given = as is;
+ *  neither = the comp size. The result still goes through normalizeExportDimensions (even, >= minimum). */
+export function resolveRequestedExportSize(
+  compW: number, compH: number, width?: number, height?: number,
+): { width: number; height: number } {
+  const w = typeof width === 'number' && Number.isFinite(width) ? width : undefined;
+  const h = typeof height === 'number' && Number.isFinite(height) ? height : undefined;
+  if (w !== undefined && h !== undefined) return { width: w, height: h };
+  if (w !== undefined) return { width: w, height: Math.round((w * compH) / compW / 2) * 2 };
+  if (h !== undefined) return { width: Math.round((h * compW) / compH / 2) * 2, height: h };
+  return { width: compW, height: compH };
+}
+
 /** Fail fast + clearly on an empty/invalid composition instead of spinning up the encoder for nothing. */
 export function validateExportTiming(totalFrames: number, frameRate: number): void {
   if (!Number.isFinite(totalFrames) || totalFrames <= 0) {
