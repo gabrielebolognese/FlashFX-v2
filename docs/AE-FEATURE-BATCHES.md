@@ -114,7 +114,7 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | B51 | Refs: agent-reachable cursor + click rig (expose `animation-templates/cursor.ts`: move-to-target, dwell, click squash, icon swap) - completes the B35 UI-mock kit (ref gap #5: r03 r06) | ✅ (headless-GPU verified) | light |
 | B52 | Refs: font library - more bundled families (wide grotesque, rounded display, pixel, monoline script, geometric with alternates), 500 / 600 weights, true italic serif, `agent.importFont {path}` over `engine/customFonts.ts` (ref gap #6: r01 r02 r03; absorbs the italic part of B42) | ✅ (headless-GPU verified; Damion replaces Apache-licensed Yellowtail, files are WOFF) | medium |
 | B53 | Refs: perspective cards - prove the 2.5D card render headless (`gpu:camera-cards`), corner pin for text / shape / precomp layers, agent camera move helpers (ref gap #4: r01 r03 r05 r07) | ✅ (headless-GPU verified) | medium |
-| B54 | Refs: seeded pixel-block dissolve / build-on for any layer + 8-bit sparkle generator (ref gap #10: r01 r07) | ⬜ | medium |
+| B54 | Refs: seeded pixel-block dissolve / build-on for any layer + 8-bit sparkle generator (ref gap #10: r01 r07) | ✅ | medium |
 | B55 | Refs: word roll / slot swap text primitive (stepped or rolled vertical word list, in-place swap, per-row colour) (ref gap #11: r03 r04) | ⬜ | light |
 | B56 | Refs: animatable text on path - keyframable `textPath.margin` + path-shape keyframes bound to the text (unfurl along a curl, text riding an opening mask edge) (ref gap #18: r05) | ⬜ | medium |
 | B57 | Refs: effect stack on text / shape / precomp layers (today image + adjustment only) + layer-local bulge / mesh warp with animatable centre and radius (ref gap #12: r01 r05) | ⬜ (browser) | **heavy** |
@@ -859,13 +859,22 @@ Source: the frame-by-frame breakdowns of the 7 motion references the owner sent 
 - **Likely files:** `src/core/camera3d.ts`, `src/core/mat4.ts`, `src/engine/renderer.ts` (card path), `src/core/tracking/` (homography), `src/agent/runtime.ts`, `scripts/gpu-camera-cards.mjs`.
 - **Verification:** gates + `verify:camera3d` + new `gpu:camera-cards` (pixel corners within 1 px of the projection) + `verify:corner-pin`.
 
-## B54 - Pixel-block dissolve / build-on ⬜
+## B54 - Pixel-block dissolve / build-on ✅
 - **Delivers:** a seeded pixel-block transition for any layer (block size px, order random / directional / from-centre, in or out, duration) as a reveal mask resolved per frame, plus an "8-bit sparkle" generator (stepped random squares around a target box, accent colour). Frame-pure (mulberry32), agent-reachable as presets.
 - **Source beats:** r01 f300-316 (card dissolves out in ~16 px blocks), f326-358 (builds on); r07 f5-55 (lime squares flicker around "Video editors!"), f926-975 (blocks around "Use my code").
 - **Depends on:** nothing (masks / matte coverage exist).
 - **Perf weight:** medium.
 - **Likely files:** `src/core/maskReveal.ts`, `src/core/maskCoverage.ts`, `src/animation-templates/`, `src/agent/featureManifest.ts`.
 - **Verification:** gates + `scripts/verify-pixel-blocks.mjs` (coverage per frame follows the seeded schedule, scrubbing is byte-identical) + headless render check.
+- **Built (wave 2, Nov 2026):** `Mask.blocks` (seeded block pattern on a rectangle region: size, seed, order random /
+  directional / center, angle, jitter, in / out, keyed progress), evaluated per pixel in the mask WGSL (`mask_blocksEval`,
+  a 2-slot run) with the CPU twin in `core/pixelBlocks.ts` + `core/maskCoverage.ts`; persisted through validation.
+  `agent.pixelBlockReveal` (one undo step) and `agent.pixelSparkle` (`animation-templates/pixelSparkle.ts`: a group of
+  hold-keyed squares crawling in a ring around a box); feature `masks.pixel-blocks`; recipes `pixel-dissolve`,
+  `pixel-sparkle`; `mcp/AUTHORING.md` section 7.
+- **Verified:** `verify:pixel-blocks` 20/20; `gpu:pixel-blocks` 6/6 through the MCP: the GPU mask equals the CPU twin
+  block by block (400 / 400 blocks at f5, f20, f26, f35), dissolve 400 -> 177 -> 85 -> 0 blocks, every block uniform
+  inside, scrubbing back renders the identical set, the sparkle puts 2661 lime px in the ring and 0 on the box.
 
 ## B55 - Word roll / slot swap ⬜
 - **Delivers:** a text primitive for a vertical word list that steps or rolls (one row per step, hold or eased), with a mask window, per-row colour / opacity (centre bright, neighbours dim) and in-place word swap inside a sentence (the line re-flows around the new word). Agent action `agent.addWordRoll({words, steps:[{frame}], ease})`.

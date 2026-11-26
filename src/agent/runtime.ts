@@ -49,6 +49,9 @@ import {
   buildAgentCursor, findCursorRig, planCursorMove, planCursorClick, buildClickRipple, planCursorIcon, cursorIconAt,
   AGENT_CURSOR_ICONS, type AgentCursorIcon,
 } from '../animation-templates/cursorRig';
+import { buildPixelBlockMask } from '../animation-templates/pixelBlockReveal';
+import { buildPixelSparkle } from '../animation-templates/pixelSparkle';
+import { isPixelBlockOrder } from '../core/pixelBlocks';
 import type { KeyframeEaseSpec } from '../core/keyframeSpecs';
 import { normalizeTextCaret } from '../core/textCaret';
 
@@ -226,6 +229,25 @@ export function normalizeArgs(spec: AgentActionSpec, args: unknown): unknown[] {
   let end = positional.length;
   while (end > 0 && positional[end - 1] === undefined) end--;
   return positional.slice(0, end);
+}
+
+// B54 option readers (agent args arrive as JSON).
+function pbObject(v: unknown, label: string): Record<string, unknown> {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) throw new Error(`"${label}" must be an object`);
+  return v as Record<string, unknown>;
+}
+function pbNum(v: unknown, label: string): number {
+  if (typeof v !== 'number' || !Number.isFinite(v)) throw new Error(`"${label}" must be a number`);
+  return v;
+}
+function pbOptNum(v: unknown, label: string): number | undefined {
+  return v === undefined || v === null ? undefined : pbNum(v, label);
+}
+function pbRect(v: unknown, label: string): { x: number; y: number; width: number; height: number } {
+  const r = pbObject(v, label);
+  const out = { x: pbNum(r.x, `${label}.x`), y: pbNum(r.y, `${label}.y`), width: pbNum(r.width, `${label}.width`), height: pbNum(r.height, `${label}.height`) };
+  if (out.width <= 0 || out.height <= 0) throw new Error(`"${label}" needs a positive width and height`);
+  return out;
 }
 
 function requireLayer(layerId: unknown): Layer {
@@ -999,6 +1021,69 @@ const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
     const nextMods = mods.map((m, i) => (i === idx ? { ...trim, offset } : m));
     useEditorStore.getState().applyLayerEdits('Trim start angle', { update: [{ ...layer, modifiers: nextMods }] });
     return { modifierIndex: idx, angle, pathFraction: f, offset: offNow + delta };
+  },
+
+  // ----- B54 pixel-block dissolve / build-on (core/pixelBlocks.ts) + 8-bit sparkle -----
+  pixelBlockReveal: (layerId, options) => {
+    const layer = requireLayer(layerId);
+    if (!(layer.type === 'shape' || layer.type === 'text' || layer.type === 'video' || layer.type === 'image' || layer.type === 'lottieIcon')) {
+      throw new Error(`layer "${String(layerId)}" is a ${layer.type}: pixel blocks need a masked layer (shape, text, image, video, lottieIcon); nest it in a precomp first`);
+    }
+    const o = pbObject(options, 'options');
+    const direction = o.direction;
+    if (direction !== 'in' && direction !== 'out') throw new Error('"options.direction" must be "in" (build-on) or "out" (dissolve)');
+    const comp = useEditorStore.getState().composition;
+    const region = o.region === undefined || o.region === null
+      ? { x: 0, y: 0, width: comp.settings.width, height: comp.settings.height }
+      : pbRect(o.region, 'options.region');
+    const order = o.order;
+    if (order !== undefined && order !== null && !isPixelBlockOrder(order)) throw new Error('"options.order" must be "random", "directional" or "center"');
+    const existing = layer.masks ?? [];
+    if (existing.length > 6) throw new Error(`the layer already has ${existing.length} masks; a blocks mask needs 2 of the 8 mask slots`);
+    const mask = buildPixelBlockMask({
+      region, direction,
+      startFrame: pbNum(o.startFrame, 'options.startFrame'),
+      durationFrames: Math.max(1, pbNum(o.durationFrames, 'options.durationFrames')),
+      blockSize: pbOptNum(o.blockSize, 'options.blockSize'),
+      order: isPixelBlockOrder(order) ? order : undefined,
+      angle: pbOptNum(o.angle, 'options.angle'),
+      jitter: pbOptNum(o.jitter, 'options.jitter'),
+      seed: pbOptNum(o.seed, 'options.seed'),
+      stepFrames: pbOptNum(o.stepFrames, 'options.stepFrames'),
+      name: typeof o.name === 'string' ? o.name : undefined,
+    });
+    const next = { ...layer, masks: [...existing, mask] } as Layer;
+    useEditorStore.getState().applyLayerEdits(direction === 'in' ? 'Pixel-block build-on' : 'Pixel-block dissolve', { update: [next] });
+    const b = mask.blocks;
+    return {
+      maskId: mask.id,
+      maskIndex: existing.length,
+      region: { x: mask.position.defaultValue, size: mask.size.defaultValue },
+      blockSize: b?.size, order: b?.order, direction: b?.direction,
+      keys: b?.progress.keyframes.map((k) => ({ frame: k.frame, value: k.value, interpolation: k.interpolation })),
+    };
+  },
+  pixelSparkle: (options) => {
+    const o = pbObject(options, 'options');
+    const color = o.color;
+    if (!(Array.isArray(color) && color.length === 4 && color.every((c) => typeof c === 'number' && Number.isFinite(c)))) throw new Error('"options.color" must be an RGBA colour [r, g, b, a] (0..1)');
+    const built = buildPixelSparkle({
+      box: pbRect(o.box, 'options.box'),
+      color: [color[0], color[1], color[2], color[3]],
+      startFrame: pbNum(o.startFrame, 'options.startFrame'),
+      durationFrames: Math.max(1, pbNum(o.durationFrames, 'options.durationFrames')),
+      count: pbOptNum(o.count, 'options.count'),
+      blockSize: pbOptNum(o.blockSize, 'options.blockSize'),
+      margin: pbOptNum(o.margin, 'options.margin'),
+      stepFrames: pbOptNum(o.stepFrames, 'options.stepFrames'),
+      density: pbOptNum(o.density, 'options.density'),
+      wander: pbOptNum(o.wander, 'options.wander'),
+      seed: pbOptNum(o.seed, 'options.seed'),
+      name: typeof o.name === 'string' ? o.name : undefined,
+    });
+    if (built.plan.cells.length === 0) throw new Error('the sparkle ring has no cells: increase margin or blockSize');
+    useEditorStore.getState().applyLayerEdits('8-bit sparkle', { add: [built.group, ...built.squares] });
+    return { groupId: built.group.id, squareIds: built.squares.map((q) => q.id), cells: built.plan.cells.length, steps: built.plan.squares[0]?.length ?? 0 };
   },
 
   // ----- B35 typing caret on a text layer (core/textCaret.ts) -----
