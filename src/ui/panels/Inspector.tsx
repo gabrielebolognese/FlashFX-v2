@@ -16,6 +16,7 @@ import { MASK_REVEAL_KINDS, type MaskRevealKind } from '../../core/maskReveal';
 import { isPathMask, maskPathAt, resolveMaskFeathers, setMaskVertexFeather, toggleMaskPathKeyframe } from '../../core/maskPath';
 import type { TrackMatteMode } from '../../core/trackMatte';
 import type { MaskMode, RefineEdge } from '../../core/types';
+import { replaceSpansText } from '../../core/textRuns';
 import type { ShapeLayer, TextLayer, VideoLayer, ImageLayer, AdjustmentLayer, AudioLayer, ParticleLayer, GenerativePatternLayer, CameraLayer, AnimationItemLayer, LottieIconLayer, AnimatableProperty, Vec2, Vec4, RectangleShape, CircleShape, StarShape, PolygonShape, MotionPathAnchor, MotionPathLoop, Mask, MaskType, Layer, LayerShadow, LayerGlow, LayerBlur, BlurType, GlowMode, LayoutObjectLayer, LayoutContainerLayer, TextSpanStyle, TextLayoutConfig, TextGradientFill, ShapeModifierType, BlendMode } from '../../core/types';
 import { BLEND_MODES, BLEND_MODE_META } from '../../core/effects/blendModes';
 import { GLOW_PRESETS, applyGlowPreset } from '../../core/effects/glowParams';
@@ -32,7 +33,7 @@ const FALLBACK_TEXT_LAYOUT: TextLayoutConfig = {
   overflow: 'visible', baselineShift: 0, perGlyphAnimation: false,
 };
 import { evaluateProperty, evaluateNumber, measureLayerPreferredSize } from '../../core/interpolation';
-import { FONT_MANIFEST, defaultTrackingPx } from '../../engine/fonts';
+import { FONT_MANIFEST, FONT_CATEGORY_ORDER, defaultTrackingPx } from '../../engine/fonts';
 import { useCustomFontStore } from '../../engine/customFonts';
 import { autoCaptionAudioLayers, useAutoCaptionStore } from '../../store/autoCaption';
 import { createProperty, createKeyframe, createTextAnimOverrides } from '../../core/factory';
@@ -78,7 +79,7 @@ import type { SplitMode } from '../../core/textExplode';
 
 // Font menu, grouped by category, sourced from the single font manifest (engine/fonts.ts) so
 // the dropdown, the loader and the outline op can't drift apart.
-const FONT_GROUPS: { category: string; families: string[] }[] = (['Sans', 'Display', 'Serif', 'Mono', 'System'] as const)
+const FONT_GROUPS: { category: string; families: string[] }[] = FONT_CATEGORY_ORDER
   .map((cat) => ({ category: cat, families: FONT_MANIFEST.filter((f) => f.category === cat).map((f) => f.family) }))
   .filter((g) => g.families.length > 0);
 
@@ -2232,7 +2233,7 @@ function TextProperties({
         <div className="flex flex-col gap-1">
           <textarea
             value={fullText}
-            onChange={(e) => updateLayerProperty(layer.id, 'content.spans', [{ text: e.target.value, style: style }])}
+            onChange={(e) => updateLayerProperty(layer.id, 'content.spans', spans.length ? replaceSpansText(spans, e.target.value) : [{ text: e.target.value, style: style }])}
             className="w-full bg-surface-3 text-caption text-slate-300 px-2 py-1.5 rounded border border-hairline focus:border-accent-dim outline-none resize-none min-h-[48px]"
             rows={3}
             maxLength={500}

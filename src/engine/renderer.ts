@@ -3,6 +3,7 @@ import { MAX_PRECOMP_DEPTH } from '../core/precomp';
 // 2.5D (M2): per-3D-layer MVP + painter's depth sort. cardMVP/cameraSpaceDepth are pure and
 // harness-verified (verify:camera3d); the renderer just packs the matrix + reorders draws.
 import { cardMVP, cameraSpaceDepth, painterOrder, cocRadius, type ResolvedCamera } from '../core/camera3d';
+import { cornerPinMatrix, cornerPinSourceQuad } from '../core/cornerPin';
 
 /** Options for a recursive precomp render into an offscreen target texture. */
 interface PrecompRenderOpts {
@@ -2282,6 +2283,19 @@ function writeCard3D(data: Float32Array, flagIdx: number, mvpIdx: number, layer:
   data[flagIdx] = 1;
   for (let k = 0; k < 16; k++) data[mvpIdx + k] = m[k];
 }
+
+// Corner pin (B53): warp the layer's quad onto its four resolved pins (comp px) through the SAME mvp
+// vertex path as the 3D cards (flag = 1), so the GPU's perspective-correct interpolation does the
+// projective texture warp. Called after writeCard3D: a pin overrides the 3D card MVP. No-op without a
+// pin, and for an invalid (non-convex / degenerate) pin set, which leaves the layer drawn unpinned.
+// The source box is in the vertex shader's `local` space (already scaled; quads are centred on 0).
+function writeCornerPin(data: Float32Array, flagIdx: number, mvpIdx: number, layer: ResolvedLayer, src: { cx: number; cy: number; w: number; h: number }, compW: number, compH: number): void {
+  if (!layer.cornerPin) return;
+  const m = cornerPinMatrix(cornerPinSourceQuad(src.cx, src.cy, src.w, src.h), layer.cornerPin, compW, compH);
+  if (!m) return;
+  data[flagIdx] = 1;
+  for (let k = 0; k < 16; k++) data[mvpIdx + k] = m[k];
+}
 // Effect slots: 16 × (2 vec4f = type + 7 params). effectCount at float 124,
 // effects array base at float 128.
 const IMAGE_MAX_EFFECTS = 16;
@@ -2311,6 +2325,12 @@ struct PathUniforms {
   maskCount: f32,
   _pad1: f32,
   masks: array<MaskSlot, 8>,
+  // 2.5D (B53): 0 for a 2D layer (untouched path); 1 -> project the scaled local vertex through mvp.
+  is3D: f32,
+  _mvpPad0: f32,
+  _mvpPad1: f32,
+  _mvpPad2: f32,
+  mvp: mat4x4<f32>,
 }
 
 @group(0) @binding(0) var<uniform> u: PathUniforms;
@@ -2343,6 +2363,9 @@ fn vs(in: VertexInput) -> VertexOutput {
   );
   var out: VertexOutput;
   out.position = vec4f(ndc, 0.0, 1.0);
+  // 2.5D (B53): polygon / pen-path / morphing shapes were the one card pipeline without the M2 MVP
+  // path (a 3D path shape rendered flat). Same contract as the quad pipelines: mvp = cardMVP.
+  if (u.is3D > 0.5) { out.position = u.mvp * vec4f(scaled, 0.0, 1.0); }
   out.color = in.color;
   out.world = world;
   return out;
@@ -2357,7 +2380,11 @@ fn fs(in: VertexOutput) -> @location(0) vec4f {
 }
 `;
 
-const PATH_UNIFORM_SIZE = 432;
+// 432 bytes (header 48 + masks 384) + 2.5D (B53) is3D f108 (+pad) and mvp f112..127 = 512 = UNIFORM_ALIGN.
+const PATH_UNIFORM_SIZE = 512;
+const PATH_UNIFORM_FLOATS = 128;
+const PATH_MVP_FLAG = 108; // float index of is3D
+const PATH_MVP_BASE = 112; // float index of mvp[0]
 const PATH_VERTEX_STRIDE = 24; // 6 floats
 const PATH_INITIAL_VERTS = 4096;
 
@@ -4150,6 +4177,11 @@ export class WebGPURenderer {
         const data = new Float32Array(bufferData, SHAPE_UNIFORM_ALIGN * i, SHAPE_UNIFORM_FLOATS);
         this.fillLayerData(data, shapeLayers[i].layer, frame.width, frame.height);
         writeCard3D(data, SHAPE_MVP_FLAG, SHAPE_MVP_BASE, shapeLayers[i].layer, frame.camera);
+        if (shapeLayers[i].layer.cornerPin) {
+          // The shape's own box (no star/circle SDF margin): the margin vertices extrapolate through the warp.
+          const sl = shapeLayers[i].layer, ss = sl.shape!;
+          writeCornerPin(data, SHAPE_MVP_FLAG, SHAPE_MVP_BASE, sl, { cx: 0, cy: 0, w: ss.width * sl.transform.scaleX, h: ss.height * sl.transform.scaleY }, frame.width, frame.height);
+        }
       }
       device.queue.writeBuffer(uniformBuffer, 0, bufferData, 0, SHAPE_UNIFORM_ALIGN * shapeLayers.length);
     }
@@ -4185,6 +4217,7 @@ export class WebGPURenderer {
         data[9] = t.opacity;
         this.writeMaskUniforms(data, 10, 12, textLayer.masks);
         writeCard3D(data, TEXT_MVP_FLAG, TEXT_MVP_BASE, textLayer, frame.camera);
+        writeCornerPin(data, TEXT_MVP_FLAG, TEXT_MVP_BASE, textLayer, { cx: 0, cy: 0, w: data[4], h: data[5] }, frame.width, frame.height);
 
         const gpuTexture = this.getOrCreateTextTexture(gpu, rendered.key, rendered.bitmap, rendered.width, rendered.height);
         if (!gpuTexture) {
@@ -4294,6 +4327,7 @@ export class WebGPURenderer {
         this.writeMaskUniforms(data, 15, 28, vidLayer.masks);
         writeRefineEdge(data, vidLayer);
         writeCard3D(data, IMAGE_MVP_FLAG, IMAGE_MVP_BASE, vidLayer, frame.camera);
+        writeCornerPin(data, IMAGE_MVP_FLAG, IMAGE_MVP_BASE, vidLayer, { cx: 0, cy: 0, w: data[4], h: data[5] }, frame.width, frame.height);
         // Container rotation applied in-shader (replaces the per-frame CPU rotate). EXPORT decodes the
         // ORIGINAL coded frame (never the upright __proxy), so it reads the original rotation; PREVIEW
         // reads the proxy-aware rotation (0 when the upright __proxy is serving this asset).
@@ -4476,6 +4510,7 @@ export class WebGPURenderer {
         this.writeEffectSlots(data, imgEffects);
         data[IMAGE_EFFECTTIME_FLOAT] = frame.frameNumber; // seeds procedural/noise effects
         writeCard3D(data, IMAGE_MVP_FLAG, IMAGE_MVP_BASE, imgLayer, frame.camera);
+        writeCornerPin(data, IMAGE_MVP_FLAG, IMAGE_MVP_BASE, imgLayer, { cx: 0, cy: 0, w: data[4], h: data[5] }, frame.width, frame.height);
 
         let textureView: GPUTextureView | null;
         if (precompView) {
@@ -4561,7 +4596,7 @@ export class WebGPURenderer {
         vertexOffset += tess.vertexCount;
 
         const t = layer.transform;
-        const u = new Float32Array(pathBufData, UNIFORM_ALIGN * i, 108);
+        const u = new Float32Array(pathBufData, UNIFORM_ALIGN * i, PATH_UNIFORM_FLOATS);
         u[0] = frame.width;
         u[1] = frame.height;
         u[2] = t.positionX;
@@ -4573,6 +4608,14 @@ export class WebGPURenderer {
         u[8] = t.rotation * (Math.PI / 180);
         u[9] = t.opacity;
         this.writeMaskUniforms(u, 10, 12, layer.masks);
+        writeCard3D(u, PATH_MVP_FLAG, PATH_MVP_BASE, layer, frame.camera);
+        if (layer.cornerPin && s.vertices.length > 0) {
+          // Path shapes pin their (scaled) vertex bounds.
+          let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+          for (const v of s.vertices) { x0 = Math.min(x0, v.position[0]); x1 = Math.max(x1, v.position[0]); y0 = Math.min(y0, v.position[1]); y1 = Math.max(y1, v.position[1]); }
+          const sx = t.scaleX, sy = t.scaleY;
+          writeCornerPin(u, PATH_MVP_FLAG, PATH_MVP_BASE, layer, { cx: ((x0 + x1) / 2) * sx, cy: ((y0 + y1) / 2) * sy, w: (x1 - x0) * Math.abs(sx), h: (y1 - y0) * Math.abs(sy) }, frame.width, frame.height);
+        }
       }
 
       if (merged.length > 0) {

@@ -29,7 +29,7 @@ export type InterpolationType = 'linear' | 'bezier' | 'hold' | 'spring';
 
 export interface Keyframe {
   frame: number;
-  value: number | Vec2;
+  value: number | Vec2 | Vec4;
   interpolation: InterpolationType;
   handleIn: Vec2;
   handleOut: Vec2;
@@ -73,6 +73,49 @@ export interface AnimatableProperty {
   separated?: boolean;
   keyframesX?: Keyframe[];
   keyframesY?: Keyframe[];
+}
+
+/**
+ * B33 - an animatable RGBA colour (0..1, straight alpha). Same keyframe shape as AnimatableProperty
+ * (so every generic keyframe op - easing, hold, delete, move - works on it), but each keyframe value is
+ * a Vec4 and evaluation mixes in LINEAR light (core/animProps.ts). The colour's un-keyframed base is the
+ * layer's existing static field (e.g. `shape.fillColor`); `defaultValue` only records it at creation.
+ */
+export interface AnimatableColor {
+  id: string;
+  name: string;
+  valueType: 'color';
+  defaultValue: Vec4;
+  keyframes: Keyframe[];
+}
+
+/**
+ * B33 / B47 / B50 - per-layer ANIMATED OVERRIDES of fields that are plain values in the layer model
+ * (shape / text colours, glow / shadow / layer-blur numbers, effect-stack params). Each entry, once it
+ * has keyframes, replaces its static field at resolve time; absent (every legacy project) = the static
+ * field, byte-identical. Created on demand by `editor.addKeyframe` / `editor.setKeyframes` on the
+ * friendly paths ("shape.fillColor", "glow.intensity", "effect.<type>.<param>"...): see
+ * core/animProps.ts for the path table.
+ */
+export interface LayerAnimProps {
+  fillColor?: AnimatableColor;
+  strokeColor?: AnimatableColor;
+  textColor?: AnimatableColor;
+  textStrokeColor?: AnimatableColor;
+  glowColor?: AnimatableColor;
+  shadowColor?: AnimatableColor;
+  glowIntensity?: AnimatableProperty;
+  glowRadius?: AnimatableProperty;
+  glowThreshold?: AnimatableProperty;
+  shadowBlur?: AnimatableProperty;
+  shadowDistance?: AnimatableProperty;
+  shadowAngle?: AnimatableProperty;
+  shadowScale?: AnimatableProperty;
+  blurRadius?: AnimatableProperty;
+  blurStrength?: AnimatableProperty;
+  blurAngle?: AnimatableProperty;
+  /** Effect-stack params keyed `${effectType}_${paramIndex}` (the same type id / index setLayerEffectParam takes). */
+  effectParams?: Record<string, AnimatableProperty>;
 }
 
 // Separable W3C blend modes (Compositing and Blending Level 1) + linear-dodge "add". Content-layer
@@ -265,6 +308,12 @@ export interface PathKeyframe {
   vertices: PathVertex[];
   closed: boolean;
   interpolation?: 'linear' | 'hold';
+  /** B62: temporal ease of the morph from this pose to the NEXT one - a named ease or a CSS-style
+   *  cubic-bezier quad [x1, y1, x2, y2]. Absent = linear (the B8b behaviour). */
+  ease?: EasingName | [number, number, number, number];
+  /** B62: 'auto' = match the next pose's start point and winding to this one before morphing (no
+   *  twisting rect -> circle). Absent = index-0 correspondence (B8b, unchanged). */
+  align?: 'auto';
 }
 
 export interface PolygonShape {
@@ -554,6 +603,8 @@ export interface ShapeLayer {
   shadow?: LayerShadow;
   glow?: LayerGlow;
   blur?: LayerBlur;
+  /** B33/B47/B50 animated overrides of static colour / effect fields (core/animProps.ts). */
+  animProps?: LayerAnimProps;
   is3D?: boolean;
   blendMode: BlendMode;
   transform: Transform;
@@ -606,6 +657,20 @@ export interface TextAnimatorDelta {
    * letters onto one point - the "tracking burst" reveal - at any font size.
    */
   tracking?: number;
+  /**
+   * Fill colour (straight RGBA 0..1) at full weight (B36): each glyph's fill mixes from its own colour
+   * towards this one by the selector weight, in linear light (stacked animators mix in order). A
+   * gradient text fill is drawn as-is (the colour applies to solid fills).
+   */
+  fillColor?: Vec4;
+  /** Horizontal skew in degrees at full weight (B36); positive leans the glyph top to the right. */
+  skew?: number;
+  /**
+   * Seeded scatter in px at full weight (B36): each unit moves by its own random offset in
+   * [-scatter, +scatter] per axis (seeded by selector.seed and the unit index, frame-pure), so a
+   * reveal can fly letters in from scattered positions.
+   */
+  scatter?: Vec2;
 }
 
 /**
@@ -620,6 +685,9 @@ export interface TextAnimator {
   selector: RangeSelectorConfig;
   /** Optional keyframed override of selector.offset (the reveal driver). */
   offset?: AnimatableProperty;
+  /** Optional keyframed overrides of selector.start / selector.end (B36), like `offset`. */
+  start?: AnimatableProperty;
+  end?: AnimatableProperty;
   delta: TextAnimatorDelta;
 }
 
@@ -634,6 +702,37 @@ export interface TextDecode {
   charset: string;              // scramble alphabet
   seed: number;
   scrambleHold: number;         // frames each random char holds (flicker speed), >= 1
+}
+
+/**
+ * B35 - a typing caret on a text layer: one rectangle stamp after the last revealed glyph (the type-on
+ * head), resolved per frame in core/textCaret.ts (frame-pure: blink is a function of the frame only).
+ * Single-line text (the same limit as the per-glyph stamps). Sizes are comp px at scale 1.
+ */
+export interface TextCaret {
+  enabled: boolean;
+  /** 'bar' = thin I-beam line, 'block' = a filled character cell, 'underline' = a low bar under the next cell. */
+  style: 'bar' | 'block' | 'underline';
+  /** RGBA 0..1; absent = the text fill colour. */
+  color?: Vec4;
+  /** px; absent = by style (bar 6% of the font size, block / underline 55%). */
+  width?: number;
+  /** px; absent = by style (bar / block 100% of the font size, underline 8%). */
+  height?: number;
+  /** px between the last revealed glyph and the caret; absent = 5% (bar) / 4% of the font size. */
+  gap?: number;
+  /** px vertical nudge (positive = down). */
+  offsetY?: number;
+  /** Corner radius in px. */
+  radius?: number;
+  /** Full on/off blink cycles per second (default 1; 0 = always on). */
+  blinkRate?: number;
+  /** Stay solid while the head is moving through the text (default true), blink before and after. */
+  solidWhileTyping?: boolean;
+  /** Absolute frame the caret appears from (default: the clip start); the blink cycle starts ON there. */
+  startFrame?: number;
+  /** Absolute frame the caret is gone from (default: the clip end). */
+  endFrame?: number;
 }
 
 /** Text-on-a-path binding (B9b): which MotionPath to flow glyphs along + orientation/margin. */
@@ -658,6 +757,8 @@ export interface TextLayer {
   shadow?: LayerShadow;
   glow?: LayerGlow;
   blur?: LayerBlur;
+  /** B33/B47/B50 animated overrides of static colour / effect fields (core/animProps.ts). */
+  animProps?: LayerAnimProps;
   is3D?: boolean;
   blendMode: BlendMode;
   transform: Transform;
@@ -674,6 +775,14 @@ export interface TextLayer {
   /** Text on a path (B9b): flow glyphs along a referenced MotionPath (interpreted in layer space).
    *  Absent/disabled → normal linear layout. */
   textPath?: TextPathBinding;
+  /**
+   * Re-layout hidden glyphs (B45): when on, glyphs an animator hides (opacity 0) take no space and each
+   * line re-aligns to its visible glyphs every frame, so a centred type-on / delete stays centred (After
+   * Effects keeps the full-line layout, which is the default here too). Absent/false: unchanged path.
+   */
+  reflowHidden?: boolean;
+  /** B35 typing caret after the last revealed glyph (core/textCaret.ts). Absent/disabled → unchanged path. */
+  caret?: TextCaret;
   /** M21 - linked color styles for text fill/stroke. */
   fillStyleId?: string;
   strokeStyleId?: string;
@@ -716,6 +825,8 @@ export interface VideoLayer {
   shadow?: LayerShadow;
   glow?: LayerGlow;
   blur?: LayerBlur;
+  /** B33/B47/B50 animated overrides of static colour / effect fields (core/animProps.ts). */
+  animProps?: LayerAnimProps;
   is3D?: boolean;
   blendMode: BlendMode;
   transform: Transform;
@@ -826,6 +937,8 @@ export interface ImageLayer {
   shadow?: LayerShadow;
   glow?: LayerGlow;
   blur?: LayerBlur;
+  /** B33/B47/B50 animated overrides of static colour / effect fields (core/animProps.ts). */
+  animProps?: LayerAnimProps;
   is3D?: boolean;
   blendMode: BlendMode;
   transform: Transform;
@@ -964,6 +1077,8 @@ export interface GenerativePatternLayer {
   shadow?: LayerShadow;
   glow?: LayerGlow;
   blur?: LayerBlur;
+  /** B33/B47/B50 animated overrides of static colour / effect fields (core/animProps.ts). */
+  animProps?: LayerAnimProps;
   blendMode: BlendMode;
   transform: Transform;
   // Bounded like a rectangle: the pattern is generated only inside width×height (movable via the
@@ -1002,6 +1117,8 @@ export interface LottieIconLayer {
   shadow?: LayerShadow;
   glow?: LayerGlow;
   blur?: LayerBlur;
+  /** B33/B47/B50 animated overrides of static colour / effect fields (core/animProps.ts). */
+  animProps?: LayerAnimProps;
   is3D?: boolean;
   blendMode: BlendMode;
   transform: Transform;
@@ -1237,6 +1354,8 @@ export interface CameraLayer {
   shadow?: LayerShadow;
   glow?: LayerGlow;
   blur?: LayerBlur;
+  /** B33/B47/B50 animated overrides of static colour / effect fields (core/animProps.ts). */
+  animProps?: LayerAnimProps;
   masks?: Mask[];
   /** Track matte (B10b): this layer is matted by the layer directly above (its alpha/luma). */
   trackMatte?: TrackMatteMode;
@@ -1262,6 +1381,8 @@ export interface PrecompLayer {
   shadow?: LayerShadow;
   glow?: LayerGlow;
   blur?: LayerBlur;
+  /** B33/B47/B50 animated overrides of static colour / effect fields (core/animProps.ts). */
+  animProps?: LayerAnimProps;
   is3D?: boolean;
   masks?: Mask[];
   /** Track matte (B10b): this layer is matted by the layer directly above (its alpha/luma). */
@@ -1295,6 +1416,8 @@ export interface BeamLayer {
   shadow?: LayerShadow;
   glow?: LayerGlow;
   blur?: LayerBlur;
+  /** B33/B47/B50 animated overrides of static colour / effect fields (core/animProps.ts). */
+  animProps?: LayerAnimProps;
   is3D?: boolean;
   masks?: Mask[];
   trackMatte?: TrackMatteMode;
@@ -1351,6 +1474,8 @@ export interface AdjustmentLayer {
   shadow?: LayerShadow;
   glow?: LayerGlow;
   blur?: LayerBlur;
+  /** B33/B47/B50 animated overrides of static colour / effect fields (core/animProps.ts). */
+  animProps?: LayerAnimProps;
   is3D?: boolean;
   masks?: Mask[];
 }
@@ -1364,6 +1489,19 @@ export interface LayerDecorations {
   labelColor?: string;
   /** M14 - per-layer reframe pin/scale constraints (top-level layers only). */
   constraints?: LayerConstraints;
+  /** B53 corner pin: warp the layer onto four comp-space points (keyframable vec2s). */
+  cornerPin?: CornerPin;
+}
+
+/** B53 - AE-style Corner Pin. Each corner is a keyframable vec2 in COMP px; while set, the four pins ARE
+ *  the layer's placement (its position / rotation / scale / anchor and 3D switch are not applied). The
+ *  pinned source box: the shape's own width x height (path shapes: the vertex bounds), the text layer's
+ *  drawn box (agent.measureText `box`), the full image / video / precomp frame. */
+export interface CornerPin {
+  topLeft: AnimatableProperty;
+  topRight: AnimatableProperty;
+  bottomRight: AnimatableProperty;
+  bottomLeft: AnimatableProperty;
 }
 
 export type Layer = (ShapeLayer | TextLayer | GroupLayer | VideoLayer | ImageLayer | AudioLayer | ParticleLayer | AnimationItemLayer | FieldSampledLayer | GenerativePatternLayer | LottieIconLayer | LayoutObjectLayer | LayoutContainerLayer | ClonerLayer | PrecompLayer | BeamLayer | CameraLayer | AdjustmentLayer) & LayerDecorations;
@@ -1785,9 +1923,11 @@ export interface ResolvedText {
   /**
    * Mixed styles in one text (core/textRuns.ts): per-character face + fill runs over `content`,
    * present only when the spans differ (the top-level fields above are the first span's style).
-   * Single-line text draws them through the per-glyph stamp path; each stamp is a plain run-less text.
+   * The text draws them through the per-glyph stamp path (any line count); each stamp is a plain run-less text.
    */
   runs?: TextStyleRun[];
+  /** Horizontal skew in degrees (B36 animator skew on a glyph stamp). Absent/0: unskewed raster. */
+  skewX?: number;
   measuredWidth: number;
   measuredHeight: number;
 }
@@ -1993,6 +2133,9 @@ export interface ResolvedLayer {
   // 2.5D (M2): true when the source layer's 3D switch is on - the renderer projects it through
   // the frame camera (MVP) and depth-sorts it. Absent/false → the untouched 2D path.
   is3D?: boolean;
+  // Corner pin (B53): the layer's four corners resolved to comp px [TL, TR, BR, BL]. The renderer
+  // warps the layer's quad onto them through the 2.5D mvp vertex path (core/cornerPin.ts).
+  cornerPin?: [Vec2, Vec2, Vec2, Vec2];
   // Track matte (B10b): this layer is matted by `matte.sourceId` (its alpha/luma). Set at resolve
   // time from the pairing; the renderer's matte composite pass (browser-gated) consumes it.
   matte?: import('./trackMatte').MatteRef;

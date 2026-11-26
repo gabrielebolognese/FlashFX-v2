@@ -8,6 +8,7 @@ import { beachScene, forestScene, nightScene } from './categories/scenes';
 import { sunsetScene, rainScene, cityScene, snowScene } from './categories/weather';
 import { galaxyScene } from './categories/galaxy';
 import { phoneMessages } from './categories/ui';
+import { searchBarTyping, toggleSwitch, chatBubbles, notificationBanner } from './categories/uiKit';
 import { penWriting, clockTick, fireworks } from './categories/fun';
 import { rocketLaunch, coffeeSteam, confettiPop, loadingSpinner } from './categories/delight';
 import { calendarMonth } from './categories/calendar';
@@ -36,6 +37,10 @@ export const ANIMATION_TEMPLATES: AnimationTemplate[] = [
   snowScene,
   galaxyScene,
   phoneMessages,
+  searchBarTyping,
+  toggleSwitch,
+  chatBubbles,
+  notificationBanner,
   loadingSpinner,
   penWriting,
   clockTick,

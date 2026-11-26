@@ -107,30 +107,36 @@ function triggerDownload(blob: Blob, fileName: string): void {
 }
 
 // Bundle the complete project (every composition + media binary + preview) into
-// a single .ffx file and trigger a browser download. The persisted scene is a
-// multi-composition SceneDocument, so it is bundled whole and precomps travel
-// with the project. When the editor's live composition is supplied it replaces
-// its registry entry so unsaved edits are captured.
-export async function exportProjectToFile(
+// a single .ffx Blob. The persisted scene is a multi-composition SceneDocument,
+// so it is bundled whole and precomps travel with the project. `live` patches
+// unsaved edits in: a whole SceneDocument (the agent runtime passes the editor's
+// getDocument()) replaces the stored one; a single Composition replaces only its
+// own registry entry (the File menu's historical behaviour).
+export async function buildProjectBundle(
   projectId: string,
-  liveComposition?: Composition,
-): Promise<void> {
+  live?: Composition | SceneDocument,
+): Promise<{ blob: Blob; fileName: string; metadata: ProjectMetadata }> {
   const metadata = await getMetadata(projectId);
   if (!metadata) throw new Error('Project not found');
 
-  const scene = await getScene(projectId);
-  let sceneDoc: SceneDocument | null = scene ? deserializeDocument(scene.data) : null;
-  if (liveComposition) {
-    sceneDoc = sceneDoc
-      ? {
-          ...sceneDoc,
-          compositions: { ...sceneDoc.compositions, [liveComposition.id]: liveComposition },
-        }
-      : {
-          version: SCENE_DOCUMENT_VERSION,
-          rootCompositionId: liveComposition.id,
-          compositions: { [liveComposition.id]: liveComposition },
-        };
+  let sceneDoc: SceneDocument | null;
+  if (live && 'compositions' in live) {
+    sceneDoc = live;
+  } else {
+    const scene = await getScene(projectId);
+    sceneDoc = scene ? deserializeDocument(scene.data) : null;
+    if (live) {
+      sceneDoc = sceneDoc
+        ? {
+            ...sceneDoc,
+            compositions: { ...sceneDoc.compositions, [live.id]: live },
+          }
+        : {
+            version: SCENE_DOCUMENT_VERSION,
+            rootCompositionId: live.id,
+            compositions: { [live.id]: live },
+          };
+    }
   }
   if (!sceneDoc) throw new Error('Project scene data is missing');
   const sceneData = serializeDocument(sceneDoc);
@@ -161,7 +167,18 @@ export async function exportProjectToFile(
   };
 
   const blob = new Blob([JSON.stringify(bundle)], { type: 'application/json' });
-  triggerDownload(blob, `${sanitizeFileName(metadata.name)}.${FFX_EXTENSION}`);
+  return { blob, fileName: `${sanitizeFileName(metadata.name)}.${FFX_EXTENSION}`, metadata };
+}
+
+// Bundle the project (see buildProjectBundle) and trigger a browser download.
+// When the editor's live composition is supplied it replaces its registry entry
+// so unsaved edits are captured.
+export async function exportProjectToFile(
+  projectId: string,
+  liveComposition?: Composition,
+): Promise<void> {
+  const { blob, fileName } = await buildProjectBundle(projectId, liveComposition);
+  triggerDownload(blob, fileName);
 }
 
 // Restore a .ffx bundle into a brand-new project: media binaries are written

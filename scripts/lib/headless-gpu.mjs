@@ -15,21 +15,8 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 
-/** A Chrome/Chromium/Edge binary, or null. `CHROME_PATH` wins. */
-export function findChrome() {
-  const candidates = [
-    process.env.CHROME_PATH,
-    'C:/Program Files/Google/Chrome/Application/chrome.exe',
-    'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe',
-    'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
-    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-    '/usr/bin/google-chrome',
-    '/usr/bin/google-chrome-stable',
-    '/usr/bin/chromium',
-    '/usr/bin/chromium-browser',
-  ].filter(Boolean);
-  return candidates.find((p) => existsSync(p)) ?? null;
-}
+export { findChrome } from '../../mcp/lib/find-chrome.mjs';
+import { findChrome } from '../../mcp/lib/find-chrome.mjs';
 
 /** Bundle `entryCode` (JS source; may import repo files by absolute path) to `<dir>/bundle.js`. */
 export async function bundleEntry(entryCode, dir) {

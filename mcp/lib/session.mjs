@@ -5,16 +5,16 @@
 // whitelisted store actions the UI itself uses - never through DOM clicks.
 //
 // No dependencies beyond Node 22 (built-in fetch + WebSocket), same approach as
-// scripts/lib/headless-gpu.mjs (whose Chrome finder is reused).
+// scripts/lib/headless-gpu.mjs (the Chrome finder is shared: ./find-chrome.mjs).
 
 import { spawn } from 'node:child_process';
-import { createWriteStream, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { createWriteStream, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { createServer as createNetServer } from 'node:net';
 import { tmpdir } from 'node:os';
-import { dirname, extname, join, normalize, resolve } from 'node:path';
+import { basename, dirname, extname, join, normalize, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { findChrome } from '../../scripts/lib/headless-gpu.mjs';
+import { findChrome } from './find-chrome.mjs';
 
 export const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 
@@ -36,7 +36,7 @@ export function readConfig(argv = process.argv.slice(2), env = process.env) {
     return e !== undefined && e !== '' && e !== '0' && e !== 'false';
   };
   const url = arg('url') ?? env.FLASHFX_URL;
-  const server = arg('server') ?? env.FLASHFX_SERVER ?? (url ? 'none' : 'dev');
+  const server = arg('server') ?? env.FLASHFX_SERVER ?? (url ? 'none' : 'auto');
   const [w, h] = String(arg('window') ?? env.FLASHFX_WINDOW ?? '1920x1080').split('x').map((n) => parseInt(n, 10));
   const attach = arg('attach') ?? env.FLASHFX_CDP_PORT;
   return {
@@ -93,6 +93,31 @@ async function serveDist(dir) {
   });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   return { url: `http://127.0.0.1:${server.address().port}`, stop: () => new Promise((r) => server.close(() => r())) };
+}
+
+/** Newest mtime (ms) of any file under `dir` (recursive). */
+function newestMtime(dir) {
+  let newest = 0;
+  for (const ent of readdirSync(dir, { withFileTypes: true })) {
+    const p = join(dir, ent.name);
+    newest = Math.max(newest, ent.isDirectory() ? newestMtime(p) : statSync(p).mtimeMs);
+  }
+  return newest;
+}
+
+/** dist/ was built after the last change to the app sources (src/, public/ minus the generated agent/, index.html). */
+export function distIsFresh() {
+  const built = join(ROOT, 'dist', 'index.html');
+  if (!existsSync(built)) return false;
+  const builtAt = statSync(built).mtimeMs;
+  let newest = statSync(join(ROOT, 'index.html')).mtimeMs;
+  newest = Math.max(newest, newestMtime(join(ROOT, 'src')));
+  for (const ent of readdirSync(join(ROOT, 'public'), { withFileTypes: true })) {
+    if (ent.name === 'agent') continue;
+    const p = join(ROOT, 'public', ent.name);
+    newest = Math.max(newest, ent.isDirectory() ? newestMtime(p) : statSync(p).mtimeMs);
+  }
+  return builtAt >= newest;
 }
 
 /** Vite dev server from the repo (regenerates /agent/features.json first, like `npm run dev`). */
@@ -193,17 +218,24 @@ export class FlashFxSession {
     this.cdp = null;
     this.devPort = null;
     this.starting = null;
+    this.uploadSeq = 0;
   }
 
   /** The FlashFX base URL (starts the local server if needed, but not Chrome). */
   async baseUrl() {
     if (this.config.url) return this.config.url;
     if (!this.server) {
-      const mode = this.config.server;
+      let mode = this.config.server;
+      // auto (the default): the built dist/ when it is at least as new as every source file (much
+      // faster boot, no Vite dep re-optimization reloads), else the dev server (always current code).
+      if (mode === 'auto') {
+        mode = distIsFresh() ? 'dist' : 'dev';
+        log(`--server auto picked ${mode}${mode === 'dev' ? ' (dist/ is missing or older than the sources: npm run build for faster boots)' : ''}`);
+      }
       log(`starting the ${mode} app server...`);
       if (mode === 'dist') this.server = await serveDist(join(ROOT, 'dist'));
       else if (mode === 'dev') this.server = await serveDev(this.config.bootTimeoutMs);
-      else throw new Error(`--server must be dev or dist (or pass --url), got "${mode}"`);
+      else throw new Error(`--server must be auto, dev or dist (or pass --url), got "${mode}"`);
       log(`app server at ${this.server.url}`);
     }
     return this.server.url;
@@ -328,8 +360,20 @@ export class FlashFxSession {
   }
 
   /** PNG of the window (or just the preview canvas). Returns { path, width, height, canvasRect, inlineJpeg }. */
-  async screenshot({ path, region = 'window', inline = true } = {}) {
+  async screenshot({ path, region = 'window', inline = true, clean } = {}) {
     await this.ensure();
+    // clean (default for region "canvas"): hide every DOM overlay (selection gizmos, the Flash character,
+    // toasts) for the capture so the PNG is only the rendered frame.
+    const hide = clean ?? region === 'canvas';
+    if (hide) await this.cdp.evaluate(`(() => { let s = document.getElementById('__ffx_clean_shot'); if (!s) { s = document.createElement('style'); s.id = '__ffx_clean_shot'; document.head.appendChild(s); } s.textContent = 'body * { visibility: hidden !important; } canvas[data-ffx-canvas] { visibility: visible !important; }'; return true; })()`);
+    try {
+      return await this.captureScreenshot({ path, region, inline });
+    } finally {
+      if (hide) await this.cdp.evaluate(`(() => { document.getElementById('__ffx_clean_shot')?.remove(); return true; })()`).catch(() => {});
+    }
+  }
+
+  async captureScreenshot({ path, region, inline }) {
     await this.cdp.evaluate(raf2);
     // The preview canvas is tagged data-ffx-canvas in Viewport.tsx; clamp it to the visible window.
     const canvasRect = await this.cdp.evaluate(`(() => {
@@ -367,6 +411,74 @@ export class FlashFxSession {
     const r = await this.run('agent.exportMp4', opts, timeoutMs);
     if (!r?.ok) return r;
     const { exportId, bytes, audioDropped } = r.result;
+    const outPath = await this.streamExport(exportId, bytes, path);
+    return { ok: true, actionId: 'agent.exportMp4', result: { path: outPath, bytes, audioDropped } };
+  }
+
+  /** Render one full-resolution frame (agent.renderFrame) and write the PNG to `path`. */
+  async renderFrame(path, opts = {}, timeoutMs = 300000) {
+    const r = await this.run('agent.renderFrame', opts, timeoutMs);
+    if (!r?.ok) return r;
+    const { exportId, bytes, frame, width, height } = r.result;
+    const outPath = resolve(path ?? join(tmpdir(), 'flashfx-mcp', `frame-${frame}.png`));
+    await this.streamExport(exportId, bytes, outPath);
+    return { ok: true, actionId: 'agent.renderFrame', result: { path: outPath, bytes, frame, width, height } };
+  }
+
+  /** Render a labelled contact sheet of several frames (agent.renderStrip) and write the PNG to `path`. */
+  async renderStrip(path, opts = {}, timeoutMs = 900000) {
+    const r = await this.run('agent.renderStrip', opts, timeoutMs);
+    if (!r?.ok) return r;
+    const { exportId, bytes, ...info } = r.result;
+    const outPath = resolve(path ?? join(tmpdir(), 'flashfx-mcp', `strip-${info.frames.join('-').slice(0, 60)}.png`));
+    await this.streamExport(exportId, bytes, outPath);
+    return { ok: true, actionId: 'agent.renderStrip', result: { path: outPath, bytes, ...info } };
+  }
+
+  /** Bundle the open project as an editable .ffx (agent.exportProject) and write it to `path`. */
+  async exportProject(path, timeoutMs = 600000) {
+    const r = await this.run('agent.exportProject', undefined, timeoutMs);
+    if (!r?.ok) return r;
+    const { exportId, bytes, fileName, projectId } = r.result;
+    const outPath = await this.streamExport(exportId, bytes, path);
+    return { ok: true, actionId: 'agent.exportProject', result: { path: outPath, bytes, fileName, projectId } };
+  }
+
+  /** Read a local file and pass it to an agent import action as base64. */
+  async importFile(actionId, path, extraArgs = {}, timeoutMs = 600000) {
+    const inPath = resolve(path);
+    if (!existsSync(inPath)) throw new Error(`no such file: ${inPath}`);
+    const data = readFileSync(inPath).toString('base64');
+    const fileName = basename(inPath);
+    return this.run(actionId, { data, fileName, ...extraArgs }, timeoutMs, { retryOnReload: false });
+  }
+
+  /**
+   * Import a (possibly large) media file: stream it into the page in 4 MB chunks with
+   * __ffxAgent.writeUpload, then run `actionId` with { uploadId, fileName, ...extraArgs }.
+   */
+  async importFileChunked(actionId, path, extraArgs = {}, timeoutMs = 600000) {
+    const inPath = resolve(path);
+    if (!existsSync(inPath)) throw new Error(`no such file: ${inPath}`);
+    await this.ensure();
+    const bytes = readFileSync(inPath);
+    const uploadId = `up-${process.pid}-${++this.uploadSeq}`;
+    // FLASHFX_UPLOAD_CHUNK (bytes) lets the smoke test force several chunks with a small file.
+    const CHUNK = Number(process.env.FLASHFX_UPLOAD_CHUNK) > 0 ? Number(process.env.FLASHFX_UPLOAD_CHUNK) : 4 * 1024 * 1024;
+    try {
+      for (let off = 0; off < bytes.length; off += CHUNK) {
+        const b64 = bytes.subarray(off, off + CHUNK).toString('base64');
+        await this.cdp.evaluate(`window.__ffxAgent.writeUpload(${JSON.stringify(uploadId)}, ${off}, ${JSON.stringify(b64)})`, 120000);
+      }
+    } catch (e) {
+      await this.cdp.evaluate(`window.__ffxAgent.discardUpload(${JSON.stringify(uploadId)})`).catch(() => {});
+      throw e;
+    }
+    return this.run(actionId, { uploadId, fileName: basename(inPath), ...extraArgs }, timeoutMs, { retryOnReload: false });
+  }
+
+  /** Stream a finished in-page export (readExport chunks) to a file, then free it in the page. */
+  async streamExport(exportId, bytes, path) {
     const outPath = resolve(path);
     mkdirSync(dirname(outPath), { recursive: true });
     const out = createWriteStream(outPath);
@@ -380,7 +492,7 @@ export class FlashFxSession {
       await new Promise((res) => out.end(res));
       await this.cdp.evaluate(`window.__ffxAgent.releaseExport(${JSON.stringify(exportId)})`).catch(() => {});
     }
-    return { ok: true, actionId: 'agent.exportMp4', result: { path: outPath, bytes, audioDropped } };
+    return outPath;
   }
 
   recentLogs(n = 20) { return this.cdp ? this.cdp.logs.slice(-n) : []; }

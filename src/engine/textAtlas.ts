@@ -13,12 +13,16 @@ export interface TextLayout {
   canvasWidth: number;
   canvasHeight: number;
   padding: number;
+  /** Extra width on EACH side for a skewed raster (B36 glyph skew); 0 / absent when unskewed. */
+  skewPad?: number;
 }
 
 const cache = new Map<string, CachedTextEntry>();
 const MAX_CACHE_SIZE = 256;
 
 const POINT_PADDING = 2;
+/** The inset of a point-text raster (its first line's top sits this far below the canvas top). */
+export const TEXT_POINT_PADDING = POINT_PADDING;
 const DESCENDER_RATIO = 0.25;
 
 // Bumped once the bundled fonts finish loading (see engine/fonts.ts). Folded into the cache
@@ -38,11 +42,38 @@ function fillKey(text: ResolvedText): string {
 }
 
 export function textCacheKey(text: ResolvedText): string {
-  return `${fontEpoch}|${text.content}|${text.fontFamily}|${text.fontWeight}|${text.fontStyle}|${text.fontSize}|${text.lineHeight}|${text.letterSpacing}|${text.textAlign}|${text.fillColor.join(',')}|${fillKey(text)}|${text.strokeColor.join(',')}|${text.strokeWidth}|${text.underline}|${text.strikethrough}|${text.mode}|${text.boxWidth}|${text.boxHeight}`;
+  const skew = text.skewX ? `|sk${text.skewX}` : '';
+  return `${fontEpoch}|${text.content}|${text.fontFamily}|${text.fontWeight}|${text.fontStyle}|${text.fontSize}|${text.lineHeight}|${text.letterSpacing}|${text.textAlign}|${text.fillColor.join(',')}|${fillKey(text)}|${text.strokeColor.join(',')}|${text.strokeWidth}|${text.underline}|${text.strikethrough}|${text.mode}|${text.boxWidth}|${text.boxHeight}${skew}`;
+}
+
+/** tan of a stamp's skew, clamped to +-80 degrees (a near-90 shear has no finite raster). */
+function skewTan(text: ResolvedText): number {
+  const deg = text.skewX ? Math.max(-80, Math.min(80, text.skewX)) : 0;
+  return deg === 0 ? 0 : Math.tan((deg * Math.PI) / 180);
+}
+
+/** Widen a layout for a skewed raster: the shear about the vertical centre moves the top and bottom
+ *  rows by up to tan * height / 2, so both sides grow by that much (the centre stays put). */
+function withSkew(layout: TextLayout, text: ResolvedText): TextLayout {
+  const tan = skewTan(text);
+  if (tan === 0) return layout;
+  const skewPad = Math.ceil((Math.abs(tan) * layout.canvasHeight) / 2);
+  return { ...layout, canvasWidth: layout.canvasWidth + 2 * skewPad, skewPad };
+}
+
+// B52: lazy font faces. engine/fonts.ts installs a requester that loads the bundled face a text draws
+// with on first use (then bumps the epoch above so the text re-rasterizes). Every measure / raster
+// path builds its CSS font string here, so this is the one place that sees every face in use.
+// Unset (Node harnesses, workers) = no-op.
+type FontFaceRequester = (family: string, weight: number, style: 'normal' | 'italic') => void;
+let fontFaceRequester: FontFaceRequester | null = null;
+export function setFontFaceRequester(fn: FontFaceRequester | null): void {
+  fontFaceRequester = fn;
 }
 
 export function buildFontString(text: ResolvedText): string {
   const style = text.fontStyle === 'italic' ? 'italic' : 'normal';
+  fontFaceRequester?.(text.fontFamily, text.fontWeight, style);
   return `${style} ${text.fontWeight} ${text.fontSize}px "${text.fontFamily}", sans-serif`;
 }
 
@@ -119,6 +150,10 @@ function layoutLines(ctx: OffscreenCanvasRenderingContext2D, text: ResolvedText)
 }
 
 function computeLayout(ctx: OffscreenCanvasRenderingContext2D, text: ResolvedText): TextLayout {
+  return withSkew(computeUnskewedLayout(ctx, text), text);
+}
+
+function computeUnskewedLayout(ctx: OffscreenCanvasRenderingContext2D, text: ResolvedText): TextLayout {
   ctx.font = buildFontString(text);
   const lines = layoutLines(ctx, text);
   const lineHeightPx = text.fontSize * text.lineHeight;
@@ -200,8 +235,9 @@ export function measureStringWidth(text: ResolvedText, str: string): number {
 // X advance to reach character index `count` within `line`, mirroring how
 // drawTextWithSpacing advances curX (each glyph adds its width + spacing).
 export function measureAdvance(text: ResolvedText, line: string, count: number): number {
-  const canvas = new OffscreenCanvas(1, 1);
-  const ctx = canvas.getContext('2d')!;
+  // The shared scratch context (sets the font first, like every measurement): per-glyph stamps call
+  // this once per character per frame, so a fresh canvas each call was a real per-frame cost.
+  const ctx = measureCtx();
   ctx.font = buildFontString(text);
   if (text.letterSpacing === 0) return ctx.measureText(line.slice(0, count)).width;
   let x = 0;
@@ -219,12 +255,17 @@ export function renderTextToCanvas(text: ResolvedText): CachedTextEntry | null {
   const layout = computeLayout(measureCtx, text);
 
   const { lines, lineHeightPx, canvasWidth, canvasHeight, padding } = layout;
+  // A skewed glyph stamp (B36): align inside the unskewed width, then shear about the vertical centre.
+  const skewPad = layout.skewPad ?? 0;
+  const alignWidth = canvasWidth - 2 * skewPad;
 
   const canvas = new OffscreenCanvas(canvasWidth, canvasHeight);
   const ctx = canvas.getContext('2d')!;
 
   ctx.font = buildFontString(text);
   ctx.textBaseline = 'top';
+  const tan = skewTan(text);
+  if (tan !== 0) ctx.setTransform(1, 0, -tan, 1, skewPad + (tan * canvasHeight) / 2, 0);
 
   const [fr, fg, fb, fa] = text.fillColor;
   const solidFill = `rgba(${Math.round(fr * 255)},${Math.round(fg * 255)},${Math.round(fb * 255)},${fa})`;
@@ -240,9 +281,9 @@ export function renderTextToCanvas(text: ResolvedText): CachedTextEntry | null {
     const lineW = lineWidth(ctx, line, text.letterSpacing);
     let x = padding;
     if (text.textAlign === 'center') {
-      x = (canvasWidth - lineW) / 2;
+      x = (alignWidth - lineW) / 2;
     } else if (text.textAlign === 'right') {
-      x = canvasWidth - padding - lineW;
+      x = alignWidth - padding - lineW;
     }
 
     if (text.strokeWidth > 0) {

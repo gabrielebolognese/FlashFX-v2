@@ -12,6 +12,17 @@ import { ANIMATION_ITEM_PRESETS } from '../animation-items/presets';
 import { PROCEDURAL_PRESETS } from '../procedural/presets';
 import { VFX_ELEMENTS } from '../core/vfx/vfxElements';
 import { EASINGS } from '../core/easings';
+import { FONT_MANIFEST, type FontManifestEntry } from '../engine/fonts';
+
+/** B52: "weights 400, 500, 600, 700; true italic 400; loads on first use" for the font catalog. */
+function describeFontFaces(f: FontManifestEntry): string {
+  const parts = [`weights ${f.weights.join(', ')}`];
+  if (f.italicWeights?.length) parts.push(`true italic ${f.italicWeights.join(', ')}`);
+  else if (f.slug) parts.push('italic is a synthesized oblique');
+  if (!f.slug) parts.push('system font, not bundled');
+  else if (f.lazy) parts.push('loads on first use');
+  return parts.join('; ');
+}
 
 export interface CatalogEntry {
   id: string;
@@ -32,5 +43,6 @@ export function buildAgentCatalogs(): AgentCatalogs {
     proceduralPresets: PROCEDURAL_PRESETS.map((p) => ({ id: p.name, label: p.name, description: p.description, category: p.category })),
     vfxElements: VFX_ELEMENTS.map((v) => ({ id: v.id, label: v.label, category: v.category })),
     easings: Object.keys(EASINGS).map((k) => ({ id: k, label: k })),
+    fontFamilies: FONT_MANIFEST.map((f) => ({ id: f.family, label: f.family, description: describeFontFaces(f), category: f.category })),
   };
 }

@@ -1,0 +1,282 @@
+{
+  "id": "blur-in-text",
+  "name": "Blur-in text (subtitle, wordmark, caption)",
+  "category": "text",
+  "description": "Text that resolves from a soft blur, character by character, with an optional small rise, then fades out on the end frame. The references use it for wordmarks, end-card names and supporting lines under a title.",
+  "source": [
+    "r06 S1 wordmark blur-in (10 f at 60)",
+    "r06 S6 end wordmark blur-in (16 f at 60)",
+    "r04 S5 'Edited by' blur-in by character",
+    "r04 S1 placeholder blur-in"
+  ],
+  "taste": [
+    "TASTE.md 3 Timing",
+    "5 Typography",
+    "6 Effects"
+  ],
+  "params": {
+    "text": {
+      "type": "string",
+      "description": "The line."
+    },
+    "x": {
+      "type": "number",
+      "default": null,
+      "description": "Centre x (default comp centre)."
+    },
+    "y": {
+      "type": "number",
+      "default": null,
+      "description": "Line-box centre y (default comp centre)."
+    },
+    "size": {
+      "type": "number",
+      "default": null,
+      "min": 6,
+      "description": "Font size px. Default 3.6 % of the short side (TASTE 5: supporting text 3-5 %)."
+    },
+    "weight": {
+      "type": "number",
+      "default": 500,
+      "description": "Font weight."
+    },
+    "family": {
+      "type": "string",
+      "default": "Inter",
+      "description": "Font family."
+    },
+    "color": {
+      "type": "color",
+      "default": "#5c5f66",
+      "description": "Text colour (supporting lines are a step quieter than the title)."
+    },
+    "tracking": {
+      "type": "number",
+      "default": 0,
+      "description": "Tracking in 1/1000 em. Small all-caps labels +60 to +120."
+    },
+    "delay": {
+      "type": "number",
+      "default": 0,
+      "min": 0,
+      "description": "Frames at 30 fps before it starts."
+    },
+    "entrance": {
+      "type": "number",
+      "default": 12,
+      "min": 3,
+      "description": "Length of the whole left-to-right sweep, frames at 30 fps."
+    },
+    "blur": {
+      "type": "number",
+      "default": null,
+      "description": "Start blur px per glyph (default 40 % of the size)."
+    },
+    "rise": {
+      "type": "number",
+      "default": 0,
+      "description": "Px each glyph rises while it sharpens (0 = in place)."
+    },
+    "exit": {
+      "type": "boolean",
+      "default": true,
+      "description": "Fade out ending on the end frame."
+    },
+    "exitFrames": {
+      "type": "number",
+      "default": 8,
+      "min": 2,
+      "description": "Exit fade length, frames at 30 fps."
+    },
+    "name": {
+      "type": "string",
+      "default": "Subtitle",
+      "description": "Layer name."
+    },
+    "maxWidth": {
+      "type": "number",
+      "default": null,
+      "description": "Widest the line may be, px (default 84 % of the comp width: keeps the safe margins of TASTE 5). The size shrinks to fit."
+    }
+  },
+  "length30": "delay + entrance + 45 + (exit ? exitFrames : 0)",
+  "checkFrames30": [
+    "delay + entrance * 0.5",
+    "delay + entrance + 4"
+  ],
+  "lets": {
+    "X": "x == null ? CX : x",
+    "Y": "y == null ? CY : y",
+    "s0": "start + f(delay)",
+    "S0": "size == null ? round(min(W, H) * 0.036) : size"
+  },
+  "steps": [
+    {
+      "id": "fit",
+      "action": "agent.measureString",
+      "args": {
+        "text": "{{text}}",
+        "fontFamily": "{{family}}",
+        "fontSize": "{{S0}}",
+        "fontWeight": "{{weight}}",
+        "letterSpacing": "{{round(S0 * tracking / 1000, 2)}}"
+      }
+    },
+    {
+      "let": {
+        "S": "round(min(S0, S0 * (maxWidth == null ? W * 0.84 : maxWidth) / max(1, @fit.result.width)))"
+      }
+    },
+    {
+      "let": {
+        "B": "blur == null ? round(S * 0.4) : blur"
+      }
+    },
+    {
+      "id": "txt",
+      "action": "editor.createQuickText",
+      "args": {
+        "x": "{{X - PX}}",
+        "y": "{{Y - PY}}",
+        "text": "{{text}}"
+      },
+      "layer": true,
+      "root": true
+    },
+    {
+      "let": {
+        "L": "@txt.result"
+      }
+    },
+    {
+      "action": "editor.renameLayer",
+      "args": {
+        "id": "{{L}}",
+        "name": "{{name}}"
+      }
+    },
+    {
+      "action": "editor.updateLayerProperty",
+      "args": {
+        "layerId": "{{L}}",
+        "path": "animOverrides.fontSize.defaultValue",
+        "value": "{{S}}"
+      }
+    },
+    {
+      "action": "editor.updateLayerProperty",
+      "args": {
+        "layerId": "{{L}}",
+        "path": "content.spans.0.style.fontSize",
+        "value": "{{S}}"
+      }
+    },
+    {
+      "action": "editor.updateLayerProperty",
+      "args": {
+        "layerId": "{{L}}",
+        "path": "content.spans.0.style.fontWeight",
+        "value": "{{weight}}"
+      }
+    },
+    {
+      "action": "editor.updateLayerProperty",
+      "args": {
+        "layerId": "{{L}}",
+        "path": "content.spans.0.style.fontFamily",
+        "value": "{{family}}"
+      }
+    },
+    {
+      "action": "editor.updateLayerProperty",
+      "args": {
+        "layerId": "{{L}}",
+        "path": "content.spans.0.style.color",
+        "value": "{{color}}"
+      }
+    },
+    {
+      "action": "editor.updateLayerProperty",
+      "args": {
+        "layerId": "{{L}}",
+        "path": "animOverrides.letterSpacing.defaultValue",
+        "value": "{{round(S * tracking / 1000, 2)}}"
+      }
+    },
+    {
+      "action": "agent.applyTextAnimatorPreset",
+      "args": {
+        "layerId": "{{L}}",
+        "presetId": "blur-in",
+        "startFrame": "{{s0}}",
+        "durationFrames": "{{f(entrance)}}",
+        "replace": true
+      }
+    },
+    {
+      "action": "editor.updateLayerProperty",
+      "args": {
+        "layerId": "{{L}}",
+        "path": "animators.0.delta",
+        "value": {
+          "opacity": -1,
+          "blur": "{{B}}",
+          "position": "{{[0, rise]}}"
+        }
+      }
+    },
+    {
+      "action": "editor.setKeyframes",
+      "args": {
+        "layerId": "{{L}}",
+        "propertyPath": "animators.0.offset",
+        "keyframes": [
+          {
+            "frame": "{{s0}}",
+            "value": -0.25,
+            "ease": "quadOut"
+          },
+          {
+            "frame": "{{s0 + f(entrance)}}",
+            "value": 1
+          }
+        ]
+      }
+    },
+    {
+      "when": "exit",
+      "action": "editor.setKeyframes",
+      "args": {
+        "layerId": "{{L}}",
+        "propertyPath": "transform.opacity",
+        "keyframes": [
+          {
+            "frame": "{{end - f(exitFrames)}}",
+            "value": 1,
+            "ease": [
+              0.55,
+              0,
+              1,
+              0.45
+            ]
+          },
+          {
+            "frame": "{{end}}",
+            "value": 0
+          }
+        ]
+      }
+    }
+  ],
+  "returns": {
+    "layerId": "{{L}}",
+    "settledFrame": "{{s0 + f(entrance)}}"
+  },
+  "example": {
+    "params": {
+      "text": "Rendered in FlashFX",
+      "y": 640
+    },
+    "startFrame": 20
+  }
+}

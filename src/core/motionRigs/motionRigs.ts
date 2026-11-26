@@ -1,5 +1,6 @@
 import type { Keyframe, Vec2 } from '../types';
 import type { EasingName } from '../easings';
+import { cloneValue, component, zipValues, mapValue, type KeyframeValue } from '../keyframeValue';
 
 // Motion-design principle rigs (B32) - pure keyframe-array transforms (leaf module, imports only types,
 // so esbuild bundles it standalone; mirrors core/keyframeAssistants.ts). One-click behaviours that
@@ -10,13 +11,13 @@ import type { EasingName } from '../easings';
 // Deterministic; unit-tested by scripts/verify-motion-rigs.mjs. Stagger ORDER + apply-to-selection live
 // in the store (reusing stagger/computeStaggerOffsets); this module is the per-property math.
 
-type Val = number | Vec2;
+type Val = KeyframeValue;
 
 const clamp = (v: number, lo: number, hi: number) => (v < lo ? lo : v > hi ? hi : v);
-const isVec = (v: Val): v is Vec2 => Array.isArray(v);
-const subVal = (a: Val, b: Val): Val => (isVec(a) && isVec(b) ? [a[0] - b[0], a[1] - b[1]] : (a as number) - (b as number));
-const scaleVal = (a: Val, s: number): Val => (isVec(a) ? [a[0] * s, a[1] * s] : (a as number) * s);
-const toVec = (v: Val): Vec2 => (isVec(v) ? [v[0], v[1]] : [v as number, v as number]);
+// Component-wise (number / vec2 / RGBA colour) so a rig never truncates a value's channels.
+const subVal = (a: Val, b: Val): Val => zipValues([a, b], ([x, y]) => x - y);
+const scaleVal = (a: Val, s: number): Val => mapValue(a, (x) => x * s);
+const toVec = (v: Val): Vec2 => [component(v, 0), component(v, 1)];
 
 function mkKf(frame: number, value: Val, interpolation: Keyframe['interpolation'] = 'linear', easing?: EasingName): Keyframe {
   const k: Keyframe = { frame, value, interpolation, handleIn: [0, 0], handleOut: [0, 0] };
@@ -24,7 +25,7 @@ function mkKf(frame: number, value: Val, interpolation: Keyframe['interpolation'
   return k;
 }
 function cloneKf(k: Keyframe): Keyframe {
-  return { ...k, value: isVec(k.value) ? [k.value[0], k.value[1]] : k.value, handleIn: [k.handleIn[0], k.handleIn[1]], handleOut: [k.handleOut[0], k.handleOut[1]] };
+  return { ...k, value: cloneValue(k.value), handleIn: [k.handleIn[0], k.handleIn[1]], handleOut: [k.handleOut[0], k.handleOut[1]] };
 }
 const sortKfs = (kfs: Keyframe[]): Keyframe[] => [...kfs].sort((a, b) => a.frame - b.frame);
 

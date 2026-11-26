@@ -38,7 +38,7 @@ export function influenceToInHandle(influence: number, speed: number): Vec2 {
 //
 // A segment runs from `prev` to `next`. Its shape is owned by the OUTGOING side of `prev` plus the
 // INCOMING side of `next` - exactly the After Effects convention (and what the graph editor draws):
-//   • hold          → progress 0 for the whole segment (value stays on `prev` until `next`)
+//   • hold          → progress 0 until the segment end (value stays on `prev` until `next`'s frame)
 //   • named easing   → prev.easing wins (true elastic / bounce / back / Penner curves)
 //   • bezier         → cubic-bezier(prev.handleOut, next.handleIn)   ← both control points, one from each end
 //   • spring         → fixed damped-cosine
@@ -48,7 +48,9 @@ export function influenceToInHandle(influence: number, speed: number): Vec2 {
 // eases rendered differently from how the graph editor drew them. Routing every consumer through
 // this one function removes that class of drift permanently.
 export function segmentProgress(t: number, prev: Keyframe, next: Keyframe): number {
-  if (prev.interpolation === 'hold') return 0;
+  // Hold: `prev` until the next key's frame, where the value IS the next key's (After Effects). Without
+  // the t >= 1 case a hold key in the middle of a list showed its old value one frame too long.
+  if (prev.interpolation === 'hold') return t >= 1 ? 1 : 0;
   if (prev.easing) return applyEasing(prev.easing, t);
   switch (prev.interpolation) {
     case 'bezier': {

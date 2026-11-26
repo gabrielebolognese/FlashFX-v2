@@ -1,0 +1,12 @@
+{
+  "name": "flashfx-mcp",
+  "version": "0.1.0",
+  "description": "FlashFX Link: connect your own Claude (Claude Desktop or Claude Code, on your own Claude plan) to the FlashFX motion-graphics editor and build editable animations.",
+  "type": "module",
+  "bin": { "flashfx-mcp": "server/index.mjs" },
+  "files": ["server/", "recipes/", "access/", "skill/", "manifest.json", "README.md"],
+  "engines": { "node": ">=22" },
+  "homepage": "https://flashfx.app",
+  "license": "SEE LICENSE IN README.md",
+  "keywords": ["mcp", "claude", "motion-graphics", "flashfx", "webgpu"]
+}

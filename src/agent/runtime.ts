@@ -17,12 +17,24 @@ import { useExpressionStore } from '../expressions/store';
 import { expressionManager } from '../expressions/manager';
 import { TEXT_ANIMATOR_PRESETS, createTextDecode, buildTextAnimatorPreset } from '../core/textAnimatorPresets';
 import { useProjectStore } from '../project-system/hooks/useProjectStore';
-import { loadProjectScene } from '../project-system/services/projects';
+import { getProjectMetadata, loadProjectScene } from '../project-system/services/projects';
+import { buildProjectBundle } from '../project-system/services/ffx';
+import { mediaAssetManager } from '../engine/media/assetManager';
 import { useOnboardingStore } from '../onboarding/store';
 import { usePanelStore, type UiMode } from '../store/panels';
 import { playbackController, useTimelineStore } from '../store/timeline';
 import { exportToMp4, type ExportSettings } from '../codec/exporter';
-import type { Layer, TextLayer } from '../core/types';
+import { collectExportVideoDecodes } from '../codec/exportMath';
+import { WebGPURenderer } from '../engine/renderer';
+import { EXPORT_MOTION_BLUR_SAMPLES } from '../store/preview';
+import { videoDecoderPool } from '../engine/video/videoDecoderPool';
+import { frameScheduler } from '../engine/video/frameScheduler';
+import { PARTICLE_PRESETS } from '../particles/presets';
+import { resolveFrame } from '../core/interpolation';
+import { getTextLayout, measureStringWidth } from '../engine/textAtlas';
+import { ensureCompositionFonts, ensureFontFace } from '../engine/fonts';
+import { MAX_FONT_BYTES, hydrateCustomFonts, useCustomFontStore } from '../engine/customFonts';
+import type { Layer, ParticleLayer, ResolvedText, TextLayer } from '../core/types';
 import {
   AGENT_ACTIONS,
   AGENT_MANIFEST_SCHEMA_VERSION,
@@ -32,6 +44,12 @@ import {
   type AgentManifest,
 } from './featureManifest';
 import { buildAgentCatalogs, type AgentCatalogs } from './catalogs';
+import {
+  buildAgentCursor, findCursorRig, planCursorMove, planCursorClick, buildClickRipple, planCursorIcon, cursorIconAt,
+  AGENT_CURSOR_ICONS, type AgentCursorIcon,
+} from '../animation-templates/cursorRig';
+import type { KeyframeEaseSpec } from '../core/keyframeSpecs';
+import { normalizeTextCaret } from '../core/textCaret';
 
 export interface AgentLayerSummary {
   id: string;
@@ -43,6 +61,30 @@ export interface AgentLayerSummary {
   outPoint?: number;
   text?: string;
   maskIds?: string[];
+  /** Timeline track the layer's clip sits on (null = none). */
+  trackId?: string | null;
+  /** Properties with animated overrides (B33/B47/B50), e.g. ["fillColor", "glowIntensity", "effect 170_0"]. */
+  animProps?: string[];
+  /** B53: true on 3D cards (toggleLayer3D) and cameras. */
+  is3D?: boolean;
+  /** B53: true when the layer is corner-pinned (setCornerPin). */
+  cornerPin?: boolean;
+}
+
+export interface AgentBackgroundSummary {
+  id: string;
+  type: string;
+  enabled: boolean;
+  opacity: number;
+}
+
+export interface AgentTrackSummary {
+  id: string;
+  name: string;
+  type: string;
+  order: number;
+  visible: boolean;
+  locked: boolean;
 }
 
 export interface AgentStateSummary {
@@ -57,6 +99,10 @@ export interface AgentStateSummary {
   selectedIds: string[];
   activeLayerId: string | null;
   layers: AgentLayerSummary[];
+  /** The composition background stack, bottom first (edit with editor.updateBackgroundLayer). */
+  background: AgentBackgroundSummary[];
+  /** Timeline tracks (order 0 = top of the timeline). */
+  tracks: AgentTrackSummary[];
   canUndo: boolean;
   canRedo: boolean;
 }
@@ -78,10 +124,14 @@ export interface FfxAgentApi {
   listFeatures: () => AgentManifest & { catalogs: AgentCatalogs };
   getState: () => AgentStateSummary;
   run: (actionId: string, args?: unknown) => Promise<AgentRunResult>;
-  /** Read a slice of a finished `agent.exportMp4` file (so a CDP / MCP bridge can stream it out). */
+  /** Read a slice of a finished `agent.exportMp4` / `agent.exportProject` file (so a CDP / MCP bridge can stream it out). */
   readExport: (exportId: string, offset: number, length: number) => Promise<AgentExportChunk>;
   /** Free a finished export's bytes. Returns false when the id is unknown. */
   releaseExport: (exportId: string) => boolean;
+  /** Stage a chunk of a media file for agent.importMedia (chunks in order, offset = bytes so far). */
+  writeUpload: (uploadId: string, offset: number, base64: string) => { uploadId: string; bytes: number };
+  /** Drop a staged upload that will not be imported. Returns false when the id is unknown. */
+  discardUpload: (uploadId: string) => boolean;
 }
 
 declare global {
@@ -104,6 +154,18 @@ function summarizeLayer(layer: Layer): AgentLayerSummary {
   if ('outPoint' in layer && typeof layer.outPoint === 'number') out.outPoint = layer.outPoint;
   if (layer.type === 'text') out.text = layer.content.spans.map((s) => s.text).join('');
   if ('masks' in layer && Array.isArray(layer.masks) && layer.masks.length) out.maskIds = layer.masks.map((m) => m.id);
+  if ('trackId' in layer) out.trackId = (layer as { trackId?: string | null }).trackId ?? null;
+  if (layer.is3D) out.is3D = true;
+  if (layer.cornerPin) out.cornerPin = true;
+  const anim = (layer as { animProps?: Record<string, unknown> }).animProps;
+  if (anim) {
+    const keys: string[] = [];
+    for (const [k, v] of Object.entries(anim)) {
+      if (k === 'effectParams' && v && typeof v === 'object') keys.push(...Object.keys(v).map((e) => `effect ${e}`));
+      else if (v) keys.push(k);
+    }
+    if (keys.length) out.animProps = keys;
+  }
   return out;
 }
 
@@ -125,6 +187,8 @@ export function getAgentState(): AgentStateSummary {
     selectedIds: [...ed.selection.selectedIds],
     activeLayerId: ed.selection.activeId,
     layers: comp.layers.map(summarizeLayer),
+    background: (comp.background?.layers ?? []).map((b) => ({ id: b.id, type: b.type, enabled: b.enabled, opacity: b.opacity })),
+    tracks: comp.tracks.map((t) => ({ id: t.id, name: t.name, type: t.type, order: t.order, visible: t.visible, locked: t.locked })),
     canUndo: hist.undoStack.length > 0,
     canRedo: hist.redoStack.length > 0,
   };
@@ -185,9 +249,218 @@ const PROJECT_FORMATS = {
 const nextFrame = () => new Promise<void>((r) => { requestAnimationFrame(() => r()); setTimeout(r, 100); });
 const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-/** Finished exports held for readExport (keyed by a counter id, never by time). */
+/** Finished exports (MP4 renders and .ffx project bundles) held for readExport (keyed by a counter id, never by time). */
 const finishedExports = new Map<string, Blob>();
 let exportSeq = 0;
+
+/** Decode base64 (optionally a data: URL) into bytes. */
+function base64ToBytes(data: unknown): Uint8Array<ArrayBuffer> {
+  if (typeof data !== 'string' || !data) throw new Error('"data" must be a non-empty base64 string');
+  const comma = data.startsWith('data:') ? data.indexOf(',') : -1;
+  const binary = atob(comma >= 0 ? data.slice(comma + 1) : data);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+const IMAGE_MIME_BY_EXT: Record<string, string> = {
+  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif', svg: 'image/svg+xml', avif: 'image/avif',
+};
+
+// B49: headless video / audio import. Files can be large, so the bridge stages them in chunks with
+// __ffxAgent.writeUpload(uploadId, offset, base64) (no single huge CDP message), then calls
+// agent.importMedia with the uploadId. Small files can still pass `data` inline.
+const VIDEO_MIME_BY_EXT: Record<string, string> = {
+  mp4: 'video/mp4', m4v: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm', mkv: 'video/x-matroska', avi: 'video/x-msvideo',
+};
+const AUDIO_MIME_BY_EXT: Record<string, string> = {
+  mp3: 'audio/mpeg', wav: 'audio/wav', m4a: 'audio/mp4', aac: 'audio/aac', ogg: 'audio/ogg', oga: 'audio/ogg', opus: 'audio/ogg', flac: 'audio/flac',
+};
+
+/** Staged chunked uploads, keyed by a bridge-chosen id. Bytes must arrive in order. */
+const stagedUploads = new Map<string, { parts: Uint8Array<ArrayBuffer>[]; bytes: number }>();
+/** Cap on everything staged at once (a runaway bridge must not exhaust the tab's memory). */
+const MAX_STAGED_BYTES = 2 * 1024 * 1024 * 1024;
+
+function writeUpload(uploadId: string, offset: number, base64: string): { uploadId: string; bytes: number } {
+  if (typeof uploadId !== 'string' || !uploadId) throw new Error('uploadId must be a non-empty string');
+  let entry = stagedUploads.get(uploadId);
+  if (!entry) {
+    if (offset !== 0) throw new Error(`upload "${uploadId}" must start at offset 0`);
+    entry = { parts: [], bytes: 0 };
+    stagedUploads.set(uploadId, entry);
+  }
+  if (offset !== entry.bytes) throw new Error(`upload "${uploadId}": expected offset ${entry.bytes}, got ${offset}`);
+  const chunk = base64ToBytes(base64);
+  let total = chunk.length;
+  for (const e of stagedUploads.values()) total += e.bytes;
+  if (total > MAX_STAGED_BYTES) throw new Error('staged uploads exceed 2 GB; import or discard some first');
+  entry.parts.push(chunk);
+  entry.bytes += chunk.length;
+  return { uploadId, bytes: entry.bytes };
+}
+
+/** The bytes of a staged upload (consumed) or of inline base64 `data`. */
+function takeMediaBytes(data: unknown, uploadId: unknown): BlobPart[] {
+  if (typeof uploadId === 'string' && uploadId) {
+    const entry = stagedUploads.get(uploadId);
+    if (!entry) throw new Error(`no staged upload "${uploadId}" (send it with __ffxAgent.writeUpload first)`);
+    stagedUploads.delete(uploadId);
+    return entry.parts;
+  }
+  return [base64ToBytes(data)];
+}
+
+function mediaKindOf(fileName: string, mimeType: unknown): { kind: 'video' | 'audio' | 'image'; type: string } {
+  const ext = fileName.split('.').pop()?.toLowerCase() ?? '';
+  const type = typeof mimeType === 'string' && mimeType ? mimeType : (VIDEO_MIME_BY_EXT[ext] ?? AUDIO_MIME_BY_EXT[ext] ?? IMAGE_MIME_BY_EXT[ext]);
+  if (!type) throw new Error(`cannot tell the media type of "${fileName}"; pass mimeType (video/mp4, audio/mpeg, image/png, ...)`);
+  if (type.startsWith('video/')) return { kind: 'video', type };
+  if (type.startsWith('audio/')) return { kind: 'audio', type };
+  if (type.startsWith('image/')) return { kind: 'image', type };
+  throw new Error(`"${type}" is not a video, audio or image type`);
+}
+
+/** Import an image blob (SVG rasterized first) into the open project's media pool. */
+async function importImageBlob(projectId: string, blob: Blob, name: string, type: string, rasterSize: unknown) {
+  let finalBlob = blob;
+  let finalName = name;
+  if (type === 'image/svg+xml') {
+    const size = typeof rasterSize === 'number' && rasterSize > 0 ? Math.min(8192, Math.round(rasterSize)) : 1024;
+    finalBlob = await rasterizeSvg(blob, size);
+    finalName = `${name.replace(/\.svg$/i, '')}.png`;
+  }
+  const file = new File([finalBlob], finalName, { type: finalBlob.type || type });
+  const { assetId, metadata } = await mediaAssetManager.importImage(file, projectId);
+  return { assetId, width: metadata.width, height: metadata.height, name: finalName };
+}
+
+/** SVG cannot go through createImageBitmap(blob): rasterize it to a PNG whose longest side is `size` px. */
+async function rasterizeSvg(svg: Blob, size: number): Promise<Blob> {
+  const url = URL.createObjectURL(svg);
+  try {
+    const img = new Image();
+    img.decoding = 'async';
+    img.src = url;
+    await img.decode();
+    const nw = img.naturalWidth || size;
+    const nh = img.naturalHeight || size;
+    const k = size / Math.max(nw, nh);
+    const w = Math.max(1, Math.round(nw * k));
+    const h = Math.max(1, Math.round(nh * k));
+    const canvas = new OffscreenCanvas(w, h);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('no 2D canvas to rasterize the SVG');
+    ctx.drawImage(img, 0, 0, w, h);
+    return await canvas.convertToBlob({ type: 'image/png' });
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+function requireActiveProjectId(): string {
+  const { activeProjectId, view } = useProjectStore.getState();
+  if (!activeProjectId || view !== 'editor') throw new Error('no project is open (call agent.createProject first)');
+  return activeProjectId;
+}
+
+/** The Viewport attaches its WebGPU renderer asynchronously (after the project opens and the device
+ *  initializes). Until then a seek renders nothing and a screenshot is black, so wait for it. */
+async function waitForRenderer(timeoutMs = 30000): Promise<boolean> {
+  for (let waited = 0; waited < timeoutMs && !playbackController.getRenderer(); waited += 50) await delay(50);
+  return playbackController.getRenderer() !== null;
+}
+
+/** Wait until the editor holds the document of `projectId` (ProjectApp installs it asynchronously). */
+async function waitForOpenedProject(projectId: string): Promise<void> {
+  const doc = await loadProjectScene(projectId);
+  if (!doc) throw new Error('the project scene could not be read back');
+  for (let i = 0; i < 200 && useEditorStore.getState().rootCompositionId !== doc.rootCompositionId; i++) await delay(50);
+  if (useEditorStore.getState().rootCompositionId !== doc.rootCompositionId) throw new Error('timed out waiting for the editor to open the project');
+  await waitForRenderer();
+  await nextFrame();
+  await nextFrame();
+  playbackController.renderCurrentFrame();
+}
+
+// ---------------------------------------------------------------------------------------------
+// B48: full-resolution frame renders (pixel-true checks and side-by-sides with reference videos)
+// ---------------------------------------------------------------------------------------------
+
+/** One offscreen renderer reused across renderFrame calls (re-created when the size changes). */
+let frameRenderer: { renderer: WebGPURenderer; width: number; height: number } | null = null;
+/** Serialize frame renders: they share the renderer and its canvas. */
+let frameRenderChain: Promise<unknown> = Promise.resolve();
+
+const MAX_RENDER_SIDE = 4096;
+
+function renderSize(width: unknown, height: unknown): { w: number; h: number } {
+  const comp = useEditorStore.getState().composition;
+  const cw = comp.settings.width, ch = comp.settings.height;
+  let w = typeof width === 'number' && width > 0 ? Math.round(width) : 0;
+  let h = typeof height === 'number' && height > 0 ? Math.round(height) : 0;
+  if (!w && !h) { w = cw; h = ch; } else if (!h) h = Math.round((w * ch) / cw); else if (!w) w = Math.round((h * cw) / ch);
+  if (w > MAX_RENDER_SIDE || h > MAX_RENDER_SIDE) throw new Error(`render size ${w}x${h} exceeds ${MAX_RENDER_SIDE} px`);
+  return { w: Math.max(2, w), h: Math.max(2, h) };
+}
+
+/**
+ * Render one composition frame through an offscreen WebGPURenderer exactly like the MP4 exporter does
+ * (same resolve context, export-quality motion blur, full-resolution video decode, images resident),
+ * then copy it to a fresh canvas. Never touches the DOM or the preview.
+ */
+async function renderCompFrame(frame: number, w: number, h: number): Promise<OffscreenCanvas> {
+  const job = frameRenderChain.then(async () => {
+    if (!frameRenderer || frameRenderer.width !== w || frameRenderer.height !== h) {
+      frameRenderer?.renderer.destroy();
+      frameRenderer = null;
+      const r = new WebGPURenderer();
+      if (!(await r.initializeOffscreen(w, h))) throw new Error('WebGPU is not available for an offscreen render');
+      r.setMotionBlurSamples(EXPORT_MOTION_BLUR_SAMPLES);
+      r.setExportMode(true);
+      frameRenderer = { renderer: r, width: w, height: h };
+    }
+    const r = frameRenderer.renderer;
+    const ed = useEditorStore.getState();
+    const comp = ed.composition;
+    const f = Math.max(0, Math.min(comp.settings.durationFrames - 1, Math.round(frame)));
+    // B52: lazy font faces load before the frame is resolved (measured) and rasterized.
+    await ensureCompositionFonts(comp, ed.getComposition);
+    const data = resolveFrame(comp, f, { getComposition: ed.getComposition, depth: 0, visited: new Set() });
+    // Full-resolution source frames (the exporter's path), never a buffered half-res preview proxy.
+    const decodes = collectExportVideoDecodes(data.layers);
+    if (decodes.length) {
+      frameScheduler.releaseBufferedFrames();
+      await Promise.all(decodes.map(async ({ assetId, frame: sf }) => {
+        if (frameScheduler.getFrame(assetId, sf)) return;
+        frameScheduler.injectFrame(assetId, sf, await videoDecoderPool.decodeFrameForExport(assetId, sf));
+      }));
+    }
+    await Promise.all(data.layers.filter((l) => l.layerType === 'image' && l.image?.assetId).map((l) => mediaAssetManager.ensureImageBitmap(l.image!.assetId)));
+    try {
+      await r.renderFrameAsync(data, 'offscreen');
+    } finally {
+      // Like the exporter's cleanup: do not leave full-resolution frames in the shared scheduler.
+      if (decodes.length) frameScheduler.releaseBufferedFrames();
+    }
+    const src = r.getOffscreenCanvas();
+    if (!src) throw new Error('the offscreen renderer has no canvas');
+    const copy = new OffscreenCanvas(w, h);
+    const g = copy.getContext('2d');
+    if (!g) throw new Error('no 2D canvas to read the frame back');
+    g.drawImage(src, 0, 0);
+    return copy;
+  });
+  frameRenderChain = job.catch(() => undefined);
+  return job;
+}
+
+async function keepPng(canvas: OffscreenCanvas): Promise<{ exportId: string; bytes: number }> {
+  const blob = await canvas.convertToBlob({ type: 'image/png' });
+  const exportId = `export-${++exportSeq}`;
+  finishedExports.set(exportId, blob);
+  return { exportId, bytes: blob.size };
+}
 
 /** Composite helpers: each is one undoable step built on real store actions / history commands.
  *  (createProject / exportMp4 are session-level and not undoable, like their UI counterparts.) */
@@ -252,6 +525,9 @@ const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
 
   seek: async (frame) => {
     if (typeof frame !== 'number' || !Number.isFinite(frame)) throw new Error('"frame" must be a number');
+    if (!playbackController.getRenderer() && !(await waitForRenderer())) throw new Error('the preview renderer is not ready (WebGPU did not initialize)');
+    const seekEd = useEditorStore.getState();
+    await ensureCompositionFonts(seekEd.composition, seekEd.getComposition); // B52: no fallback-face screenshots
     useTimelineStore.getState().seekTo(Math.round(frame)); // clamps + renders, like dragging the playhead
     await nextFrame();
     return useTimelineStore.getState().currentFrame;
@@ -267,9 +543,11 @@ const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
     return useTimelineStore.getState().currentFrame;
   },
 
-  createProject: async (name, format, frameRate, durationFrames, uiMode) => {
+  createProject: async (name, format, frameRate, durationFrames, uiMode, clipLength) => {
     const fmt = format === undefined ? 'long' : format;
     if (fmt !== 'long' && fmt !== 'short') throw new Error('"format" must be long or short');
+    // B45: new layers span the whole comp ('comp') or are the UI's 4 s clips ('default'); session-wide.
+    if (clipLength !== undefined && clipLength !== 'comp' && clipLength !== 'default') throw new Error('"clipLength" must be comp or default');
     const size = PROJECT_FORMATS[fmt];
     const fps = typeof frameRate === 'number' && frameRate > 0 ? frameRate : 30;
     const frames = typeof durationFrames === 'number' && durationFrames > 0 ? Math.round(durationFrames) : 150;
@@ -284,16 +562,46 @@ const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
     const projectId = useProjectStore.getState().activeProjectId;
     if (!projectId || useProjectStore.getState().view !== 'editor') throw new Error('the project was created but could not be opened');
     if (uiMode === 'starter' || uiMode === 'pro') usePanelStore.getState().setUiMode(uiMode as UiMode);
+    if (clipLength === 'comp' || clipLength === 'default') useEditorStore.getState().setDefaultClipLength(clipLength);
     // ProjectApp installs the saved document asynchronously: wait until the editor holds it.
-    const doc = await loadProjectScene(projectId);
-    if (!doc) throw new Error('the new project scene could not be read back');
-    for (let i = 0; i < 200 && useEditorStore.getState().rootCompositionId !== doc.rootCompositionId; i++) await delay(50);
-    if (useEditorStore.getState().rootCompositionId !== doc.rootCompositionId) throw new Error('timed out waiting for the editor to open the new project');
-    await nextFrame();
-    await nextFrame();
-    playbackController.renderCurrentFrame();
+    await waitForOpenedProject(projectId);
     const comp = useEditorStore.getState().composition;
     return { projectId, compositionId: comp.id, width: comp.settings.width, height: comp.settings.height, fps: comp.settings.frameRate, durationFrames: comp.settings.durationFrames };
+  },
+
+  listProjects: async (limit) => {
+    const store = useProjectStore.getState();
+    await store.loadProjects();
+    const max = typeof limit === 'number' && limit > 0 ? Math.min(200, Math.floor(limit)) : 20;
+    const cards = useProjectStore.getState().projects
+      .filter((c) => !c.metadata.trashedAt)
+      .sort((a, b) => b.metadata.modifiedAt - a.metadata.modifiedAt)
+      .slice(0, max);
+    return {
+      activeProjectId: useProjectStore.getState().view === 'editor' ? useProjectStore.getState().activeProjectId : null,
+      projects: cards.map(({ metadata: m }) => ({
+        id: m.id, name: m.name, width: m.width, height: m.height, fps: m.frameRate, durationFrames: m.durationFrames,
+        modifiedAt: new Date(m.modifiedAt).toISOString(), starred: !!m.starred,
+      })),
+    };
+  },
+
+  openProject: async (projectId) => {
+    if (typeof projectId !== 'string' || !projectId) throw new Error('"projectId" is required (see agent.listProjects)');
+    if (useOnboardingStore.getState().active) useOnboardingStore.getState().complete();
+    const metadata = await getProjectMetadata(projectId);
+    if (!metadata || metadata.trashedAt) throw new Error(`no local project "${projectId}" (see agent.listProjects)`);
+    const projects = useProjectStore.getState();
+    if (projects.view === 'editor' && projects.activeProjectId === projectId) {
+      const comp = useEditorStore.getState().composition;
+      return { projectId, name: metadata.name, compositionId: comp.id, width: comp.settings.width, height: comp.settings.height, fps: comp.settings.frameRate, durationFrames: comp.settings.durationFrames };
+    }
+    if (projects.view === 'editor') await projects.closeProject(); // saves the open project first
+    await useProjectStore.getState().openProject(projectId);
+    if (useProjectStore.getState().activeProjectId !== projectId || useProjectStore.getState().view !== 'editor') throw new Error('the project could not be opened');
+    await waitForOpenedProject(projectId);
+    const comp = useEditorStore.getState().composition;
+    return { projectId, name: metadata.name, compositionId: comp.id, width: comp.settings.width, height: comp.settings.height, fps: comp.settings.frameRate, durationFrames: comp.settings.durationFrames };
   },
 
   exportMp4: async (width, height, frameRate, bitrate, includeAudio) => {
@@ -309,6 +617,239 @@ const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
     const exportId = `export-${++exportSeq}`;
     finishedExports.set(exportId, blob);
     return { exportId, bytes: blob.size, mimeType: blob.type || 'video/mp4', audioDropped };
+  },
+
+  configureParticles: (layerId, presetId, overrides, seed) => {
+    const layer = requireLayer(layerId);
+    if (layer.type !== 'particle') throw new Error(`layer "${String(layerId)}" is a ${layer.type}, not a particle layer`);
+    const particle = (layer as ParticleLayer).particle;
+    let base: Record<string, unknown>;
+    let preset = particle.preset;
+    if (presetId !== undefined && presetId !== null) {
+      const make = typeof presetId === 'string' ? PARTICLE_PRESETS[presetId] : undefined;
+      if (!make) throw new Error(`unknown particle preset "${String(presetId)}"; try ${Object.keys(PARTICLE_PRESETS).join(', ')}`);
+      base = make() as unknown as Record<string, unknown>;
+      preset = presetId as string;
+    } else {
+      try { base = JSON.parse(particle.emitterConfig) as Record<string, unknown>; } catch { base = {}; }
+    }
+    if (overrides !== undefined && (typeof overrides !== 'object' || overrides === null || Array.isArray(overrides))) {
+      throw new Error('"overrides" must be an object of EmitterConfig fields (src/particles/types.ts)');
+    }
+    const next = { ...base, ...(overrides as Record<string, unknown> | undefined) };
+    const nextSeed = typeof seed === 'number' && Number.isFinite(seed) ? Math.round(seed) : particle.seed;
+    // One field write = one undo step (preset name, seed and the emitter JSON change together).
+    useEditorStore.getState().updateLayerProperty(layer.id, 'particle', { preset, seed: nextSeed, emitterConfig: JSON.stringify(next) });
+    return { preset, seed: nextSeed, config: next };
+  },
+
+  measureText: async (layerId, frame) => {
+    const layer = requireTextLayer(layerId);
+    await ensureCompositionFonts(layer); // B52: measure in the real (lazy-loaded) face, not the fallback
+    const ed = useEditorStore.getState();
+    const f = typeof frame === 'number' && Number.isFinite(frame) ? Math.round(frame) : useTimelineStore.getState().currentFrame;
+    // Resolve exactly like the renderer, with animators / decode stripped and the spans collapsed to the
+    // base style so the layer resolves to ONE text quad (animated or mixed-style text otherwise expands
+    // into per-glyph stamps). An accent word in another face can shift the real width slightly.
+    const fullText = layer.content.spans.map((sp) => sp.text).join('');
+    const first = layer.content.spans[0];
+    const content = first ? { ...layer.content, spans: [{ ...first, text: fullText }] } : layer.content;
+    const probe = { ...layer, content, animators: [], decode: undefined, masks: [], textPath: undefined, inPoint: Math.min(layer.inPoint, f), outPoint: Math.max(layer.outPoint, f + 1) };
+    const comp = { ...ed.composition, layers: ed.composition.layers.map((l) => (l.id === layer.id ? probe : l)) };
+    const resolved = resolveFrame(comp, f, { getComposition: ed.getComposition }).layers.find((l) => l.id === layer.id);
+    if (!resolved?.text) throw new Error('the text did not resolve at this frame');
+    const layout = getTextLayout(resolved.text);
+    const lineWidths = layout.lines.map((line) => measureStringWidth(resolved.text!, line));
+    const t = resolved.transform;
+    const inkWidth = Math.max(0, ...lineWidths);
+    const inkHeight = layout.lines.length * layout.lineHeightPx;
+    // The renderer centres the text quad on the layer position (scale 1, no rotation assumed here).
+    const cx = t.positionX;
+    const cy = t.positionY;
+    return {
+      frame: f,
+      center: [cx, cy],
+      box: { width: layout.canvasWidth, height: layout.canvasHeight, left: cx - layout.canvasWidth / 2, top: cy - layout.canvasHeight / 2 },
+      ink: { width: inkWidth, height: inkHeight, left: cx - inkWidth / 2, right: cx + inkWidth / 2, top: cy - inkHeight / 2, bottom: cy + inkHeight / 2 },
+      lines: layout.lines,
+      lineWidths,
+      lineHeightPx: layout.lineHeightPx,
+      fontSize: resolved.text.fontSize,
+      scale: [t.scaleX, t.scaleY],
+      rotation: t.rotation,
+    };
+  },
+
+  measureString: async (text, fontFamily, fontSize, fontWeight, fontStyle, letterSpacing, lineHeight) => {
+    // Measure without a layer: a throwaway ResolvedText laid out by the SAME code the renderer uses.
+    if (typeof text !== 'string') throw new Error('"text" must be a string');
+    const size = typeof fontSize === 'number' && fontSize > 0 ? fontSize : 48;
+    const probe: ResolvedText = {
+      content: text,
+      mode: 'point',
+      boxWidth: 300,
+      boxHeight: 200,
+      fontFamily: typeof fontFamily === 'string' && fontFamily ? fontFamily : 'Inter',
+      fontWeight: typeof fontWeight === 'number' ? fontWeight : 400,
+      fontStyle: fontStyle === 'italic' ? 'italic' : 'normal',
+      fontSize: size,
+      lineHeight: typeof lineHeight === 'number' && lineHeight > 0 ? lineHeight : 1.2,
+      letterSpacing: typeof letterSpacing === 'number' ? letterSpacing : 0,
+      fillColor: [1, 1, 1, 1],
+      strokeColor: [0, 0, 0, 0],
+      strokeWidth: 0,
+      textAlign: 'center',
+      underline: false,
+      strikethrough: false,
+      measuredWidth: 0,
+      measuredHeight: 0,
+    };
+    await ensureFontFace(probe.fontFamily, probe.fontWeight, probe.fontStyle); // B52: lazy faces load first
+    const layout = getTextLayout(probe);
+    const lineWidths = layout.lines.map((line) => measureStringWidth(probe, line));
+    return {
+      width: Math.max(0, ...lineWidths),
+      height: layout.lines.length * layout.lineHeightPx,
+      lines: layout.lines,
+      lineWidths,
+      lineHeightPx: layout.lineHeightPx,
+      box: { width: layout.canvasWidth, height: layout.canvasHeight },
+      fontFamily: probe.fontFamily,
+      fontSize: size,
+    };
+  },
+
+  renderFrame: async (frame, width, height) => {
+    const f = typeof frame === 'number' && Number.isFinite(frame) ? frame : useTimelineStore.getState().currentFrame;
+    const { w, h } = renderSize(width, height);
+    const canvas = await renderCompFrame(f, w, h);
+    const kept = await keepPng(canvas);
+    return { ...kept, frame: Math.round(f), width: w, height: h, mimeType: 'image/png' };
+  },
+
+  renderStrip: async (frames, columns, tileWidth, labels) => {
+    if (!Array.isArray(frames) || frames.length === 0 || !frames.every((x) => typeof x === 'number' && Number.isFinite(x))) throw new Error('"frames" must be a non-empty array of frame numbers');
+    if (frames.length > 64) throw new Error('at most 64 frames per strip');
+    const comp = useEditorStore.getState().composition;
+    const tw = typeof tileWidth === 'number' && tileWidth > 0 ? Math.round(tileWidth) : Math.min(480, comp.settings.width);
+    const { w, h } = renderSize(tw, undefined);
+    const cols = typeof columns === 'number' && columns > 0 ? Math.min(Math.round(columns), frames.length) : Math.min(frames.length, 4);
+    const rows = Math.ceil(frames.length / cols);
+    const gap = 4;
+    const sheet = new OffscreenCanvas(cols * w + (cols + 1) * gap, rows * h + (rows + 1) * gap);
+    const g = sheet.getContext('2d');
+    if (!g) throw new Error('no 2D canvas for the strip');
+    g.fillStyle = '#202020';
+    g.fillRect(0, 0, sheet.width, sheet.height);
+    for (let i = 0; i < frames.length; i++) {
+      const tile = await renderCompFrame(frames[i] as number, w, h);
+      const x = gap + (i % cols) * (w + gap), y = gap + Math.floor(i / cols) * (h + gap);
+      g.drawImage(tile, x, y);
+      if (labels !== false) {
+        const label = `f${Math.round(frames[i] as number)}`;
+        g.font = `${Math.max(11, Math.round(h / 14))}px monospace`;
+        const m = g.measureText(label);
+        g.fillStyle = 'rgba(0,0,0,0.65)';
+        g.fillRect(x, y, m.width + 10, Math.max(11, Math.round(h / 14)) + 8);
+        g.fillStyle = '#ffffff';
+        g.fillText(label, x + 5, y + Math.max(11, Math.round(h / 14)) + 2);
+      }
+    }
+    const kept = await keepPng(sheet);
+    return { ...kept, frames: frames.map((x) => Math.round(x as number)), columns: cols, tileWidth: w, tileHeight: h, width: sheet.width, height: sheet.height, mimeType: 'image/png' };
+  },
+
+  getLayer: (layerId) => {
+    // Read-only: the full layer JSON (every property path an agent can set or keyframe), deep-copied
+    // so the caller can never mutate store state through it.
+    return structuredClone(requireLayer(layerId));
+  },
+
+  saveProject: async () => {
+    const projectId = requireActiveProjectId();
+    await useProjectStore.getState().saveCurrentProject();
+    return { projectId, compositions: Object.keys(useEditorStore.getState().getDocument().compositions).length };
+  },
+
+  exportProject: async () => {
+    const projectId = requireActiveProjectId();
+    // Persist first (so IndexedDB matches), then bundle the LIVE document: every composition, the
+    // project's media binaries and the preview, exactly what File > Download Project (.ffx) writes.
+    await useProjectStore.getState().saveCurrentProject();
+    const { blob, fileName } = await buildProjectBundle(projectId, useEditorStore.getState().getDocument());
+    const exportId = `export-${++exportSeq}`;
+    finishedExports.set(exportId, blob);
+    return { exportId, bytes: blob.size, fileName, projectId, mimeType: 'application/json' };
+  },
+
+  importProject: async (data, fileName) => {
+    const name = typeof fileName === 'string' && fileName.trim() ? fileName.trim() : 'project.ffx';
+    const file = new File([base64ToBytes(data)], name, { type: 'application/json' });
+    if (useOnboardingStore.getState().active) useOnboardingStore.getState().complete();
+    const projects = useProjectStore.getState();
+    if (projects.view === 'editor') await projects.closeProject(); // saves the open project first
+    const metadata = await useProjectStore.getState().importProject(file);
+    await useProjectStore.getState().openProject(metadata.id);
+    if (useProjectStore.getState().activeProjectId !== metadata.id) throw new Error('the project was imported but could not be opened');
+    await waitForOpenedProject(metadata.id);
+    const comp = useEditorStore.getState().composition;
+    return { projectId: metadata.id, name: metadata.name, compositionId: comp.id, layers: comp.layers.length, width: comp.settings.width, height: comp.settings.height };
+  },
+
+  importImage: async (data, fileName, mimeType, rasterSize) => {
+    const projectId = requireActiveProjectId();
+    const name = typeof fileName === 'string' && fileName.trim() ? fileName.trim() : 'image.png';
+    const ext = name.split('.').pop()?.toLowerCase() ?? '';
+    const type = typeof mimeType === 'string' && mimeType ? mimeType : IMAGE_MIME_BY_EXT[ext];
+    if (!type || !type.startsWith('image/')) throw new Error(`cannot tell the image type of "${name}"; pass mimeType (png, jpeg, webp, gif, svg)`);
+    return importImageBlob(projectId, new Blob([base64ToBytes(data)], { type }), name, type, rasterSize);
+  },
+
+  importMedia: async (data, fileName, mimeType, uploadId, rasterSize) => {
+    const projectId = requireActiveProjectId();
+    if (typeof fileName !== 'string' || !fileName.trim()) throw new Error('"fileName" is required (its extension tells the media type)');
+    const name = fileName.trim();
+    if ((typeof uploadId !== 'string' || !uploadId) && (typeof data !== 'string' || !data)) throw new Error('pass either "data" (base64) or "uploadId" (staged with __ffxAgent.writeUpload)');
+    const { kind, type } = mediaKindOf(name, mimeType);
+    const blob = new Blob(takeMediaBytes(data, uploadId), { type });
+    if (blob.size === 0) throw new Error('the media file is empty');
+    const fps = useEditorStore.getState().composition.settings.frameRate;
+    if (kind === 'image') return { kind, ...(await importImageBlob(projectId, blob, name, type, rasterSize)) };
+    const file = new File([blob], name, { type });
+    if (kind === 'video') {
+      const { assetId, metadata } = await mediaAssetManager.importVideo(file, projectId);
+      return {
+        kind, assetId, name, width: metadata.width, height: metadata.height, duration: metadata.duration,
+        frameRate: metadata.frameRate, hasAudio: metadata.hasAudio, codec: metadata.codec, bytes: metadata.fileSize,
+        compFrames: Math.ceil(metadata.duration * fps),
+      };
+    }
+    const { assetId, metadata } = await mediaAssetManager.importAudio(file, projectId);
+    return {
+      kind, assetId, name, duration: metadata.duration, sampleRate: metadata.sampleRate, channels: metadata.channels,
+      bytes: metadata.fileSize, compFrames: Math.ceil(metadata.duration * fps),
+    };
+  },
+
+  importFont: async (data, fileName, family, weight, style) => {
+    // B52: the same import as Inspector > Font > Import (engine/customFonts.ts): stored in the
+    // browser's font library (IndexedDB, shared by every project, survives reloads) and registered
+    // with the browser, so the family renders through the normal text path once a span uses it.
+    const name = typeof fileName === 'string' && fileName.trim() ? fileName.trim() : 'font.woff2';
+    if (family !== undefined && family !== null && (typeof family !== 'string' || !family.trim())) throw new Error('"family" must be a non-empty string');
+    if (weight !== undefined && weight !== null && (typeof weight !== 'number' || !(weight >= 1 && weight <= 1000))) throw new Error('"weight" must be a number from 1 to 1000');
+    if (style !== undefined && style !== null && style !== 'normal' && style !== 'italic') throw new Error('"style" must be normal or italic');
+    const bytes = base64ToBytes(data);
+    if (bytes.byteLength > MAX_FONT_BYTES) throw new Error(`the font is larger than ${MAX_FONT_BYTES / 1024 / 1024} MB`);
+    await hydrateCustomFonts(); // the stored library first, so this import is not overwritten by a late hydrate
+    const face = await useCustomFontStore.getState().importFontFace(new File([bytes], name), {
+      family: typeof family === 'string' ? family : undefined,
+      weight: typeof weight === 'number' ? weight : undefined,
+      style: style === 'normal' || style === 'italic' ? style : undefined,
+    });
+    // Re-render the preview so text already set in this family switches to it now.
+    if (playbackController.getRenderer()) playbackController.renderCurrentFrame();
+    return { ...face, use: `set "content.spans.0.style.fontFamily" to "${face.family}" (or pass it to editor.styleTextWord / agent.measureString)` };
   },
 
   removeExpression: (layerId, propertyName) => {
@@ -330,6 +871,85 @@ const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
       },
     });
     return true;
+  },
+
+  // ----- B51 cursor rig (animation-templates/cursorRig.ts): each call is ONE undo step -----
+  addCursor: (icon, x, y, frame, color, size, name) => {
+    const comp = useEditorStore.getState().composition;
+    const num = (v: unknown, fallback: number, label: string): number => {
+      if (v === undefined || v === null) return fallback;
+      if (typeof v !== 'number' || !Number.isFinite(v)) throw new Error(`"${label}" must be a number`);
+      return v;
+    };
+    if (color !== undefined && !(Array.isArray(color) && color.length === 4 && color.every((c) => typeof c === 'number' && Number.isFinite(c)))) throw new Error('"color" must be an RGBA colour [r, g, b, a] (0..1)');
+    const start = Math.round(num(frame, 0, 'frame'));
+    const layers = buildAgentCursor({
+      icon: (icon ?? 'arrow') as AgentCursorIcon,
+      x: num(x, comp.settings.width / 2, 'x'),
+      y: num(y, comp.settings.height / 2, 'y'),
+      frame: start,
+      endFrame: Math.max(start + 1, comp.settings.durationFrames),
+      color: color as [number, number, number, number] | undefined,
+      size: num(size, 36, 'size'),
+      name: typeof name === 'string' && name.trim() ? name.trim() : undefined,
+    });
+    useEditorStore.getState().applyLayerEdits('Add cursor', { add: layers });
+    const icons: Record<string, string> = {};
+    for (const l of layers.slice(1)) icons[l.name] = l.id;
+    return { cursorId: layers[0].id, icons, frame: start };
+  },
+
+  cursorMoveTo: (cursorId, frame, x, y, durationFrames, ease, arc) => {
+    const ed = useEditorStore.getState();
+    const rig = findCursorRig(ed.composition.layers, String(cursorId));
+    for (const [v, label] of [[frame, 'frame'], [x, 'x'], [y, 'y']] as const) if (typeof v !== 'number' || !Number.isFinite(v)) throw new Error(`"${label}" must be a number`);
+    if (durationFrames !== undefined && (typeof durationFrames !== 'number' || !(durationFrames > 0))) throw new Error('"durationFrames" must be a positive number');
+    if (arc !== undefined && (typeof arc !== 'number' || !Number.isFinite(arc))) throw new Error('"arc" must be a number');
+    const plan = planCursorMove(rig.group, {
+      frame: frame as number, to: [x as number, y as number], fps: ed.composition.settings.frameRate,
+      durationFrames: durationFrames as number | undefined, ease: ease as KeyframeEaseSpec | undefined, arc: arc as number | undefined,
+    });
+    ed.applyLayerEdits('Move cursor', { update: [plan.group] });
+    return { cursorId: rig.group.id, from: plan.from, to: plan.to, startFrame: plan.startFrame, endFrame: plan.endFrame };
+  },
+
+  cursorClick: (cursorId, frame, ripple, squash, rippleColor) => {
+    const ed = useEditorStore.getState();
+    const rig = findCursorRig(ed.composition.layers, String(cursorId));
+    if (typeof frame !== 'number' || !Number.isFinite(frame)) throw new Error('"frame" must be a number');
+    if (squash !== undefined && (typeof squash !== 'number' || !(squash > 0))) throw new Error('"squash" must be a positive scale factor');
+    if (rippleColor !== undefined && !(Array.isArray(rippleColor) && rippleColor.length === 4 && rippleColor.every((c) => typeof c === 'number' && Number.isFinite(c)))) throw new Error('"rippleColor" must be an RGBA colour [r, g, b, a] (0..1)');
+    const f = Math.round(frame);
+    const group = planCursorClick(rig.group, { frame: f, squash: squash as number | undefined });
+    const ring = ripple === false ? null : buildClickRipple(rig.group, f, { color: rippleColor as [number, number, number, number] | undefined });
+    ed.applyLayerEdits('Cursor click', { update: [group], add: ring ? [ring] : [] });
+    if (!ring) useEditorStore.getState().selectLayer(rig.group.id);
+    return { cursorId: rig.group.id, frame: f, rippleId: ring ? ring.id : null, responseFrame: f + 2 };
+  },
+
+  cursorIcon: (cursorId, frame, icon) => {
+    const ed = useEditorStore.getState();
+    const rig = findCursorRig(ed.composition.layers, String(cursorId));
+    if (typeof frame !== 'number' || !Number.isFinite(frame)) throw new Error('"frame" must be a number');
+    if (!AGENT_CURSOR_ICONS.includes(icon as AgentCursorIcon)) throw new Error(`"icon" must be one of ${AGENT_CURSOR_ICONS.join(', ')}`);
+    const before = cursorIconAt(rig, Math.round(frame));
+    ed.applyLayerEdits('Cursor icon', { update: planCursorIcon(rig, frame, icon as AgentCursorIcon) });
+    return { cursorId: rig.group.id, frame: Math.round(frame), from: before, icon };
+  },
+
+  // ----- B35 typing caret on a text layer (core/textCaret.ts) -----
+  setTextCaret: (layerId, caret) => {
+    const layer = requireTextLayer(layerId);
+    if (caret === null) {
+      if (!layer.caret) return null;
+      useEditorStore.getState().updateLayerProperty(layer.id, 'caret', { ...layer.caret, enabled: false });
+      return { ...layer.caret, enabled: false };
+    }
+    if (caret !== undefined && (typeof caret !== 'object' || Array.isArray(caret))) throw new Error('"caret" must be an object (TextCaret fields) or null');
+    const next = normalizeTextCaret({ ...(layer.caret ?? {}), enabled: true, ...(caret as Record<string, unknown> | undefined) });
+    if (!next) throw new Error('invalid caret');
+    useEditorStore.getState().updateLayerProperty(layer.id, 'caret', next);
+    return next;
   },
 };
 
@@ -369,7 +989,13 @@ export async function runAgentAction(actionId: string, args?: unknown): Promise<
 }
 
 export function listAgentFeatures(): AgentManifest & { catalogs: AgentCatalogs } {
-  return { ...buildAgentManifest(), catalogs: buildAgentCatalogs() };
+  const catalogs = buildAgentCatalogs();
+  // B52: fonts imported into this browser (agent.importFont / Inspector) join the bundled families.
+  const known = new Set(catalogs.fontFamilies.map((e) => e.id));
+  const custom = [...new Set(useCustomFontStore.getState().fonts.map((f) => f.family))]
+    .filter((f) => !known.has(f))
+    .map((f) => ({ id: f, label: f, category: 'Custom', description: 'Imported font (agent.importFont / Inspector), stored in this browser.' }));
+  return { ...buildAgentManifest(), catalogs: { ...catalogs, fontFamilies: [...catalogs.fontFamilies, ...custom] } };
 }
 
 async function readAgentExport(exportId: string, offset: number, length: number): Promise<AgentExportChunk> {
@@ -393,5 +1019,7 @@ export function installAgentRuntime(): void {
     run: runAgentAction,
     readExport: readAgentExport,
     releaseExport: (exportId: string) => finishedExports.delete(exportId),
+    writeUpload,
+    discardUpload: (uploadId: string) => stagedUploads.delete(uploadId),
   };
 }

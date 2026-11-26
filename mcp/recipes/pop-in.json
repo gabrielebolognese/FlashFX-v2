@@ -1,0 +1,64 @@
+{
+  "id": "pop-in",
+  "name": "Pop-in badge / chip / button",
+  "category": "ui",
+  "description": "A pill, circle or rounded card that pops in from zero with a small measured overshoot, optionally with a centred label that scales with it, and shrinks away on the end frame. For badges ('EARLY ACCESS'), chips, buttons, avatars and tiles.",
+  "source": ["r06 S2 send button pop [0.34, 1.56, 0.64, 1] over 5 f at 60", "r04 S4 photo tiles spawning with a backOut scale pop", "r02 S4 cards scale overshoot 6-16 % (fitted beziers [0.52, 1.576, 0.06, 1.135])"],
+  "taste": ["TASTE.md 2 Easing (overshoot)", "3 Timing", "5 Typography"],
+  "params": {
+    "shape": { "type": "enum", "enum": ["pill", "circle", "rounded", "square"], "default": "pill", "description": "Outline." },
+    "x": { "type": "number", "default": null, "description": "Centre x (default comp centre)." },
+    "y": { "type": "number", "default": null, "description": "Centre y (default comp centre)." },
+    "width": { "type": "number", "default": null, "description": "Width px (default: fits the label with padding, else 30 % of the comp width; circle = diameter)." },
+    "height": { "type": "number", "default": null, "description": "Height px (default: label size x 2.3; ignored for circle)." },
+    "fill": { "type": "color", "default": "#0b0b0d", "description": "Fill colour." },
+    "label": { "type": "string", "default": "", "description": "Centred label ('' = none)." },
+    "labelColor": { "type": "color", "default": "#ffffff", "description": "Label colour." },
+    "labelSize": { "type": "number", "default": null, "description": "Label size px (default 3.2 % of the short side)." },
+    "weight": { "type": "number", "default": 600, "description": "Label weight." },
+    "family": { "type": "string", "default": "Inter", "description": "Label family." },
+    "tracking": { "type": "number", "default": 60, "description": "Label tracking in 1/1000 em (all-caps labels +40 to +120)." },
+    "delay": { "type": "number", "default": 0, "min": 0, "description": "Frames at 30 fps before the pop." },
+    "entrance": { "type": "number", "default": 9, "min": 3, "description": "Pop length, frames at 30 fps." },
+    "ease": { "type": "ease", "default": [0.34, 1.56, 0.64, 1], "description": "Pop ease (y > 1 = overshoot; TASTE 2: 3-9 % peak, never more than 16 %)." },
+    "exit": { "type": "boolean", "default": true, "description": "Shrink and fade away ending on the end frame." },
+    "exitFrames": { "type": "number", "default": 6, "min": 2, "description": "Exit length, frames at 30 fps." },
+    "name": { "type": "string", "default": "Badge", "description": "Layer name." }
+  },
+  "length30": "delay + entrance + 45 + (exit ? exitFrames : 0)",
+  "checkFrames30": ["delay + entrance * 0.4", "delay + entrance + 2"],
+  "lets": {
+    "X": "x == null ? CX : x",
+    "Y": "y == null ? CY : y",
+    "LS": "labelSize == null ? round(min(W, H) * 0.032) : labelSize",
+    "s0": "start + f(delay)"
+  },
+  "steps": [
+    { "when": "label != ''", "id": "lm", "action": "agent.measureString", "args": { "text": "{{label}}", "fontFamily": "{{family}}", "fontSize": "{{LS}}", "fontWeight": "{{weight}}", "letterSpacing": "{{round(LS * tracking / 1000, 2)}}" } },
+    { "let": {
+      "SH": "shape == 'circle' ? (width == null ? (label != '' ? round(@lm.result.width + LS * 2) : round(W * 0.3)) : width) : (height == null ? round(LS * 2.3) : height)",
+      "SW": "shape == 'circle' ? (width == null ? (label != '' ? round(@lm.result.width + LS * 2) : round(W * 0.3)) : width) : (width == null ? (label != '' ? round(@lm.result.width + LS * 2.4) : round(W * 0.3)) : width)"
+    } },
+    { "let": { "RAD": "shape == 'pill' ? round(SH / 2) : shape == 'rounded' ? round(min(SW, SH) * 0.22) : 0" } },
+    { "id": "sh", "action": "editor.addShapeLayer", "args": { "opts": { "type": "{{shape == 'circle' ? 'circle' : 'rectangle'}}", "x": "{{X - PX}}", "y": "{{Y - PY}}", "width": "{{SW}}", "height": "{{SH}}", "radius": "{{shape == 'circle' ? round(SW / 2) : RAD}}", "fill": "{{fill}}", "name": "{{name}}" } }, "layer": true, "root": true },
+    { "let": { "B": "@sh.result" } },
+    { "when": "label != ''", "id": "lab", "action": "editor.createQuickText", "args": { "x": 0, "y": 0, "text": "{{label}}" }, "layer": true },
+    { "when": "label != ''", "action": "editor.renameLayer", "args": { "id": "{{@lab.result}}", "name": "{{name}} label" } },
+    { "when": "label != ''", "action": "editor.setLayerParent", "args": { "childId": "{{@lab.result}}", "parentId": "{{B}}" } },
+    { "when": "label != ''", "action": "editor.updateLayerProperty", "args": { "layerId": "{{@lab.result}}", "path": "transform.position.defaultValue", "value": "{{[0, round(LS * (upper(label) == label ? 0.28 : 0.2))]}}" } },
+    { "when": "label != ''", "action": "editor.updateLayerProperty", "args": { "layerId": "{{@lab.result}}", "path": "animOverrides.fontSize.defaultValue", "value": "{{LS}}" } },
+    { "when": "label != ''", "action": "editor.updateLayerProperty", "args": { "layerId": "{{@lab.result}}", "path": "content.spans.0.style.fontSize", "value": "{{LS}}" } },
+    { "when": "label != ''", "action": "editor.updateLayerProperty", "args": { "layerId": "{{@lab.result}}", "path": "content.spans.0.style.fontWeight", "value": "{{weight}}" } },
+    { "when": "label != ''", "action": "editor.updateLayerProperty", "args": { "layerId": "{{@lab.result}}", "path": "content.spans.0.style.fontFamily", "value": "{{family}}" } },
+    { "when": "label != ''", "action": "editor.updateLayerProperty", "args": { "layerId": "{{@lab.result}}", "path": "content.spans.0.style.color", "value": "{{labelColor}}" } },
+    { "when": "label != ''", "action": "editor.updateLayerProperty", "args": { "layerId": "{{@lab.result}}", "path": "animOverrides.letterSpacing.defaultValue", "value": "{{round(LS * tracking / 1000, 2)}}" } },
+    { "action": "editor.setKeyframes", "args": { "layerId": "{{B}}", "propertyPath": "transform.scale", "keyframes": [
+      { "frame": "{{s0}}", "value": [0, 0], "ease": "{{ease}}" }, { "frame": "{{s0 + f(entrance)}}", "value": [1, 1], "ease": "hold" },
+      { "frame": "{{exit ? end - f(exitFrames) : end}}", "value": [1, 1], "ease": [0.5, 0, 0.75, 0] }, { "frame": "{{end}}", "value": "{{exit ? [0.6, 0.6] : [1, 1]}}" } ] } },
+    { "action": "editor.setKeyframes", "args": { "layerId": "{{B}}", "propertyPath": "transform.opacity", "keyframes": [
+      { "frame": "{{s0}}", "value": 0, "ease": "linear" }, { "frame": "{{s0 + f(2)}}", "value": 1, "ease": "hold" },
+      { "frame": "{{exit ? end - f(exitFrames) : end}}", "value": 1, "ease": [0.5, 0, 0.75, 0] }, { "frame": "{{end}}", "value": "{{exit ? 0 : 1}}" } ] } }
+  ],
+  "returns": { "layerId": "{{B}}", "labelId": "{{@lab.result}}", "width": "{{SW}}", "height": "{{SH}}", "settledFrame": "{{s0 + f(entrance)}}" },
+  "example": { "params": { "label": "EARLY ACCESS", "fill": "#2f6bff" }, "startFrame": 30 }
+}

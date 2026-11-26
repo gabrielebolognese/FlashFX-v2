@@ -100,7 +100,7 @@ export function createShapeRepeater(): ShapeRepeater {
 
 export function createKeyframe(
   frame: number,
-  value: number | Vec2,
+  value: number | Vec2 | Vec4,
   interpolation: Keyframe['interpolation'] = 'linear'
 ): Keyframe {
   return {
@@ -206,9 +206,11 @@ export function createBeamLayer(
   };
 }
 
-/** A 2.5D camera layer. Defaults to a two-node camera centered on the comp, `compH` in front
- *  of the z=0 plane, aimed at the comp center - i.e. it starts identical to the default camera
- *  (framing the comp 1:1), so adding one changes nothing until it (or a 3D layer) moves. */
+/** A 2.5D camera layer. Defaults to a two-node camera centered on the comp, `zoom` in front
+ *  of the z=0 plane, aimed at the comp center - i.e. it frames the comp 1:1 exactly like the
+ *  default camera, so adding one changes nothing until it (or a 3D layer) moves (AE places a new
+ *  camera at z = -zoom too). B53 fix: the eye used to sit at -compH while zoom is 50mm
+ *  (50·compW/36), which zoomed the shot ~2.5x the moment a camera was added (gpu:camera-cards). */
 export function createCameraLayer(
   name: string,
   compW: number,
@@ -217,13 +219,15 @@ export function createCameraLayer(
 ): CameraLayer {
   const cx = compW / 2;
   const cy = compH / 2;
+  // AE 50mm default: Zoom = 50·compW/36 (film size 36mm, measured horizontally).
+  const zoom = (50 * compW) / 36;
   const transform: Transform = {
     position: createProperty('Position', 'vec2', [cx, cy]),
     rotation: createProperty('Z Rotation', 'number', 0),
     scale: createProperty('Scale', 'vec2', [1, 1]),
     anchorPoint: createProperty('Anchor Point', 'vec2', [0, 0]),
     opacity: createProperty('Opacity', 'number', 1),
-    positionZ: createProperty('Z Position', 'number', -compH),
+    positionZ: createProperty('Z Position', 'number', -zoom),
     rotationX: createProperty('X Rotation', 'number', 0),
     rotationY: createProperty('Y Rotation', 'number', 0),
   };
@@ -244,17 +248,16 @@ export function createCameraLayer(
       mode: 'two-node',
       pointOfInterest: createProperty('Point of Interest', 'vec2', [cx, cy]),
       pointOfInterestZ: createProperty('POI Z', 'number', 0),
-      // AE 50mm default: Zoom = 50·compW/36 (film size 36mm, measured horizontally).
-      zoom: createProperty('Zoom', 'number', (50 * compW) / 36),
+      zoom: createProperty('Zoom', 'number', zoom),
       filmSize: 36,
       measureFilmSize: 'horizontal',
       units: 'pixels',
       dofEnabled: false,
       // Focus tracks Zoom by default (Lock to Zoom); seed the stored value to match.
-      focusDistance: createProperty('Focus Distance', 'number', (50 * compW) / 36),
+      focusDistance: createProperty('Focus Distance', 'number', zoom),
       lockToZoom: true,
       // Aperture from a default f/5.6 at the default zoom (F-Stop = zoom/aperture).
-      aperture: createProperty('Aperture', 'number', (50 * compW) / 36 / 5.6),
+      aperture: createProperty('Aperture', 'number', zoom / 5.6),
       blurLevel: createProperty('Blur Level', 'number', 1), // fraction, 1 = 100%
     },
   };

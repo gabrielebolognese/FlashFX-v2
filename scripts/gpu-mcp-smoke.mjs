@@ -9,7 +9,7 @@
 
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
@@ -22,6 +22,7 @@ mkdirSync(OUT_DIR, { recursive: true });
 const SHOT = process.env.FLASHFX_SMOKE_OUT ?? join(OUT_DIR, 'mcp-smoke.png');
 const EMPTY_SHOT = join(OUT_DIR, 'mcp-smoke-empty.png');
 const MP4 = join(OUT_DIR, 'mcp-smoke.mp4');
+const FFX = join(OUT_DIR, 'mcp-smoke.ffx');
 
 /** Minimal PNG decoder (8-bit RGB / RGBA, non-interlaced: what Chrome's captureScreenshot writes). */
 function decodePng(buf) {
@@ -64,6 +65,17 @@ function decodePng(buf) {
   return { width, height, px };
 }
 
+/** A mono 16-bit PCM WAV sine tone. */
+function toneWav(seconds, hz, rate) {
+  const n = Math.round(seconds * rate);
+  const b = Buffer.alloc(44 + n * 2);
+  b.write('RIFF', 0); b.writeUInt32LE(36 + n * 2, 4); b.write('WAVE', 8); b.write('fmt ', 12);
+  b.writeUInt32LE(16, 16); b.writeUInt16LE(1, 20); b.writeUInt16LE(1, 22); b.writeUInt32LE(rate, 24);
+  b.writeUInt32LE(rate * 2, 28); b.writeUInt16LE(2, 32); b.writeUInt16LE(16, 34); b.write('data', 36); b.writeUInt32LE(n * 2, 40);
+  for (let i = 0; i < n; i++) b.writeInt16LE(Math.round(Math.sin((2 * Math.PI * hz * i) / rate) * 12000), 44 + i * 2);
+  return b;
+}
+
 /** Pixel stats inside rect: luminance std-dev, and (vs `other`) the fraction of pixels that changed. */
 function regionStats(img, rect, other) {
   const x0 = Math.max(0, Math.floor(rect.x)); const y0 = Math.max(0, Math.floor(rect.y));
@@ -83,7 +95,8 @@ function regionStats(img, rect, other) {
 }
 
 // ----- MCP client over the server's stdio -----
-const env = { ...process.env, FLASHFX_SERVER: process.env.FLASHFX_SERVER ?? 'dev' };
+// 32 KB upload chunks so import_media streams the small test files in several writeUpload calls.
+const env = { ...process.env, FLASHFX_SERVER: process.env.FLASHFX_SERVER ?? 'dev', FLASHFX_UPLOAD_CHUNK: process.env.FLASHFX_UPLOAD_CHUNK ?? '32768' };
 const server = spawn(process.execPath, [join(ROOT, 'mcp/flashfx-mcp.mjs')], { cwd: ROOT, env, stdio: ['pipe', 'pipe', 'pipe'] });
 const stderr = [];
 server.stderr.on('data', (d) => { stderr.push(String(d)); if (process.env.FLASHFX_SMOKE_VERBOSE) process.stderr.write(d); });
@@ -123,7 +136,7 @@ try {
   const { tools } = await request('tools/list', {});
   check('tools/list exposes the FlashFX tool set', () => {
     const names = tools.map((t) => t.name);
-    for (const n of ['list_features', 'get_state', 'create_project', 'run_action', 'run_actions', 'seek', 'play', 'pause', 'screenshot', 'export_mp4', 'undo']) {
+    for (const n of ['list_features', 'get_state', 'get_layer', 'measure_text', 'create_project', 'run_action', 'run_actions', 'seek', 'play', 'pause', 'screenshot', 'export_mp4', 'export_project', 'import_project', 'import_image', 'import_media', 'save_project', 'undo']) {
       assert.ok(names.includes(n), `missing tool ${n}`);
     }
     assert.ok(tools.every((t) => t.inputSchema?.type === 'object'));
@@ -199,6 +212,59 @@ try {
     assert.ok(afterUndo.canRedo);
   });
 
+  const full = json(await call('get_layer', { layerId }));
+  const measured = json(await call('measure_text', { layerId, frame: 20 }));
+  check('get_layer returns the full layer; measure_text returns the laid-out text box', () => {
+    assert.equal(full.result.id, layerId);
+    assert.equal(full.result.animOverrides.fontSize.defaultValue, 220);
+    assert.equal(full.result.transform.opacity.keyframes.length, 2);
+    assert.ok(measured.result.ink.width > 400 && measured.result.ink.width < 1900, `ink width ${measured.result.ink.width}`);
+    assert.deepEqual(measured.result.lines, ['FlashFX MCP']);
+  });
+
+  // B46 + B33 + B48 over the real MCP: a colour curve with per-key eases, then full-resolution renders.
+  const colour = json(await call('run_action', { actionId: 'editor.setKeyframes', args: { layerId, propertyPath: 'text.color', keyframes: [
+    { frame: 0, value: [1, 1, 1, 1], ease: 'hold' }, { frame: 20, value: [1, 0.2, 0.1, 1] }] } }));
+  const FRAME_PNG = join(OUT_DIR, 'mcp-render-frame.png');
+  const STRIP_PNG = join(OUT_DIR, 'mcp-render-strip.png');
+  const rfRes = await call('render_frame', { frame: 20, width: 960, path: FRAME_PNG });
+  const rf = json(rfRes);
+  const strip = json(await call('render_strip', { frames: [0, 10, 20], columns: 3, tileWidth: 320, path: STRIP_PNG, inline: false }));
+  check('render_frame writes a full-resolution PNG of the exact frame (keyed text colour visible); render_strip a contact sheet', () => {
+    assert.equal(colour.ok, true, JSON.stringify(colour));
+    assert.deepEqual([rf.width, rf.height], [960, 540]);
+    assert.ok(rfRes.content.some((c) => c.type === 'image' && c.mimeType === 'image/png'));
+    const png = decodePng(readFileSync(FRAME_PNG));
+    assert.deepEqual([png.width, png.height], [960, 540]);
+    let red = 0;
+    for (let i = 0; i < png.px.length; i += 4) if (png.px[i] > 200 && png.px[i + 1] < 90 && png.px[i + 2] < 90) red++;
+    assert.ok(red > 500, `the frame-20 render should show the red text (${red} red px)`);
+    const sheet = decodePng(readFileSync(STRIP_PNG));
+    assert.deepEqual([sheet.width, sheet.height], [3 * 320 + 16, 180 + 8]);
+  });
+
+  const img = json(await call('import_image', { path: join(ROOT, 'public/flashfx-mark.svg'), rasterSize: 256, x: 300, y: 300 }));
+  const withImage = json(await call('get_state'));
+  check('import_image brings an SVG in (rasterized) and places it as an image layer', () => {
+    assert.equal(img.result.width, 256);
+    assert.ok(img.result.assetId);
+    const placed = withImage.layers.find((l) => l.id === img.activeLayerId);
+    assert.ok(placed && placed.type === 'image', 'no image layer placed');
+  });
+
+  rmSync(FFX, { force: true });
+  const saved = json(await call('export_project', { path: FFX }));
+  const bundle = JSON.parse(readFileSync(FFX, 'utf8'));
+  const reopened = json(await call('import_project', { path: FFX }));
+  const reState = json(await call('get_state'));
+  check(`export_project writes an editable .ffx (${saved.result.bytes} bytes) and import_project re-opens it`, () => {
+    assert.equal(bundle.format, 'flashfx-project');
+    assert.ok(bundle.assets.length >= 1, 'the imported image must travel inside the .ffx');
+    assert.notEqual(reopened.result.projectId, created.result.projectId);
+    assert.equal(reState.layers.length, withImage.layers.length);
+    assert.ok(reState.layers.some((l) => l.text === 'FlashFX MCP'));
+  });
+
   if (process.env.FLASHFX_SMOKE_EXPORT !== '0') {
     rmSync(MP4, { force: true });
     const exp = json(await call('export_mp4', { path: MP4, width: 640, height: 360 }, 600000));
@@ -207,6 +273,50 @@ try {
       assert.equal(b.length, exp.result.bytes);
       assert.ok(b.length > 1000);
       assert.equal(b.toString('ascii', 4, 8), 'ftyp', 'not an MP4 (no ftyp box)');
+    });
+
+    // B49: headless media import. Re-import the MP4 just exported (white text at f0..19, red from f20)
+    // into a fresh project, plus a generated WAV, and prove the decoded frames are time-correct.
+    const WAV = join(OUT_DIR, 'mcp-smoke-tone.wav');
+    writeFileSync(WAV, toneWav(1.0, 440, 48000));
+    const MEDIA_F5 = join(OUT_DIR, 'mcp-media-f5.png');
+    const MEDIA_F25 = join(OUT_DIR, 'mcp-media-f25.png');
+    const MEDIA_MP4 = join(OUT_DIR, 'mcp-media.mp4');
+    json(await call('create_project', { name: 'MCP media', format: 'long', durationFrames: 30, uiMode: 'pro' }, 400000));
+    const vid = json(await call('import_media', { path: MP4 }, 600000));
+    const aud = json(await call('import_media', { path: WAV }, 600000));
+    const mediaState = json(await call('get_state'));
+    check(`import_media imports an MP4 (${readFileSync(MP4).length} bytes, ${Math.ceil(readFileSync(MP4).length / 32768)} chunks; placed + fitted as a video layer) and a WAV (audio layer)`, () => {
+      assert.equal(vid.result.kind, 'video');
+      assert.deepEqual([vid.result.width, vid.result.height], [640, 360]);
+      assert.ok(Math.abs(vid.result.duration - 1) < 0.1, `video duration ${vid.result.duration}`);
+      assert.equal(aud.result.kind, 'audio');
+      assert.ok(Math.abs(aud.result.duration - 1) < 0.05, `audio duration ${aud.result.duration}`);
+      const v = mediaState.layers.find((l) => l.id === vid.activeLayerId);
+      const a = mediaState.layers.find((l) => l.id === aud.activeLayerId);
+      assert.ok(v && v.type === 'video', 'no video layer placed');
+      assert.ok(a && a.type === 'audio', 'no audio layer placed');
+    });
+    await call('render_frame', { frame: 5, width: 960, path: MEDIA_F5, inline: false });
+    await call('render_frame', { frame: 25, width: 960, path: MEDIA_F25, inline: false });
+    const countPx = (png, pred) => { let n = 0; for (let i = 0; i < png.px.length; i += 4) if (pred(png.px[i], png.px[i + 1], png.px[i + 2])) n++; return n; };
+    const isRed = (r, g, b) => r > 180 && g < 110 && b < 110;
+    // At f5 the text is mid fade-in (opacity keys 0 -> 1 over f0..15): neutral grey, not red yet.
+    const isWhite = (r, g, b) => r > 70 && Math.abs(r - g) < 25 && Math.abs(g - b) < 25;
+    const f5 = decodePng(readFileSync(MEDIA_F5));
+    const f25 = decodePng(readFileSync(MEDIA_F25));
+    const red5 = countPx(f5, isRed), white5 = countPx(f5, isWhite), red25 = countPx(f25, isRed);
+    check(`the imported video renders the right source frame (f5: ${white5} grey / ${red5} red px; f25: ${red25} red px)`, () => {
+      assert.ok(white5 > 500, 'frame 5 of the imported clip should show the fading-in neutral text');
+      assert.ok(red5 < 100, 'frame 5 must not show the red text yet');
+      assert.ok(red25 > 500, 'frame 25 of the imported clip should show the red text');
+    });
+    rmSync(MEDIA_MP4, { force: true });
+    const mexp = json(await call('export_mp4', { path: MEDIA_MP4, width: 640, height: 360 }, 600000));
+    check('a project with imported video + audio exports with an audio track', () => {
+      assert.notEqual(mexp.result.audioDropped, true, JSON.stringify(mexp.result));
+      const b = readFileSync(MEDIA_MP4);
+      assert.ok(b.includes(Buffer.from('mp4a')), 'no AAC (mp4a) track in the export');
     });
   }
 

@@ -1,3 +1,5 @@
+import { sanitizeAnimProps } from '../../core/animProps';
+import type { EasingName } from '../../core/easings';
 import type {
   Composition,
   Layer,
@@ -41,10 +43,12 @@ import type {
   RefineEdge,
 } from '../../core/types';
 import { DEFAULT_DECODE_CHARSET } from '../../core/textDecode';
+import { normalizeTextCaret } from '../../core/textCaret';
 import { isMaskMode } from '../../core/maskCoverage';
 import { sanitizeRefineEdge } from '../../core/refineEdge';
 import { resolveAdjustmentFilters } from '../../core/effects/adjustmentComposite';
 import type { LayerConstraints } from '../../core/reframe';
+import type { CornerPin } from '../../core/types';
 
 function isObject(v: unknown): v is Record<string, unknown> {
   return v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -64,6 +68,9 @@ function ensureTextAnimators(raw: unknown): TextAnimator[] | undefined {
       selector: a.selector as unknown as TextAnimator['selector'],
       delta: a.delta as unknown as TextAnimator['delta'],
       ...(isObject(a.offset) ? { offset: a.offset as unknown as TextAnimator['offset'] } : {}),
+      // B36: keyframable selector start / end.
+      ...(isObject(a.start) ? { start: a.start as unknown as TextAnimator['start'] } : {}),
+      ...(isObject(a.end) ? { end: a.end as unknown as TextAnimator['end'] } : {}),
     });
   }
   return out.length ? out : undefined;
@@ -239,11 +246,19 @@ function ensureShapeGeometry(val: unknown): ShapeGeometry | null {
             .filter((k): k is Record<string, unknown> => isObject(k) && typeof k.frame === 'number' && Array.isArray(k.vertices))
             .map((k) => {
               const interp: 'hold' | 'linear' | undefined = k.interpolation === 'hold' ? 'hold' : k.interpolation === 'linear' ? 'linear' : undefined;
+              // B62 morph ease (named string or a 4-number cubic-bezier) + auto alignment.
+              const ease = typeof k.ease === 'string'
+                ? { ease: k.ease as EasingName }
+                : Array.isArray(k.ease) && k.ease.length === 4 && k.ease.every((x) => typeof x === 'number' && Number.isFinite(x))
+                  ? { ease: [k.ease[0], k.ease[1], k.ease[2], k.ease[3]] as [number, number, number, number] }
+                  : {};
               return {
                 frame: k.frame as number,
                 vertices: k.vertices as PathVertex[],
                 closed: typeof k.closed === 'boolean' ? k.closed : true,
                 ...(interp ? { interpolation: interp } : {}),
+                ...ease,
+                ...(k.align === 'auto' ? { align: 'auto' as const } : {}),
               };
             })
         : undefined;
@@ -459,6 +474,16 @@ function refineEdgeField(raw: unknown): { refineEdge?: RefineEdge } {
   return r ? { refineEdge: r } : {};
 }
 
+// B53 corner pin: rebuild the four pins as valid vec2 properties (missing corners default to 0, 0).
+function ensureCornerPin(r: Record<string, unknown>): CornerPin {
+  return {
+    topLeft: ensureAnimatableProperty(r.topLeft, 'Top Left', 'vec2', [0, 0]),
+    topRight: ensureAnimatableProperty(r.topRight, 'Top Right', 'vec2', [0, 0]),
+    bottomRight: ensureAnimatableProperty(r.bottomRight, 'Bottom Right', 'vec2', [0, 0]),
+    bottomLeft: ensureAnimatableProperty(r.bottomLeft, 'Bottom Left', 'vec2', [0, 0]),
+  };
+}
+
 function validateLayer(raw: unknown): Layer | null {
   if (!isObject(raw)) return null;
   const r = raw as Record<string, unknown>;
@@ -485,12 +510,17 @@ function validateLayer(raw: unknown): Layer | null {
     // M14 reframe constraints - preserve through the round-trip (else stripped on save/load,
     // the same data-loss class that bit cloner/precomp).
     ...(isObject(r.constraints) ? { constraints: r.constraints as unknown as LayerConstraints } : {}),
+    // B53 corner pin - four keyframable vec2 pins (else stripped on save/load).
+    ...(isObject(r.cornerPin) ? { cornerPin: ensureCornerPin(r.cornerPin as Record<string, unknown>) } : {}),
     // Per-layer effects are app-generated structured blobs - preserve them
     // through the round-trip rather than dropping them (was a data-loss bug).
     ...(isObject(r.shadow) ? { shadow: r.shadow as unknown as LayerShadow } : {}),
     ...(isObject(r.glow) ? { glow: r.glow as unknown as LayerGlow } : {}),
     ...(isObject(r.blur) ? { blur: r.blur as unknown as LayerBlur } : {}),
     ...(Array.isArray(r.effects) ? { effects: r.effects as LayerEffect[] } : {}),
+    // B33/B47/B50 animated overrides (colour keyframes, keyed glow / shadow / blur / effect params),
+    // rebuilt with valid tracks only; absent = no field (legacy projects unchanged).
+    ...(() => { const ap = sanitizeAnimProps(r.animProps); return ap ? { animProps: ap } : {}; })(),
   };
 
   switch (r.type) {
@@ -556,6 +586,7 @@ function validateLayer(raw: unknown): Layer | null {
       const animators = ensureTextAnimators(r.animators);
       const decode = ensureTextDecode(r.decode);
       const textPath = ensureTextPath(r.textPath);
+      const caret = normalizeTextCaret(r.caret);
       return {
         ...baseFields,
         type: 'text',
@@ -568,6 +599,8 @@ function validateLayer(raw: unknown): Layer | null {
         ...(animators ? { animators } : {}),
         ...(decode ? { decode } : {}),
         ...(textPath ? { textPath } : {}),
+        ...(r.reflowHidden === true ? { reflowHidden: true } : {}),
+        ...(caret ? { caret } : {}),
       } as TextLayer;
     }
     case 'group': {

@@ -8,14 +8,19 @@ import type { LayerEffect, ResolvedEffect } from '../types';
 /**
  * Resolve a layer's effect stack for rendering: honors the per-layer master switch (`effectsEnabled`)
  * AND each effect's own `enabled` flag, preserving stack ORDER. `effectsEnabled === false` disables
- * the whole stack (previously this switch was a no-op). Params are copied through (static for now).
+ * the whole stack (previously this switch was a no-op). Params are copied through, or evaluated per frame by `paramAt` for keyed params (B50).
  */
-export function resolveEffectStack(effects: LayerEffect[] | undefined, effectsEnabled: boolean): ResolvedEffect[] {
+export function resolveEffectStack(
+  effects: LayerEffect[] | undefined,
+  effectsEnabled: boolean,
+  /** B50: per-frame value of a keyed param (type id, param index, static value) - absent = static. */
+  paramAt?: (type: number, paramIndex: number, value: number) => number,
+): ResolvedEffect[] {
   if (!effectsEnabled || !effects || effects.length === 0) return [];
   const out: ResolvedEffect[] = [];
   for (const e of effects) {
     if (e.enabled === false) continue;
-    out.push({ type: e.type, params: e.params.slice() });
+    out.push({ type: e.type, params: paramAt ? e.params.map((v, i) => paramAt(e.type, i, v)) : e.params.slice() });
   }
   return out;
 }

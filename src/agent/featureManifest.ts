@@ -33,10 +33,29 @@ export type AgentHelperMethod =
   | 'setExpression'
   | 'removeExpression'
   | 'createProject'
+  | 'listProjects'
+  | 'openProject'
   | 'exportMp4'
+  | 'getLayer'
+  | 'measureText'
+  | 'measureString'
+  | 'renderFrame'
+  | 'renderStrip'
+  | 'configureParticles'
+  | 'saveProject'
+  | 'exportProject'
+  | 'importProject'
+  | 'importImage'
+  | 'importMedia'
+  | 'importFont'
   | 'seek'
   | 'play'
-  | 'pause';
+  | 'pause'
+  | 'addCursor'
+  | 'cursorMoveTo'
+  | 'cursorClick'
+  | 'cursorIcon'
+  | 'setTextCaret';
 
 export type FeatureStatus = 'shipped' | 'browser-gated' | 'partial';
 
@@ -69,7 +88,8 @@ export type CatalogId =
   | 'animationItems'
   | 'proceduralPresets'
   | 'vfxElements'
-  | 'easings';
+  | 'easings'
+  | 'fontFamilies';
 
 export interface AgentParam {
   name: string;
@@ -128,6 +148,10 @@ const EFFECTOR_TYPES = ['random', 'falloff', 'step', 'time', 'target'] as const;
 const PHYSICS_ROLES = ['kinematic', 'dynamic', 'static', 'ghost'] as const;
 const MOTION_PRINCIPLES = ['anticipation', 'follow-through', 'squash-stretch', 'stagger'] as const;
 const LAYER_FX = ['shadow', 'glow', 'blur'] as const;
+const CURSOR_ICONS = ['arrow', 'hand', 'ibeam'] as const;
+/** Friendly paths of the animated overrides (core/animProps.ts ANIM_PROP_DEFS: kept in sync by verify:anim-props). */
+export const ANIM_COLOR_PATHS = ['shape.fillColor', 'shape.strokeColor', 'text.color', 'text.strokeColor', 'glow.color', 'shadow.color'] as const;
+export const ANIM_FX_PATHS = ['glow.intensity', 'glow.radius', 'glow.threshold', 'shadow.blurRadius', 'shadow.lightDistance', 'shadow.lightAngle', 'shadow.shadowScale', 'blur.radius', 'blur.strength', 'blur.angle'] as const;
 
 const KF_TARGETS: AgentParam = {
   name: 'targets',
@@ -155,7 +179,20 @@ export const AGENT_ACTIONS: readonly AgentActionSpec[] = [
       { name: 'frameRate', type: 'number', optional: true, description: 'Default 30.' },
       { name: 'durationFrames', type: 'number', optional: true, description: 'Default 150.' },
       { name: 'uiMode', type: 'string', optional: true, values: ['starter', 'pro'], description: 'Editor layout: Starter or Full (pro). Omit to keep the current one.' },
+      { name: 'clipLength', type: 'string', optional: true, values: ['comp', 'default'], description: 'Length of every NEW layer for the rest of the session: comp = the whole composition, default = the UI 4 s clip. Omit to keep the current setting (starts as default).' },
     ] },
+  { id: 'agent.listProjects', store: 'agent', method: 'listProjects', undoable: false,
+    returns: '{ activeProjectId, projects: [{ id, name, width, height, fps, durationFrames, modifiedAt (ISO), starred }] } newest first',
+    description: 'The local projects in this browser (the Dashboard list, Trash excluded), newest first, and which one is open. Use it to continue an earlier project with agent.openProject, e.g. after the tab was reloaded.',
+    params: [{ name: 'limit', type: 'number', optional: true, description: 'Default 20, max 200.' }] },
+  { id: 'agent.openProject', store: 'agent', method: 'openProject', undoable: false,
+    returns: '{ projectId, name, compositionId, width, height, fps, durationFrames }',
+    description: 'Open an existing local project by id (like clicking its card on the Dashboard). Saves and closes the open project first.',
+    params: [{ name: 'projectId', type: 'string', description: 'An id from agent.listProjects.' }] },
+  { id: 'editor.setDefaultClipLength', store: 'editor', method: 'setDefaultClipLength', undoable: false,
+    returns: 'the mode now set',
+    description: 'Length of NEW layers for the rest of the session: "comp" makes every new layer span the whole composition (no 4 s cut-off), "default" restores the UI 4-second clip. Existing layers are not changed. Not saved with the project.',
+    params: [{ name: 'mode', type: 'string', values: ['comp', 'default'] }] },
   { id: 'agent.exportMp4', store: 'agent', method: 'exportMp4', undoable: false,
     returns: '{ exportId, bytes, mimeType, audioDropped }; read the file with __ffxAgent.readExport(exportId, offset, length)',
     description: 'Render the active composition to MP4 through the real exporter (WebGPU + WebCodecs, same path as File > Export Video). Defaults to the composition size and fps.',
@@ -165,6 +202,76 @@ export const AGENT_ACTIONS: readonly AgentActionSpec[] = [
       { name: 'frameRate', type: 'number', optional: true },
       { name: 'bitrate', type: 'number', optional: true, description: 'Bits per second, default 8000000.' },
       { name: 'includeAudio', type: 'boolean', optional: true, description: 'Default true (only matters when the comp has audio).' },
+    ] },
+
+  { id: 'agent.getLayer', store: 'agent', method: 'getLayer', undoable: false,
+    returns: 'the full layer object (deep copy): transform, content / shape, animators, masks, effects, keyframes',
+    description: 'Read every field of one layer, so you can see the exact dot-paths updateLayerProperty / addKeyframe accept and verify what an action produced. Read-only.',
+    params: [LAYER_ID] },
+  { id: 'agent.measureText', store: 'agent', method: 'measureText', undoable: false,
+    returns: '{ frame, center, box {width,height,left,top}, ink {width,height,left,right,top,bottom}, lines, lineWidths, lineHeightPx, fontSize, scale, rotation }',
+    description: 'Measure a text layer exactly as the renderer lays it out (comp px), so you can align other layers, size masks and cards, or left-align by centre. ink = the lines (width of the widest line x line count); box = the drawn quad incl. padding. Assumes scale 1 / no rotation for the edges. Read-only.',
+    params: [LAYER_ID, { name: 'frame', type: 'number', optional: true, description: 'Default: the playhead.' }] },
+  { id: 'agent.renderFrame', store: 'agent', method: 'renderFrame', undoable: false,
+    returns: '{ exportId, bytes, frame, width, height, mimeType: "image/png" }; read the PNG with __ffxAgent.readExport(exportId, offset, length)',
+    description: 'Render ONE frame of the active composition at full resolution through an offscreen WebGPU renderer, exactly like the MP4 exporter (export-quality motion blur, full-resolution video, no UI overlays, not the scaled preview), as a PNG. For pixel-true checks and side-by-sides with reference frames. Default size = the composition; pass width or height alone to keep the aspect.',
+    params: [{ name: 'frame', type: 'number', optional: true, description: 'Default: the playhead.' }, { name: 'width', type: 'number', optional: true }, { name: 'height', type: 'number', optional: true }] },
+  { id: 'agent.renderStrip', store: 'agent', method: 'renderStrip', undoable: false,
+    returns: '{ exportId, bytes, frames, columns, tileWidth, tileHeight, width, height, mimeType: "image/png" }',
+    description: 'Render several frames (the exporter path, like renderFrame) into one labelled contact sheet PNG: a quick way to check a whole move (entrance, rest, exit) in one image.',
+    params: [{ name: 'frames', type: 'number[]', description: 'Up to 64 frame numbers.' }, { name: 'columns', type: 'number', optional: true, description: 'Default min(4, frames).' },
+      { name: 'tileWidth', type: 'number', optional: true, description: 'Width of each tile in px (default min(480, comp width)).' },
+      { name: 'labels', type: 'boolean', optional: true, description: 'Draw the frame number on each tile (default true).' }] },
+  { id: 'agent.measureString', store: 'agent', method: 'measureString', undoable: false,
+    returns: '{ width, height, lines, lineWidths, lineHeightPx, box {width, height}, fontFamily, fontSize }',
+    description: 'Measure a string in a font WITHOUT creating a layer (same layout code as the renderer, comp px), e.g. to size a pill or a caret before building it. letterSpacing / lineHeight use the same units as the text layer animOverrides. Read-only.',
+    params: [{ name: 'text', type: 'string' }, { name: 'fontFamily', type: 'string', optional: true, description: 'Default Inter.' },
+      { name: 'fontSize', type: 'number', optional: true, description: 'px, default 48.' }, { name: 'fontWeight', type: 'number', optional: true },
+      { name: 'fontStyle', type: 'string', optional: true, values: ['normal', 'italic'] }, { name: 'letterSpacing', type: 'number', optional: true },
+      { name: 'lineHeight', type: 'number', optional: true, description: 'Multiplier, default 1.2.' }] },
+  { id: 'agent.saveProject', store: 'agent', method: 'saveProject', undoable: false,
+    returns: '{ projectId, compositions }',
+    description: 'Save the open project (every composition) to local storage now (like File > Save, Ctrl+S). The app also autosaves.',
+    params: [] },
+  { id: 'agent.exportProject', store: 'agent', method: 'exportProject', undoable: false,
+    returns: '{ exportId, bytes, fileName, projectId, mimeType }; read the file with __ffxAgent.readExport(exportId, offset, length)',
+    description: 'Save, then bundle the open project as an editable .ffx file (every composition + imported media + preview), the same bundle as File > Download Project (.ffx). Re-open it with agent.importProject or File > Import Project.',
+    params: [] },
+  { id: 'agent.importProject', store: 'agent', method: 'importProject', undoable: false,
+    returns: '{ projectId, name, compositionId, layers, width, height }',
+    description: 'Import a .ffx project (base64 of the file bytes) as a new local project and open it in the editor (like File > Import Project). Saves and closes any open project first.',
+    params: [
+      { name: 'data', type: 'string', description: 'Base64 of the .ffx file (a data: URL is accepted too).' },
+      { name: 'fileName', type: 'string', optional: true },
+    ] },
+  { id: 'agent.importImage', store: 'agent', method: 'importImage', undoable: false,
+    returns: '{ assetId, width, height, name }; place it with editor.addImageFromAsset(assetId, x, y)',
+    description: 'Import an image (base64 bytes: PNG, JPEG, WebP, GIF or SVG) into the open project media pool. SVG is rasterized to a PNG whose longest side is rasterSize px (default 1024).',
+    params: [
+      { name: 'data', type: 'string', description: 'Base64 of the image file (a data: URL is accepted too).' },
+      { name: 'fileName', type: 'string', description: 'Used for the asset name and, without mimeType, to infer the type from the extension.' },
+      { name: 'mimeType', type: 'string', optional: true },
+      { name: 'rasterSize', type: 'number', optional: true, description: 'SVG only: longest side of the rasterized PNG in px (default 1024, max 8192).' },
+    ] },
+  { id: 'agent.importMedia', store: 'agent', method: 'importMedia', undoable: false,
+    returns: '{ kind: "video" | "audio" | "image", assetId, name, ... } (video: width, height, duration s, frameRate, hasAudio, codec, compFrames; audio: duration, sampleRate, channels, compFrames; image: width, height). Place it with editor.addVideoFromAsset / editor.addAudioFromAsset / editor.addImageFromAsset',
+    description: 'Import a video (MP4, MOV, WebM, MKV), audio (MP3, WAV, M4A, AAC, OGG, FLAC) or image file into the open project media pool, headless (the same import the Media Pool uses; persisted with the project and carried by export_project). The type comes from mimeType or the file extension. Large files: stage the bytes in order with __ffxAgent.writeUpload(uploadId, offset, base64) and pass uploadId (the MCP import_media tool does this for you); small files can pass data inline.',
+    params: [
+      { name: 'data', type: 'string', optional: true, description: 'Base64 of the whole file (omit when passing uploadId).' },
+      { name: 'fileName', type: 'string', description: 'Asset name; its extension tells the media type when mimeType is omitted.' },
+      { name: 'mimeType', type: 'string', optional: true },
+      { name: 'uploadId', type: 'string', optional: true, description: 'Id of an upload staged with __ffxAgent.writeUpload (consumed by the import).' },
+      { name: 'rasterSize', type: 'number', optional: true, description: 'SVG only: longest side of the rasterized PNG in px (default 1024).' },
+    ] },
+  { id: 'agent.importFont', store: 'agent', method: 'importFont', undoable: false,
+    returns: '{ id, family, fileName, weight, style, format, persisted, use }; put `family` in "content.spans.0.style.fontFamily" (or editor.styleTextWord / agent.measureString)',
+    description: 'Import a font file (base64 bytes: WOFF2, WOFF, TTF or OTF) into the browser font library, like Inspector > Font > Import: stored in IndexedDB (every project in this browser, survives reloads) and registered with the browser, so text set in the returned family renders in it (preview, renderFrame, MP4). Import several files under one family with their weight / style to get a real Bold / Italic. Bundled families are listed in listFeatures().catalogs.fontFamilies.',
+    params: [
+      { name: 'data', type: 'string', description: 'Base64 of the font file (a data: URL is accepted too). Max 20 MB.' },
+      { name: 'fileName', type: 'string', description: 'Used for the family name when the font has no readable name table (always the case for WOFF2) and no family is given.' },
+      { name: 'family', type: 'string', optional: true, description: 'Family name to register it under (recommended for WOFF2).' },
+      { name: 'weight', type: 'number', optional: true, description: 'Weight descriptor 1..1000 (default: read from the font when it is TTF / OTF / WOFF, else any weight resolves to it).' },
+      { name: 'style', type: 'string', optional: true, values: ['normal', 'italic'], description: 'Default: read from the font when possible.' },
     ] },
 
   // ----- composition / playback -----
@@ -246,6 +353,11 @@ export const AGENT_ACTIONS: readonly AgentActionSpec[] = [
   { id: 'agent.applyTextDecode', store: 'agent', method: 'applyTextDecode', undoable: true,
     description: 'Scramble/decode reveal (hacker text) over [startFrame, startFrame+durationFrames].',
     params: [LAYER_ID, { name: 'startFrame', type: 'number', optional: true }, { name: 'durationFrames', type: 'number', optional: true }] },
+  { id: 'agent.setTextCaret', store: 'agent', method: 'setTextCaret', undoable: true,
+    returns: 'the caret now on the layer (TextCaret), or null',
+    description: 'Typing caret (B35): a bar, block or underline drawn right after the last revealed glyph, so it rides a type-on (agent.applyTextAnimatorPreset "type-on") frame by frame. Fields merge into the current caret; null turns it off. Solid while typing, blinking before / after (blinkRate cycles per second, 0 = solid). Single-line text. One undo step (updateLayerProperty "caret"; tweak one field later with "caret.<field>").',
+    params: [LAYER_ID, { name: 'caret', type: '{ style?: "bar" | "block" | "underline"; color?: [r, g, b, a]; width?: number; height?: number; gap?: number; offsetY?: number; radius?: number; blinkRate?: number; solidWhileTyping?: boolean; startFrame?: number; endFrame?: number } | null', optional: true,
+      description: 'Defaults: style bar, colour = text colour, bar 6% / block 55% of the font size wide, height = font size, blinkRate 1.' }] },
   { id: 'editor.styleTextRange', store: 'editor', method: 'styleTextRange', undoable: true,
     description: 'Mixed styles: give characters [start, end) of a text layer their own face / weight / italic / colour (raw-text indices).',
     params: [LAYER_ID, { name: 'start', type: 'number' }, { name: 'end', type: 'number' },
@@ -268,9 +380,17 @@ export const AGENT_ACTIONS: readonly AgentActionSpec[] = [
   { id: 'editor.addCircle', store: 'editor', method: 'addCircle', undoable: true, params: [], returns: 'new layer id (activeLayerId)', description: 'Add an ellipse.' },
   { id: 'editor.addStar', store: 'editor', method: 'addStar', undoable: true, params: [], returns: 'new layer id (activeLayerId)', description: 'Add a star.' },
   { id: 'editor.addPolygon', store: 'editor', method: 'addPolygon', undoable: true, params: [], returns: 'new layer id (activeLayerId)', description: 'Add a polygon.' },
+  { id: 'editor.addShapeLayer', store: 'editor', method: 'addShapeLayer', undoable: true, returns: 'the new layer id',
+    description: 'Add a shape with explicit geometry and CLEAN defaults in one undo step: no stroke unless you pass stroke / strokeWidth, your fill, corner radius and name. Prefer this over addShapeWithDimensions (which adds the UI default 1 px grey stroke). An ellipse with width != height is a circle stretched by the layer scale.',
+    params: [{ name: 'opts', type: '{ type: "rectangle" | "circle" | "star" | "polygon"; x: number; y: number; width: number; height: number; fill?: [r, g, b, a]; stroke?: [r, g, b, a]; strokeWidth?: number; radius?: number; name?: string; points?: number; innerRatio?: number }', description: 'x, y = centre (comp px); colours RGBA 0..1; fill defaults to white; strokeWidth defaults to 2 when stroke is given, else 0.' }] },
   { id: 'editor.addShapeWithDimensions', store: 'editor', method: 'addShapeWithDimensions', undoable: true, returns: 'new layer id (activeLayerId)',
     description: 'Add a shape with an explicit position and size (comp px).',
     params: [{ name: 'shapeType', type: 'string', values: SHAPE_TYPES }, { name: 'x', type: 'number' }, { name: 'y', type: 'number' }, { name: 'width', type: 'number' }, { name: 'height', type: 'number' }] },
+  { id: 'editor.setShapeMorph', store: 'editor', method: 'setShapeMorph', undoable: true,
+    description: 'Shape morph in one undo step: the shape layer becomes a path whose outline morphs through the poses (square -> circle -> star -> pill ...). Each pose: { frame, shape, ease } where shape is { type: "rectangle", width, height, radius? } | { type: "ellipse", width, height } | { type: "star", width, height, points?, innerRatio? } | { type: "polygon", width, height, sides? } | { type: "path", points: [[x, y], ...], closed? } (layer-local px, centred on the layer position) and ease shapes the morph to the NEXT pose (named ease / CSS keyword / cubic-bezier quad / "hold"; backOut overshoots the shape). align (default true) matches start point and winding so nothing twists. Fill, stroke, gradients and transform are kept.',
+    params: [LAYER_ID,
+      { name: 'poses', type: 'Array<{ frame: number; shape: OutlineSpec; ease?: string | [number, number, number, number] }>' },
+      { name: 'align', type: 'boolean', optional: true, description: 'Default true (best start point + winding per pose pair).' }] },
   { id: 'editor.addShapeModifier', store: 'editor', method: 'addShapeModifier', undoable: true,
     description: 'Add a path modifier (Trim Paths for line draw-on, Offset, Roughen, Pucker & Bloat). Edit params with updateLayerProperty/addKeyframe on "modifiers.<i>.<param>".',
     params: [LAYER_ID, { name: 'type', type: 'string', values: MODIFIER_TYPES }] },
@@ -285,8 +405,13 @@ export const AGENT_ACTIONS: readonly AgentActionSpec[] = [
 
   // ----- keyframes / easing / motion -----
   { id: 'editor.addKeyframe', store: 'editor', method: 'addKeyframe', undoable: true,
-    description: 'Set a keyframe. Paths: "transform.position" [x,y], "transform.scale" [sx,sy] (1 = 100%), "transform.rotation" deg, "transform.opacity" 0..1, "animOverrides.fontSize", "animOverrides.letterSpacing", "shape.width", "modifiers.0.end", etc.',
-    params: [LAYER_ID, { name: 'propertyPath', type: 'string' }, { name: 'frame', type: 'number' }, { name: 'value', type: 'number | [number, number]' }] },
+    description: 'Set a keyframe. Paths: "transform.position" [x,y], "transform.scale" [sx,sy] (1 = 100%), "transform.rotation" deg, "transform.opacity" 0..1, "animOverrides.fontSize", "animOverrides.letterSpacing", "shape.width", "modifiers.0.end", etc. Colour keyframes (RGBA 0..1, mixed in linear light): "shape.fillColor", "shape.strokeColor", "text.color", "text.strokeColor", "glow.color", "shadow.color". Effect params: "glow.intensity" / "glow.radius" / "glow.threshold", "shadow.blurRadius" / "shadow.lightDistance" / "shadow.lightAngle" / "shadow.shadowScale", "blur.radius" / "blur.strength" / "blur.angle", and effect-stack params as "effect.<type>.<paramIndex>" (same ids as setLayerEffectParam). These create an animated override on the first key (it lives under layer.animProps); the effect must be enabled for its keys to show.',
+    params: [LAYER_ID, { name: 'propertyPath', type: 'string' }, { name: 'frame', type: 'number' }, { name: 'value', type: 'number | [number, number] | [r, g, b, a]' }] },
+  { id: 'editor.setKeyframes', store: 'editor', method: 'setKeyframes', undoable: true,
+    description: 'Write a whole animation curve on one property in ONE undo step, each keyframe with its own outgoing ease: [{ frame, value, ease }]. ease (shapes the segment to the NEXT key): "linear" (default) | "hold" | "spring" | a named ease (cubicOut, expoOut, circOut, backOut, elasticOut, ... see the easings catalog) | "ease" | "ease-in" | "ease-out" | "ease-in-out" | a cubic-bezier [x1, y1, x2, y2] (CSS semantics, y may overshoot for pops). Same paths as addKeyframe (incl. colour and effect paths). Without merge the keys REPLACE the property\'s keyframes; merge=true keeps the others. Errors (nothing applied) on an unknown path or a value of the wrong shape.',
+    params: [LAYER_ID, { name: 'propertyPath', type: 'string' },
+      { name: 'keyframes', type: 'Array<{ frame: number; value: number | [number, number] | [r, g, b, a]; ease?: string | [number, number, number, number] }>' },
+      { name: 'merge', type: 'boolean', optional: true, description: 'true = keep keyframes at other frames (default false = replace).' }] },
   { id: 'editor.deleteKeyframes', store: 'editor', method: 'deleteKeyframes', undoable: true,
     description: 'Delete keyframes.', params: [LAYER_ID, KF_TARGETS] },
   { id: 'editor.setKeyframeInterpolation', store: 'editor', method: 'setKeyframeInterpolation', undoable: true,
@@ -338,6 +463,11 @@ export const AGENT_ACTIONS: readonly AgentActionSpec[] = [
   // ----- particles / procedural / patterns -----
   { id: 'editor.addParticleLayer', store: 'editor', method: 'addParticleLayer', undoable: true, params: [], returns: 'new layer id (activeLayerId)',
     description: 'Add a particle emitter layer.' },
+  { id: 'agent.configureParticles', store: 'agent', method: 'configureParticles', undoable: true,
+    returns: '{ preset, seed, config } (the full emitter config now on the layer)',
+    description: 'Set a particle layer emitter in one undo step: start from a preset (or the current config when presetId is null) and merge EmitterConfig overrides, e.g. { spawnRate: 0, burstCount: 120, emitterShape: "circle", emitterRadius: 40, colorOverLife: [...] }. Fields: src/particles/types.ts.',
+    params: [LAYER_ID, { name: 'presetId', type: 'string | null', optional: true, catalog: 'particlePresets' },
+      { name: 'overrides', type: 'Partial<EmitterConfig>', optional: true }, { name: 'seed', type: 'number', optional: true }] },
   { id: 'editor.addProceduralBinding', store: 'editor', method: 'addProceduralBinding', undoable: true,
     description: 'Attach a procedural motion preset (oscillate, orbit, noise drift...) to a layer.',
     params: [LAYER_ID, { name: 'presetName', type: 'string', catalog: 'proceduralPresets' }] },
@@ -403,6 +533,17 @@ export const AGENT_ACTIONS: readonly AgentActionSpec[] = [
     description: 'Add a 2.5D camera.' },
   { id: 'editor.toggleLayer3D', store: 'editor', method: 'toggleLayer3D', undoable: true,
     description: 'Make a layer a 3D card (seen by the camera) or flat again.', params: [LAYER_ID] },
+  // B53 - camera beats + corner pin (render proven by gpu:camera-cards).
+  { id: 'editor.cameraMove', store: 'editor', method: 'cameraMove', undoable: true,
+    returns: 'the keyed property paths, e.g. ["transform.position", "transform.positionZ", "camera.zoom"]',
+    description: 'One camera beat in ONE undo step: at `frame`, move the camera over `durationFrames` to the target, with `ease` on the move (same ease specs as setKeyframes). The start key holds the current camera value at `frame`; keys inside the move are dropped, others kept. durationFrames 0 / omitted = a single key at `frame` (arrive there from the previous key). Default camera: eye (W/2, H/2, -zoom) aimed at (W/2, H/2, 0), zoom = 50mm (50*W/36 px), which frames z = 0 at 1:1. Moving the eye closer (z toward 0) pushes in; a larger zoom narrows the lens.',
+    params: [{ name: 'cameraLayerId', type: 'string', description: 'A camera layer id (editor.addCameraLayer returns one).' }, { name: 'frame', type: 'number' },
+      { name: 'to', type: '{ position?: [x, y] | [x, y, z]; pointOfInterest?: [x, y] | [x, y, z]; zoom?: number; orientation?: [rx, ry, rz] }', description: 'position = the eye (comp px, z < 0 in front of the comp plane); pointOfInterest = two-node aim point; zoom px; orientation = one-node aim (degrees).' },
+      { name: 'durationFrames', type: 'number', optional: true, description: 'Default 0 (one key at frame).' },
+      { name: 'ease', type: 'string | [number, number, number, number]', optional: true, catalog: 'easings', description: 'Ease of the move (default linear).' }] },
+  { id: 'editor.setCornerPin', store: 'editor', method: 'setCornerPin', undoable: true,
+    description: 'Corner pin (AE Corner Pin / keystone): warp a shape, text, image, video or precomp layer onto four comp-px points that form a convex quad. While pinned the four pins ARE the placement (position / rotation / scale / anchor / 3D are not applied). Pinned box: the shape width x height (path shapes: vertex bounds), the text drawn box (agent.measureText box), the full image / video / precomp frame. Creates static pins (replacing pin keys); animate them with setKeyframes on cornerPin.topLeft / topRight / bottomRight / bottomLeft. null removes the pin.',
+    params: [LAYER_ID, { name: 'corners', type: '{ topLeft: [x, y]; topRight: [x, y]; bottomRight: [x, y]; bottomLeft: [x, y] } | null' }] },
 
   // ----- captions -----
   { id: 'editor.addCaptionClips', store: 'editor', method: 'addCaptionClips', undoable: true,
@@ -415,6 +556,8 @@ export const AGENT_ACTIONS: readonly AgentActionSpec[] = [
   { id: 'editor.addVideoFromAsset', store: 'editor', method: 'addVideoFromAsset', undoable: true,
     description: 'Place an already-imported video asset.',
     params: [{ name: 'assetId', type: 'string' }, { name: 'x', type: 'number' }, { name: 'y', type: 'number' }, { name: 'playbackMode', type: 'string', optional: true }] },
+  { id: 'editor.addAudioFromAsset', store: 'editor', method: 'addAudioFromAsset', undoable: true,
+    description: 'Place an already-imported audio asset as an audio layer from frame 0 (its clip spans the audio duration).', params: [{ name: 'assetId', type: 'string' }] },
   { id: 'editor.fitLayerToCanvas', store: 'editor', method: 'fitLayerToCanvas', undoable: true,
     description: 'Scale an image/video layer to fit the canvas.', params: [LAYER_ID] },
 
@@ -424,6 +567,36 @@ export const AGENT_ACTIONS: readonly AgentActionSpec[] = [
     params: [{ name: 'id', type: 'string', catalog: 'animationTemplates' }, { name: 'center', type: '[number, number]', optional: true }] },
   { id: 'editor.addAnimationItem', store: 'editor', method: 'addAnimationItem', undoable: true, returns: 'new layer id (activeLayerId)',
     description: 'Add an animation item (ready-made animated element).', params: [{ name: 'presetName', type: 'string', catalog: 'animationItems' }] },
+
+  // ----- B51 cursor rig (animation-templates/cursorRig.ts) -----
+  { id: 'agent.addCursor', store: 'agent', method: 'addCursor', undoable: true,
+    returns: '{ cursorId, icons: { arrow, hand, ibeam }, frame }',
+    description: 'Add a pointer cursor: a group (its position = the hotspot, the arrow tip) holding an arrow, a hand and an I-beam icon, one visible. On screen from `frame` to the comp end. Then script it with agent.cursorMoveTo / cursorClick / cursorIcon (author in time order). One undo step.',
+    params: [{ name: 'icon', type: 'string', optional: true, values: CURSOR_ICONS, description: 'Default arrow.' },
+      { name: 'x', type: 'number', optional: true, description: 'Hotspot x (comp px), default the comp centre.' }, { name: 'y', type: 'number', optional: true },
+      { name: 'frame', type: 'number', optional: true, description: 'First frame on screen (default 0).' },
+      { name: 'color', type: '[r, g, b, a]', optional: true, description: 'Icon fill (default white, dark outline).' },
+      { name: 'size', type: 'number', optional: true, description: 'Icon height in px (default 36).' },
+      { name: 'name', type: 'string', optional: true }] },
+  { id: 'agent.cursorMoveTo', store: 'agent', method: 'cursorMoveTo', undoable: true,
+    returns: '{ cursorId, from, to, startFrame, endFrame }',
+    description: 'Move the cursor from wherever it is at `frame` to (x, y): two position keys with a ballistic ease-out (fast start, long settle; the template rig fitted as cubic-bezier [0.38, 1, 0.76, 1]) along a gentle arc (spatial tangents). It ARRIVES exactly at frame + durationFrames. Keys stay editable (timeline / graph editor / editor.setKeyframes on the group "transform.position"). One undo step.',
+    params: [{ name: 'cursorId', type: 'string', description: 'The id agent.addCursor returned.' }, { name: 'frame', type: 'number', description: 'Frame the move starts.' },
+      { name: 'x', type: 'number' }, { name: 'y', type: 'number' },
+      { name: 'durationFrames', type: 'number', optional: true, description: 'Default from the distance like a real hand: 190 ms + 0.32 ms/px, clamped 220..450 ms.' },
+      { name: 'ease', type: 'string | [number, number, number, number]', optional: true, catalog: 'easings', description: 'Any setKeyframes ease (named, CSS keyword, cubic-bezier quad, e.g. a measured one). Default ballistic.' },
+      { name: 'arc', type: 'number', optional: true, description: 'Path bow as a fraction of the distance (default 0.08; negative bows the other way; 0 = straight).' }] },
+  { id: 'agent.cursorClick', store: 'agent', method: 'cursorClick', undoable: true,
+    returns: '{ cursorId, frame, rippleId, responseFrame }: make the clicked UI react at responseFrame (2 frames later reads as software)',
+    description: 'Click: the cursor squashes (scale x squash exactly ON `frame`, pressed over 2 frames, released over 4) and, by default, an expanding ring ("Click ripple" layer) fades out at the hotspot. One undo step.',
+    params: [{ name: 'cursorId', type: 'string' }, { name: 'frame', type: 'number' },
+      { name: 'ripple', type: 'boolean', optional: true, description: 'Default true.' },
+      { name: 'squash', type: 'number', optional: true, description: 'Scale factor at the click frame (default 0.82).' },
+      { name: 'rippleColor', type: '[r, g, b, a]', optional: true, description: 'Ring colour (default white 90%).' }] },
+  { id: 'agent.cursorIcon', store: 'agent', method: 'cursorIcon', undoable: true,
+    returns: '{ cursorId, frame, from, icon }',
+    description: 'Swap the cursor icon on `frame` (hold step on the icon opacities): e.g. hand over a button, I-beam over a text field. One undo step.',
+    params: [{ name: 'cursorId', type: 'string' }, { name: 'frame', type: 'number' }, { name: 'icon', type: 'string', values: CURSOR_ICONS }] },
 ];
 
 // ---------------------------------------------------------------------------------------------
@@ -435,6 +608,12 @@ export const AGENT_FEATURES: readonly AgentFeature[] = [
   { id: 'composition.project', area: 'composition', name: 'Create a project',
     description: 'Start a new local project (16:9 long form or 9:16 short form) and open it in the editor.',
     ui: 'Dashboard > New Project (pick Long form / Short form)', actions: ['agent.createProject'], status: 'shipped' },
+  { id: 'composition.open-project', area: 'composition', name: 'Continue an earlier project',
+    description: 'List the local projects in this browser and re-open one, so an agent can pick up where it left off (after a reload, or the next day).',
+    ui: 'Dashboard > click a project card', actions: ['agent.listProjects', 'agent.openProject'], status: 'shipped' },
+  { id: 'composition.clip-length', area: 'composition', name: 'New layers span the composition',
+    description: 'Make every new layer as long as the composition instead of a 4-second clip (agent sessions: create_project clipLength "comp").',
+    ui: 'Agent / MCP only (the UI adds 4 s clips; drag a clip end to stretch it)', actions: ['agent.createProject', 'editor.setDefaultClipLength'], status: 'shipped' },
   { id: 'composition.settings', area: 'composition', name: 'Composition size, fps and duration',
     description: 'Set the frame size (e.g. 1920x1080 or 1080x1920), frame rate and minimum duration.',
     ui: 'File > Project Settings... (or the composition settings in the Inspector with nothing selected)',
@@ -459,7 +638,7 @@ export const AGENT_FEATURES: readonly AgentFeature[] = [
   { id: 'layers.edit', area: 'layers', name: 'Select, rename, delete, duplicate, reorder',
     description: 'Core layer management and any property edit by dot-path.',
     ui: 'Canvas / timeline selection; Edit menu; Object > Bring to Front / Send to Back; Inspector fields',
-    actions: ['editor.selectLayer', 'editor.selectAllLayers', 'editor.deselectAll', 'editor.updateLayerProperty', 'editor.renameLayer', 'editor.removeLayer', 'editor.removeLayers', 'editor.duplicateSelection', 'editor.reorderLayers'],
+    actions: ['agent.getLayer', 'editor.selectLayer', 'editor.selectAllLayers', 'editor.deselectAll', 'editor.updateLayerProperty', 'editor.renameLayer', 'editor.removeLayer', 'editor.removeLayers', 'editor.duplicateSelection', 'editor.reorderLayers'],
     status: 'shipped' },
   { id: 'layers.groups-parenting', area: 'layers', name: 'Groups, parenting and anchor point',
     description: 'Group layers, parent one layer to another, move the pivot.',
@@ -473,17 +652,27 @@ export const AGENT_FEATURES: readonly AgentFeature[] = [
   { id: 'text.add', area: 'text', name: 'Text layers',
     description: 'Point or paragraph text with per-span font, weight, size, colour, stroke, letter spacing, line height.',
     ui: 'Canvas toolbar > Text (T), click the canvas and type; style in Inspector > Text',
-    actions: ['editor.addText', 'editor.createQuickText', 'agent.setTextContent', 'editor.updateLayerProperty'], status: 'shipped' },
+    actions: ['editor.addText', 'editor.createQuickText', 'agent.setTextContent', 'agent.measureText', 'agent.measureString', 'editor.updateLayerProperty'], status: 'shipped' },
   { id: 'text.animators', area: 'text', name: 'Text animators (range selectors)',
-    description: 'After-Effects-style per-character / word / line animators driven by a range selector: type-on, fade, pop, cascade, slide, rise, blur, tumble. Split by character, character excluding spaces, word or line; deltas for position, scale, rotation, 3D rotation, blur, opacity and tracking in em (tracking burst); selector shapes (ramp up/down, triangle, round, smooth, square) with ease high/low; animators stack.',
+    description: 'After-Effects-style per-character / word / line animators driven by a range selector: type-on, fade, pop, cascade, slide, rise, blur, tumble, scatter, colour wave, delete. Split by character, character excluding spaces, word or line; deltas for position, scale, rotation, 3D rotation, blur, opacity, tracking in em (tracking burst), fill colour, skew and seeded scatter; selector shapes (ramp up/down, triangle, round, smooth, square) with ease high/low, seeded randomize order and keyframable start / end / offset; animators stack. Works on multi-line, wrapped and fixed-box text.',
     ui: 'Select a text layer > Inspector (properties) > Animators section > pick a preset (edit split, deltas incl. Tracking em, selector shape / ease / reveal timing there)',
-    actions: ['agent.applyTextAnimatorPreset', 'editor.updateLayerProperty'], status: 'shipped',
-    notes: 'Per-character animators target single-line text. Defaults match the UI: start frame 0, 30 frames. Full control: editor.updateLayerProperty(layerId, "animators", TextAnimator[]) with splitMode character|characterNoSpaces|word|line and delta {position, scale, rotation, rotationX, rotationY, blur, opacity, tracking}. With the layer motion blur switch on, each glyph streaks with its own animator motion.' },
+    actions: ['agent.applyTextAnimatorPreset', 'editor.updateLayerProperty', 'editor.setKeyframes'], status: 'shipped',
+    notes: 'Glyphs land exactly where the static text draws (multi-line, wrapped, fixed / fixedWidth boxes, left / centre / right). Reveal presets hide every unit (the first included) until their start frame. Defaults match the UI: start frame 0, 30 frames. Full control: editor.updateLayerProperty(layerId, "animators", TextAnimator[]) with splitMode character|characterNoSpaces|word|line and delta {position, scale, rotation, rotationX, rotationY, blur, opacity, tracking, fillColor [r,g,b,a], skew (deg), scatter [x,y] px}; selector {randomizeOrder, seed} for a seeded order. Keyframe the selector with editor.setKeyframes(layerId, "animators.<i>.start" | ".end" | ".offset", keys). Layer path reflowHidden: true re-centres a line on its visible glyphs (centred type-on / delete). With the layer motion blur switch on, each glyph streaks with its own animator motion.' },
   { id: 'text.mixed-styles', area: 'text', name: 'Mixed styles / accent word',
     description: 'One word (or any character range) of a text in its own font, weight, italic and colour, e.g. an italic-serif accent word in a kinetic title. Works with text animators.',
     ui: 'Select a text layer > Inspector > Font > Accent (pick the word, then its font / italic / colour)',
     actions: ['editor.styleTextWord', 'editor.styleTextRange', 'editor.clearTextStyles'], status: 'shipped',
-    notes: 'Drawn per glyph on single-line text; wrapped / multi-line text keeps the base style. Editing the base font / colour in the Inspector restyles every base span and keeps the accent. agent.setTextContent resets to one style.' },
+    notes: 'Drawn per glyph (single-line, multi-line and wrapped text). Editing the base font / colour in the Inspector restyles every base span and keeps the accent. agent.setTextContent resets to one style.' },
+  { id: 'text.fonts', area: 'text', name: 'Font library + font import',
+    description: 'Bundled OFL families (incl. Inter 400-700, Inter Tight, Archivo Expanded wide grotesque, Montserrat Alternates, Unbounded, Nunito, Instrument Serif + true italic, Playfair Display + true italic, Damion script, VT323 / Silkscreen pixel, Space Mono) and importing any WOFF2 / WOFF / TTF / OTF. A weight between bundled ones resolves to the nearest face like CSS (500 -> 500 or 400, 600 -> 600 or 700); italic uses a true italic face when bundled, else a synthesized oblique.',
+    ui: 'Select a text layer > Inspector > Font > Family (grouped list; the upload button imports a font file)',
+    actions: ['agent.importFont', 'agent.measureString', 'editor.updateLayerProperty', 'editor.styleTextWord'], status: 'shipped',
+    notes: 'Family names: listFeatures().catalogs.fontFamilies (bundled weights / italics per family in each description; the in-page window.__ffxAgent.listFeatures() also lists fonts imported in this browser). Set the face with editor.updateLayerProperty(layerId, "content.spans.0.style.fontFamily" | "content.spans.0.style.fontWeight" | "content.spans.0.style.fontStyle", value). New families load on first use; renderFrame / exportMp4 / seek / measureString wait for them. MCP: import_font {path, family?}. Imported fonts live in the browser font library, not inside the .ffx project file.' },
+  { id: 'text.caret', area: 'text', name: 'Typing caret',
+    description: 'A bar (I-beam), block or underline caret that sits right after the last revealed glyph and rides a type-on frame by frame; solid while typing, blinking before and after; colour, size, gap, rounded corners, visible window.',
+    ui: 'Agent / MCP: agent.setTextCaret (Inspector control: not yet)',
+    actions: ['agent.setTextCaret', 'editor.updateLayerProperty'], status: 'shipped',
+    notes: 'Lives in layer.caret (TextCaret in src/core/types.ts), resolved as one rectangle stamp (core/textCaret.ts), frame-pure. Single-line text only (like per-glyph animators); not on text-on-path. Pair with agent.applyTextAnimatorPreset(layerId, "type-on", start, duration). Block caret = style "block" (e.g. lime [0.6, 0.85, 0.16, 1]).' },
   { id: 'text.decode', area: 'text', name: 'Text decode / scramble reveal',
     description: 'Characters flicker through random glyphs before resolving (hacker text).',
     ui: 'Select a text layer > Inspector > Animators section > Decode', actions: ['agent.applyTextDecode'], status: 'shipped' },
@@ -505,10 +694,16 @@ export const AGENT_FEATURES: readonly AgentFeature[] = [
   { id: 'shapes.add', area: 'shapes', name: 'Shapes',
     description: 'Rectangles (rounded), ellipses, stars, polygons with fill, stroke, gradients and materials.',
     ui: 'Canvas toolbar > Rectangle (R) / Ellipse (E) / Star / Polygon, drag on canvas',
-    actions: ['editor.addRectangle', 'editor.addCircle', 'editor.addStar', 'editor.addPolygon', 'editor.addShapeWithDimensions'], status: 'shipped' },
+    actions: ['editor.addShapeLayer', 'editor.addRectangle', 'editor.addCircle', 'editor.addStar', 'editor.addPolygon', 'editor.addShapeWithDimensions'], status: 'shipped',
+    notes: 'Agents: use editor.addShapeLayer (explicit size, fill, radius, name, no default stroke).' },
   { id: 'shapes.modifiers', area: 'shapes', name: 'Path modifiers (Trim Paths, Offset, Roughen, Pucker & Bloat)',
     description: 'Non-destructive outline modifiers; Trim Paths gives line draw-on animation.',
     ui: 'Select a shape > Inspector > Path Modifiers > add', actions: ['editor.addShapeModifier', 'editor.addKeyframe'], status: 'shipped' },
+  { id: 'shapes.morph', area: 'shapes', name: 'Shape morph',
+    description: 'Morph a shape through outlines (rect, rounded rect, ellipse, star, polygon, free points) with an ease per morph and automatic correspondence so outlines do not twist; different vertex counts morph.',
+    ui: 'Select a pen path > Inspector > Path Animation > Add Pose at the playhead (poses morph linearly in the UI; eases and parametric poses are agent / MCP: editor.setShapeMorph)',
+    actions: ['editor.setShapeMorph'], status: 'shipped',
+    notes: 'Pixel-proven headless by npm run gpu:anim-props. Combine with transform keys (scale / rotation) and colour keys (shape.fillColor) for the heavy-morph look.' },
   { id: 'shapes.repeater', area: 'shapes', name: 'Shape repeater',
     description: 'Copies of a shape with accumulating offset / rotation / scale (radial arrays, spirals).',
     ui: 'Inspector (shape) > Repeater toggle', actions: ['editor.toggleShapeRepeater'], status: 'shipped' },
@@ -527,7 +722,13 @@ export const AGENT_FEATURES: readonly AgentFeature[] = [
   { id: 'keyframes.easing', area: 'keyframes', name: 'Easing and the graph editor',
     description: 'Linear / bezier / hold / spring interpolation plus 31 named eases (back, elastic, bounce, expo...).',
     ui: 'Select keyframes > right-click > Easing; graph editor in the timeline',
-    actions: ['editor.setKeyframeInterpolation', 'editor.setKeyframeEasing'], status: 'shipped' },
+    actions: ['editor.setKeyframes', 'editor.setKeyframeInterpolation', 'editor.setKeyframeEasing'], status: 'shipped',
+    notes: 'Agents: editor.setKeyframes writes every key + its own ease (named, CSS keyword or a fitted cubic-bezier quad) in one call and one undo step.' },
+  { id: 'keyframes.color', area: 'keyframes', name: 'Colour keyframes',
+    description: 'Animate shape fill / stroke colour, text colour / stroke colour and glow / shadow colour: eased or hold (step) swaps, mixed in linear light so midpoints do not go muddy.',
+    ui: 'Agent / MCP: editor.addKeyframe or editor.setKeyframes on a colour path; the keys show in the timeline under "Animated" (Inspector colour stopwatch: not yet)',
+    actions: ['editor.setKeyframes', 'editor.addKeyframe', 'editor.deleteKeyframes', 'editor.setKeyframeEasing'], status: 'shipped',
+    notes: `Paths: ${ANIM_COLOR_PATHS.join(', ')}. Values RGBA 0..1. The static colour stays the value before the first key. Stored under layer.animProps (absent in old projects: unchanged). A material / gradient fill on a shape overrides the flat fill colour.` },
   { id: 'keyframes.assistants', area: 'keyframes', name: 'Keyframe assistants',
     description: 'Smoother and Wiggler over selected keyframes; quick fades.',
     ui: 'Select keyframes > right-click > Keyframe Assistant; clip right-click > Fades > Add Fade In / Add Fade Out',
@@ -559,7 +760,8 @@ export const AGENT_FEATURES: readonly AgentFeature[] = [
   // particles / procedural
   { id: 'particles.emitter', area: 'particles', name: 'Particles',
     description: 'GPU particle emitter with presets (confetti, sparks, snow, smoke...).',
-    ui: 'Canvas toolbar > Particle; Inspector > Particles', actions: ['editor.addParticleLayer', 'editor.updateLayerProperty'], status: 'browser-gated' },
+    ui: 'Canvas toolbar > Particle; Inspector > Particles', actions: ['editor.addParticleLayer', 'agent.configureParticles', 'editor.updateLayerProperty'], status: 'browser-gated',
+    notes: 'A new particle layer starts as the "fire" preset. Use agent.configureParticles(layerId, presetId, overrides) instead of hand-writing particle.emitterConfig (a JSON string).' },
   { id: 'particles.procedural', area: 'particles', name: 'Procedural motion',
     description: 'Attach procedural motion (oscillation, orbit, noise drift) without keyframes.',
     ui: 'Inspector > Loop tab', actions: ['editor.addProceduralBinding'], status: 'shipped' },
@@ -590,6 +792,11 @@ export const AGENT_FEATURES: readonly AgentFeature[] = [
   { id: 'effects.layer', area: 'effects', name: 'Shadow, glow, blur and the effect stack',
     description: 'Per-layer drop shadow, glow, blur and a stack of stylize / colour / glitch effects.',
     ui: 'Inspector > Effects tab', actions: ['editor.enableLayerEffect', 'editor.setLayerEffectParam', 'editor.toggleLayerEffect', 'editor.removeLayerEffect'], status: 'browser-gated' },
+  { id: 'effects.animated-params', area: 'effects', name: 'Animated glow, shadow, blur and effect params',
+    description: 'Keyframe glow intensity / radius / threshold / colour, shadow distance / angle / blur / scale / colour, the layer blur radius / strength / angle (blur-in and blur-out reveals) and any effect-stack param (pixelate size, RGB split, glitch amount, saturation...).',
+    ui: 'Agent / MCP: enable the effect (editor.enableLayerEffect / editor.setLayerEffectParam), then editor.addKeyframe or editor.setKeyframes on its path; the keys show in the timeline under "Animated"',
+    actions: ['editor.enableLayerEffect', 'editor.setLayerEffectParam', 'editor.setKeyframes', 'editor.addKeyframe'], status: 'shipped',
+    notes: `Paths: ${ANIM_FX_PATHS.join(', ')}, effect.<type>.<paramIndex>. A blur radius keyed to 0 drops the blur pass on those frames. Pixel-proven headless by npm run gpu:anim-props.` },
   { id: 'effects.beam', area: 'effects', name: 'Light beams', description: 'Laser / light beam layer.',
     ui: 'Right-click the canvas > New Beam / Lightning', actions: ['editor.addBeamLayer'], status: 'browser-gated' },
   { id: 'adjustment.layer', area: 'adjustment', name: 'Adjustment layers',
@@ -606,8 +813,13 @@ export const AGENT_FEATURES: readonly AgentFeature[] = [
   { id: 'camera.2-5d', area: 'camera-2.5d', name: '2.5D camera',
     description: 'Flat layers as cards in 3D space viewed by an animated camera (After Effects Classic 3D style).',
     ui: 'Canvas toolbar > Camera (3D); Inspector > 3D Layer switch',
-    actions: ['editor.addCameraLayer', 'editor.toggleLayer3D'], status: 'partial',
-    notes: '2.5D only (no full 3D). Some camera features still need a browser eyeball.' },
+    actions: ['editor.addCameraLayer', 'editor.toggleLayer3D', 'editor.cameraMove', 'editor.setKeyframes'], status: 'shipped',
+    notes: '2.5D only (no full 3D). Card render proven on the real WebGPU renderer (gpu:camera-cards, B53): rotated / pushed / scaled cards (shape, path shape, precomp), moved two-node and one-node cameras and the painter depth order land within 1 px of the camera3d projection. Card paths (after toggleLayer3D): transform.rotationX, transform.rotationY, transform.rotation (Z), transform.positionZ (+ = away from the camera), keyed with setKeyframes. Camera paths: transform.position (eye x, y), transform.positionZ (eye z), camera.pointOfInterest, camera.pointOfInterestZ, camera.zoom; editor.cameraMove keys a whole beat in one call. Not pixel-proven: camera depth-of-field blur, per-glyph 3D text animators, the in-app camera UI (gizmo, 3D view).' },
+  { id: 'effects.corner-pin', area: 'effects', name: 'Corner pin',
+    description: 'Pin the four corners of a layer to any four points (keystone, a screen inside a tilted phone, a card leaning in perspective without a camera); each pin keyframable.',
+    ui: 'Agent / MCP only for now (no Inspector panel yet)',
+    actions: ['editor.setCornerPin', 'editor.setKeyframes'], status: 'shipped',
+    notes: 'Reuses the B27 homography (core/tracking/homography.ts) folded into the 2.5D mvp vertex path: exact projective warp, proven within 1 px on shape, text and precomp layers (gpu:camera-cards) + verify:corner-pin. Masks on a pinned layer stay in the unpinned layer space; per-glyph text stamps (text animators) are not pinned.' },
 
   // captions
   { id: 'captions.auto', area: 'captions', name: 'Auto captions',
@@ -621,25 +833,36 @@ export const AGENT_FEATURES: readonly AgentFeature[] = [
   // media
   { id: 'media.import', area: 'media', name: 'Import images, video, audio',
     description: 'Import files (drag & drop or toolbar) into the media pool; WebCodecs decode.',
-    ui: 'Canvas toolbar > Image / Video; drag files onto the canvas; Media Pool', actions: [], status: 'browser-gated',
-    notes: 'File import needs a real File from the browser; place imported assets with the actions below.' },
+    ui: 'Canvas toolbar > Image / Video; drag files onto the canvas; Media Pool', actions: ['agent.importImage', 'agent.importMedia'], status: 'shipped',
+    notes: 'Headless: agent.importMedia imports video (MP4, MOV, WebM, MKV), audio (MP3, WAV, M4A, AAC, OGG, FLAC) and images (MCP: import_media {path}, which streams big files in chunks); agent.importImage is the image-only shortcut (MCP: import_image). Place with editor.addVideoFromAsset / editor.addAudioFromAsset / editor.addImageFromAsset.' },
   { id: 'media.place', area: 'media', name: 'Place imported media',
     description: 'Put an imported asset on the canvas and fit it.', ui: 'Drag from the Media Pool',
-    actions: ['editor.addImageFromAsset', 'editor.addVideoFromAsset', 'editor.fitLayerToCanvas'], status: 'shipped' },
+    actions: ['editor.addImageFromAsset', 'editor.addVideoFromAsset', 'editor.addAudioFromAsset', 'editor.fitLayerToCanvas'], status: 'shipped' },
 
   // export
+  { id: 'export.frame', area: 'export', name: 'Render a frame / contact sheet (PNG)',
+    description: 'Full-resolution PNG of one frame, or a labelled contact sheet of several, rendered offscreen through the exporter path (export motion blur, no UI, not the scaled preview).',
+    ui: 'Agent / MCP only (render_frame, render_strip). In the app: File > Export Video and step through it.',
+    actions: ['agent.renderFrame', 'agent.renderStrip'], status: 'browser-gated',
+    notes: 'Needs WebGPU. Proven against the real renderer headless by npm run gpu:anim-props (renderFrame of a frame equals a direct offscreen render).' },
   { id: 'export.video', area: 'export', name: 'Export MP4',
     description: 'Render the composition to MP4 (H.264 + AAC) through WebGPU + WebCodecs.',
     ui: 'File > Export Video... (Ctrl+E)', actions: ['agent.exportMp4'], status: 'browser-gated',
     notes: 'Needs WebGPU + WebCodecs in the tab. agent.exportMp4 runs the same exporter; stream the bytes out with __ffxAgent.readExport.' },
   { id: 'export.project', area: 'export', name: 'Save / download project',
-    description: 'Projects autosave to IndexedDB; download as a .ffx file.', ui: 'File > Save (Ctrl+S) / Download Project (.ffx)',
-    actions: [], status: 'shipped' },
+    description: 'Projects autosave to IndexedDB; download as an editable .ffx file and import it back.', ui: 'File > Save (Ctrl+S) / Download Project (.ffx) / Import Project (.ffx)',
+    actions: ['agent.saveProject', 'agent.exportProject', 'agent.importProject'], status: 'shipped',
+    notes: 'MCP: save_project, export_project {path} writes the .ffx to disk, import_project {path} opens one. The .ffx holds every composition plus imported media, so the agent-built piece stays fully editable in the app.' },
 
   // templates
   { id: 'templates.animation', area: 'templates', name: 'Animation templates',
     description: 'Pre-built animated scenes: titles, lower thirds, charts, lists, logo pops, UI mockups.',
     ui: 'Media Pool > Templates tab > click a template', actions: ['editor.insertAnimationTemplate'], status: 'shipped' },
+  { id: 'templates.cursor', area: 'templates', name: 'Cursor + click rig',
+    description: 'A pointer cursor (arrow / hand / I-beam) that moves like a hand (ballistic ease-out along an arc), squashes on clicks with a ripple ring, and swaps icons: for UI demos and product walkthroughs.',
+    ui: 'Agent / MCP only (the recursive-editor template uses the same rig)',
+    actions: ['agent.addCursor', 'agent.cursorMoveTo', 'agent.cursorClick', 'agent.cursorIcon'], status: 'shipped',
+    notes: 'Everything lands as ordinary editable layers and keys: the cursor is a group ("transform.position" = hotspot, "transform.scale" = click squash), the icons are polygon children, each ripple is its own circle layer. Author moves / clicks in time order: a move starts from where the cursor is at its start frame.' },
   { id: 'templates.items', area: 'templates', name: 'Animation items',
     description: 'Ready-made animated elements.', ui: 'Canvas toolbar > Animation Item', actions: ['editor.addAnimationItem'], status: 'shipped' },
 ];
@@ -659,12 +882,15 @@ export function buildAgentManifest(): AgentManifest {
     app: { name: 'FlashFX Studio', url: 'https://editor.flashfx.app' },
     conventions: {
       units: 'Positions and sizes are composition pixels, origin top-left, Y down. Time is in frames (see getState().fps).',
+      timing: 'New layers are 4-second clips (outPoint = inPoint + 4 s, capped at the comp length), like the UI. In a longer comp set editor.updateLayerProperty(layerId, "outPoint", durationFrames) or the layer disappears after 4 s.',
+      textBox: 'createQuickText / addText make an auto-size text box centred on x (y = the line box centre). An auto box is exactly as wide as the text, so horizontalAlign "left" only takes effect with a fixed box: layoutConfig.boundingBox = { type: "fixedWidth", width } and x = left edge + width / 2.',
+      shapes: 'addShapeWithDimensions takes the shape CENTRE. New shapes carry a 1 px grey stroke: set "shape.strokeWidth.defaultValue" to 0 for clean fills.',
       colors: 'RGBA arrays with components 0..1, e.g. [1, 0.8, 0.2, 1].',
       scale: 'Scale is a [sx, sy] multiplier: 1 = 100%.',
       runtime: 'In the editor tab: window.__ffxAgent.listFeatures(), .getState(), .run(actionId, args). args is an object keyed by param name or a positional array.',
       undo: 'Actions marked undoable push one normal history command; history.undo reverts it.',
       textStyle: 'Text: font size / line height / letter spacing / stroke width are animatable and live in animOverrides (set path "animOverrides.fontSize.defaultValue", keyframe path "animOverrides.fontSize"). Colour, font family, weight and gradient fill live in "content.spans.0.style.*" (e.g. "content.spans.0.style.color").',
-      mcp: 'A local MCP server (mcp/flashfx-mcp.mjs in the repo, npm run mcp:flashfx) drives this runtime over the Chrome DevTools Protocol: list_features, get_state, create_project, run_action(s), seek, play, pause, screenshot, export_mp4, undo.',
+      mcp: 'A local MCP server (mcp/flashfx-mcp.mjs in the repo, npm run mcp:flashfx) drives this runtime over the Chrome DevTools Protocol: list_features, get_state, create_project, run_action(s), seek, play, pause, screenshot, export_mp4, export_project, import_project, import_image, save_project, undo.',
     },
     features: AGENT_FEATURES,
     actions: AGENT_ACTIONS,

@@ -1,0 +1,43 @@
+{
+  "id": "underline-draw",
+  "name": "Accent bar / underline draw-on",
+  "category": "shape",
+  "description": "A thin accent bar that grows from its left edge with an expo-out, holds, and retracts to the right on the end frame (ease-in). Put it under a title's ink box (kinetic-title returns inkBottom) or use it as a divider.",
+  "source": ["r04 S1 rainbow underline grow (easeIn 40 f at 60) and contract", "mcp/examples/build-a-kinetic-title.mjs gold underline (expoOut 22 f at 30)", "r02 S5 rule lines"],
+  "taste": ["TASTE.md 2 Easing", "3 Timing", "7 Colour"],
+  "params": {
+    "x": { "type": "number", "default": null, "description": "Centre x when fully drawn (default comp centre)." },
+    "y": { "type": "number", "default": null, "description": "Centre y (default comp centre)." },
+    "width": { "type": "number", "default": null, "description": "Full length px (default 34 % of the comp width)." },
+    "thickness": { "type": "number", "default": null, "description": "Bar thickness px (default 0.6 % of the short side, at least 4)." },
+    "color": { "type": "color", "default": "#2f6bff", "description": "Bar colour (the piece's one accent)." },
+    "delay": { "type": "number", "default": 0, "min": 0, "description": "Frames at 30 fps before it starts." },
+    "entrance": { "type": "number", "default": 16, "min": 3, "description": "Draw length, frames at 30 fps." },
+    "ease": { "type": "ease", "default": [0.16, 1, 0.3, 1], "description": "Draw ease (expoOut by default)." },
+    "exit": { "type": "boolean", "default": true, "description": "Retract to the right, ending on the end frame." },
+    "exitFrames": { "type": "number", "default": 10, "min": 2, "description": "Retract length, frames at 30 fps." },
+    "name": { "type": "string", "default": "Accent bar", "description": "Layer name." }
+  },
+  "length30": "delay + entrance + 40 + (exit ? exitFrames : 0)",
+  "checkFrames30": ["delay + entrance * 0.3", "delay + entrance"],
+  "lets": {
+    "X": "x == null ? CX : x",
+    "Y": "y == null ? CY : y",
+    "BW": "width == null ? round(W * 0.34) : width",
+    "T": "thickness == null ? max(4, round(min(W, H) * 0.006)) : thickness",
+    "s0": "start + f(delay)",
+    "e0": "exit ? end - f(exitFrames) : end"
+  },
+  "steps": [
+    { "id": "bar", "action": "editor.addShapeLayer", "args": { "opts": { "type": "rectangle", "x": "{{X - BW / 2 - PX}}", "y": "{{Y - PY}}", "width": "{{BW}}", "height": "{{T}}", "radius": "{{round(T / 2)}}", "fill": "{{color}}", "name": "{{name}}" } }, "layer": true, "root": true },
+    { "let": { "L": "@bar.result" } },
+    { "action": "editor.setKeyframes", "args": { "layerId": "{{L}}", "propertyPath": "shape.width", "keyframes": [
+      { "frame": "{{s0}}", "value": 0, "ease": "{{ease}}" }, { "frame": "{{s0 + f(entrance)}}", "value": "{{BW}}", "ease": "linear" },
+      { "frame": "{{e0}}", "value": "{{BW}}", "ease": [0.5, 0, 0.75, 0] }, { "frame": "{{end}}", "value": "{{exit ? 0 : BW}}" } ] } },
+    { "action": "editor.setKeyframes", "args": { "layerId": "{{L}}", "propertyPath": "transform.position", "keyframes": [
+      { "frame": "{{s0}}", "value": "{{[X - BW / 2 - PX, Y - PY]}}", "ease": "{{ease}}" }, { "frame": "{{s0 + f(entrance)}}", "value": "{{[X - PX, Y - PY]}}", "ease": "linear" },
+      { "frame": "{{e0}}", "value": "{{[X - PX, Y - PY]}}", "ease": [0.5, 0, 0.75, 0] }, { "frame": "{{end}}", "value": "{{exit ? [X + BW / 2 - PX, Y - PY] : [X - PX, Y - PY]}}" } ] } }
+  ],
+  "returns": { "layerId": "{{L}}", "drawnFrame": "{{s0 + f(entrance)}}" },
+  "example": { "params": { "y": 600, "width": 360 }, "startFrame": 20 }
+}

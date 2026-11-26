@@ -1,12 +1,11 @@
-import type { Keyframe, Vec2 } from './types';
+import type { Keyframe } from './types';
+import { mapValue, zipValues, type KeyframeValue } from './keyframeValue';
 
 // The Smoother and The Wiggler - organic keyframe assistants (Category 1). Both are PURE array
 // transforms over a property's keyframes + the set of SELECTED frames, returning a new list; the
 // store wraps them in one undoable command. Kept in their own leaf module (no interpolation import)
 // so they stay bundleable in a harness. The Wiggler is seeded (house mulberry32) → the OUTPUT is
 // static, deterministic keyframe data, re-runnable and frame-pure.
-
-const isVec = (v: number | Vec2): v is Vec2 => Array.isArray(v);
 
 // House PRNG (matches src/cloner/effectors.ts et al.).
 function mulberry32(seed: number): () => number {
@@ -35,14 +34,10 @@ function hash2(a: number, b: number): number {
 export function smoothSelected(kfs: Keyframe[], selected: Set<number>): Keyframe[] {
   const sel = kfs.filter((k) => selected.has(k.frame)).sort((a, b) => a.frame - b.frame);
   if (sel.length < 3) return kfs;
-  const next = new Map<number, number | Vec2>();
+  const next = new Map<number, KeyframeValue>();
   for (let i = 1; i < sel.length - 1; i++) {
-    const p = sel[i - 1].value, c = sel[i].value, n = sel[i + 1].value;
-    if (isVec(c) && isVec(p) && isVec(n)) {
-      next.set(sel[i].frame, [0.25 * p[0] + 0.5 * c[0] + 0.25 * n[0], 0.25 * p[1] + 0.5 * c[1] + 0.25 * n[1]]);
-    } else {
-      next.set(sel[i].frame, 0.25 * (p as number) + 0.5 * (c as number) + 0.25 * (n as number));
-    }
+    // Per component (number, vec2 or an RGBA colour keyframe), shaped like the middle keyframe.
+    next.set(sel[i].frame, zipValues([sel[i].value, sel[i - 1].value, sel[i + 1].value], ([c, p, n]) => 0.25 * p + 0.5 * c + 0.25 * n));
   }
   return kfs.map((k) => (next.has(k.frame) ? { ...k, value: next.get(k.frame)! } : k));
 }
@@ -65,9 +60,7 @@ export function exponentialScaleSelected(kfs: Keyframe[], selected: Set<number>)
   const baked: Keyframe[] = [];
   for (let f = f0; f <= f1; f++) {
     const t = (f - f0) / (f1 - f0);
-    let value: number | Vec2;
-    if (isVec(startV) && isVec(endV)) value = [geo(startV[0], endV[0], t), geo(startV[1], endV[1], t)];
-    else value = geo(startV as number, endV as number, t);
+    const value = zipValues([startV, endV], ([a, b]) => geo(a, b, t));
     baked.push({ frame: f, value, interpolation: 'linear', handleIn: [0, 0], handleOut: [0, 0] });
   }
   const bakedFrames = new Set(baked.map((k) => k.frame));
@@ -84,13 +77,12 @@ export function exponentialScaleSelected(kfs: Keyframe[], selected: Set<number>)
 export function wiggleSelected(kfs: Keyframe[], selected: Set<number>, amplitude: number, seed: number): Keyframe[] {
   const sel = kfs.filter((k) => selected.has(k.frame)).sort((a, b) => a.frame - b.frame);
   if (sel.length < 3 || amplitude === 0) return kfs;
-  const next = new Map<number, number | Vec2>();
+  const next = new Map<number, KeyframeValue>();
   for (let i = 1; i < sel.length - 1; i++) {
     const k = sel[i];
     const rng = mulberry32(hash2(seed, k.frame));
-    const noise = () => (rng() * 2 - 1) * amplitude;
-    if (isVec(k.value)) next.set(k.frame, [k.value[0] + noise(), k.value[1] + noise()]);
-    else next.set(k.frame, (k.value as number) + noise());
+    // One draw per component in order (X then Y for a vec2: byte-identical to the original sequence).
+    next.set(k.frame, mapValue(k.value, (x) => x + (rng() * 2 - 1) * amplitude));
   }
   return kfs.map((k) => (next.has(k.frame) ? { ...k, value: next.get(k.frame)! } : k));
 }

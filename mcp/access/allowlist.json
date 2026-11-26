@@ -1,0 +1,5 @@
+{
+  "version": 1,
+  "about": "FlashFX Link early-access codes (SHA-256 of 'flashfx-link:v1:' + the normalized code). Only hashes live here; never put an email or a name in label (this file is public). Add codes with: node scripts/mcp-access-code.mjs --kind early --label early-01 --add",
+  "codes": []
+}

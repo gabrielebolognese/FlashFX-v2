@@ -5,8 +5,8 @@ import { useEditorStore } from '../../store/editor';
 
 // "Accent word": set ONE word of a text in its own face / colour (the kinetic-title look where one
 // word of each phrase is an italic serif). Writes through the undoable editor.styleTextWord /
-// clearTextStyles actions; the renderer draws mixed styles via the per-glyph stamp path (single-line
-// text; wrapped text keeps the base style).
+// clearTextStyles actions; the renderer draws mixed styles via the per-glyph stamp path (single-line,
+// multi-line and wrapped text alike).
 
 const DEFAULT_ACCENT_FAMILY = 'Playfair Display';
 const FAMILIES = FONT_MANIFEST.map((f) => f.family);
@@ -52,7 +52,7 @@ export function TextAccentRow({ layer }: { layer: TextLayer }) {
     styleTextWord(layer.id, wordIndex, { fontFamily: family, fontStyle: italic ? 'italic' : 'normal', color, ...patch }, true);
 
   return (
-    <div className="flex flex-col gap-1" title="Set one word in its own font / colour (single-line text)">
+    <div className="flex flex-col gap-1" title="Set one word in its own font / colour">
       <div className="flex items-center gap-1">
         <label className="text-caption text-slate-500 w-14 flex-shrink-0">Accent</label>
         <select

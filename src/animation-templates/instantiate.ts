@@ -42,6 +42,11 @@ export function instantiateTemplate(tpl: AnimationTemplate, opts: InstantiateOpt
     });
     layer.inPoint = rebase(layer.inPoint);
     layer.outPoint = rebase(layer.outPoint);
+    // B35: a typing caret's visible window is in absolute frames too.
+    if (layer.type === 'text' && layer.caret) {
+      if (layer.caret.startFrame !== undefined) layer.caret.startFrame = rebase(layer.caret.startFrame);
+      if (layer.caret.endFrame !== undefined) layer.caret.endFrame = rebase(layer.caret.endFrame);
+    }
   }
   return layers;
 }

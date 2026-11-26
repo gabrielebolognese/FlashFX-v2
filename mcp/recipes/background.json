@@ -1,0 +1,31 @@
+{
+  "id": "background",
+  "name": "Ground (comp background)",
+  "category": "background",
+  "description": "Sets the composition ground: a flat colour (the references' default: light grey #e4e6e3 or near-black), or a soft radial / linear falloff from colour to colour2. Apply first. Not a layer, so it never clips and never moves with a camera.",
+  "source": ["r04 ground #e4e6e3 (flat)", "r02 white ground", "r06 black ground with a radial dome", "r07 near-black ground"],
+  "taste": ["TASTE.md 7 Colour"],
+  "params": {
+    "style": { "type": "enum", "enum": ["solid", "radial", "linear"], "default": "solid", "description": "solid = one flat colour (most references); radial = colour in the middle falling off to colour2 at the edges; linear = top colour to bottom colour2." },
+    "color": { "type": "color", "default": "#e4e6e3", "description": "Main ground colour (#e4e6e3 light grey, #0b0b0d near-black, #ffffff white)." },
+    "color2": { "type": "color", "default": null, "description": "Edge / bottom colour for radial and linear. Default: colour darkened 30 %." },
+    "angle": { "type": "number", "default": 180, "description": "Linear only: gradient angle in degrees (180 = top to bottom)." }
+  },
+  "length30": 1,
+  "clip": false,
+  "lets": {
+    "c1": "[color[0], color[1], color[2]]",
+    "c2full": "color2 == null ? mix(color, '#000000', 0.3) : color2",
+    "c2": "style == 'solid' ? c1 : [c2full[0], c2full[1], c2full[2]]"
+  },
+  "steps": [
+    { "id": "st", "tool": "get_state" },
+    { "id": "added", "action": "editor.addBackgroundLayer", "args": [], "when": "len(@st.background) == 0" },
+    { "let": { "bgId": "len(@st.background) > 0 ? @st.background[0].id : @added.result" } },
+    { "action": "editor.updateBackgroundLayer", "args": { "id": "{{bgId}}", "updates": {
+      "type": "{{style}}", "enabled": true, "opacity": 1, "angle": "{{angle}}", "centerX": 0.5, "centerY": 0.45, "radius": 0.85,
+      "stops": [ { "color": "{{c1}}", "position": 0, "opacity": 1 }, { "color": "{{c2}}", "position": 1, "opacity": 1 } ] } } }
+  ],
+  "returns": { "backgroundId": "{{bgId}}" },
+  "example": { "params": { "style": "solid", "color": "#e4e6e3" }, "startFrame": 0 }
+}

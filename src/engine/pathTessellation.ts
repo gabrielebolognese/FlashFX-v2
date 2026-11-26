@@ -111,6 +111,32 @@ function pointInTriangle(p: Vec2, a: Vec2, b: Vec2, c: Vec2): boolean {
   return !(hasNeg && hasPos);
 }
 
+/**
+ * Prepare a closed ring for ear clipping: drop the duplicated closing point flattenPath emits, any
+ * consecutive duplicates, and collinear points (they do not change the filled region). The ear
+ * clipper's inclusive point-in-triangle test treats a collinear neighbour as "inside" every candidate
+ * ear, so a ring like [top-middle, TR, BR, BL, TL, top-middle] used to stall after one triangle and
+ * fill only half a square (found by B62: its outlines start at a mid-edge point; resampled morph rings carry many collinear points too).
+ * Exported for verify:shape-morph.
+ */
+export function cleanFillRing(pts: Vec2[]): Vec2[] {
+  let ring = pts.slice();
+  const same = (a: Vec2, b: Vec2) => Math.abs(a[0] - b[0]) <= 1e-9 && Math.abs(a[1] - b[1]) <= 1e-9;
+  while (ring.length > 1 && same(ring[0], ring[ring.length - 1])) ring.pop();
+  ring = ring.filter((p, i) => i === 0 || !same(p, ring[i - 1]));
+  let changed = true;
+  while (changed && ring.length > 3) {
+    changed = false;
+    for (let i = 0; i < ring.length && ring.length > 3; i++) {
+      const a = ring[(i - 1 + ring.length) % ring.length], b = ring[i], c = ring[(i + 1) % ring.length];
+      const cross = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+      const scale = Math.hypot(b[0] - a[0], b[1] - a[1]) * Math.hypot(c[0] - a[0], c[1] - a[1]);
+      if (Math.abs(cross) <= 1e-9 * Math.max(scale, 1e-12)) { ring.splice(i, 1); changed = true; i--; }
+    }
+  }
+  return ring;
+}
+
 // Ear-clipping triangulation. Returns a flat list of triangle vertex coords.
 function earClip(polygon: Vec2[]): Vec2[] {
   const n = polygon.length;
@@ -367,7 +393,7 @@ export function tessellatePath(opts: TessellateOptions): TessellatedPath {
   // Fill (only for closed paths with a visible fill). Holes are bridged into the outer contour
   // so the ear-clipper carves out the counters.
   if (opts.closed && pts.length >= 3 && opts.fillColor[3] > 0) {
-    const tris = holePolys.length > 0 ? earcutFill(pts, holePolys) : earClip(pts);
+    const tris = holePolys.length > 0 ? earcutFill(pts, holePolys) : earClip(cleanFillRing(pts));
     for (let i = 0; i < tris.length; i += 3) {
       pushTri(out, tris[i], tris[i + 1], tris[i + 2], opts.fillColor);
     }

@@ -313,7 +313,9 @@ function applyPreset(layer: Layer, name: keyof typeof PRESET_CATALOG, params: Re
     let kfs = tr.keyframes;
     if (key === 'opacity') kfs = kfs.map((k) => ({ ...k, value: clamp01(k.value as number) }));
     p.keyframes = kfs;
-    if (kfs.length) p.defaultValue = kfs[0].value;
+    // Transform tracks are number / vec2 (never a colour), so the first value can seed the default.
+    const v0 = kfs.length ? kfs[0].value : undefined;
+    if (v0 !== undefined && (typeof v0 === 'number' || v0.length === 2)) p.defaultValue = v0;
   }
 }
 

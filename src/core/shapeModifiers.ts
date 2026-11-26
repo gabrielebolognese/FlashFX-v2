@@ -11,6 +11,7 @@
 
 import type { Vec2, PathVertex, PathKeyframe } from './types';
 import { evalCubic } from './bend';
+import { applyEasing, cubicBezier } from './easings';
 
 // ── small vec helpers (all return fresh arrays) ──
 function sub(a: Vec2, b: Vec2): Vec2 { return [a[0] - b[0], a[1] - b[1]]; }
@@ -308,15 +309,49 @@ function resampleToN(vertices: PathVertex[], closed: boolean, N: number): Vec2[]
  * Morph between two path poses at t∈[0,1]. Both poses are arc-length-resampled to a common point count
  * (so different vertex counts morph) and interpolated index-for-index. Emits a flattened polyline.
  */
-export function morphPaths(vA: PathVertex[], cA: boolean, vB: PathVertex[], cB: boolean, t: number): { vertices: PathVertex[]; closed: boolean } {
+export function morphPaths(vA: PathVertex[], cA: boolean, vB: PathVertex[], cB: boolean, t: number, align = false): { vertices: PathVertex[]; closed: boolean } {
   const N = Math.max(8, Math.min(256, Math.max(vA.length, vB.length) * 8));
   const A = resampleToN(vA, cA, N);
-  const B = resampleToN(vB, cB, N);
+  let B = resampleToN(vB, cB, N);
+  if (align && cA && cB) B = alignRing(A, B);
   const out: PathVertex[] = [];
   for (let i = 0; i < N; i++) {
     out.push(cornerVertex([A[i][0] + (B[i][0] - A[i][0]) * t, A[i][1] + (B[i][1] - A[i][1]) * t]));
   }
   return { vertices: out, closed: t < 0.5 ? cA : cB };
+}
+
+/**
+ * B62: re-index closed ring B (same point count as A) so it starts at the point and runs in the winding
+ * that best matches A - minimum summed squared distance over every cyclic shift, forward and reversed.
+ * Removes the twist a rect -> circle (or any two outlines with different start points) morph shows
+ * with plain index-0 correspondence. Deterministic (ties keep the lowest shift, forward first).
+ */
+export function alignRing(A: Vec2[], B: Vec2[]): Vec2[] {
+  const n = A.length;
+  if (n !== B.length || n < 3) return B;
+  let best = Infinity, bestShift = 0, bestRev = false;
+  for (const rev of [false, true]) {
+    for (let s = 0; s < n; s++) {
+      let d = 0;
+      for (let i = 0; i < n && d < best; i++) {
+        const j = rev ? (s - i + n) % n : (s + i) % n;
+        const dx = A[i][0] - B[j][0], dy = A[i][1] - B[j][1];
+        d += dx * dx + dy * dy;
+      }
+      if (d < best) { best = d; bestShift = s; bestRev = rev; }
+    }
+  }
+  const out: Vec2[] = [];
+  for (let i = 0; i < n; i++) out.push(B[bestRev ? (bestShift - i + n) % n : (bestShift + i) % n]);
+  return out;
+}
+
+/** B62: eased morph progress for a pose's ease (named or cubic-bezier quad; absent = linear). */
+export function morphProgress(ease: PathKeyframe['ease'], t: number): number {
+  if (!ease) return t;
+  if (Array.isArray(ease)) return cubicBezier(t, ease[0], ease[1], ease[2], ease[3]);
+  return applyEasing(ease, t);
 }
 
 /**
@@ -340,7 +375,7 @@ export function evalPathKeyframes(kfs: PathKeyframe[], frame: number): { vertice
   if (frame === k1.frame) return clone(k1);
   const span = k1.frame - k0.frame;
   const t = span <= 0 ? 0 : (frame - k0.frame) / span;
-  return morphPaths(k0.vertices, k0.closed, k1.vertices, k1.closed, t);
+  return morphPaths(k0.vertices, k0.closed, k1.vertices, k1.closed, morphProgress(k0.ease, t), k0.align === 'auto');
 }
 
 // ── In-shape Repeater (B8d) ──

@@ -5,6 +5,7 @@ import { EXPORT_MOTION_BLUR_SAMPLES } from '../store/preview';
 import { videoDecoderPool } from '../engine/video/videoDecoderPool';
 import { frameScheduler } from '../engine/video/frameScheduler';
 import { mediaAssetManager } from '../engine/media/assetManager';
+import { ensureCompositionFonts } from '../engine/fonts';
 import { exportCompositionAudio, type EncodedAudio } from './audioMixer';
 import {
   normalizeExportDimensions, validateExportTiming,
@@ -133,6 +134,10 @@ export async function exportToMp4(
   };
 
   onProgress?.({ phase: 'initializing', currentFrame: 0, totalFrames, percent: 0, message: 'Setting up renderer...' });
+
+  // B52: lazy-loaded font faces (new families, extra weights, italics) must be in before the first
+  // frame is rasterized, or the export would draw them in the fallback face.
+  await ensureCompositionFonts(composition, getComposition);
 
   const { Muxer, ArrayBufferTarget } = await import('mp4-muxer');
 
