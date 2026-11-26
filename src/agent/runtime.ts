@@ -53,6 +53,7 @@ import { buildPixelSparkle } from '../animation-templates/pixelSparkle';
 import { isPixelBlockOrder } from '../core/pixelBlocks';
 import { layerEffectsRoute, parseAgentEffects } from '../core/effects/layerEffects';
 import { normalizeTextCounter, counterTextAt } from '../core/textCounter';
+import { normalizeTextStyleKeys } from '../core/textStyleKeys';
 import { EASINGS } from '../core/easings';
 import { getEffectDefByType } from '../core/effects/effectRegistry';
 import type { KeyframeEaseSpec } from '../core/keyframeSpecs';
@@ -1039,6 +1040,27 @@ const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
     const nextMods = mods.map((m, i) => (i === idx ? { ...trim, offset } : m));
     useEditorStore.getState().applyLayerEdits('Trim start angle', { update: [{ ...layer, modifiers: nextMods }] });
     return { modifierIndex: idx, angle, pathFraction: f, offset: offNow + delta };
+  },
+
+  // ----- B77 hold-keyed typeface switch (core/textStyleKeys.ts) -----
+  setTextStyleKeys: (layerId, keys, spanIndex) => {
+    const layer = requireTextLayer(layerId);
+    if (keys === null) {
+      if (!layer.styleKeys) return { styleKeys: null };
+      useEditorStore.getState().applyLayerEdits('Remove style keys', { update: [{ ...layer, styleKeys: undefined }] });
+      return { styleKeys: null };
+    }
+    if (!Array.isArray(keys) || keys.length === 0) throw new Error('"keys" must be a non-empty array of { frame, fontFamily?, fontWeight?, fontStyle? } or null');
+    if (spanIndex !== undefined && spanIndex !== null && (typeof spanIndex !== 'number' || !Number.isInteger(spanIndex) || spanIndex < 0 || spanIndex >= layer.content.spans.length)) {
+      throw new Error(`"spanIndex" must be a span index 0..${layer.content.spans.length - 1}`);
+    }
+    const idx = typeof spanIndex === 'number' ? spanIndex : 0;
+    const base = layer.content.spans[idx]?.style ?? layer.content.spans[0]?.style;
+    if (!base) throw new Error('the text layer has no spans');
+    const sk = normalizeTextStyleKeys(typeof spanIndex === 'number' ? { keys, spanIndex } : { keys }, base);
+    if (!sk) throw new Error('no valid key (each needs a numeric "frame")');
+    useEditorStore.getState().applyLayerEdits('Text style keys', { update: [{ ...layer, styleKeys: sk }] });
+    return { styleKeys: sk };
   },
 
   // ----- B75 number counter on a styled text layer (core/textCounter.ts) -----

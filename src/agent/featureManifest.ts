@@ -62,7 +62,8 @@ export type AgentHelperMethod =
   | 'pixelSparkle'
   | 'applyLayerEffects'
   | 'setClonerSources'
-  | 'setTextCounter';
+  | 'setTextCounter'
+  | 'setTextStyleKeys';
 
 export type FeatureStatus = 'shipped' | 'browser-gated' | 'partial';
 
@@ -377,6 +378,11 @@ export const AGENT_ACTIONS: readonly AgentActionSpec[] = [
     description: 'Styled number counter (B75): one span of a text layer counts from `from` to `to` over [startFrame, endFrame] on an ease, formatted with separators / decimals / compact units (10K, 1.2M) and a prefix / suffix. The span keeps its own font, weight, italic and colour; put a differently styled prefix or suffix in the neighbouring spans (editor.styleTextRange). Frame-pure. null removes it. One undo step.',
     params: [LAYER_ID, { name: 'counter', type: '{ from: number; to: number; startFrame: number; endFrame: number; decimals?: number; separator?: string; decimalMark?: "." | ","; compact?: boolean; compactDecimals?: number; compactUpper?: boolean; prefix?: string; suffix?: string; ease?: string | [x1, y1, x2, y2]; stepFrames?: number; spanIndex?: number } | null',
       description: 'Defaults: separator ",", decimals 0, ease "cubicOut" (names from core/easings.ts: expoOut, quartOut, backOut...), compactDecimals 1, spanIndex 0.' }] },
+  { id: 'agent.setTextStyleKeys', store: 'agent', method: 'setTextStyleKeys', undoable: true,
+    returns: '{ styleKeys: { keys: [{ frame, fontFamily, fontWeight, fontStyle }], spanIndex? } | null }',
+    description: 'Hold keyframes on a text layer\'s face (B77): at each key frame the font family / weight / italic switches (no in-between) and the layout re-flows (a word cycling through typefaces). Each key may set any of the three; missing ones carry over from the previous face. Before the first key the stored style shows. Faces load like any other (bundled or import_font). null removes them. One undo step.',
+    params: [LAYER_ID, { name: 'keys', type: '{ frame: number; fontFamily?: string; fontWeight?: number; fontStyle?: "normal" | "italic" }[] | null' },
+      { name: 'spanIndex', type: 'number', optional: true, description: 'Only this span switches (default: every span).' }] },
   { id: 'agent.setTextCaret', store: 'agent', method: 'setTextCaret', undoable: true,
     returns: 'the caret now on the layer (TextCaret), or null',
     description: 'Typing caret (B35): a bar, block or underline drawn right after the last revealed glyph, so it rides a type-on (agent.applyTextAnimatorPreset "type-on") frame by frame. Fields merge into the current caret; null turns it off. Solid while typing, blinking before / after (blinkRate cycles per second, 0 = solid). Single-line text. One undo step (updateLayerProperty "caret"; tweak one field later with "caret.<field>").',
@@ -729,6 +735,9 @@ export const AGENT_FEATURES: readonly AgentFeature[] = [
     description: 'A colour sweep around a centre on any shape fill or stroke: hue wheels, progress rings, radar sweeps, metallic cones. Spin it by keying the layer rotation.',
     ui: 'Select a shape > Inspector > Material > Conic', actions: ['editor.addShapeLayer', 'editor.updateLayerProperty', 'editor.setKeyframes'], status: 'shipped',
     notes: 'materialConfig (fill) / strokeMaterialConfig (stroke) = { enabled: true, layers: [{ id, type: "conic", angle?: deg (0 = 12 o\'clock, clockwise), centerX?: 0..1, centerY?: 0..1, blendMode: "normal", opacity: 100, colorStops: [{ id, color: "#rrggbb", opacity: 100, position: 0..100 }] }] }. Repeat the first stop at 100 for a seamless wheel.' },
+  { id: 'text.style-keys', area: 'text', name: 'Hold-keyed typeface switch',
+    description: 'A word that snaps through typefaces, weights or italic on chosen frames (type-specimen cuts, "which font?" beats), the layout re-flowing at each switch.',
+    ui: 'Agent / MCP only (lives in layer.styleKeys)', actions: ['agent.setTextStyleKeys'], status: 'shipped' },
   { id: 'text.counter', area: 'text', name: 'Number counter on a styled text layer',
     description: 'Counts views, followers, prices or percentages up (or down) inside a styled text layer: separators, decimals, compact 10K / 1.2M, prefix / suffix, any ease, stepped or smooth.',
     ui: 'Agent / MCP only (lives in layer.counter)', actions: ['agent.setTextCounter'], status: 'shipped',

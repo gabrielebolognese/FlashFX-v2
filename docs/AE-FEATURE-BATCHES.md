@@ -137,7 +137,7 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | B74 | Refs: conic (angular) gradient fill on shapes with a keyframable start angle - the spinning hue colour-wheel ring (conic exists only on text fills today) (r08) | ✅ (headless-GPU verified) | light |
 | B75 | Refs: styled number counter on a text layer - count between values with decimals, thousands separators / K-M suffix, prefix / suffix, any font and style (italic), eased (r08 view multipliers, follower count) | ✅ (headless-GPU verified) | light |
 | B76 | Refs: design-tool UI kit - pen / crosshair / rotate / direct-select cursor icons, a selection box with handles that follows a layer's bounds, anchor squares, live dX / dY / W / H / angle tooltip readouts, smart-guide labels (extends the B51 cursor rig) (r11) | ⬜ | medium |
-| B77 | Refs: text style keyframes - hold-keyed font family / weight / style switches on one text layer (type-style switcher) (r10) | ⬜ | light |
+| B77 | Refs: text style keyframes - hold-keyed font family / weight / style switches on one text layer (type-style switcher) (r10) | ✅ (headless-GPU verified) | light |
 | B78 | Refs: soft freeform matte - a blurred / feathered shape used as a track matte keeps its blur (flower-shaped soft reveal) (r10) | ⬜ (browser) | medium |
 | B79 | Refs: person matte on footage (AI roto) - creator pops out over a divider (r09); fallback a pre-keyed stand-in clip | ⬜ (browser) | **heavy** |
 | B80 | Refs: outline text robustness - `editor.outlineTextLayer` on imported fonts, and glyphs with separate parts (i, j, !, :) keep the dot / second contour (r11, read in the code) | ⬜ | light |
@@ -1098,10 +1098,15 @@ footage-person-matte = B79, outline-imported-fonts = B80.
 - **Source beats:** r11 every shot (f7-1067).
 - **Verification:** gates + `verify:*` harness (box tracks the target bounds per frame, tooltip text = measured delta).
 
-## B77 - Text style keyframes ⬜
+## B77 - Text style keyframes ✅ (headless-GPU verified)
 - **Delivers:** hold keyframes on a text layer's font family / weight / style (the face switches on the key frame, layout re-flows); agent-reachable.
 - **Source beats:** r10 f674-735.
 - **Verification:** gates + `verify:*` harness (resolved face per frame).
+- **Built (wave 2, Nov 2026):** `TextLayer.styleKeys` (`core/textStyleKeys.ts`: hold keys of full faces, missing fields
+  inherited from the previous key, optional spanIndex) applied in `resolveFrame` before layout (same hook as B75); persisted;
+  each key carries a full face so the font walk loads it. `agent.setTextStyleKeys`, feature `text.style-keys`, AUTHORING 5.
+- **Verified:** `verify:text-style-keys` 5/5; `gpu:text-style-keys` 3/3 through the MCP (keyed faces at f5 / f15 / f25 are
+  pixel-identical to the same faces set by hand; the frames differ from each other).
 
 ## B78 - Soft freeform matte ⬜ (browser)
 - **Delivers:** a blurred (or feathered) shape used as an alpha track matte keeps its blur in the matte, so a soft-edged shape reveals the layer below.

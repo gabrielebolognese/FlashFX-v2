@@ -2,6 +2,7 @@
 // module (src/cloner) and are imported type-only here (erased at runtime - no
 // runtime dependency of core on the feature module).
 import type { TextCounter } from './textCounter';
+import type { TextStyleKeys } from './textStyleKeys';
 import type { ClonerLayer, InstanceTransform } from '../cloner/types';
 import type { SharedStyle } from './styles'; // M21 - type-only (erased; no runtime cycle)
 import type { ClonerRenderPath } from '../cloner/renderPath';
@@ -823,6 +824,8 @@ export interface TextLayer {
   decode?: TextDecode;
   /** B75: styled number counter - rewrites one span's text per frame (core/textCounter.ts). Absent = plain text. */
   counter?: TextCounter;
+  /** B77: hold keyframes on the face (family / weight / style) - core/textStyleKeys.ts. Absent = stored style. */
+  styleKeys?: TextStyleKeys;
   /** Text on a path (B9b): flow glyphs along a referenced MotionPath (interpreted in layer space).
    *  Absent/disabled → normal linear layout. */
   textPath?: TextPathBinding;

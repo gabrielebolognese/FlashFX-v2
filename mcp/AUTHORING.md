@@ -258,6 +258,11 @@ Never leave real motion on linear (the default for `addKeyframe`), except progre
   `stepFrames: 2` counts on twos. Frame-pure. measure_text reads the stored text, so place the layer with the widest
   value typed in, then set the counter. Recipe: `count-up`. `counter: null` removes it.
 
+- **Typeface switch (B77).** `agent.setTextStyleKeys { layerId, keys: [{ frame, fontFamily?, fontWeight?, fontStyle? }],
+  spanIndex? }` hold-keys the face: at each key frame the word snaps to that family / weight / italic and re-flows
+  (r10 type-style switcher f674-735). Missing fields carry over from the previous face; before the first key the stored
+  style shows. Use bundled faces or `import_font` first. `keys: null` removes them.
+
 ## 6. Shapes and colour
 
 - `editor.addShapeLayer { opts: { type, x, y, width, height, fill, radius, name, stroke?, strokeWidth? } }`
