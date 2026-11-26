@@ -372,6 +372,14 @@ Never leave real motion on linear (the default for `addKeyframe`), except progre
   `EmitterConfig` fields, e.g. `{ spawnRate: 0, burstCount: 140, emitterShape: "circle" }`).
   A burst fires on the layer's first frame: time it with `editor.moveClipInTime { newInPoint }`.
 
+- **Cloner rings of different items (B60).** `editor.selectLayer [<first item>]`, `editor.addCloner`, then
+  `editor.updateLayerProperty { layerId: <cloner>, path: "distribution", value: { type: "radial", ... } }` (or a
+  grid / path); `agent.setClonerSources { layerId: <cloner>, sources: [id1, id2, ...] }` makes copy i draw
+  sources[i mod n] (a ring of different photos, r04 f432-529; an orbit of different chips, r08 f12-157). The
+  listed layers are hidden like the main source and stay editable (restyle one and every copy of it follows);
+  the main source still drives the stagger. Put the sources at the comp origin (0, 0): the cloner adds each
+  source's own position to every copy. `sources: []` goes back to one source.
+
 ## 8a. UI mocks: typing caret, cursor, UI templates (B35 / B51)
 
 - **Typing caret.** Type the text on, then give it a caret; it sits right after the last revealed

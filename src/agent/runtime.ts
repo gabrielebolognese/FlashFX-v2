@@ -1039,6 +1039,23 @@ const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
     return { modifierIndex: idx, angle, pathFraction: f, offset: offNow + delta };
   },
 
+  // ----- B60 cloner per-instance sources -----
+  setClonerSources: (layerId, sources) => {
+    const layer = requireLayer(layerId);
+    if (layer.type !== 'cloner') throw new Error(`layer "${String(layerId)}" is a ${layer.type}, not a cloner`);
+    if (!Array.isArray(sources) || sources.some((s) => typeof s !== 'string')) throw new Error('"sources" must be an array of layer ids');
+    const ids = sources as string[];
+    for (const id of ids) {
+      const l = requireLayer(id);
+      if (l.id === layer.id || l.type === 'cloner' || l.type === 'audio' || l.type === 'camera' || l.type === 'group') {
+        throw new Error(`"${id}" (${l.type}) cannot be a cloner source`);
+      }
+    }
+    const next = ids.length ? { ...layer, sources: ids } : { ...layer, sources: undefined };
+    useEditorStore.getState().applyLayerEdits(ids.length ? 'Cloner sources' : 'Cloner single source', { update: [next] });
+    return { clonerId: layer.id, sources: ids, instances: layer.renderCount };
+  },
+
   // ----- B57 effects on text / shape layers (nested in a precomp) -----
   applyLayerEffects: (layerId, effects, mode) => {
     const layer = requireLayer(layerId);

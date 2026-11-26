@@ -60,7 +60,8 @@ export type AgentHelperMethod =
   | 'setTextCaret'
   | 'pixelBlockReveal'
   | 'pixelSparkle'
-  | 'applyLayerEffects';
+  | 'applyLayerEffects'
+  | 'setClonerSources';
 
 export type FeatureStatus = 'shipped' | 'browser-gated' | 'partial';
 
@@ -476,6 +477,11 @@ export const AGENT_ACTIONS: readonly AgentActionSpec[] = [
     description: 'Append an effector to a cloner stack.', params: [LAYER_ID, { name: 'type', type: 'string', values: EFFECTOR_TYPES }] },
   { id: 'editor.removeClonerEffector', store: 'editor', method: 'removeClonerEffector', undoable: true,
     description: 'Remove the effector at an index.', params: [LAYER_ID, { name: 'index', type: 'number' }] },
+  // B60 per-instance sources
+  { id: 'agent.setClonerSources', store: 'agent', method: 'setClonerSources', undoable: true,
+    returns: '{ clonerId, sources, instances }',
+    description: 'Give a cloner several sources: instance i draws sources[i mod n] (a ring of different photos, an orbit of different chips). The listed layers (image, shape, text, video...) are hidden like the main source and stay editable; the main source still drives the instance animation (stagger). Pass [] to go back to one source. One undo step.',
+    params: [LAYER_ID, { name: 'sources', type: 'string[]', description: 'Layer ids, in instance order (cycled).' }] },
 
   // ----- particles / procedural / patterns -----
   { id: 'editor.addParticleLayer', store: 'editor', method: 'addParticleLayer', undoable: true, params: [], returns: 'new layer id (activeLayerId)',
@@ -794,7 +800,7 @@ export const AGENT_FEATURES: readonly AgentFeature[] = [
   { id: 'cloner.mograph', area: 'cloner', name: 'Cloner + effectors (MoGraph)',
     description: 'One layer that repeats a source in grid / radial / path / field distributions, shaped by random, falloff, step, time and target effectors with per-instance stagger.',
     ui: 'Canvas toolbar > Cloner, or Object > Create Cloner from Selection; Inspector > Cloner tab',
-    actions: ['editor.addCloner', 'editor.createClonerFromSelection', 'editor.addClonerEffector', 'editor.removeClonerEffector', 'editor.updateLayerProperty'],
+    actions: ['editor.addCloner', 'editor.createClonerFromSelection', 'editor.addClonerEffector', 'editor.removeClonerEffector', 'editor.updateLayerProperty', 'agent.setClonerSources'],
     status: 'shipped', notes: 'Renders as per-instance stamps of the source (v1). Distribution params are edited with updateLayerProperty on the cloner layer.' },
 
   // particles / procedural

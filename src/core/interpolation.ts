@@ -891,6 +891,12 @@ function resolveVideoLayer(layer: VideoLayer, frame: number, compositionFrameRat
   };
 }
 
+// B60: the cloner's per-instance source ids (absent / empty = the single sourceRef layer, as before).
+function clonerSourcesField(cloner: ClonerLayer): { sourceLayerIds?: string[] } {
+  const ids = Array.isArray(cloner.sources) ? cloner.sources.filter((s): s is string => typeof s === 'string' && s.length > 0) : [];
+  return ids.length ? { sourceLayerIds: ids } : {};
+}
+
 // B57: a precomp's effect stack (B50 keyed params evaluated at this frame). Empty ({}) without effects,
 // so precomps without a stack resolve exactly as before.
 function precompEffectsField(layer: PrecompLayer, frame: number): { effects?: ResolvedEffect[] } {
@@ -1829,7 +1835,7 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
           visible: true,
           blendMode: layer.blendMode,
           transform: worldTransform,
-          cloner: { renderPath, sourceLayerId, instances, instanceSources },
+          cloner: { renderPath, sourceLayerId, instances, instanceSources, ...clonerSourcesField(cloner) },
           layerType: 'cloner',
         });
       } else if (layer.type === 'precomp') {
@@ -2023,10 +2029,16 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
       if (cl.layerType !== 'cloner' || !cl.cloner) continue;
       const srcId = cl.cloner.sourceLayerId;
       const src = srcId ? resolvedLayers.find((l) => l.id === srcId && l.layerType !== 'cloner') : undefined;
+      // B60: per-instance sources (stamp i draws pick[i mod n]); each listed layer is hidden like the source.
+      const pick = (cl.cloner.sourceLayerIds ?? [])
+        .map((id) => resolvedLayers.find((l) => l.id === id && l.layerType !== 'cloner'))
+        .filter((l): l is ResolvedLayer => !!l);
+      for (const p of pick) hiddenSourceIds.add(p.id);
       const stamps: ResolvedLayer[] = [];
       if (src && srcId) {
         hiddenSourceIds.add(srcId);
         for (const inst of cl.cloner.instances) {
+          const instSrc = pick.length ? pick[((inst.index % pick.length) + pick.length) % pick.length] : src;
           // Instance transform (relative to the cloner), composed under the cloner's world
           // transform. anchor 0 → the instance position IS the stamp centre.
           const child: ResolvedTransform = {
@@ -2038,7 +2050,7 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
             positionZ: 0, rotationX: 0, rotationY: 0,
           };
           const stamp: ResolvedLayer = {
-            ...src,
+            ...instSrc,
             id: `${cl.id}#${inst.index}`,
             transform: composeTransforms(cl.transform, child),
             // instances don't inherit the source's masks (mask coords are absolute - they'd
@@ -2048,9 +2060,9 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
           };
           // Multiplicative colour tint on shape fills (effectors can drive it; identity = no-op).
           const t = inst.colorTint;
-          if (src.shape && (t.r !== 1 || t.g !== 1 || t.b !== 1)) {
-            const f = src.shape.fillColor;
-            stamp.shape = { ...src.shape, fillColor: [f[0] * t.r, f[1] * t.g, f[2] * t.b, f[3]] as Vec4 };
+          if (instSrc.shape && (t.r !== 1 || t.g !== 1 || t.b !== 1)) {
+            const f = instSrc.shape.fillColor;
+            stamp.shape = { ...instSrc.shape, fillColor: [f[0] * t.r, f[1] * t.g, f[2] * t.b, f[3]] as Vec4 };
           }
           stamps.push(stamp);
         }

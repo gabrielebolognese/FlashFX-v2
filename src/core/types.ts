@@ -2148,6 +2148,8 @@ export interface ResolvedCloner {
    *  instance-override mechanism (core/overrides) applied to the source. Present
    *  only on the `per-instance` render path; instanceSources[i] ↔ instances[i]. */
   instanceSources?: Layer[];
+  /** B60: per-instance source layer ids (cloner.sources); stamp i uses sourceLayerIds[i mod n]. */
+  sourceLayerIds?: string[];
 }
 
 export interface ResolvedLayer {

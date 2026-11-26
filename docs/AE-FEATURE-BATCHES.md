@@ -120,7 +120,7 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | B57 | Refs: effect stack on text / shape / precomp layers (today image + adjustment only) + layer-local bulge / mesh warp with animatable centre and radius (ref gap #12: r01 r05) | ✅ (headless-GPU verified; mesh warp not built) | **heavy** |
 | B58 | Refs: gradient-blob field generator (soft animated blurred colour blobs, lumpy cloud floor; seeded, frame-pure) (ref gap #13: r06) | ⬜ | medium |
 | B59 | Refs: script / logo write-on - stroke-order centreline trim reveal for filled glyphs and logos (ref gap #14: r03) | ⬜ | medium |
-| B60 | Refs: cloner per-instance sources - render `ResolvedCloner.instanceSources` so each copy can be a different image (photo rings / grids) (ref gap #15: r04) | ⬜ (browser) | medium |
+| B60 | Refs: cloner per-instance sources - render `ResolvedCloner.instanceSources` so each copy can be a different image (photo rings / grids) (ref gap #15: r04) | ✅ (headless-GPU verified) | medium |
 | B61 | Refs: liquid drip / melt text (letters melt into glowing drips that run down and pool; seeded, frame-pure) (ref gap #21: r05, low priority) | ⬜ (browser) | **heavy** |
 | B62 | Refs / F2: agent shape morph - `editor.setShapeMorph` (parametric poses: rounded rect / ellipse / star / polygon / points, per-pose ease incl. overshoot, auto start-point + winding alignment) + fix: path fill dropped half the polygon when the ring had a collinear point | ✅ | medium |
 | B63 | Replicas: shape render correctness - SDF stroke clipped at the shape bounds (rings get flat sides), rounded rect wider than ~2048 px draws lens ends, circle ignores non-uniform scale (no ellipse), setShapeMorph ellipse pose with w != h has wrong geometry, borderRadius not clamped to min(w,h)/2, shape materialConfig radial gradient renders nothing, setShapeMorph with one pose (or a hold first pose) renders nothing, addShapeLayer polygon has no sides (found replicating r02 r04 r06 r07) | ⬜ (browser) | medium |
@@ -940,13 +940,21 @@ Source: the frame-by-frame breakdowns of the 7 motion references the owner sent 
 - **Likely files:** `src/core/pathOps.ts`, `src/core/strokeOutline.ts`, `src/core/shapeModifiers.ts`, `src/core/trackMatte.ts`.
 - **Verification:** gates + `verify:pathops` extension (centreline coverage at t = 0, 0.5, 1).
 
-## B60 - Cloner per-instance sources ⬜ (browser)
+## B60 - Cloner per-instance sources ✅ (headless-GPU verified)
 - **Delivers:** the renderer draws `ResolvedCloner.instanceSources` (already resolved for data binding) so each copy can be a different image, plus an agent option `sources: [layerId...]` on the cloner (instance i uses source i mod n).
 - **Source beats:** r04 f432-529 (ring of different photo tiles spawning along the arc, one full 357 deg turn f448-518).
 - **Depends on:** nothing.
 - **Perf weight:** medium.
 - **Likely files:** `src/cloner/`, `src/core/interpolation.ts` (stamp expansion), `src/agent/featureManifest.ts`.
 - **Verification:** gates + `verify:cloner-render` extension (instance i draws source i mod n).
+- **Built (wave 2, Nov 2026):** `ClonerLayer.sources?: string[]` (persisted, strings only) -> `ResolvedCloner.sourceLayerIds`;
+  the cloner expansion in `resolveFrame` stamps `sources[i mod n]` for instance i (instance transforms unchanged: the main
+  `sourceRef` layer still drives distribution + stagger), and hides every listed layer. The renderer needed no change
+  (cloners render as stamps of resolved layers, so any layer type works: shapes, images, text, video). Agent:
+  `agent.setClonerSources` (one undo step; `[]` = one source), listed under feature `cloner.mograph`; AUTHORING section 8.
+- **Verified:** `verify:cloner-sources` 6/6 (cycling, identical instance transforms, hidden sources, unknown ids skipped,
+  empty list = old behaviour, persistence), `gpu:cloner-sources` 4/4 through the MCP (8 copies render red / green / blue /
+  logo image in order, the sources' own spot is empty, one undo returns to one source).
 
 ## B61 - Liquid drip / melt text ⬜ (browser, low priority)
 - **Delivers:** letters that melt into glowing drips running down and pooling, as a seeded drip-path generator (per-glyph drip origins, gravity curve, pool) rendered as stroked pen paths with glow.

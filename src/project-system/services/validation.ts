@@ -734,6 +734,9 @@ function validateLayer(raw: unknown): Layer | null {
         stagger: isObject(r.stagger) ? r.stagger : { delaySeconds: 0 },
         renderCount: typeof r.renderCount === 'number' ? r.renderCount : 500,
         dataBinding: isObject(r.dataBinding) ? r.dataBinding : undefined,
+        // B60: per-instance source layer ids (strings only; absent = one source).
+        ...(Array.isArray(r.sources) && r.sources.some((x) => typeof x === 'string')
+          ? { sources: (r.sources as unknown[]).filter((x): x is string => typeof x === 'string') } : {}),
       } as unknown as Layer;
     }
     case 'adjustment': {

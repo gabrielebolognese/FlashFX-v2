@@ -276,6 +276,10 @@ export interface ClonerLayer {
   masks?: Mask[];
   // ── Cloner-specific ──
   sourceRef: ClonerSourceRef;
+  /** B60: per-instance sources. When set (>= 1 layer id), instance i draws sources[i mod n] instead of the
+   *  sourceRef layer (a ring of different photos / chips). The sourceRef layer still drives the instance
+   *  animation (stagger). Every listed layer is hidden like the main source. Absent = one source (old). */
+  sources?: string[];
   distribution: ClonerDistribution;
   effectors: ClonerEffector[];
   stagger: ClonerStagger;
