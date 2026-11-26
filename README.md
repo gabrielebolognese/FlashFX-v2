@@ -182,6 +182,6 @@ The `docs/` folder holds many more plans and audits; some describe earlier state
 
 In active development, version 0.1.0, built by one person. The engine is broad but uneven: some GPU paths are newer than others, the Animation Builder mode is present in the code but hidden from the UI, and the Google Drive proxy is disabled. Export is MP4 only.
 
-The repository has no license file, so no license is granted; open an issue before building on the code.
+The source code, including the FlashFX MCP server in `mcp/`, is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE): you may read it and use it for personal, non-commercial projects. The hosted editor at [editor.flashfx.app](https://editor.flashfx.app) is free for everyone, including commercial work. Commercial use of this code or of the FlashFX MCP needs a commercial license from FlashFX S.r.l.; see [LICENSING.md](LICENSING.md) for what is free and what is paid.
 
 FlashFX is an independent project and is not affiliated with Adobe (After Effects) or Maxon (Cinema 4D); those names only describe the category of tool.
