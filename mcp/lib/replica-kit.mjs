@@ -29,6 +29,21 @@ export const rgba = (hex, a) => {
 };
 const col = (c) => (typeof c === 'string' ? rgba(c) : c);
 
+/** Ease names used by the reference breakdowns (refs/rNN/timeline.json "named") that editor.setKeyframes does not
+ *  accept as-is, mapped onto its vocabulary. Quads, 'hold', 'linear' and catalog names pass through untouched. */
+export const EASE_ALIAS = {
+  easeIn: 'ease-in', easeOut: 'ease-out', easeInOut: 'ease-in-out',
+  easeInSine: 'sineIn', easeOutSine: 'sineOut', easeInOutSine: 'sineInOut',
+  easeInQuad: 'quadIn', easeOutQuad: 'quadOut', easeInOutQuad: 'quadInOut',
+  easeInCubic: 'cubicIn', easeOutCubic: 'cubicOut', easeInOutCubic: 'cubicInOut',
+  easeInQuart: 'quartIn', easeOutQuart: 'quartOut', easeInOutQuart: 'quartInOut',
+  easeInQuint: 'quintIn', easeOutQuint: 'quintOut', easeInOutQuint: 'quintInOut',
+  easeInExpo: 'expoIn', easeOutExpo: 'expoOut', easeInOutExpo: 'expoInOut',
+  easeInCirc: 'circIn', easeOutCirc: 'circOut', easeInOutCirc: 'circInOut',
+  easeInBack: 'backIn', easeOutBack: 'backOut', easeInOutBack: 'backInOut',
+};
+export const ease = (e) => (typeof e === 'string' && EASE_ALIAS[e] ? EASE_ALIAS[e] : e);
+
 /** Reference frame (1-based) -> FlashFX frame (0-based). */
 export const F = (refFrame) => refFrame - 1;
 
@@ -74,7 +89,7 @@ export async function openReplica({ name, width, height, fps, frames, bg = '#000
   /** Keyframes in REFERENCE frames: [[refFrame, value, ease?], ...]; ease shapes the segment to the next key. */
   const keys = (layerId, propertyPath, list, { merge = false, offset = 0 } = {}) => act('editor.setKeyframes', {
     layerId, propertyPath, merge,
-    keyframes: list.map(([f, value, ease]) => ({ frame: F(f) + offset, value: Array.isArray(value) && typeof value[0] === 'string' ? col(value[0]) : (typeof value === 'string' ? col(value) : value), ...(ease !== undefined ? { ease } : {}) })),
+    keyframes: list.map(([f, value, e]) => ({ frame: F(f) + offset, value: Array.isArray(value) && typeof value[0] === 'string' ? col(value[0]) : (typeof value === 'string' ? col(value) : value), ...(e !== undefined ? { ease: ease(e) } : {}) })),
   });
 
   /** Clip range in REFERENCE frames (inclusive): the layer exists only from refIn to refOut. */
@@ -139,6 +154,38 @@ export async function openReplica({ name, width, height, fps, frames, bg = '#000
     if (local) await set(childId, 'transform.position.defaultValue', local);
   }
 
+  /** Invisible null (transparent 2x2 rect) to use as a parent: a group, a 2D camera, a rig pivot. */
+  const nul = (n, x = width / 2, y = height / 2) => shape({ name: n, x, y, w: 2, h: 2, fill: [0, 0, 0, 0] });
+
+  /** Import an image / SVG, name it, scale it so its longest side is `size` px, optionally parent it at a local
+   *  offset. Returns { id, s } (s = the scale that maps the asset to `size`). */
+  async function image(n, path, { raster, size, parentId, local, x = width / 2, y = height / 2 } = {}) {
+    const r = await mcp.call('import_image', { path, x, y, ...(raster ? { rasterSize: raster } : {}) });
+    const id = r.activeLayerId;
+    const nat = Math.max(r.result.width, r.result.height);
+    await act('editor.renameLayer', { id, name: n });
+    if (size) await set(id, 'transform.scale.defaultValue', [size / nat, size / nat]);
+    if (parentId) await parent(id, parentId, local);
+    return { id, s: size ? size / nat : 1 };
+  }
+
+  /** Hold-only keys: [[refFrame, value], ...] (snaps, list steps, caret states). */
+  const holds = (id, path, list) => keys(id, path, list.map(([f, v]) => [f, v, 'hold']));
+
+  /** Opacity on only during the given REFERENCE frame ranges [[in, out], ...] (strobes, single-frame flashes). */
+  const onlyOn = (id, ranges, level = 1) => {
+    const l = [[1, 0]];
+    for (const [a, b] of ranges) { l.push([a, level]); l.push([b + 1, 0]); }
+    return holds(id, 'transform.opacity', l);
+  };
+
+  /** Font size that makes `str` measure `targetW` px wide with the renderer's own layout (calibrate type to a
+   *  reference box instead of guessing point sizes). */
+  async function fitSize(str, targetW, { family = 'Inter', weight = 400, italic = false, probe = 50 } = {}) {
+    const m = await measure({ text: str, fontFamily: family, fontSize: probe, fontWeight: weight, ...(italic ? { fontStyle: 'italic' } : {}) });
+    return +(probe * targetW / m.width).toFixed(2);
+  }
+
   const renderStrip = (frames, path, opts = {}) => mcp.call('render_strip', { frames: frames.map(F), path, inline: false, ...opts });
   const renderFrame = (frame, path, opts = {}) => mcp.call('render_frame', { frame: F(frame), path, inline: false, ...opts });
 
@@ -153,8 +200,12 @@ export async function openReplica({ name, width, height, fps, frames, bg = '#000
       await mcp.call('render_frame', { frame: F(f), path: p, inline: false });
       items.push(`${f}=${p}`);
     }
-    execFileSync('python', ['-I', join(HERE, 'pair_grid.py'), refVideo, resolve(outPng), ...items], { stdio: 'inherit' });
-    return resolve(outPng);
+    const out = execFileSync('python', ['-I', join(HERE, 'pair_grid.py'), refVideo, resolve(outPng), ...items], { encoding: 'utf8' });
+    // pair_grid prints the PNG path, then one JSON line with per-frame and mean scores.
+    const line = out.trim().split(String.fromCharCode(10)).pop().trim();
+    let scores = null;
+    try { scores = JSON.parse(line); } catch { /* older pair_grid: path only */ }
+    return Object.assign(new String(resolve(outPng)), { path: resolve(outPng), scores });
   }
 
   /** Export the editable project + the MP4 through the real exporter, then prove editability by reloading the
@@ -182,7 +233,7 @@ export async function openReplica({ name, width, height, fps, frames, bg = '#000
     return proof;
   }
 
-  return { mcp, act, set, sets, keys, span, shape, text, measure, mask, parent, renderStrip, renderFrame, compareFrames, finish, note, log, F, rgba, width, height, fps, frames };
+  return { mcp, act, set, sets, keys, span, shape, text, measure, mask, parent, nul, image, holds, onlyOn, fitSize, renderStrip, renderFrame, compareFrames, finish, note, log, F, rgba, width, height, fps, frames };
 }
 
 /** Reload a .ffx through the MCP (import_project = the app's File > Import Project, which installs the document with
