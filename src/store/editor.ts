@@ -50,6 +50,7 @@ import { cloneValue } from '../core/keyframeValue';
 import { buildKeyframesFromSpecs, canonicalEase, easeSpecError, CSS_EASES, type KeyframeSpec, type KeyframeEaseSpec, type ValueShape } from '../core/keyframeSpecs';
 import { planCameraMove, type CameraMoveTarget } from '../core/cameraMove';
 import { CORNER_PIN_KEYS, isConvexQuad } from '../core/cornerPin';
+import { applyShapeGlassInput, type ShapeGlassInput } from '../core/effects/glass';
 import type { CornerPin } from '../core/types';
 import { outlineFromSpec, polygonOutline, type OutlineSpec } from '../core/shapeOutline';
 import { animPropTarget, canonicalKeyframePath, createAnimProp, staticValueFor } from '../core/animProps';
@@ -294,8 +295,10 @@ function sel(ids: string[], activeId?: string | null): SelectionState {
   return { selectedIds: ids, activeId: activeId ?? (ids.length > 0 ? ids[ids.length - 1] : null), selectedKeyframes: [], selectedCurvePoints: [] };
 }
 
+// B69: adjustment layers are maskable too (the apply-below pass mixes by opacity x masks, so a mask
+// limits the adjustment to a region); their masks live in composition space like every other layer's.
 function layerSupportsMasks(layer: Layer): boolean {
-  return layer.type === 'shape' || layer.type === 'text' || layer.type === 'video' || layer.type === 'image' || layer.type === 'lottieIcon';
+  return layer.type === 'shape' || layer.type === 'text' || layer.type === 'video' || layer.type === 'image' || layer.type === 'lottieIcon' || layer.type === 'adjustment';
 }
 
 /** Layer kinds a Cloner can repeat as its source (M16). Excludes self/audio/group/precomp/layout. */
@@ -658,6 +661,13 @@ interface EditorState {
    * them with setKeyframes "cornerPin.topLeft" etc. Shape / text / image / video / precomp layers.
    */
   setCornerPin: (layerId: string, corners: CornerPinCorners | null) => void;
+  /**
+   * B38: frosted / liquid glass on a shape layer - blur (+ brighten, saturate, rim bend, rim highlight)
+   * the composite below inside the shape outline. A partial patch over the current glass (or the
+   * defaults); numbers for blur / refraction / highlight / lightAngle set their base value and keep
+   * their keyframes (key them with setKeyframes "glass.blur" etc.). null removes the glass.
+   */
+  setShapeGlass: (layerId: string, glass: ShapeGlassInput | null) => void;
   /**
    * B46: add a shape with explicit geometry and clean defaults (no stroke unless asked), in one undo
    * step. Returns the new layer id and selects it.
@@ -4360,6 +4370,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const at = ensureKeyframeProperty(layer, propertyPath);
     if (!at && /^transform\.(positionZ|rotationX|rotationY)$/.test(propertyPath)) throw new Error(`"${propertyPath}" exists on 3D layers only: make it a 3D card first (editor.toggleLayer3D); a camera layer is optional (without one the default camera frames the comp 1:1)`);
     if (!at && propertyPath.startsWith('cornerPin.')) throw new Error(`"${propertyPath}" needs a corner pin: call editor.setCornerPin(layerId, { topLeft, topRight, bottomRight, bottomLeft }) first`);
+    if (!at && propertyPath.startsWith('glass.')) throw new Error(`"${propertyPath}" needs a glass material: call editor.setShapeGlass(layerId, { blur }) on a shape layer first`);
     if (!at) throw new Error(`"${propertyPath}" is not an animatable property of this ${layer.type} layer (see agent.getLayer for its paths)`);
     const kfs = buildKeyframesFromSpecs(keyframes, { expected: valueShapeOf(at.prop), existing: at.prop.keyframes, merge: merge === true });
     const updated = deepSet(at.layer, `${at.path}.keyframes`, kfs) as Layer;
@@ -4423,6 +4434,31 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     };
     exec({
       label: corners === null ? 'Remove Corner Pin' : 'Set Corner Pin',
+      execute: () => { set({ composition: newComp }); },
+      undo: () => { set({ composition: oldComp }); },
+    });
+  },
+
+  setShapeGlass: (layerId, glass) => {
+    const { composition } = get();
+    const layer = composition.layers.find((l) => l.id === layerId);
+    if (!layer) throw new Error(`no layer with id "${layerId}"`);
+    if (layer.type !== 'shape') throw new Error(`glass works on shape layers (not ${layer.type})`);
+    if (glass !== null && (!glass || typeof glass !== 'object' || Array.isArray(glass))) throw new Error('glass must be an object { blur?, refraction?, highlight?, lightAngle?, edgeWidth?, brightness?, saturation?, enabled? } or null');
+    const next = glass === null ? undefined : applyShapeGlassInput(layer.glass, glass);
+    const oldComp = composition;
+    const newComp = {
+      ...composition,
+      layers: composition.layers.map((l) => {
+        if (l.id !== layerId || l.type !== 'shape') return l;
+        if (next) return { ...l, glass: next } as Layer;
+        const { glass: _drop, ...rest } = l;
+        void _drop;
+        return rest as Layer;
+      }),
+    };
+    exec({
+      label: glass === null ? 'Remove Glass' : 'Set Glass',
       execute: () => { set({ composition: newComp }); },
       undo: () => { set({ composition: oldComp }); },
     });
@@ -6687,8 +6723,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const cw = composition.settings.width;
     const ch = composition.settings.height;
     const pos = layer.transform.position.defaultValue;
-    const cx = Array.isArray(pos) ? pos[0] : cw / 2;
-    const cy = Array.isArray(pos) ? pos[1] : ch / 2;
+    // An adjustment layer has no placement of its own (it covers the frame; position stays 0, 0): its
+    // first mask starts centred on the composition.
+    const placed = layer.type !== 'adjustment' && Array.isArray(pos);
+    const cx = placed && Array.isArray(pos) ? pos[0] : cw / 2;
+    const cy = placed && Array.isArray(pos) ? pos[1] : ch / 2;
     const mask = createMask(type, cx, cy, cw * 0.4, ch * 0.4);
 
     const newLayers = composition.layers.map((l) => {

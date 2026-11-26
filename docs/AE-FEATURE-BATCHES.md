@@ -98,7 +98,7 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | B35 | Typing caret for type-on + UI-mock template kit (chat bubble with tail, search bar, notification, toggle pill, YouTube player, Discord card, fast-forward badge, "Scene N" card, section card) (Bricks gap #3) | 🟡 partial (caret + search bar / toggle / chat bubbles / notification shipped; YouTube, Discord, fast-forward, Scene N, section cards owed) | medium |
 | B36 | Text animator completion - keyframable selector Start/End, skew + fill-colour deltas, multi-line glyph stamps, save-your-own animator preset (Bricks gap #4) | ⬜ partial (Nov 2026 wave 1B: Start/End keys, skew, fill colour, seeded order + scatter, multi-line stamps done; save-your-own preset left) | medium |
 | B37 | SVG import as editable shape layers (path / rect / circle / ellipse / polygon / groups -> layers) instead of a flat raster (Bricks gap #5) | ⬜ | medium |
-| B38 | Liquid-glass material - backdrop blur + refraction inside a shape outline, edge light sweep; track-matted adjustment layers (Bricks gap #6) | ⬜ (browser) | **heavy** |
+| B38 | Liquid-glass material - backdrop blur + refraction inside a shape outline, edge light sweep; track-matted adjustment layers (Bricks gap #6) | ✅ (headless-GPU verified) | **heavy** |
 | B39 | Editor ergonomics - in-app eyedropper (EyeDropper API), relative numeric entry (+400 / *2), copy / paste easing between properties (Bricks gap #8) | ⬜ | light |
 | B40 | Property links - pick-whip UI + expressions that read another layer's property (Bricks gap #9) | ⬜ | medium |
 | B41 | Background gradients - renderer drops stops 5-6 (bug) + 4-corner (mesh-like) gradient (Bricks gap #10) | ⬜ (browser) | light |
@@ -129,7 +129,7 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | B66 | Replicas: motion blur from parent transforms - a layer moved / zoomed by a parent (or grand-parent) null gets much weaker blur than the same motion on the layer itself (r02 f6-16 zoom smear) | ✅ (Nov 2026, headless-GPU verified, `gpu:parent-blur` 8/8; keyframed parent chains already matched, the fix closes the first frame, parent motion paths and parent expressions) | medium |
 | B67 | Replicas: agent authoring ergonomics - setKeyframes accepts the breakdown ease names (easeOut, easeInOut, easeOutCubic ...; the replica kit aliases them today), createQuickText option to place by ink centre / baseline, glow defaults that show on coloured text, trim start angle option (12 o'clock), document that text layout trims leading / trailing spaces | ✅ (Nov 2026, engine session 26 Nov, headless-GPU verified) | light |
 | B68 | Replicas: export fails on video - `export_mp4` (the real exporter) aborts with "A valid external Instance reference no longer exists" when a scaled, position-keyed H.264 clip is in the comp, while render_frame of the same frames works (suspect a VideoFrame closed while still bound via importExternalTexture in the export path; found replicating r07, ties into the EX plan) | ✅ (browser) | medium |
-| B69 | Replicas: adjustment-layer masks - `editor.addMask` on an adjustment layer leaves the layer with no `masks` array (get_layer shows none), so an adjustment effect (glitch, RGB split) cannot be limited to a region; r01 f168-176 title glitch hits the whole frame (found replicating r01) | ⬜ | light |
+| B69 | Replicas: adjustment-layer masks - `editor.addMask` on an adjustment layer leaves the layer with no `masks` array (get_layer shows none), so an adjustment effect (glitch, RGB split) cannot be limited to a region; r01 f168-176 title glitch hits the whole frame (found replicating r01) | ✅ (headless-GPU verified, with B38) | light |
 | B70 | Replicas: cursor rig robustness - `findCursorRig` (cursorRig.ts) finds the icon children only by the names arrow / hand / ibeam, so renaming them breaks cursorMoveTo / cursorClick / cursorIcon; a layer added at a later frame goes onto the first same-type track with free space (`ensureLayerHasTrack` findFirstFit) and renders under later shots' grounds (ties to B44). Both confirmed in source, not render-tested (found replicating r03 f1838-2589) | ✅ (Nov 2026, B67 follow-up: icons found by outline, agent.addCursor on top, agent.bringToFront) | light |
 | B71 | Replicas: path stroke width profile - a path stroke has one width per layer: add taper / per-vertex width along the path (r03 S34 line fans merge into a tapering bundle, f3436-3525) (found replicating r03) | ⬜ (browser) | medium |
 | B72 | Replicas: kit / measurement ergonomics - replica-kit `text({lineHeight})` writes `content.spans.0.style.lineHeight` but the renderer reads `animOverrides.lineHeight` (option silently ignored; write both); `measure_text` returns an ink box equal to the line box for VT323 (not tight to the glyph ink) (found replicating r01) | ✅ (Nov 2026, B67 follow-up: span lineHeight mirrored to the override, measure_text glyphInk) | light |
@@ -693,7 +693,7 @@ Source: the YouTube tutorial-channel project compared every technique in the 4 B
 - **Likely files:** new pure `src/core/svgImport.ts`, `src/engine/media/importToPool.ts`, `src/store/editor.ts`.
 - **Verification:** gates + `scripts/verify-svg-import.mjs` (path commands incl. relative + arcs, transforms, groups, colours, malformed input fails soft).
 
-## B38 - Liquid-glass material ⬜ (browser)
+## B38 - Liquid-glass material ✅ (headless-GPU verified)
 - **Delivers:** a glass material on any shape: backdrop blur of the composite BELOW the shape inside its outline (rounded corners follow the shape), refraction / bump of that backdrop, brightness, an inner highlight, an edge light sweep (rotating conic highlight on the stroke), outside-only shadow; plus track-matted adjustment layers (an adjustment clipped to a shape). Reuse the adjustment-layer multipass (`matteSrcTex` + `ADJUST_SHADER`) rather than a new pipeline where possible.
 - **Source beats:** n0g4 0:00-0:20 (glass hook), 1:34-9:23 (refraction, frosted blur, light sweep), 14:15-17:26; x3SZ 0:22 (frosted card).
 - **Reference replication (Nov 2026):** needed by r06 f366-472 (frosted pill over a photo); ref gap #17. See `refs/GAP-MATRIX.md` in the task artifacts.
@@ -701,6 +701,26 @@ Source: the YouTube tutorial-channel project compared every technique in the 4 B
 - **Perf weight:** **heavy** (an extra scene copy + blur per glass layer; cap the count, reuse the blur pyramid).
 - **Likely files:** `src/engine/renderer.ts`, `src/core/effects/adjustmentComposite.ts` (CPU twin), shape material types/UI.
 - **Verification:** gates + CPU twin harness + a `gpu:glass` headless-Chrome pixel test (backdrop blurred only inside the outline, untouched frames byte-identical).
+- **Built (wave 2, Nov 2026):** `ShapeLayer.glass?: ShapeGlass` (blur / refraction / highlight / lightAngle keyframable, edgeWidth,
+  brightness, saturation; persisted, absent = an ordinary shape) -> `ResolvedLayer.glass`. The renderer reuses the adjustment
+  multipass: for each glass shape it inserts a synthesized adjustment pass right below it (`core/effects/glass.ts
+  glassAdjustmentLayer`: backdrop filters, the split-plan gaussian blur, then the mix-only pass mixes the blurred backdrop
+  back by an outline mask that traces the shape exactly as the B63 SDFs draw it: rounded rect, circle / ellipse, star,
+  path). The mix-only WGSL gained a glass branch (`adjustGlass` uniform): the outline field's signed distance + normal
+  bend the backdrop outward across the rim (`refraction` px over `edgeWidth`) and light the rim from `lightAngle`
+  (a keyed angle = the edge light sweep). The shape draws on top unchanged (low-alpha fill = tint, stroke = hairline
+  edge). Agent: `editor.setShapeGlass(layerId, patch | null)` (one undo step), keyframe paths `glass.*`, feature
+  `effects.glass`, AUTHORING section 14, recipe `glass-pill` (the r06 caption pill). Track-matted adjustments: B69
+  (adjustment layers take masks) shipped with it. Not built: the outside-only shadow (a layer drop shadow on a
+  low-alpha glass shape is faint), per-corner radii in the outline (the largest corner is used), glass on text,
+  3D / corner-pinned glass (skipped).
+- **Verified:** `verify:glass` 16/16 (input clamps, keys kept, save / load, resolve, outline == the drawn shape for
+  pill / rotated + scaled rect / ellipse / star / path, the synthesized pass, the mix twin: outside exact, rim bend,
+  light direction, opacity). `gpu:glass` 12/12 through the MCP: outside the outline byte-identical to the frame without
+  glass, frosted blur == twin (max 2 / 255), liquid glass with bend + highlight + filters == twin (max 2 / 255), keyed
+  lightAngle moves the lit rim, keyed blur 0 stays sharp, export / import round trip byte-identical, setShapeGlass(null)
+  byte-identical to before, undo restores, apply_recipe glass-pill. `gpu:adjustment` 37/37 (incl. the two B69 checks).
+  Evidence: task artifacts `engine/wave2/glass/`.
 
 ## B39 - Editor ergonomics ⬜
 - **Delivers:** an in-app eyedropper on colour rows (the browser EyeDropper API where available, fall back to sampling the preview canvas); relative / arithmetic numeric entry in `DragInput` (`+400`, `-20`, `*2`, `/2` relative to the current value; plain numbers stay absolute); copy easing only (paste the in/out ease of one keyframe onto selected keyframes of any property).

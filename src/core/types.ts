@@ -677,8 +677,48 @@ export interface ShapeLayer {
   /** M21 - linked color styles for fill/stroke (resolve reads through the style). */
   fillStyleId?: string;
   strokeStyleId?: string;
+  /** B38 frosted / liquid glass: blur (+ bend, brighten, highlight) the composite below, clipped to
+   *  the shape's outline (core/effects/glass.ts). Absent = an ordinary shape. */
+  glass?: ShapeGlass;
   inPoint: number;
   outPoint: number;
+}
+
+/**
+ * B38 glass material on a shape layer. The renderer runs it as an adjustment pass just below the shape:
+ * the composite under the shape is brightened / saturated, blurred, bent near the edge and given a
+ * rim highlight, then mixed back inside the shape outline (core/effects/glass.ts builds the pass from
+ * the resolved shape). The shape itself draws on top as usual, so its fill is the glass tint and its
+ * stroke the light edge.
+ */
+export interface ShapeGlass {
+  enabled: boolean;
+  /** Backdrop blur radius, px (keyframable). */
+  blur: AnimatableProperty;
+  /** Edge bend of the backdrop, px (0 = none; keyframable). Positive pulls the scene from just outside
+   *  the edge inward, like the rim of a lens. */
+  refraction: AnimatableProperty;
+  /** Rim highlight strength 0..1 (keyframable). */
+  highlight: AnimatableProperty;
+  /** Direction the light comes from, degrees (screen, Y down: -90 = from the top; keyframable: a
+   *  rotating angle sweeps the highlight around the rim). */
+  lightAngle: AnimatableProperty;
+  /** Width of the bent / highlighted rim band inside the edge, px. */
+  edgeWidth: number;
+  /** Basic filters on the backdrop before the blur (-1..1, 0 = unchanged). */
+  brightness: number;
+  saturation: number;
+}
+
+/** B38: a shape's glass resolved for one frame (numbers only). */
+export interface ResolvedGlass {
+  blur: number;
+  refraction: number;
+  highlight: number;
+  lightAngle: number;
+  edgeWidth: number;
+  brightness: number;
+  saturation: number;
 }
 
 export type TextSplitMode = 'character' | 'word' | 'line';
@@ -2207,6 +2247,9 @@ export interface ResolvedLayer {
   // Adjustment layer (B11b): its resolved effect stack + which layers below it covers. The renderer's
   // apply-below composite (B11b-gpu) consumes this; the layer itself draws nothing.
   adjustment?: ResolvedAdjustment;
+  // B38: a shape layer's glass material for this frame (the renderer turns it into an adjustment pass
+  // clipped to the outline, core/effects/glass.ts). Absent = no glass.
+  glass?: ResolvedGlass;
   // 2.5D (M1): world model matrix for 3D layers (`is3D`), for the M2 MVP path. Absent on 2D
   // layers, which keep the cheap affine transform above.
   worldMatrix?: Mat4;
@@ -2237,6 +2280,18 @@ export interface ResolvedAdjustment {
   filters: ImageFilters;
   coveredLayerIds: string[];
   noOp: boolean;
+  /** B38: present only on the pass a glass shape synthesizes - the rim bend + highlight its mix step
+   *  adds inside the outline mask (core/effects/glass.ts glassMixPixel). */
+  glass?: GlassMixParams;
+}
+
+/** B38: what the glass pass's mix step needs beyond an adjustment's opacity x masks. */
+export interface GlassMixParams {
+  refraction: number;
+  edgeWidth: number;
+  highlight: number;
+  /** Degrees (screen, Y down). */
+  lightAngle: number;
 }
 
 export interface RenderFrame {

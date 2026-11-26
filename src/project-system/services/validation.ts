@@ -34,6 +34,7 @@ import type {
   LayerBlur,
   LayerEffect,
   ShapeMaterialConfig,
+  ShapeGlass,
   ShapePatternConfig,
   ShapeModifier,
   ShapeRepeater,
@@ -50,6 +51,7 @@ import { isMaskMode } from '../../core/maskCoverage';
 import { normalizeBlockParams } from '../../core/pixelBlocks';
 import { sanitizeRefineEdge } from '../../core/refineEdge';
 import { resolveAdjustmentFilters } from '../../core/effects/adjustmentComposite';
+import { sanitizeShapeGlass } from '../../core/effects/glass';
 import type { LayerConstraints } from '../../core/reframe';
 import type { CornerPin } from '../../core/types';
 
@@ -556,6 +558,8 @@ function validateLayer(raw: unknown): Layer | null {
         // M21 - preserve linked-style refs (else stripped on save/load).
         ...(typeof r.fillStyleId === 'string' ? { fillStyleId: r.fillStyleId } : {}),
         ...(typeof r.strokeStyleId === 'string' ? { strokeStyleId: r.strokeStyleId } : {}),
+        // B38 glass material (else stripped on save/load); absent stays absent.
+        ...((): { glass?: ShapeGlass } => { const g = sanitizeShapeGlass(r.glass, (v, name, d) => ensureAnimatableProperty(v, name, 'number', d)); return g ? { glass: g } : {}; })(),
       } as ShapeLayer;
     }
     case 'text': {

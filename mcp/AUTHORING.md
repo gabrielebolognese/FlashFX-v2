@@ -662,3 +662,27 @@ the prompt bar's `sendX` / `sendY` / `pressFrame` drive `cursor-click`, a transi
 shots change). Recipe time params are frames at 30 fps, scaled to the comp fps. Everything a recipe creates is
 ordinary named layers and keyframes, so the sections above apply when you retouch it. The full workflow is the
 Claude Code skill `mcp/skill/flashfx-motion/SKILL.md`; the numbers behind the recipes are in `TASTE.md`.
+
+## 14. Frosted / liquid glass (B38)
+
+`editor.setShapeGlass(layerId, glass)` turns a shape layer (rectangle, rounded rect, circle / ellipse, star or path)
+into glass: everything BELOW it is blurred inside its outline (the corners follow the radius), brightened / saturated,
+bent outward across the rim like a lens edge, and the rim catches a highlight from `lightAngle`. The shape itself
+still draws on top, so its fill is the tint and its stroke the hairline edge.
+
+- Frosted caption pill over a photo (r06): `editor.addShapeLayer({ type: 'rectangle', x, y, width: 830, height: 150,
+  radius: 75, fill: [0.12, 0.1, 0.09, 0.18], stroke: [1, 1, 1, 0.35], strokeWidth: 1.5 })`, then
+  `editor.setShapeGlass(id, { blur: 28, refraction: 10, highlight: 0.45, lightAngle: -110, brightness: -0.04 })`.
+  Or one call: `apply_recipe { id: 'glass-pill', params: { label: 'Unleash your Creativity' } }`.
+- Params (a partial patch; omitted ones keep their value or the default): `blur` px (18), `refraction` px (8; 0 =
+  flat frosted glass), `highlight` 0..1 (0.35), `lightAngle` degrees, screen Y down (-120 = upper left), `edgeWidth`
+  px of the bent / lit rim band (16), `brightness` / `saturation` -1..1 on the backdrop (0.06 / 0.15), `enabled`.
+  `null` removes the glass. One undo step.
+- Animate: `editor.setKeyframes(id, 'glass.blur' | 'glass.refraction' | 'glass.highlight' | 'glass.lightAngle', keys)`.
+  A lightAngle keyed over +360 is the edge-light sweep; glass.blur 0 -> 30 frosts the backdrop in.
+- Layer order matters: the glass blurs only what is below it in the render stack (put the photo / video under it,
+  the caption text above it, e.g. parented to the pill).
+- Cost: each glass layer adds a scene copy and a full-frame blur. Keep it to a few glass layers on screen at once.
+  Not applied on 3D, corner-pinned or matte-source layers (they draw as plain shapes).
+- Check it with render_frame (the preview shows it too). Proof: `npm run gpu:glass`.
+- Adjustment layers take masks too (B69): `editor.addMask` on an adjustment layer limits its effects to the mask.

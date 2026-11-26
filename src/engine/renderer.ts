@@ -19,6 +19,7 @@ import { packMaskSlots } from '../core/maskCoverage';
 import { packRefineEdge } from '../core/refineEdge';
 import { ADJUST_MODE, IDENTITY_FILTERS, isIdentityFilters, planAdjustmentPasses, type AdjustmentPassPlan } from '../core/effects/adjustmentComposite';
 import { packBlurFx, planBlurFxSlots } from '../core/effects/blurFxPack';
+import { GLASS_BACK_RIM, glassAdjustmentLayer } from '../core/effects/glass';
 import { MASK_WGSL } from './maskWgsl';
 import { REFINE_WGSL } from './refineWgsl';
 import { renderTextToCanvas, textCacheKey } from './textAtlas';
@@ -937,8 +938,32 @@ const ADJUST_BELOW_BINDING = `
 // The quad covers the whole target, so the copied composite is sampled at this fragment's own texel
 // (exact, no interpolation drift). Mix-only (the split plan's last pass): texData already holds the
 // effected + blurred / glowed result; mix it with the below by k = opacity x mask alpha.
-const ADJUST_FS_PROLOGUE = `  let adjUV = in.position.xy / vec2f(textureDimensions(texData));
+// B38 glass (adjustGlass = 1, mix-only): the mask stack's signed distance + outward normal (band =
+// edgeWidth) bend the blurred backdrop outward near the outline and light the rim from lightAngle.
+// CPU twin: core/effects/glass.ts glassMixPixel (verify:glass, gpu:glass).
+const ADJUST_FS_PROLOGUE = `  let adjDims = vec2f(textureDimensions(texData));
+  let adjUV = in.position.xy / adjDims;
   if (i32(u.adjustMode + 0.5) == ${ADJUST_MODE.mixOnly}) {
+    if (u.adjustGlass > 0.5) {
+      let gRefr = u.liftR;
+      let gEdge = u.liftG;
+      let gHigh = u.liftB;
+      let gAng = u.liftIntensity * 0.017453292519943295;
+      let gFld = computeMaskStack(in.worldPos, i32(u.maskCount + 0.5), u.masks, max(gEdge, 0.0));
+      let gK = clamp(u.opacity * gFld.x, 0.0, 1.0);
+      var gOff = vec2f(0.0);
+      var gLight = 0.0;
+      if (gEdge > 0.0) {
+        let gRim = 1.0 - clamp(-gFld.y / gEdge, 0.0, 1.0);
+        let gR2 = gRim * gRim;
+        gOff = gFld.zw * (gRefr * gR2);
+        let gD = gFld.z * cos(gAng) + gFld.w * sin(gAng);
+        gLight = gHigh * gR2 * gR2 * (max(gD, 0.0) + ${GLASS_BACK_RIM} * max(-gD, 0.0));
+      }
+      let gFx = textureSampleLevel(texData, texSampler, (in.position.xy + gOff) / adjDims, 0.0);
+      let gLit = vec4f(min(gFx.rgb + vec3f(gLight * gFx.a), vec3f(gFx.a)), gFx.a);
+      return mix(textureSampleLevel(belowTex, texSampler, adjUV, 0.0), gLit, gK);
+    }
     let adjFx = textureSampleLevel(texData, texSampler, adjUV, 0.0);
     let adjK = clamp(u.opacity * computeMaskStackAlpha(in.worldPos, i32(u.maskCount + 0.5), u.masks), 0.0, 1.0);
     return mix(textureSampleLevel(belowTex, texSampler, adjUV, 0.0), adjFx, adjK);
@@ -1026,7 +1051,9 @@ struct ImageUniforms {
   effectTime: f32,  // frame number, seeds procedural/noise effects
   // B11b-gpu: 0 on every image / video draw; ADJUST_MODE (1..3) on the adjustment-variant pipeline.
   adjustMode: f32,
-  _epad2: f32,
+  // B38: 1 on a glass shape's mix-only pass (its rim bend + highlight ride in lift R/G/B/I, which the
+  // mix-only pass never reads as lift); 0 everywhere else.
+  adjustGlass: f32,
   effects: array<EffectSlot, 16>,
   // 2.5D (M2): 0 for a 2D layer; 1 → project the quad through mvp (image/video/precomp cards).
   is3D: f32,
@@ -2381,6 +2408,7 @@ const IMAGE_MAX_EFFECTS = 16;
 const IMAGE_EFFECTCOUNT_FLOAT = 124;
 const IMAGE_EFFECTTIME_FLOAT = 125;
 const IMAGE_ADJUSTMODE_FLOAT = 126; // B11b-gpu: ADJUST_MODE on the adjustment-variant pipeline (0 elsewhere)
+const IMAGE_ADJUSTGLASS_FLOAT = 127; // B38: 1 on a glass shape's mix-only pass
 const IMAGE_EFFECTS_BASE_FLOAT = 128;
 
 const PATH_SHADER = /* wgsl */ `
@@ -4249,6 +4277,22 @@ export class WebGPURenderer {
       proceduralClampWarned = true;
       console.warn(`[renderer] Layer/procedural-instance count exceeded ${MAX_LAYERS} and was clamped. Reduce tile/grid density or split across layers.`);
     }
+    // B38 glass: a shape with a glass material gets a synthesized adjustment pass right BELOW it (blur +
+    // filters over the composite so far, mixed back inside the shape's outline with the rim bend +
+    // highlight; core/effects/glass.ts glassAdjustmentLayer). The shape then draws on top as usual.
+    // Frames without glass keep expandedLayers untouched; without the adjustment pipeline glass is inert.
+    if (gpu.adjustPipeline && expandedLayers.some((l) => l.glass)) {
+      let budget = MAX_LAYERS - expandedLayers.length;
+      const withGlass: ResolvedLayer[] = [];
+      for (const l of expandedLayers) {
+        if (l.glass && budget > 0) {
+          const pass = glassAdjustmentLayer(l);
+          if (pass) { withGlass.push(pass); budget--; }
+        }
+        withGlass.push(l);
+      }
+      expandedLayers.splice(0, expandedLayers.length, ...withGlass);
+    }
 
     for (let i = 0; i < expandedLayers.length; i++) {
       const layer = expandedLayers[i];
@@ -5786,6 +5830,15 @@ export class WebGPURenderer {
     data[14] = f.gamma;
     // lift / gamma / gain (16..27) stay 0 = identity
     if (mixes) this.writeMaskUniforms(data, 15, 28, layer.masks);
+    // B38: a glass pass's rim terms (only the mix-only pass reads them; lift stays identity on every
+    // apply pass).
+    if (mode === ADJUST_MODE.mixOnly && adj.glass) {
+      data[16] = adj.glass.refraction;
+      data[17] = adj.glass.edgeWidth;
+      data[18] = adj.glass.highlight;
+      data[19] = adj.glass.lightAngle;
+      data[IMAGE_ADJUSTGLASS_FLOAT] = 1;
+    }
     if (apply) this.writeEffectSlots(data, adj.effects);
     data[IMAGE_EFFECTTIME_FLOAT] = frame.frameNumber;
     data[IMAGE_ADJUSTMODE_FLOAT] = mode;

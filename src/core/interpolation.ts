@@ -48,6 +48,7 @@ import { resolveEffectStack } from './effects/effectStack';
 import { evalAnimColor, evalAnimNumber, evalEffectParam, mixColorLinear } from './animProps';
 import { resolveAdjustmentCoverage } from './effects/adjustmentCoverage';
 import { adjustmentHasWork, resolveAdjustmentFilters } from './effects/adjustmentComposite';
+import { resolveShapeGlass } from './effects/glass';
 import { evaluateMotionPathAtFrame } from './motionPath';
 import { computeInstanceTransforms, selectClonerRenderPath, buildDataBoundSources, pickSourceSlot, settledFrame, relativeSourceTransform, isIdentityRelative } from '../cloner';
 import type { ClonerLayer } from '../cloner/types';
@@ -1691,6 +1692,8 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
         const resolvedShape = resolveShapeLayer(shapeLayer, frame, getStyle);
         const rMask = resolveMask(layer.masks, frame);
         const rMasks = resolveMasks(layer.masks, frame);
+        // B38: the glass material (absent / disabled = no field, the shape resolves exactly as before).
+        const rGlass = resolveShapeGlass(shapeLayer.glass, (p) => evaluateNumber(p, frame));
         // In-shape Repeater (B8d): expand into N copies at accumulated transforms (cloner-stamp
         // pattern - each copy is a resolved shape layer reusing the SAME geometry). Absent/disabled →
         // a single copy with the world transform untouched (byte-identical).
@@ -1731,6 +1734,7 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
             shadow,
             glow,
             blur,
+            ...(rGlass ? { glass: rGlass } : {}),
             layerType: 'shape',
           });
         }

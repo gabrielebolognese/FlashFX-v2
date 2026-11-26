@@ -689,6 +689,11 @@ export const AGENT_ACTIONS: readonly AgentActionSpec[] = [
     returns: '{ cursorId, frame, from, icon }',
     description: 'Swap the cursor icon on `frame` (hold step on the icon opacities): e.g. hand over a button, I-beam over a text field. One undo step.',
     params: [{ name: 'cursorId', type: 'string' }, { name: 'frame', type: 'number' }, { name: 'icon', type: 'string', values: CURSOR_ICONS }] },
+  // ----- B38 glass material -----
+  { id: 'editor.setShapeGlass', store: 'editor', method: 'setShapeGlass', undoable: true,
+    description: 'Frosted / liquid glass on a shape layer (rectangle, rounded rect, circle, star or path): the composite BELOW the shape is brightened / saturated, blurred and mixed back inside the shape outline (corners follow the radius), the rim bends the backdrop outward like a lens edge and catches a highlight from lightAngle. The shape still draws on top: give it a low-alpha fill as the tint (e.g. [1, 1, 1, 0.08] or [0, 0, 0, 0.1]) and a 1 px light stroke as the hairline edge, or fill alpha 0 for pure glass. A partial patch over the current glass (or the defaults); numbers for blur / refraction / highlight / lightAngle set their base value and keep their keys: animate them with setKeyframes "glass.blur" / "glass.refraction" / "glass.highlight" / "glass.lightAngle" (a rotating lightAngle sweeps the edge light). null removes the glass. One undo step. Not on 3D, corner-pinned or matte layers.',
+    params: [LAYER_ID, { name: 'glass', type: '{ blur?: number; refraction?: number; highlight?: number; lightAngle?: number; edgeWidth?: number; brightness?: number; saturation?: number; enabled?: boolean } | null',
+      description: 'blur px 0..200 (default 18); refraction px -200..200 (default 8, rim bend, positive pulls the scene from just outside the edge inward); highlight 0..1 (default 0.35); lightAngle degrees, screen Y down (default -120 = from the upper left); edgeWidth px of the bent / lit rim band (default 16); brightness / saturation -1..1 on the backdrop (defaults 0.06 / 0.15).' }] },
 ];
 
 // ---------------------------------------------------------------------------------------------
@@ -913,11 +918,16 @@ export const AGENT_FEATURES: readonly AgentFeature[] = [
     ui: 'Agent / MCP: enable the effect (editor.enableLayerEffect / editor.setLayerEffectParam), then editor.addKeyframe or editor.setKeyframes on its path; the keys show in the timeline under "Animated"',
     actions: ['editor.enableLayerEffect', 'editor.setLayerEffectParam', 'editor.setKeyframes', 'editor.addKeyframe'], status: 'shipped',
     notes: `Paths: ${ANIM_FX_PATHS.join(', ')}, effect.<type>.<paramIndex>. A blur radius keyed to 0 drops the blur pass on those frames. Pixel-proven headless by npm run gpu:anim-props.` },
+  { id: 'effects.glass', area: 'effects', name: 'Frosted / liquid glass material (B38)',
+    description: 'Glass on any shape: backdrop blur of everything below inside the outline, brighten / saturate, a refracting rim and an edge highlight with a keyframable light angle. For frosted pills, glass cards and Apple-style liquid glass over photos or video.',
+    ui: 'Agent / MCP only (editor.setShapeGlass)', actions: ['editor.setShapeGlass', 'editor.setKeyframes'], status: 'browser-gated',
+    notes: 'The renderer runs the glass as an adjustment pass right below the shape (scene copy + gaussian blur per glass layer: keep it to a few glass layers per frame). Keyframe paths: glass.blur, glass.refraction, glass.highlight, glass.lightAngle. Pixel-proven headless by npm run gpu:glass.' },
   { id: 'effects.beam', area: 'effects', name: 'Light beams', description: 'Laser / light beam layer.',
     ui: 'Right-click the canvas > New Beam / Lightning', actions: ['editor.addBeamLayer'], status: 'browser-gated' },
   { id: 'adjustment.layer', area: 'adjustment', name: 'Adjustment layers',
     description: 'Effects that apply to everything below, with opacity and masks.',
-    ui: 'Canvas toolbar > Adjustment Layer', actions: ['editor.addAdjustmentLayer', 'editor.setLayerEffectParam'], status: 'browser-gated' },
+    ui: 'Canvas toolbar > Adjustment Layer', actions: ['editor.addAdjustmentLayer', 'editor.setLayerEffectParam', 'editor.addMask'], status: 'browser-gated',
+    notes: 'B69: an adjustment layer takes masks (editor.addMask, Inspector > Masks): the adjustment then applies only inside them (pixel-proven by npm run gpu:adjustment).' },
 
   // precomp
   { id: 'precomp.nesting', area: 'precomp', name: 'Precompositions',

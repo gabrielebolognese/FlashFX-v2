@@ -1,0 +1,67 @@
+{
+  "id": "glass-pill",
+  "name": "Frosted glass pill / card over footage",
+  "category": "ui",
+  "description": "A frosted / liquid glass pill or card (B38 editor.setShapeGlass: the photo or video below is blurred inside the outline, the rim bends and catches light) that fades in while sliding into place with the measured r06 ease, with an optional centred label and an optional edge-light sweep. Put it ABOVE the photo / video it should frost. For captions over footage, Apple-style glass buttons and glass cards.",
+  "source": ["r06 S5 f366-472: frosted pill 830 x 150 over the jungle photo, opacity f366-382, centre y 447 -> 546 f370-426 easeOutQuart [0.0, 0.149, 0.131, 1.097] at 60 fps (measured rms 0.0059), 1 px light border, slight darken"],
+  "taste": ["TASTE.md 2 Easing", "3 Timing", "6 Colour (low-alpha tints over busy footage)"],
+  "params": {
+    "shape": { "type": "enum", "enum": ["pill", "rounded", "circle"], "default": "pill", "description": "Outline." },
+    "x": { "type": "number", "default": null, "description": "Final centre x (default comp centre)." },
+    "y": { "type": "number", "default": null, "description": "Final centre y (default comp centre)." },
+    "width": { "type": "number", "default": null, "description": "Width px (default 43 % of the comp width; circle = diameter)." },
+    "height": { "type": "number", "default": null, "description": "Height px (default width x 0.18; ignored for circle)." },
+    "tint": { "type": "color", "default": "#1f1a17", "description": "Glass tint colour (drawn at tintOpacity on top of the frosted backdrop)." },
+    "tintOpacity": { "type": "number", "default": 0.18, "min": 0, "max": 1, "description": "Tint alpha (0 = clear glass; 0.1-0.25 reads as frosted)." },
+    "edge": { "type": "color", "default": "#ffffff", "description": "Hairline edge colour." },
+    "edgeOpacity": { "type": "number", "default": 0.35, "min": 0, "max": 1, "description": "Hairline edge alpha (0 = no stroke)." },
+    "blur": { "type": "number", "default": 28, "min": 0, "description": "Backdrop blur px." },
+    "refraction": { "type": "number", "default": 10, "description": "Rim bend px (0 = flat frosted glass)." },
+    "highlight": { "type": "number", "default": 0.45, "min": 0, "max": 1, "description": "Rim highlight strength." },
+    "lightAngle": { "type": "number", "default": -110, "description": "Light direction, degrees (screen, Y down; -90 = from the top)." },
+    "brightness": { "type": "number", "default": -0.04, "description": "Backdrop brightness -1..1 (slightly negative = the r06 darken)." },
+    "sweep": { "type": "boolean", "default": false, "description": "Sweep the edge light once around the rim (lightAngle + 360 over the hold)." },
+    "slide": { "type": "number", "default": 100, "description": "Entrance travel px (positive = slides DOWN into place, like r06; 0 = fade only)." },
+    "delay": { "type": "number", "default": 0, "min": 0, "description": "Frames at 30 fps before the entrance." },
+    "entrance": { "type": "number", "default": 28, "min": 4, "description": "Slide length, frames at 30 fps (r06: 56 f at 60 fps)." },
+    "fade": { "type": "number", "default": 8, "min": 1, "description": "Fade-in length, frames at 30 fps (r06: 16 f at 60 fps)." },
+    "ease": { "type": "ease", "default": [0.0, 0.149, 0.131, 1.097], "description": "Slide ease (measured on r06: a fast settle with a 1 % overshoot)." },
+    "label": { "type": "string", "default": "", "description": "Centred label ('' = none)." },
+    "labelColor": { "type": "color", "default": "#ffffff", "description": "Label colour." },
+    "labelSize": { "type": "number", "default": null, "description": "Label size px (default height x 0.34)." },
+    "weight": { "type": "number", "default": 500, "description": "Label weight." },
+    "family": { "type": "string", "default": "Inter", "description": "Label family." },
+    "name": { "type": "string", "default": "Glass pill", "description": "Layer name." }
+  },
+  "length30": "delay + entrance + 45",
+  "checkFrames30": ["delay + entrance * 0.3", "delay + entrance + 4"],
+  "lets": {
+    "X": "x == null ? CX : x",
+    "Y": "y == null ? CY : y",
+    "SW": "width == null ? round(W * 0.43) : width",
+    "s0": "start + f(delay)"
+  },
+  "steps": [
+    { "let": { "SH": "shape == 'circle' ? SW : (height == null ? round(SW * 0.18) : height)" } },
+    { "let": { "RAD": "shape == 'circle' ? round(SW / 2) : shape == 'pill' ? round(SH / 2) : round(min(SW, SH) * 0.22)", "LS": "labelSize == null ? round(SH * 0.34) : labelSize" } },
+    { "id": "sh", "action": "editor.addShapeLayer", "args": { "opts": { "type": "{{shape == 'circle' ? 'circle' : 'rectangle'}}", "x": "{{X - PX}}", "y": "{{Y - PY}}", "width": "{{SW}}", "height": "{{SH}}", "radius": "{{RAD}}", "fill": "{{[tint[0], tint[1], tint[2], tintOpacity]}}", "stroke": "{{[edge[0], edge[1], edge[2], edgeOpacity]}}", "strokeWidth": "{{edgeOpacity > 0 ? 1.5 : 0}}", "name": "{{name}}" } }, "layer": true, "root": true },
+    { "let": { "B": "@sh.result" } },
+    { "action": "editor.setShapeGlass", "args": { "layerId": "{{B}}", "glass": { "blur": "{{blur}}", "refraction": "{{refraction}}", "highlight": "{{highlight}}", "lightAngle": "{{lightAngle}}", "edgeWidth": "{{round(min(SW, SH) * 0.14)}}", "brightness": "{{brightness}}", "saturation": 0.1 } } },
+    { "when": "sweep", "action": "editor.setKeyframes", "args": { "layerId": "{{B}}", "propertyPath": "glass.lightAngle", "keyframes": [
+      { "frame": "{{s0 + f(entrance)}}", "value": "{{lightAngle}}", "ease": [0.45, 0, 0.55, 1] }, { "frame": "{{end}}", "value": "{{lightAngle + 360}}" } ] } },
+    { "when": "slide != 0", "action": "editor.setKeyframes", "args": { "layerId": "{{B}}", "propertyPath": "transform.position", "keyframes": [
+      { "frame": "{{s0}}", "value": "{{[X - PX, Y - PY - slide]}}", "ease": "{{ease}}" }, { "frame": "{{s0 + f(entrance)}}", "value": "{{[X - PX, Y - PY]}}" } ] } },
+    { "action": "editor.setKeyframes", "args": { "layerId": "{{B}}", "propertyPath": "transform.opacity", "keyframes": [
+      { "frame": "{{s0}}", "value": 0, "ease": "linear" }, { "frame": "{{s0 + f(fade)}}", "value": 1 } ] } },
+    { "when": "label != ''", "id": "lab", "action": "editor.createQuickText", "args": { "x": 0, "y": 0, "text": "{{label}}" }, "layer": true },
+    { "when": "label != ''", "action": "editor.renameLayer", "args": { "id": "{{@lab.result}}", "name": "{{name}} label" } },
+    { "when": "label != ''", "action": "editor.setLayerParent", "args": { "childId": "{{@lab.result}}", "parentId": "{{B}}" } },
+    { "when": "label != ''", "action": "editor.updateLayerProperty", "args": { "layerId": "{{@lab.result}}", "path": "transform.position.defaultValue", "value": "{{[0, round(LS * 0.2)]}}" } },
+    { "when": "label != ''", "action": "editor.updateLayerProperty", "args": { "layerId": "{{@lab.result}}", "path": "animOverrides.fontSize.defaultValue", "value": "{{LS}}" } },
+    { "when": "label != ''", "action": "editor.updateLayerProperty", "args": { "layerId": "{{@lab.result}}", "path": "content.spans.0.style.fontSize", "value": "{{LS}}" } },
+    { "when": "label != ''", "action": "editor.updateLayerProperty", "args": { "layerId": "{{@lab.result}}", "path": "content.spans.0.style.fontWeight", "value": "{{weight}}" } },
+    { "when": "label != ''", "action": "editor.updateLayerProperty", "args": { "layerId": "{{@lab.result}}", "path": "content.spans.0.style.fontFamily", "value": "{{family}}" } },
+    { "when": "label != ''", "action": "editor.updateLayerProperty", "args": { "layerId": "{{@lab.result}}", "path": "content.spans.0.style.color", "value": "{{labelColor}}" } }
+  ],
+  "returns": { "layerId": "{{B}}", "width": "{{SW}}", "height": "{{SH}}", "settleFrame": "{{s0 + f(entrance)}}" }
+}
