@@ -32,7 +32,7 @@
     "agent:manifest": "node scripts/gen-agent-manifest.mjs",
     "lint": "eslint .",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit -p tsconfig.app.json",
+    "typecheck": "tsc --noEmit -p tsconfig.app.json --incremental --tsBuildInfoFile node_modules/.cache/tsc-app.tsbuildinfo",
     "test": "node scripts/test-all.mjs",
     "verify:adjustment-coverage": "node scripts/verify-adjustment-coverage.mjs",
     "verify:adjustment-composite": "node scripts/verify-adjustment-composite.mjs",
