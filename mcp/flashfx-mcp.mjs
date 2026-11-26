@@ -8,21 +8,29 @@
 // The MCP wire protocol (JSON-RPC 2.0, newline-delimited on stdin/stdout) is implemented here by
 // hand so the repo needs no new dependency. stdout carries ONLY protocol messages; logs go to stderr.
 //
-//   node mcp/flashfx-mcp.mjs [--server dev|dist] [--url URL] [--headed] [--attach PORT]
-//                            [--window 1920x1080] [--profile DIR] [--chrome PATH]
-// See mcp/README.md.
+//   node mcp/flashfx-mcp.mjs [--mode headless|tab|auto] [--server dev|dist] [--url URL] [--headed]
+//                            [--attach PORT] [--window 1920x1080] [--profile DIR] [--chrome PATH]
+//                            [--link-port N] [--no-open] [--output-dir DIR] [--access-code CODE]
+// --mode tab / auto = FlashFX Link (the user's own editor tab over a loopback WebSocket, see
+// mcp/lib/tab-session.mjs and docs/MCP-PRODUCT-ARCHITECTURE.md). See mcp/README.md and docs/MCP-QUICKSTART.md.
+//
+// No Anthropic key and no Claude API call anywhere: the model runs in the user's own Claude client.
 
 import { createInterface } from 'node:readline';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { FlashFxSession, readConfig } from './lib/session.mjs';
+import { readConfig } from './lib/session.mjs';
+import { createSession, readLinkConfig, readPackaged } from './lib/modes.mjs';
+import { checkEntitlement, gateMessage, STARTER_RECIPES } from './lib/entitlement.mjs';
 import { loadRecipes, describeRecipe, runRecipe } from './lib/recipes.mjs';
 
 const MCP_DIR = dirname(fileURLToPath(import.meta.url));
 const readDoc = (name) => readFileSync(join(MCP_DIR, name), 'utf8');
 
-const SERVER_INFO = { name: 'flashfx', title: 'FlashFX Studio', version: '1.0.0' };
+const PACKAGED = readPackaged(MCP_DIR);
+const SHIM_VERSION = PACKAGED?.version ?? '1.1.0';
+const SERVER_INFO = { name: 'flashfx', title: 'FlashFX Studio', version: SHIM_VERSION };
 const SUPPORTED_PROTOCOLS = ['2025-06-18', '2025-03-26', '2024-11-05'];
 const INSTRUCTIONS = [
   'Drives a live FlashFX editor (WebGPU motion-graphics app) through its agent runtime.',
@@ -37,8 +45,32 @@ const INSTRUCTIONS = [
   'Authoring guide: resource flashfx://authoring (mcp/AUTHORING.md). Brief-to-video workflow: the prompt "motion-brief".',
 ].join(' ');
 
-const config = readConfig();
-const session = new FlashFxSession(config);
+const config = readLinkConfig(readConfig(), { packaged: PACKAGED });
+const session = createSession(config);
+const LINK = config.mode !== 'headless';
+
+const LINK_INSTRUCTIONS = [
+  'FlashFX Link mode: you build inside the FlashFX editor tab the user has open in their own browser (their project list, their undo history), so they can watch and edit by hand at any time.',
+  'The first tool that needs the editor opens a FlashFX tab in their browser; tell the user to click Connect on the "Connect Claude" card (and Allow if the browser asks about apps on this device). link_status shows the connection, the access mode and the output folder.',
+  `export_mp4 / export_project / render_frame paths are relative to the output folder (${config.outputDir}); paths outside it are refused.`,
+  'If get_state shows no open project (the user reloaded the tab or went back to the Dashboard), continue with run_action agent.listProjects then agent.openProject {projectId}; never assume a fresh project.',
+].join(' ');
+
+// The early-access gate (packaged Link only): personal mode until a valid access code is seen.
+const entitlementReady = LINK
+  ? checkEntitlement({
+    code: config.accessCode,
+    version: SHIM_VERSION,
+    allowlistPath: config.allowlistPath,
+    endpoint: config.entitlementUrl,
+    cachePath: config.entitlementCache,
+  }).then((e) => {
+    const link = session.link ?? session.tab?.link;
+    if (link) link.mode = e.mode;
+    process.stderr.write(`[flashfx-mcp] access: ${e.entitled ? `${e.kind} (${e.source})` : e.reason}\n`);
+    return e;
+  })
+  : Promise.resolve(null);
 
 // ---------------------------------------------------------------------------------------------
 // Tools
@@ -209,7 +241,7 @@ const TOOLS = [
   },
   {
     name: 'screenshot',
-    description: 'Save a PNG of the editor window (region "window") or only the preview canvas (region "canvas") and return a preview image.',
+    description: 'Save a PNG of the editor window (region "window") or only the preview canvas (region "canvas") and return a preview image. In FlashFX Link mode it is always the rendered frame at the playhead (up to 1280 px wide).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -222,7 +254,8 @@ const TOOLS = [
     annotations: { readOnlyHint: true },
     handler: async ({ path, region, inline = true, clean }) => {
       const s = await session.screenshot({ path, region, inline, clean });
-      const { inlineJpeg, ...info } = s;
+      const { inlineJpeg, inlinePng, ...info } = s;
+      if (inlinePng) return ok(info, [{ type: 'image', data: inlinePng, mimeType: 'image/png' }]);
       return ok(info, inlineJpeg ? [{ type: 'image', data: inlineJpeg, mimeType: 'image/jpeg' }] : []);
     },
   },
@@ -465,6 +498,25 @@ const TOOLS = [
     handler: async () => fromRun(await session.run('history.redo')),
   },
   {
+    name: 'link_status',
+    description: 'FlashFX Link status: session mode (headless / tab / auto), whether the editor tab of the user is connected, the pairing link to open if it is not, the access mode (full early access or personal) and the output folder. Never opens anything.',
+    inputSchema: { type: 'object', properties: {} },
+    annotations: { readOnlyHint: true },
+    handler: async () => {
+      const ent = await entitlementReady;
+      if (session.prepare) await session.prepare();
+      return ok({
+        mode: config.mode,
+        version: SHIM_VERSION,
+        packaged: config.packaged,
+        ...(session.status ? session.status() : { transport: 'headless' }),
+        access: ent
+          ? { mode: ent.mode, kind: ent.kind, source: ent.source, reason: ent.reason, ...(ent.updateRequired ? { updateRequired: ent.updateRequired } : {}), recipes: ent.entitled ? 'all' : [...STARTER_RECIPES] }
+          : { mode: 'full', note: 'headless mode from source: governed by LICENSING.md, no access gate' },
+      });
+    },
+  },
+  {
     name: 'close_browser',
     description: 'Close the FlashFX browser (the next tool call relaunches it). Unsaved changes in the open project are autosaved by the app.',
     inputSchema: { type: 'object', properties: {} },
@@ -595,7 +647,7 @@ async function handle(msg) {
           protocolVersion: SUPPORTED_PROTOCOLS.includes(asked) ? asked : SUPPORTED_PROTOCOLS[0],
           capabilities: { tools: { listChanged: false }, resources: { listChanged: false, subscribe: false }, prompts: { listChanged: false } },
           serverInfo: SERVER_INFO,
-          instructions: INSTRUCTIONS,
+          instructions: LINK ? `${INSTRUCTIONS} ${LINK_INSTRUCTIONS}` : INSTRUCTIONS,
         });
         return;
       }
@@ -606,6 +658,8 @@ async function handle(msg) {
       case 'tools/call': {
         const tool = TOOL_BY_NAME.get(params.name);
         if (!tool) { replyError(id, -32602, `unknown tool: ${params.name}`); return; }
+        const blocked = gateMessage(await entitlementReady, tool.name, params.arguments ?? {});
+        if (blocked) { reply(id, fail(blocked)); return; }
         const result = await serial(async () => {
           try { return await tool.handler(params.arguments ?? {}); }
           catch (e) {
@@ -662,4 +716,5 @@ async function shutdown() {
 rl.on('close', shutdown);
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
-process.stderr.write(`[flashfx-mcp] ready (${config.url ? `url ${config.url}` : `server ${config.server}`}, ${config.attachPort ? `attach :${config.attachPort}` : config.headed ? 'headed' : 'headless'})\n`);
+process.stderr.write(`[flashfx-mcp] ready (mode ${config.mode}, ${config.url ? `url ${config.url}` : `server ${config.server}`}, ${config.mode === 'tab' ? `link port ${config.linkPort}` : config.attachPort ? `attach :${config.attachPort}` : config.headed ? 'headed' : 'headless'})
+`);

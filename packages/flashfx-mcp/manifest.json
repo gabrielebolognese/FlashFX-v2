@@ -1,0 +1,54 @@
+{
+  "manifest_version": "0.3",
+  "name": "flashfx",
+  "display_name": "FlashFX Link",
+  "version": "0.1.0",
+  "description": "Let Claude build editable motion graphics in your FlashFX editor (editor.flashfx.app).",
+  "long_description": "FlashFX Link connects Claude to the FlashFX editor open in your own browser. Claude builds the animation with FlashFX's tools and measured motion recipes, you watch it happen and can change anything by hand. Projects stay in your FlashFX project list; exports go to your output folder. Runs on your own Claude plan: FlashFX never sees or pays for your Claude usage.",
+  "author": { "name": "FlashFX S.r.l.", "url": "https://flashfx.app" },
+  "homepage": "https://flashfx.app",
+  "server": {
+    "type": "node",
+    "entry_point": "server/index.mjs",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/server/index.mjs", "--mode", "auto"],
+      "env": {
+        "FLASHFX_ACCESS_CODE": "${user_config.access_code}",
+        "FLASHFX_OUTPUT_DIR": "${user_config.output_dir}"
+      }
+    }
+  },
+  "user_config": {
+    "access_code": {
+      "type": "string",
+      "title": "FlashFX access code",
+      "description": "From your FlashFX early-access email. Leave empty for personal mode (core tools and 3 starter recipes).",
+      "sensitive": true,
+      "required": false
+    },
+    "output_dir": {
+      "type": "directory",
+      "title": "Output folder",
+      "description": "Where Claude saves your MP4 exports and editable .ffx projects.",
+      "default": "${HOME}/FlashFX/exports",
+      "required": false
+    }
+  },
+  "tools": [
+    { "name": "list_features", "description": "What FlashFX can do and the exact actions" },
+    { "name": "create_project", "description": "Create and open a new FlashFX project" },
+    { "name": "run_actions", "description": "Build with whitelisted editor actions (one undo step each)" },
+    { "name": "apply_recipe", "description": "Apply a measured motion recipe (kinetic title, pop-in, end card...)" },
+    { "name": "screenshot", "description": "Look at the current frame" },
+    { "name": "export_mp4", "description": "Render the MP4 with FlashFX's exporter" },
+    { "name": "export_project", "description": "Save the editable .ffx project" },
+    { "name": "link_status", "description": "Connection, access mode and output folder" }
+  ],
+  "compatibility": {
+    "platforms": ["darwin", "win32"],
+    "runtimes": { "node": ">=22.0.0" }
+  },
+  "keywords": ["motion graphics", "animation", "video", "flashfx"],
+  "license": "PolyForm-Noncommercial-1.0.0"
+}

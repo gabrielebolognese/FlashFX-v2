@@ -44,6 +44,21 @@ if (!('gpu' in navigator)) {
   // driving this tab - see src/agent/runtime.ts and /agent/features.json.
   installAgentRuntime();
 
+  // FlashFX Link (feature flag): lets the user's own Claude build in this tab through the local MCP shim
+  // (docs/MCP-PRODUCT-ARCHITECTURE.md). Statically false in production unless VITE_FFX_LINK=1, so the
+  // chunk is not even emitted when the flag is off.
+  if (import.meta.env.DEV || import.meta.env.VITE_FFX_LINK === '1') {
+    Promise.all([import('./agent/bridge'), import('./ui/FlashLinkCard')])
+      .then(([bridge, { FlashLinkCard }]) => {
+        bridge.installFlashLink();
+        const host = document.createElement('div');
+        host.id = 'ffx-link-root';
+        document.body.appendChild(host);
+        createRoot(host).render(<FlashLinkCard />);
+      })
+      .catch(() => {});
+  }
+
   // Hydrate any existing auth session + subscribe to changes (null-guarded: a no-op
   // until Supabase is configured, so the local-first app is unaffected).
   useAuthStore.getState().init();

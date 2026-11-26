@@ -17,7 +17,7 @@ import { useExpressionStore } from '../expressions/store';
 import { expressionManager } from '../expressions/manager';
 import { TEXT_ANIMATOR_PRESETS, createTextDecode, buildTextAnimatorPreset } from '../core/textAnimatorPresets';
 import { useProjectStore } from '../project-system/hooks/useProjectStore';
-import { loadProjectScene } from '../project-system/services/projects';
+import { getProjectMetadata, loadProjectScene } from '../project-system/services/projects';
 import { buildProjectBundle } from '../project-system/services/ffx';
 import { mediaAssetManager } from '../engine/media/assetManager';
 import { useOnboardingStore } from '../onboarding/store';
@@ -567,6 +567,41 @@ const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
     await waitForOpenedProject(projectId);
     const comp = useEditorStore.getState().composition;
     return { projectId, compositionId: comp.id, width: comp.settings.width, height: comp.settings.height, fps: comp.settings.frameRate, durationFrames: comp.settings.durationFrames };
+  },
+
+  listProjects: async (limit) => {
+    const store = useProjectStore.getState();
+    await store.loadProjects();
+    const max = typeof limit === 'number' && limit > 0 ? Math.min(200, Math.floor(limit)) : 20;
+    const cards = useProjectStore.getState().projects
+      .filter((c) => !c.metadata.trashedAt)
+      .sort((a, b) => b.metadata.modifiedAt - a.metadata.modifiedAt)
+      .slice(0, max);
+    return {
+      activeProjectId: useProjectStore.getState().view === 'editor' ? useProjectStore.getState().activeProjectId : null,
+      projects: cards.map(({ metadata: m }) => ({
+        id: m.id, name: m.name, width: m.width, height: m.height, fps: m.frameRate, durationFrames: m.durationFrames,
+        modifiedAt: new Date(m.modifiedAt).toISOString(), starred: !!m.starred,
+      })),
+    };
+  },
+
+  openProject: async (projectId) => {
+    if (typeof projectId !== 'string' || !projectId) throw new Error('"projectId" is required (see agent.listProjects)');
+    if (useOnboardingStore.getState().active) useOnboardingStore.getState().complete();
+    const metadata = await getProjectMetadata(projectId);
+    if (!metadata || metadata.trashedAt) throw new Error(`no local project "${projectId}" (see agent.listProjects)`);
+    const projects = useProjectStore.getState();
+    if (projects.view === 'editor' && projects.activeProjectId === projectId) {
+      const comp = useEditorStore.getState().composition;
+      return { projectId, name: metadata.name, compositionId: comp.id, width: comp.settings.width, height: comp.settings.height, fps: comp.settings.frameRate, durationFrames: comp.settings.durationFrames };
+    }
+    if (projects.view === 'editor') await projects.closeProject(); // saves the open project first
+    await useProjectStore.getState().openProject(projectId);
+    if (useProjectStore.getState().activeProjectId !== projectId || useProjectStore.getState().view !== 'editor') throw new Error('the project could not be opened');
+    await waitForOpenedProject(projectId);
+    const comp = useEditorStore.getState().composition;
+    return { projectId, name: metadata.name, compositionId: comp.id, width: comp.settings.width, height: comp.settings.height, fps: comp.settings.frameRate, durationFrames: comp.settings.durationFrames };
   },
 
   exportMp4: async (width, height, frameRate, bitrate, includeAudio) => {

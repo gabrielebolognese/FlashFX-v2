@@ -33,6 +33,8 @@ export type AgentHelperMethod =
   | 'setExpression'
   | 'removeExpression'
   | 'createProject'
+  | 'listProjects'
+  | 'openProject'
   | 'exportMp4'
   | 'getLayer'
   | 'measureText'
@@ -179,6 +181,14 @@ export const AGENT_ACTIONS: readonly AgentActionSpec[] = [
       { name: 'uiMode', type: 'string', optional: true, values: ['starter', 'pro'], description: 'Editor layout: Starter or Full (pro). Omit to keep the current one.' },
       { name: 'clipLength', type: 'string', optional: true, values: ['comp', 'default'], description: 'Length of every NEW layer for the rest of the session: comp = the whole composition, default = the UI 4 s clip. Omit to keep the current setting (starts as default).' },
     ] },
+  { id: 'agent.listProjects', store: 'agent', method: 'listProjects', undoable: false,
+    returns: '{ activeProjectId, projects: [{ id, name, width, height, fps, durationFrames, modifiedAt (ISO), starred }] } newest first',
+    description: 'The local projects in this browser (the Dashboard list, Trash excluded), newest first, and which one is open. Use it to continue an earlier project with agent.openProject, e.g. after the tab was reloaded.',
+    params: [{ name: 'limit', type: 'number', optional: true, description: 'Default 20, max 200.' }] },
+  { id: 'agent.openProject', store: 'agent', method: 'openProject', undoable: false,
+    returns: '{ projectId, name, compositionId, width, height, fps, durationFrames }',
+    description: 'Open an existing local project by id (like clicking its card on the Dashboard). Saves and closes the open project first.',
+    params: [{ name: 'projectId', type: 'string', description: 'An id from agent.listProjects.' }] },
   { id: 'editor.setDefaultClipLength', store: 'editor', method: 'setDefaultClipLength', undoable: false,
     returns: 'the mode now set',
     description: 'Length of NEW layers for the rest of the session: "comp" makes every new layer span the whole composition (no 4 s cut-off), "default" restores the UI 4-second clip. Existing layers are not changed. Not saved with the project.',
@@ -598,6 +608,9 @@ export const AGENT_FEATURES: readonly AgentFeature[] = [
   { id: 'composition.project', area: 'composition', name: 'Create a project',
     description: 'Start a new local project (16:9 long form or 9:16 short form) and open it in the editor.',
     ui: 'Dashboard > New Project (pick Long form / Short form)', actions: ['agent.createProject'], status: 'shipped' },
+  { id: 'composition.open-project', area: 'composition', name: 'Continue an earlier project',
+    description: 'List the local projects in this browser and re-open one, so an agent can pick up where it left off (after a reload, or the next day).',
+    ui: 'Dashboard > click a project card', actions: ['agent.listProjects', 'agent.openProject'], status: 'shipped' },
   { id: 'composition.clip-length', area: 'composition', name: 'New layers span the composition',
     description: 'Make every new layer as long as the composition instead of a 4-second clip (agent sessions: create_project clipLength "comp").',
     ui: 'Agent / MCP only (the UI adds 4 s clips; drag a clip end to stretch it)', actions: ['agent.createProject', 'editor.setDefaultClipLength'], status: 'shipped' },

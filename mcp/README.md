@@ -17,6 +17,42 @@ How it works:
   `flashfx-mcp.mjs`, and the CDP client in `lib/session.mjs` uses Node 22's built-in `fetch` and
   `WebSocket`. Requires Node 22+ and Chrome/Chromium/Edge (set `CHROME_PATH` if it is not found).
 
+## FlashFX Link mode (`--mode tab` / `auto`): build in the user's own editor tab
+
+The product version of this server (docs/MCP-PRODUCT-ARCHITECTURE.md, v1; end-user install guide:
+[docs/MCP-QUICKSTART.md](../docs/MCP-QUICKSTART.md)). Instead of launching its own Chrome, the server binds a
+WebSocket on `127.0.0.1` (`lib/tab-session.mjs`, hand-rolled RFC 6455 in `lib/ws-server.mjs`) and opens
+`<editor>/#ffx-link=<port>.<token>` in the default browser. The editor page (`src/agent/bridge.ts`, loaded
+only when built with `VITE_FFX_LINK=1` or in dev) strips the token from the URL, shows a **Connect Claude**
+card, and after the user's click relays every call to `window.__ffxAgent`. The project is a normal project in
+the user's list, autosaved, one undo step per action; the banner has Pause and Disconnect.
+
+- Security: loopback only; Origin must be the editor origin (`--url`'s origin, plus `--link-origin` /
+  `FLASHFX_LINK_ORIGINS`); Host must be the loopback port (no DNS rebinding); 128-bit single-use token in the
+  fragment; one tab at a time; a 256-bit per-tab session key re-pairs after a reload; writes only inside the
+  output folder. No Anthropic key anywhere.
+- `--mode auto` tries the tab for `FLASHFX_LINK_AUTO_WAIT_MS` (120 s) then falls back to headless.
+- Early-access gate (`lib/entitlement.mjs`, Link modes only): `FLASHFX_ACCESS_CODE` checked against
+  `access/allowlist.json` (hashes; issue codes with `node scripts/mcp-access-code.mjs`) or, when
+  `FLASHFX_ENTITLEMENT_URL` is set, the `mcp-entitlement` edge function with a 7-day offline cache. No code =
+  personal mode: `render_frame` / `render_strip` and all but 3 starter recipes are refused.
+- Extra tool: `link_status` (connection, pairing link, access mode, output folder).
+- Packaged as `packages/flashfx-mcp` (`npm run mcp:package`: one-file bundle + `flashfx.mcpb`); the
+  packaged server defaults to `--mode auto --url https://editor.flashfx.app`, a headed fallback window and the
+  persistent profile `~/FlashFX/link-profile`.
+
+| Flag | Env | Default | Meaning |
+| --- | --- | --- | --- |
+| `--mode headless\|tab\|auto` | `FLASHFX_MODE` | `headless` (from source), `auto` (package) | Session transport. |
+| `--link-port N` | `FLASHFX_LINK_PORT` | `47615` | Loopback port (a free one when busy; `0` = any). |
+| `--no-open` | `FLASHFX_LINK_OPEN=0` | opens | Do not open the browser; read the link from `link_status`. |
+| `--output-dir DIR` | `FLASHFX_OUTPUT_DIR` | `~/FlashFX/exports` | Where exports land (relative paths resolve here). |
+| `--access-code CODE` | `FLASHFX_ACCESS_CODE` | none | Early-access code. |
+| `--allowlist PATH` | `FLASHFX_ALLOWLIST` | `access/allowlist.json` | Allowlist file. |
+| | `FLASHFX_LINK_WAIT_MS` | `180000` | How long a call waits for the user to click Connect. |
+
+Tests: `npm run verify:mcp-link` (CI, no browser) and `npm run gpu:bridge` (local, real Chrome + editor).
+
 ## Add it to Claude Code
 
 From the repo root (`Desktop/project`):

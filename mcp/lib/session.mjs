@@ -5,7 +5,7 @@
 // whitelisted store actions the UI itself uses - never through DOM clicks.
 //
 // No dependencies beyond Node 22 (built-in fetch + WebSocket), same approach as
-// scripts/lib/headless-gpu.mjs (whose Chrome finder is reused).
+// scripts/lib/headless-gpu.mjs (the Chrome finder is shared: ./find-chrome.mjs).
 
 import { spawn } from 'node:child_process';
 import { createWriteStream, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -14,7 +14,7 @@ import { createServer as createNetServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { basename, dirname, extname, join, normalize, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { findChrome } from '../../scripts/lib/headless-gpu.mjs';
+import { findChrome } from './find-chrome.mjs';
 
 export const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 
