@@ -269,6 +269,11 @@ export interface RectangleShape {
 export interface CircleShape {
   type: 'circle';
   radius: AnimatableProperty;
+  /**
+   * B63: vertical radius of an ellipse (keyframable as "shape.radiusY"); `radius` is then the horizontal
+   * one. Absent = a circle (radiusY = radius), so every older project is unchanged.
+   */
+  radiusY?: AnimatableProperty;
   fillColor: Vec4;
   strokeColor: Vec4;
   strokeWidth: AnimatableProperty;

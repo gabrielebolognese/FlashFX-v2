@@ -51,7 +51,7 @@ import { buildKeyframesFromSpecs, canonicalEase, easeSpecError, CSS_EASES, type 
 import { planCameraMove, type CameraMoveTarget } from '../core/cameraMove';
 import { CORNER_PIN_KEYS, isConvexQuad } from '../core/cornerPin';
 import type { CornerPin } from '../core/types';
-import { outlineFromSpec, type OutlineSpec } from '../core/shapeOutline';
+import { outlineFromSpec, polygonOutline, type OutlineSpec } from '../core/shapeOutline';
 import { animPropTarget, canonicalKeyframePath, createAnimProp, staticValueFor } from '../core/animProps';
 import { identityRemapSeconds } from '../core/timeRemap';
 import { generatePresetKeyframes, getPresetById, type PresetContext } from '../core/animationPresets';
@@ -156,6 +156,8 @@ export interface AddShapeOptions {
   /** Star points (default 5) and inner radius ratio (default 0.4). */
   points?: number;
   innerRatio?: number;
+  /** B63: polygon side count (default 6; `points` is accepted as an alias). */
+  sides?: number;
 }
 
 /**
@@ -4427,10 +4429,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         if (layer.type === 'shape' && layer.shape.type === 'rectangle' && opts.radius !== undefined) layer.shape.borderRadius.defaultValue = Math.max(0, num(opts.radius, 'radius'));
         break;
       case 'circle': {
-        // An ellipse: a circle of radius min/2 stretched to w x h by the layer scale (the SDF circle has one radius).
-        const r = Math.min(w, h) / 2;
-        layer = createCircleLayer(opts.name ?? `Ellipse ${count + 1}`, x, y, r, fill, frames);
-        if (w !== h) layer.transform.scale.defaultValue = [w / (2 * r), h / (2 * r)];
+        // B63: a true ellipse - radius = w / 2, radiusY = h / 2 at scale 1 (it used to be a circle stretched by the
+        // layer scale, so a later setShapeMorph / scale key inherited the stretch and the stroke thinned on one axis).
+        layer = createCircleLayer(opts.name ?? `Ellipse ${count + 1}`, x, y, w / 2, fill, frames);
+        if (w !== h && layer.type === 'shape' && layer.shape.type === 'circle') layer.shape.radiusY = createProperty('Radius Y', 'number', h / 2);
         break;
       }
       case 'star': {
@@ -4440,9 +4442,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         break;
       }
       case 'polygon': {
-        const hw = w / 2, hh = h / 2;
-        const corner = (px: number, py: number) => ({ position: [px, py] as Vec2, handleIn: [0, 0] as Vec2, handleOut: [0, 0] as Vec2, vertexType: 'corner' as const });
-        layer = createPolygonLayer(opts.name ?? `Polygon ${count + 1}`, x, y, [corner(-hw, -hh), corner(hw, -hh), corner(hw, hh), corner(-hw, hh)], true, fill, frames);
+        // B63: a regular polygon with `sides` (alias `points`, default 6) inscribed in the w x h ellipse, top vertex
+        // first (it used to ignore both and make a 4-corner rectangle path).
+        const sidesRaw = opts.sides ?? opts.points ?? 6;
+        const sides = Math.round(num(sidesRaw, opts.sides !== undefined ? 'sides' : 'points'));
+        if (sides < 3 || sides > 256) throw new Error('"sides" must be 3..256');
+        layer = createPolygonLayer(opts.name ?? `Polygon ${count + 1}`, x, y, polygonOutline(w, h, sides), true, fill, frames);
         break;
       }
       default:

@@ -119,6 +119,4 @@ an MCP tool call, recipes only): `node mcp/examples/build-d-recipe-launch-title.
 - Masks are composition-space: a masked title does not follow a moving camera, so keep camera pushes on
   masked titles small (<= 1.1).
 - `reorderLayers` does not change stacking yet: create back to front.
-- A circle with non-uniform scale stays a circle and rounded rects wider than about 2048 px draw lens ends
-  (B63): build big soft shapes at half size with scale 2.
 - Imported fonts are not inside the `.ffx`: stick to the bundled families for portable projects.

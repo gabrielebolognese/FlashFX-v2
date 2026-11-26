@@ -35,7 +35,13 @@ export interface TessellateOptions {
   /** Resolved stroke fill (B8e). When it's a gradient (kind 1), the stroke color is baked per-vertex
    *  from the shape's bounding box (matching SDF shapes); otherwise the flat `strokeColor` is used. */
   strokeFill?: ResolvedFill;
+  /** B63: the fill is a gradient material: fill vertices get the marker colour FILL_GRADIENT_MARKER
+   *  (r = -1) and the path shader shades them per pixel from the layer's fill descriptor. */
+  fillGradient?: boolean;
 }
+
+/** B63: per-vertex colour of a gradient-filled path's fill triangles (r < 0 never occurs otherwise). */
+export const FILL_GRADIENT_MARKER: Vec4 = [-1, 0, 0, 1];
 
 const BEZIER_STEPS = 18;
 const FLOATS_PER_VERTEX = 6;
@@ -183,9 +189,14 @@ function earClip(polygon: Vec2[]): Vec2[] {
 
   if (indices.length === 3) {
     tris.push(polygon[indices[0]], polygon[indices[1]], polygon[indices[2]]);
+    return tris;
   }
 
-  return tris;
+  // B63: the hand-rolled clipper stalls on rings that touch themselves (a sunburst whose 16 wedges all
+  // return to one centre point: every ear "contains" a copy of that point), leaving part or all of the
+  // fill undrawn - the r07 single-pose sunburst rendered nothing. Only when it did not finish, fall back
+  // to earcut (the robust triangulator the holes path already uses); finished rings are unchanged.
+  return earcutFill(polygon, []);
 }
 
 // Fill a contour with holes (glyph counters) via earcut - the standard robust triangulator,
@@ -392,10 +403,11 @@ export function tessellatePath(opts: TessellateOptions): TessellatedPath {
 
   // Fill (only for closed paths with a visible fill). Holes are bridged into the outer contour
   // so the ear-clipper carves out the counters.
-  if (opts.closed && pts.length >= 3 && opts.fillColor[3] > 0) {
+  if (opts.closed && pts.length >= 3 && (opts.fillColor[3] > 0 || opts.fillGradient)) {
     const tris = holePolys.length > 0 ? earcutFill(pts, holePolys) : earClip(cleanFillRing(pts));
+    const fc = opts.fillGradient ? FILL_GRADIENT_MARKER : opts.fillColor;
     for (let i = 0; i < tris.length; i += 3) {
-      pushTri(out, tris[i], tris[i + 1], tris[i + 2], opts.fillColor);
+      pushTri(out, tris[i], tris[i + 1], tris[i + 2], fc);
     }
   }
 
@@ -460,7 +472,7 @@ interface CacheEntry {
 const cache = new LruCache<CacheEntry>({ maxBytes: 24 * 1024 * 1024, maxEntries: 256 });
 
 function signature(opts: TessellateOptions): string {
-  let s = `${opts.closed ? 1 : 0}|${opts.strokeWidth}|${opts.lineCap}|${opts.lineJoin}`;
+  let s = `${opts.closed ? 1 : 0}|${opts.strokeWidth}|${opts.lineCap}|${opts.lineJoin}${opts.fillGradient ? '|fg' : ''}`;
   s += `|f${opts.fillColor.join(',')}|k${opts.strokeColor.join(',')}|`;
   if (opts.dashArray && opts.dashArray.length > 0) s += `d${opts.dashArray.join(',')}@${opts.dashOffset ?? 0}|`;
   // B8e - a gradient stroke bakes color per-vertex, so its descriptor must key the geometry.

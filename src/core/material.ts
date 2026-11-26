@@ -158,14 +158,82 @@ export function generateShapeMaterialStyle(config: ShapeMaterialConfig | undefin
 }
 
 export function resolveDominantColor(config: ShapeMaterialConfig | undefined, fallback: Vec4): Vec4 {
-  if (!config || !config.enabled || config.layers.length === 0) return fallback;
+  if (!materialActive(config)) return fallback;
 
-  const firstLayer = config.layers.find((l) => l.opacity > 0);
-  if (!firstLayer || firstLayer.colorStops.length === 0) return fallback;
+  for (const raw of config.layers) {
+    const layer = normalizeMaterialLayer(raw);
+    if (!layer || layer.opacity <= 0) continue;
+    const first = layer.stops[0];
+    return stopColor(first.color, (first.opacity / 100) * (layer.opacity / 100));
+  }
+  return fallback;
+}
 
-  const sorted = [...firstLayer.colorStops].sort((a, b) => a.position - b.position);
-  const first = sorted[0];
-  return hexToVec4(first.color, (first.opacity / 100) * (firstLayer.opacity / 100));
+// ── B63: tolerant reading of agent-written materials ─────────────────────────────────────────────
+// A materialConfig written through updateLayerProperty is persisted as-is (validation does not deep-
+// check it), and an agent naturally leaves out ids, a layer opacity or a stop opacity, writes an RGBA
+// array instead of a hex string, or writes opacity / position as 0..1 fractions instead of the model's
+// 0..100 percent. Those used to resolve to NaN alpha or a 1 % opacity, so the shape vanished (the r07
+// "radial material renders nothing" gap was a layer opacity 1 with stops at 0 / 1). The readers below
+// fall back to the model's defaults (opacity 100, enabled unless false, stops spread evenly) and read
+// 0..1 values as fractions when the whole group is written that way, so a loose material renders like
+// its complete twin. Complete percent configs resolve exactly as before.
+
+/** True when the config has layers and is not explicitly disabled. */
+export function materialActive(config: ShapeMaterialConfig | undefined): config is ShapeMaterialConfig {
+  return !!config && typeof config === 'object' && config.enabled !== false && Array.isArray(config.layers) && config.layers.length > 0;
+}
+
+const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+
+/** A stop colour: '#rgb' / '#rrggbb' / '#rrggbbaa' or an RGB(A) (0..1) array; the alpha multiplies `alpha`. */
+export function stopColor(color: unknown, alpha: number): Vec4 {
+  const a = clamp01(isNum(alpha) ? alpha : 1);
+  if (Array.isArray(color) && color.length >= 3 && color.every(isNum)) {
+    const c = color as number[];
+    return [clamp01(c[0]), clamp01(c[1]), clamp01(c[2]), a * (c.length >= 4 ? clamp01(c[3]) : 1)];
+  }
+  if (typeof color === 'string') {
+    const h = color.trim().replace('#', '');
+    if (/^[0-9a-fA-F]{8}$/.test(h)) {
+      const v = hexToVec4(h.slice(0, 6), a);
+      return [v[0], v[1], v[2], a * (parseInt(h.slice(6, 8), 16) / 255)];
+    }
+    if (/^([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(h)) return hexToVec4(h, a);
+  }
+  return [0, 0, 0, a];
+}
+
+/** A material layer read with defaults: opacity / stop opacity / position in percent, stops sorted. */
+export interface NormalizedMaterialLayer {
+  opacity: number;
+  stops: { color: unknown; opacity: number; position: number }[];
+}
+
+/**
+ * Normalise one (possibly agent-written) material layer, or null when it has no usable stops.
+ * Opacities (the layer's and every stop's) are read as 0..1 fractions when every one that is given is
+ * <= 1 (a 1 % layer is invisible, so a layer written that way meant fractions); positions likewise when
+ * every position is <= 1 and the last one is exactly 1 (or the opacities were fractions too).
+ */
+export function normalizeMaterialLayer(layer: MaterialFillLayer | undefined): NormalizedMaterialLayer | null {
+  if (!layer || typeof layer !== 'object' || !Array.isArray(layer.colorStops) || layer.colorStops.length === 0) return null;
+  const raw = layer.colorStops.filter((s) => s && typeof s === 'object');
+  if (raw.length === 0) return null;
+  const opac = [layer.opacity, ...raw.map((s) => s.opacity)].filter(isNum);
+  const fracOpacity = opac.length > 0 && opac.every((v) => v <= 1);
+  const pos = raw.map((s) => s.position).filter(isNum);
+  const fracPos = pos.length > 0 && pos.every((v) => v <= 1) && (fracOpacity || (pos.length >= 2 && Math.max(...pos) === 1));
+  const ok = (v: unknown, frac: boolean, d: number) => (isNum(v) ? (frac ? v * 100 : v) : d);
+  const n = raw.length;
+  const stops = raw
+    .map((s, i) => ({
+      color: s.color as unknown,
+      opacity: ok(s.opacity, fracOpacity, 100),
+      position: ok(s.position, fracPos, n > 1 ? (i / (n - 1)) * 100 : 0),
+    }))
+    .sort((a, b) => a.position - b.position);
+  return { opacity: ok(layer.opacity, fracOpacity, 100), stops };
 }
 
 // GPU fill limits. The shader reserves fixed array slots per shape, so these
@@ -201,25 +269,25 @@ function radialCenter(radialType?: MaterialRadialType): [number, number] {
 // configs (or configs whose layers are all invisible) collapse to a solid fill
 // using `fallback`, so the shader always has a valid color.
 export function resolveShapeFill(config: ShapeMaterialConfig | undefined, fallback: Vec4): ResolvedFill {
-  if (!config || !config.enabled || config.layers.length === 0) {
+  if (!materialActive(config)) {
     return { kind: 0, color: fallback, layers: [] };
   }
 
   const layers: ResolvedFillLayer[] = [];
   for (const layer of config.layers) {
     if (layers.length >= FILL_MAX_LAYERS) break;
-    const layerOpacity = clamp01(layer.opacity / 100);
+    // B63: tolerant read (defaults, 0..1 fractions, RGBA arrays); complete percent layers unchanged.
+    const norm = normalizeMaterialLayer(layer);
+    if (!norm) continue;
+    const layerOpacity = clamp01(norm.opacity / 100);
     if (layerOpacity <= 0) continue;
 
-    const sorted = [...layer.colorStops]
-      .sort((a, b) => a.position - b.position)
-      .slice(0, FILL_MAX_STOPS);
-    if (sorted.length === 0) continue;
+    const sorted = norm.stops.slice(0, FILL_MAX_STOPS);
 
     const stops = sorted.map((s) => ({
       // Fold both the stop opacity and the layer opacity into alpha so the
       // shader composites each layer as a straight-alpha source.
-      color: hexToVec4(s.color, clamp01(s.opacity / 100) * layerOpacity),
+      color: stopColor(s.color, clamp01(s.opacity / 100) * layerOpacity),
       position: clamp01(s.position / 100),
     }));
 
@@ -233,7 +301,7 @@ export function resolveShapeFill(config: ShapeMaterialConfig | undefined, fallba
 
     layers.push({
       gradientType: layer.type === 'radial' ? 1 : layer.type === 'conic' ? 2 : 0,
-      angle: angleDeg * (Math.PI / 180),
+      angle: (Number.isFinite(angleDeg) ? angleDeg : 0) * (Math.PI / 180),
       centerX: cx,
       centerY: cy,
       blendMode: BLEND_MODE_INDEX[layer.blendMode] ?? 0,

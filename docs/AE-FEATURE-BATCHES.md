@@ -123,7 +123,7 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | B60 | Refs: cloner per-instance sources - render `ResolvedCloner.instanceSources` so each copy can be a different image (photo rings / grids) (ref gap #15: r04) | ✅ (headless-GPU verified) | medium |
 | B61 | Refs: liquid drip / melt text (letters melt into glowing drips that run down and pool; seeded, frame-pure) (ref gap #21: r05, low priority) | ⬜ (browser) | **heavy** |
 | B62 | Refs / F2: agent shape morph - `editor.setShapeMorph` (parametric poses: rounded rect / ellipse / star / polygon / points, per-pose ease incl. overshoot, auto start-point + winding alignment) + fix: path fill dropped half the polygon when the ring had a collinear point | ✅ | medium |
-| B63 | Replicas: shape render correctness - SDF stroke clipped at the shape bounds (rings get flat sides), rounded rect wider than ~2048 px draws lens ends, circle ignores non-uniform scale (no ellipse), setShapeMorph ellipse pose with w != h has wrong geometry, borderRadius not clamped to min(w,h)/2, shape materialConfig radial gradient renders nothing, setShapeMorph with one pose (or a hold first pose) renders nothing, addShapeLayer polygon has no sides (found replicating r02 r04 r06 r07) | ⬜ (browser) | medium |
+| B63 | Replicas: shape render correctness - SDF stroke clipped at the shape bounds (rings get flat sides), rounded rect wider than ~2048 px draws lens ends, circle ignores non-uniform scale (no ellipse), setShapeMorph ellipse pose with w != h has wrong geometry, borderRadius not clamped to min(w,h)/2, shape materialConfig radial gradient renders nothing, setShapeMorph with one pose (or a hold first pose) renders nothing, addShapeLayer polygon has no sides (found replicating r02 r04 r06 r07) | ✅ (Nov 2026, headless-GPU verified, `gpu:shape-render` 18/18) | medium |
 | B64 | Replicas: text paint - stroke-only text (transparent fill + stroke) renders nothing; vertical linear gradient fill (angle 180) drops horizontal strokes (T / f crossbars), angle 90 shows no top-to-bottom ramp (found replicating r02 r04) | ✅ (Nov 2026, engine session 26 Nov, headless-GPU verified) | light |
 | B65 | Replicas: agent video clip timing - video tracks are magnetic with no agent toggle: `editor.moveClipInTime` returns ok but does not move a video layer, every `import_media` of a video re-packs the earlier video clips back to back, `import_project` snaps inPoint-timed clips back to frame 0, a shape track matte over a video does not matte it (found replicating r07) | ⬜ | light |
 | B66 | Replicas: motion blur from parent transforms - a layer moved / zoomed by a parent (or grand-parent) null gets much weaker blur than the same motion on the layer itself (r02 f6-16 zoom smear) | ⬜ (browser) | medium |
@@ -982,7 +982,7 @@ Source: the frame-by-frame breakdowns of the 7 motion references the owner sent 
 Found while rebuilding four of the owner's references frame by frame (artifacts `replicas/rNN/notes.md`, `gaps.json`). Each was
 worked around through agent actions in the replica builds; the workaround is listed so the fix can be checked against it.
 
-## B63 - Shape render correctness ⬜ (browser)
+## B63 - Shape render correctness ✅ (Nov 2026, headless-GPU verified)
 - **Delivers:** fixes for seven shape defects: (1) the SDF circle / rounded-rect stroke is centred on the edge but clipped at the
   shape bounds, so the outer half is cut (rings get flat sides, pill outlines lose their ends); (2) a rectangle whose width with
   borderRadius exceeds ~2048 layer px draws pointed lens-shaped ends; (3) a circle with non-uniform `transform.scale` renders as a
@@ -998,6 +998,23 @@ worked around through agent actions in the replica builds; the workaround is lis
   6-point star with innerRatio 0.866 for a hexagon.
 - **Verification:** gates + `verify:shape-*` extension (stroke coverage outside the fill, ellipse from scale, radius clamp) + a
   `gpu:anim-props`-style headless pixel check of each case against its path-shape twin.
+
+- **Built (Nov 2026):** (1) the SDF quad is padded by half the stroke + a 2 px AA margin (`core/shapeSdf.ts`
+  `shapeSdfParams`, the renderer's `quadPad`), so strokes are never cut; an unstroked rectangle keeps its exact quad
+  (byte-identical). Circles draw at their true radius (the old 1.1x margin was read as the radius: every circle was 10 %
+  too large). (2) Corner radii scale with the layer's world scale and (5) clamp to half the short side: the "> 2048 px lens
+  ends" were an unscaled radius on a pill under a 0.5 null. (3) `CircleShape.radiusY` (keyframable `shape.radiusY`): an
+  ellipse, drawn by a robust closest-point ellipse SDF (CPU twin `ellipseDistance`); a non-uniform layer scale also gives
+  an ellipse; `addShapeLayer` circle w != h makes a true ellipse at scale 1. (4) The morph ellipse "wrong, larger geometry"
+  was the old stretch scale inherited by the morph (fixed by 3), and path / morph / polygon fills now take gradient
+  materials per pixel in the path shader (shared `FILL_WGSL`). (6) The "radial material renders nothing" config was
+  written in 0..1 units (layer opacity 1 %, stops at 0..1 %): materials are now read tolerantly (0..1 fractions,
+  missing ids / opacities / positions, RGBA array colours). (6b) A single-pose / hold sunburst (16 wedges through one
+  centre) made the ear clipper stall with 0 triangles: an unfinished ear clip now falls back to earcut. (7)
+  `addShapeLayer polygon` takes `sides` (alias `points`).
+- **Verified:** `npm run verify:shape-render` 10/10 (in `npm test`); `npm run gpu:shape-render` 18/18 on the fixed tree,
+  1/18 on the pre-B63 tree (every defect reproduced; the one pass compares two empty frames); plain rects, rounded rects
+  and path fills byte-identical before / after (a star differs by 1 level on 7 px).
 
 ## B64 - Text paint ✅ (Nov 2026, engine session 26 Nov, headless-GPU verified)
 - **Built:** (1) the text resolver ignored `content.spans.N.style.strokeWidth` (it read only `animOverrides.strokeWidth`, default 0),

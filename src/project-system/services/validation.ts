@@ -228,6 +228,8 @@ function ensureShapeGeometry(val: unknown): ShapeGeometry | null {
       return {
         type: 'circle',
         radius: ensureAnimatableProperty(s.radius, 'Radius', 'number', 80),
+        // B63: ellipse vertical radius (absent = circle).
+        ...(s.radiusY !== undefined && s.radiusY !== null ? { radiusY: ensureAnimatableProperty(s.radiusY, 'Radius Y', 'number', 80) } : {}),
         fillColor,
         strokeColor,
         strokeWidth,

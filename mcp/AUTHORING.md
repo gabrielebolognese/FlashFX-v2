@@ -268,8 +268,15 @@ Never leave real motion on linear (the default for `addKeyframe`), except progre
 - `editor.addShapeLayer { opts: { type, x, y, width, height, fill, radius, name, stroke?, strokeWidth? } }`
   (B46): one undo step, x / y are the CENTRE, colours RGBA 0..1, NO stroke unless you pass one, and it
   returns the new id. Use it instead of `addShapeWithDimensions` (which adds the UI's 1 px grey stroke:
-  you would have to zero `shape.strokeWidth.defaultValue`). `type: "circle"` with width != height is an
-  ellipse (a circle stretched by the layer scale).
+  you would have to zero `shape.strokeWidth.defaultValue`). `type: "circle"` with width != height is a
+  true ellipse (B63): `shape.radius` = width / 2, `shape.radiusY` = height / 2, scale 1, both keyframable. A
+  circle layer with a non-uniform `transform.scale` also draws as an ellipse. `type: "polygon"` takes `sides`
+  (default 6) for a regular polygon inscribed in width x height (a hexagon is `sides: 6`, no star trick).
+- **What the SDF shapes guarantee (B63).** A circle draws at exactly its radius. A stroke is centred on the
+  edge and never clipped (rings stay round, pill outlines keep their ends: no `convertShapeToPath` or
+  stacked-pill workaround needed). Corner radii scale with the layer and its parents (a big pill under a
+  scaled-down null keeps round ends: no "half size, scale 2" trick) and clamp to half the short side (a
+  circle-to-pill radius key never needs guarding). A stadium / pill is `radius` >= height / 2.
 - **Colour keyframes (B33).** `shape.fillColor`, `shape.strokeColor`, `text.color`,
   `text.strokeColor`, `glow.color`, `shadow.color` take RGBA keyframes through `editor.setKeyframes` /
   `editor.addKeyframe`. Mixing is in linear light (black to white passes a clean mid grey, no muddy
@@ -317,6 +324,15 @@ Never leave real motion on linear (the default for `addKeyframe`), except progre
   `centerY`, 0..1 in the shape box). Repeat the first colour at 100 for a seamless hue wheel. A ring: a circle with
   no fill and a thick stroke, with the same layers on `strokeMaterialConfig`. Spin it by keying `transform.rotation`
   (r08 spinning hue ring, f145-1057).
+- **Materials on any shape (B63).** `materialConfig` (linear / radial / conic) now renders on rectangles,
+  ellipses, stars AND path / morph / polygon shapes (a morph used to fall back to the flat first colour), per
+  pixel across the shape's box. The model's units are percent (`opacity` 0..100, stop `position` 0..100); a
+  layer written in 0..1 fractions (every opacity <= 1, or positions ending at exactly 1) is read as fractions,
+  and missing ids / opacities / positions or `[r, g, b, a]` colours fall back to defaults instead of making the
+  shape vanish. A soft radial glow blob: a circle with `{ type: "radial", colorStops: [{ color: "#33389a",
+  opacity: 100, position: 0 }, { color: "#33389a", opacity: 0, position: 100 }] }` (no gaussian blur needed).
+- Self-touching outlines fill correctly (B63): a sunburst of wedges that all return to one centre point works
+  as a single `setShapeMorph` path pose (no second dummy pose).
 
 ## 7. Masks
 

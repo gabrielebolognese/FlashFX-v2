@@ -40,7 +40,8 @@ function getLayerSize(layer: Layer, frame: number): { w: number; h: number } | n
       case 'circle': {
         const r = typeof shape.radius === 'object' && shape.radius.defaultValue != null
           ? evaluateProperty(shape.radius, frame) as number : 50;
-        return { w: r * 2, h: r * 2 };
+        const ry = shape.radiusY && shape.radiusY.defaultValue != null ? evaluateProperty(shape.radiusY, frame) as number : r;
+        return { w: r * 2, h: ry * 2 };
       }
       case 'star': {
         const or = typeof shape.outerRadius === 'object' && shape.outerRadius.defaultValue != null

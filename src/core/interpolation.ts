@@ -404,7 +404,8 @@ function resolveShapeLayer(layer: ShapeLayer, frame: number, getStyle?: StyleLoo
       const r = evaluateNumber(shape.radius, frame);
       base.radius = r;
       base.width = r * 2;
-      base.height = r * 2;
+      // B63: an ellipse carries its vertical radius (absent = circle); the SDF draws the w x h ellipse.
+      base.height = (shape.radiusY ? evaluateNumber(shape.radiusY, frame) : r) * 2;
       break;
     }
     case 'star': {
@@ -1169,7 +1170,7 @@ export function measureLayerPreferredSize(layer: Layer, frame: number): { width:
         return { width: evaluateNumber(shape.width, frame), height: evaluateNumber(shape.height, frame) };
       case 'circle': {
         const r = evaluateNumber(shape.radius, frame);
-        return { width: r * 2, height: r * 2 };
+        return { width: r * 2, height: (shape.radiusY ? evaluateNumber(shape.radiusY, frame) : r) * 2 };
       }
       case 'star':
       case 'polygon': {
@@ -2179,7 +2180,7 @@ export function buildPhysicsEvaluator(composition: Composition): (layerId: strin
         case 'circle': {
           const r = evaluateNumber(shape.radius, frame);
           width = r * 2;
-          height = r * 2;
+          height = (shape.radiusY ? evaluateNumber(shape.radiusY, frame) : r) * 2;
           break;
         }
         case 'star': {
