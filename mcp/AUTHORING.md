@@ -99,7 +99,9 @@ with its OWN outgoing ease, as one undo step:
   (`expoOut`, `circOut`, `backOut`, `elasticOut`, ...), a CSS keyword (`"ease"`, `"ease-in"`,
   `"ease-out"`, `"ease-in-out"`) or a cubic-bezier quad `[x1, y1, x2, y2]` (CSS semantics; y may go
   above 1 or below 0 for an overshoot pop). Reference timing sheets (`refs/rNN/timeline.json`) carry
-  fitted quads: pass them straight in.
+  fitted quads: pass them straight in. The breakdown / easings.net names work too (B67): `easeOutCubic`
+  = `cubicOut`, `easeInOutQuart` = `quartInOut`, `easeIn` / `easeOut` / `easeInOut` = the CSS keywords,
+  `easyEase` = After Effects' Easy Ease `[0.333, 0, 0.667, 1]` (case, spaces, `-` and `_` are ignored).
 - Without `merge` the keys REPLACE the property's keyframes; `"merge": true` keeps keys at other
   frames. A bad path, ease or value shape is an error and nothing is applied.
 - Works on every animatable path, including the colour and effect paths in sections 6 and 8.
@@ -141,7 +143,17 @@ Never leave real motion on linear (the default for `addKeyframe`), except progre
 
 - `editor.createQuickText { x, y, text }`: x is the CENTRE of the text, y the centre of the line
   box. For all caps at size S the glyphs span roughly `y - 0.68 S` (cap top) to `y + 0.11 S`
-  (baseline).
+  (baseline), so mixed-case words sit about 0.15 S high.
+- **Place by what the eye sees (B67):** after styling (font, size, weight), call
+  `agent.placeText { layerId, y, x?, anchor? }`: `anchor` `"inkCenter"` (default) puts the visible
+  glyph ink centre on y, `"baseline"` the first line's baseline, `"box"` the line-box centre. It
+  measures in the real face and shifts keyframed position as a whole (motion kept), one undo step.
+- Text layout ignores leading / trailing spaces: padding a string with spaces does not move it. Use
+  x, `agent.placeText` or a fixed box.
+- **Outline text (B64):** fill `content.spans.0.style.color` `[r, g, b, 0]` plus
+  `content.spans.0.style.strokeColor` and `content.spans.0.style.strokeWidth` (px). A gradient fill
+  (`content.spans.0.style.fill = { kind: "linear", angle, stops }`, angle 0 = left to right, 90 = top
+  to bottom) spans the whole text, also on animated / accent-styled text.
 - Set the size in BOTH places: `animOverrides.fontSize.defaultValue` (what renders, animatable)
   and `content.spans.0.style.fontSize`. Colour, weight, family: `content.spans.0.style.*`.
   Tracking: `animOverrides.letterSpacing.defaultValue` (px).
@@ -261,6 +273,9 @@ Never leave real motion on linear (the default for `addKeyframe`), except progre
 - Circles: `shape.radius`. A ring: `shape.fillColor` `[0, 0, 0, 0]` plus `shape.strokeColor` and an
   animated `shape.strokeWidth`.
 - Trim-path line draws: `editor.addShapeModifier { type: "trim" }`, keyframe `modifiers.0.end`.
+  Progress rings from 12 o'clock (B67): stroked circle > `editor.convertShapeToPath` > trim >
+  `agent.setTrimStartAngle { layerId, angle: 0 }` (clock degrees, clockwise) > keyframe
+  `modifiers.0.end` 0 -> 1.
 - **Shape morphs (B62)**: `editor.setShapeMorph { layerId, poses: [{ frame, shape, ease }], align? }`
   turns any shape layer into a path whose outline morphs through the poses. `shape` (layer-local px,
   centred on the layer position): `{ type: "rectangle", width, height, radius? }`,
@@ -293,8 +308,9 @@ Never leave real motion on linear (the default for `addKeyframe`), except progre
 - Motion blur: `updateLayerProperty(id, "motionBlur", true)`. Preview shows a few stepped copies;
   export uses 16+ samples and is smooth.
 - Glow: `editor.enableLayerEffect { kind: "glow" }`, then `glow.color`, `glow.radius`,
-  `glow.intensity`, `glow.threshold`. Keep intensity low (about 0.5) and threshold high (about 0.6)
-  on bright artwork or it blows out.
+  `glow.intensity`, `glow.threshold`. On text and shapes the first glow is the layer's own colour at
+  threshold 0 (B67: the old white glow at 0.6 vanished on saturated colours); images and video keep
+  the bloom default (threshold 0.6). Keep intensity low (about 0.5) on bright artwork or it blows out.
 - **Animated effects (B47 / B50).** Enable the effect first, then keyframe its path with
   `editor.setKeyframes` / `editor.addKeyframe`:
   - glow: `glow.intensity`, `glow.radius`, `glow.threshold`, `glow.color` (a glow pulse on a logo

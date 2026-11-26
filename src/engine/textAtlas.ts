@@ -38,7 +38,8 @@ export function bumpFontEpoch(): void {
 function fillKey(text: ResolvedText): string {
   const f = text.fill;
   if (!f) return '';
-  return `${f.kind}:${f.angle}:${f.stops.map((s) => `${s.color.join(',')}@${s.position}x${s.opacity}`).join(';')}`;
+  const ff = text.fillFrame ? `|ff${text.fillFrame.x.toFixed(2)},${text.fillFrame.y.toFixed(2)},${text.fillFrame.width},${text.fillFrame.height}` : '';
+  return `${f.kind}:${f.angle}:${f.stops.map((s) => `${s.color.join(',')}@${s.position}x${s.opacity}`).join(';')}${ff}`;
 }
 
 export function textCacheKey(text: ResolvedText): string {
@@ -83,9 +84,11 @@ function buildTextGradient(
   fill: TextGradientFill,
   w: number,
   h: number,
+  ox = 0,
+  oy = 0,
 ): CanvasGradient {
-  const cx = w / 2;
-  const cy = h / 2;
+  const cx = ox + w / 2;
+  const cy = oy + h / 2;
   let grad: CanvasGradient;
   if (fill.kind === 'radial') {
     grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.hypot(w, h) / 2);
@@ -309,7 +312,9 @@ export function renderTextToCanvas(text: ResolvedText): CachedTextEntry | null {
   const solidFill = `rgba(${Math.round(fr * 255)},${Math.round(fg * 255)},${Math.round(fb * 255)},${fa})`;
   // Gradient fills paint across the whole box (layer space) so they don't swim per glyph.
   const fillPaint: string | CanvasGradient = text.fill
-    ? buildTextGradient(ctx, text.fill, canvasWidth, canvasHeight)
+    ? (text.fillFrame
+      ? buildTextGradient(ctx, text.fill, text.fillFrame.width, text.fillFrame.height, text.fillFrame.x, text.fillFrame.y)
+      : buildTextGradient(ctx, text.fill, canvasWidth, canvasHeight))
     : solidFill;
 
   for (let i = 0; i < lines.length; i++) {

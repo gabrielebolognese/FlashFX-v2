@@ -124,10 +124,10 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | B61 | Refs: liquid drip / melt text (letters melt into glowing drips that run down and pool; seeded, frame-pure) (ref gap #21: r05, low priority) | ⬜ (browser) | **heavy** |
 | B62 | Refs / F2: agent shape morph - `editor.setShapeMorph` (parametric poses: rounded rect / ellipse / star / polygon / points, per-pose ease incl. overshoot, auto start-point + winding alignment) + fix: path fill dropped half the polygon when the ring had a collinear point | ✅ | medium |
 | B63 | Replicas: shape render correctness - SDF stroke clipped at the shape bounds (rings get flat sides), rounded rect wider than ~2048 px draws lens ends, circle ignores non-uniform scale (no ellipse), setShapeMorph ellipse pose with w != h has wrong geometry, borderRadius not clamped to min(w,h)/2, shape materialConfig radial gradient renders nothing, setShapeMorph with one pose (or a hold first pose) renders nothing, addShapeLayer polygon has no sides (found replicating r02 r04 r06 r07) | ⬜ (browser) | medium |
-| B64 | Replicas: text paint - stroke-only text (transparent fill + stroke) renders nothing; vertical linear gradient fill (angle 180) drops horizontal strokes (T / f crossbars), angle 90 shows no top-to-bottom ramp (found replicating r02 r04) | ⬜ (browser) | light |
+| B64 | Replicas: text paint - stroke-only text (transparent fill + stroke) renders nothing; vertical linear gradient fill (angle 180) drops horizontal strokes (T / f crossbars), angle 90 shows no top-to-bottom ramp (found replicating r02 r04) | ✅ (Nov 2026, engine session 26 Nov, headless-GPU verified) | light |
 | B65 | Replicas: agent video clip timing - video tracks are magnetic with no agent toggle: `editor.moveClipInTime` returns ok but does not move a video layer, every `import_media` of a video re-packs the earlier video clips back to back, `import_project` snaps inPoint-timed clips back to frame 0, a shape track matte over a video does not matte it (found replicating r07) | ⬜ | light |
 | B66 | Replicas: motion blur from parent transforms - a layer moved / zoomed by a parent (or grand-parent) null gets much weaker blur than the same motion on the layer itself (r02 f6-16 zoom smear) | ⬜ (browser) | medium |
-| B67 | Replicas: agent authoring ergonomics - setKeyframes accepts the breakdown ease names (easeOut, easeInOut, easeOutCubic ...; the replica kit aliases them today), createQuickText option to place by ink centre / baseline, glow defaults that show on coloured text, trim start angle option (12 o'clock), document that text layout trims leading / trailing spaces | ⬜ | light |
+| B67 | Replicas: agent authoring ergonomics - setKeyframes accepts the breakdown ease names (easeOut, easeInOut, easeOutCubic ...; the replica kit aliases them today), createQuickText option to place by ink centre / baseline, glow defaults that show on coloured text, trim start angle option (12 o'clock), document that text layout trims leading / trailing spaces | ✅ (Nov 2026, engine session 26 Nov, headless-GPU verified) | light |
 | B68 | Replicas: export fails on video - `export_mp4` (the real exporter) aborts with "A valid external Instance reference no longer exists" when a scaled, position-keyed H.264 clip is in the comp, while render_frame of the same frames works (suspect a VideoFrame closed while still bound via importExternalTexture in the export path; found replicating r07, ties into the EX plan) | ⬜ (browser) | medium |
 | PB1 | Playback: decoded-frame LRU on the mediabunny path (backward/oscillating scrubs hit the cache instead of re-walking the GOP) | ✅ | medium |
 | PB2a | Playback: keyframe-snap-then-refine on far seeks (kills the scrub freeze) | ✅ | medium |
@@ -936,7 +936,16 @@ worked around through agent actions in the replica builds; the workaround is lis
 - **Verification:** gates + `verify:shape-*` extension (stroke coverage outside the fill, ellipse from scale, radius clamp) + a
   `gpu:anim-props`-style headless pixel check of each case against its path-shape twin.
 
-## B64 - Text paint ⬜ (browser)
+## B64 - Text paint ✅ (Nov 2026, engine session 26 Nov, headless-GPU verified)
+- **Built:** (1) the text resolver ignored `content.spans.N.style.strokeWidth` (it read only `animOverrides.strokeWidth`, default 0),
+  so outline-only text drew nothing and a stroke on filled text never showed: `core/interpolation.ts:textStrokeWidth` now takes a keyed
+  or non-zero override, else the span style (old projects: style width 0, byte-identical). (2) On the glyph-stamp path (animators,
+  accent words, text on a path) every 1-glyph raster built the gradient over its own box, so the ramp restarted in each letter (the
+  "missing crossbars" / "no top-to-bottom ramp" reads): `ResolvedText.fillFrame` gives each stamp the whole text box at the glyph's
+  home slot (`engine/textAtlas.ts:buildTextGradient` offset, folded into the raster cache key). The whole-layer raster was already right
+  at 90 / 180 / 270; the crossbar drop itself did not reproduce on the current branch (coverage within 1% of the solid twin).
+- **Verified:** `npm run gpu:text-paint` (render_frame pixels: coverage at 180 deg = solid twin on both paths, 90 / 270 ramps, stroke-only
+  outline drawn and thinner than the fill); `gpu:text-kinetic` 11/11 unchanged.
 - **Delivers:** outline-only text (transparent fill + `strokeColor` / `strokeWidth`) renders its stroke; a linear gradient fill at any
   angle keeps every glyph stroke (angle 180 drops the horizontal crossbars of T and f today) and angle 90 / 270 ramps top to bottom.
 - **Source beats:** r02 f264-366 (outlined question marks); r04 f355-431 (statement text gradient #151d24 to #306181).
@@ -961,7 +970,14 @@ worked around through agent actions in the replica builds; the workaround is lis
 - **Verification:** gates + headless pixel check: a parented layer and its unparented twin with identical world motion render the
   same blurred frame.
 
-## B67 - Agent authoring ergonomics (replica friction) ⬜
+## B67 - Agent authoring ergonomics (replica friction) ✅ (Nov 2026, engine session 26 Nov, headless-GPU verified)
+- **Built:** `core/keyframeSpecs.ts:canonicalEase` (easings.net / AE names -> canonical, also in setShapeMorph, cursor and camera moves);
+  `agent.placeText` (ink centre / baseline / box, measured with `engine/textAtlas.ts:getTextInkMetrics`; chosen over a createQuickText
+  flag because placement must happen after styling and font loading); `core/effectDefaults.ts:defaultGlowFor` (text / shape first
+  glow = own colour, threshold 0; Inspector toggle and `enableLayerEffect` share it); `agent.setTrimStartAngle` +
+  `core/shapeModifiers.ts:pathFractionAtAngle`; AUTHORING notes (spaces, placement, outline text, rings).
+- **Verified:** `verify:anim-props` 19/19 (aliases = canonical curves, glow default, clock-angle fractions), `verify:agent-manifest`
+  11/11 (125 actions), `gpu:text-paint` (rendered ink centre within 1 px of y, baseline row, green glow halo, 12 o'clock arc).
 - **Delivers:** `setKeyframes` accepts the breakdown names (`easeIn`, `easeOut`, `easeInOut`, `easeOutCubic` ...); a `createQuickText`
   option to place text by ink centre or baseline (today y = the line-box centre, so mixed-case words sit ~0.15 x size high); glow
   defaults visible on coloured text (white glow at threshold 0.6 vanishes on green); a trim start-angle option; AUTHORING note that
