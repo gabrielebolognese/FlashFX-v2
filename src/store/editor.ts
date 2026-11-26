@@ -89,7 +89,8 @@ import { useImageSizePromptStore } from './imageSizePrompt';
 import { canParentTo } from '../core/layerSwitches';
 import { recomputeCompositionDuration, withMinimumDuration, getMinimumDuration } from '../core/compositionDuration';
 import { reflowCompressedTracks, isTrackCompressed } from '../core/trackCompression';
-import { pinClipToTime, placeMatteAbove, planClipTiming, shiftLayerKeyframes, withTrackCompression, type ClipTimingSpec, type ClipTimingPlan } from '../core/trackPlacement';
+import { mirrorSpanLineHeight } from '../core/textLineHeight';
+import { pinClipToTime, placeMatteAbove, placeOnNewTracks, planClipTiming, shiftLayerKeyframes, withTrackCompression, type ClipTimingSpec, type ClipTimingPlan, type NewTrackSpot } from '../core/trackPlacement';
 import { clampGroupResizeDelta, applyResizeDelta, type ResizeEdge } from '../core/clipResize';
 import { buildCaptionLayers, deoverlapCaptionLayers, type CaptionSegment, type CaptionOptions } from '../core/captions';
 import { computeExplodeElements, type SplitMode } from '../core/textExplode';
@@ -519,7 +520,12 @@ interface EditorState {
   /** Replace existing layers (by id) and append new ones (each on a track) as ONE undo step; the
    *  added layers become the selection (the first is active). Used by composite agent helpers (B51
    *  cursor rig). Throws (nothing applied) when an updated id does not exist. */
-  applyLayerEdits: (label: string, edits: { add?: Layer[]; update?: Layer[] }) => void;
+  /** `stack` (B70): put the listed ADDED layers on their own new tracks above everything ({ top: true }) or
+   *  directly under the lowest track of `belowLayerIds`, instead of the first free same-type track. */
+  applyLayerEdits: (label: string, edits: { add?: Layer[]; update?: Layer[]; stack?: { ids: string[] } & NewTrackSpot }) => void;
+  /** B70: move existing layers onto their own new tracks above every track (list order = bottom to top), one
+   *  undo step. Unlike reorderLayers (array order only) this changes what draws on top. */
+  raiseLayersToTop: (layerIds: string[], label?: string) => void;
   /** Insert a template with an ANIMATED build: layers appear one at a time (static), then the
    *  keyframes are applied - used by the AI-panel demo. Committed as one undo step. Returns cancel. */
   insertAnimationTemplateAnimated: (id: string, opts?: { perLayerMs?: number; onLayer?: (shown: number, total: number) => void; onKeyframes?: () => void; onDone?: () => void }) => { cancel: () => void };
@@ -4060,12 +4066,16 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         value = setBaseSpanStyle(target.content.spans, baseStyle[1] as keyof TextSpanStyle, rawValue);
       }
     }
+    // B72: every text consumer (resolver, scene graph, overlays, snapping) reads animOverrides.lineHeight, so a
+    // write to the base span's lineHeight (what agents, kits and the style JSON use) also lands there while that
+    // override is unkeyed. Before this the span value was silently ignored.
+    const applyEdit = (l: Layer): Layer => mirrorSpanLineHeight(deepSet(l, path, value) as Layer, rawPath, rawValue);
     const history = useHistoryStore.getState();
     if (history.isUndoing || history.isBatching) {
       const { composition } = get();
       const layers = composition.layers.map((layer) => {
         if (layer.id !== layerId) return layer;
-        return deepSet(layer, path, value) as Layer;
+        return applyEdit(layer);
       });
       set({ composition: { ...composition, layers } });
       return;
@@ -4079,7 +4089,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
     const newLayers = composition.layers.map((l) => {
       if (l.id !== layerId) return l;
-      return deepSet(l, path, value) as Layer;
+      return applyEdit(l);
     });
     let newComp = { ...composition, layers: newLayers };
     // B65: an in-point typed on a clip of a magnetic track would be packed back by the next settle pass (and
@@ -5519,13 +5529,35 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }
     const added = edits.add ?? [];
     let working: Composition = { ...composition, layers: composition.layers.map((l) => updates.get(l.id) ?? l) };
-    for (const l of added) working = ensureLayerHasTrack({ ...working, layers: [...working.layers, l] }, l);
+    const stacked = new Set(edits.stack?.ids ?? []);
+    for (const l of added) {
+      working = { ...working, layers: [...working.layers, l] };
+      if (!stacked.has(l.id)) working = ensureLayerHasTrack(working, l);
+    }
+    if (edits.stack && stacked.size) {
+      const spot: NewTrackSpot = 'top' in edits.stack ? { top: true } : { belowLayerIds: edits.stack.belowLayerIds };
+      const ids = added.filter((l) => stacked.has(l.id)).map((l) => l.id);
+      working = placeOnNewTracks(working, ids, spot, createTrack, (l) => layerTypeToTrackType(l.type));
+    }
     const newComp = settleComposition(working);
     const newSel: SelectionState = added.length ? sel(added.map((l) => l.id), added[0].id) : oldSel;
     exec({
       label,
       execute: () => { set({ composition: newComp, selection: newSel }); },
       undo: () => { set({ composition: oldComp, selection: oldSel }); },
+    });
+  },
+
+  raiseLayersToTop: (layerIds, label = 'Bring to Front') => {
+    const { composition } = get();
+    const ids = layerIds.filter((id) => composition.layers.some((l) => l.id === id));
+    if (ids.length === 0) return;
+    const oldComp = composition;
+    const newComp = settleComposition(placeOnNewTracks(composition, ids, { top: true }, createTrack, (l) => layerTypeToTrackType(l.type)));
+    exec({
+      label,
+      execute: () => { set({ composition: newComp }); },
+      undo: () => { set({ composition: oldComp }); },
     });
   },
 

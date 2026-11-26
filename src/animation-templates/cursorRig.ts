@@ -2,7 +2,7 @@ import { createCircleLayer } from '../core/factory';
 import type { AnimatableProperty, GroupLayer, Keyframe, Layer, ShapeLayer, Vec2, Vec4 } from '../core/types';
 import { buildKeyframesFromSpecs, easeSpecError, type CubicBezierQuad, type KeyframeEaseSpec } from '../core/keyframeSpecs';
 import { evaluateNumber, evaluateVec2 } from '../core/interpolation';
-import { makeCursor, type CursorIcon } from './cursor';
+import { cursorIconShape, makeCursor, type CursorIcon } from './cursor';
 
 // B51 - the agent-facing cursor rig. Builds on the template cursor (animation-templates/cursor.ts: the
 // same stacked icon polygons, tip at the group origin) but writes SPARSE, editable keyframes on absolute
@@ -46,13 +46,20 @@ export interface AddCursorOptions {
   name?: string;
 }
 
-/** A new cursor: [group, ...icon layers]; the group position is the hotspot (the arrow tip). */
+/** B67 follow-up (r06): the hand icon's local position in the AGENT rig, so the index fingertip (the top of the
+ *  finger, (4.5, 0) in the icon's own outline) sits on the group origin = the hotspot. The template rig keeps
+ *  (2, 2), which put the fingertip down-right of the click point. */
+export const AGENT_HAND_OFFSET: Vec2 = [-4.5, 0];
+
+/** A new cursor: [group, ...icon layers]; the group position is the hotspot (the arrow tip, the hand's
+ *  fingertip, the I-beam's centre). */
 export function buildAgentCursor(opts: AddCursorOptions): Layer[] {
   const icon = opts.icon ?? 'arrow';
   if (!isAgentIcon(icon)) throw new Error(`"icon" must be one of ${AGENT_CURSOR_ICONS.join(', ')}`);
   const rig = makeCursor(opts.name ?? 'Cursor', opts.color ?? [1, 1, 1, 1], [opts.x, opts.y], 1, AGENT_CURSOR_ICONS);
   const k = (opts.size ?? 36) / ICON_PX;
   rig.group.transform.scale.defaultValue = [k, k];
+  if (rig.icons.hand) rig.icons.hand.transform.position.defaultValue = [AGENT_HAND_OFFSET[0], AGENT_HAND_OFFSET[1]];
   const out: Layer[] = [rig.group, ...rig.layers];
   for (const l of out) {
     l.inPoint = Math.round(opts.frame);
@@ -78,9 +85,33 @@ export function findCursorRig(layers: readonly Layer[], id: string): CursorRigRe
   if (layer.type !== 'group') throw new Error(`layer "${id}" is not a cursor (use the id agent.addCursor returned)`);
   const group = layer;
   const icons: Partial<Record<AgentCursorIcon, ShapeLayer>> = {};
-  for (const l of layers) if (l.parentId === group.id && l.type === 'shape' && isAgentIcon(l.name)) icons[l.name] = l;
-  if (!icons.arrow && !icons.hand && !icons.ibeam) throw new Error(`group "${id}" is not a cursor rig (no arrow / hand / ibeam icon children)`);
+  const children = layers.filter((l): l is ShapeLayer => l.parentId === group.id && l.type === 'shape');
+  // Name first (the rig's own names), then B70: an icon the user renamed is still found by its outline.
+  for (const l of children) if (isAgentIcon(l.name) && !icons[l.name]) icons[l.name] = l;
+  for (const l of children) {
+    if (isAgentIcon(l.name)) continue;
+    const kind = cursorIconKindByGeometry(l);
+    if (kind && !icons[kind]) icons[kind] = l;
+  }
+  if (!icons.arrow && !icons.hand && !icons.ibeam) throw new Error(`group "${id}" is not a cursor rig (no arrow / hand / ibeam icon children; use the cursorId agent.addCursor returned)`);
   return { group, icons };
+}
+
+let iconSignatures: { kind: AgentCursorIcon; pts: Vec2[] }[] | null = null;
+
+/** B70: which agent-rig icon a shape layer is, from its polygon outline (rename-proof); null when it is none. */
+export function cursorIconKindByGeometry(layer: ShapeLayer): AgentCursorIcon | null {
+  if (layer.shape.type !== 'polygon') return null;
+  const verts = layer.shape.vertices;
+  iconSignatures ??= AGENT_CURSOR_ICONS.map((kind) => {
+    const ref = cursorIconShape(kind, [1, 1, 1, 1]).shape;
+    return { kind, pts: ref.type === 'polygon' ? ref.vertices.map((v) => v.position) : [] };
+  });
+  for (const sig of iconSignatures) {
+    if (sig.pts.length !== verts.length) continue;
+    if (sig.pts.every((p, i) => Math.abs(p[0] - verts[i].position[0]) < 1e-3 && Math.abs(p[1] - verts[i].position[1]) < 1e-3)) return sig.kind;
+  }
+  return null;
 }
 
 /**

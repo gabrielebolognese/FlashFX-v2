@@ -54,6 +54,8 @@ export type AgentHelperMethod =
   | 'play'
   | 'pause'
   | 'addCursor'
+  | 'setMotionPath'
+  | 'bringToFront'
   | 'cursorMoveTo'
   | 'cursorClick'
   | 'cursorIcon'
@@ -219,8 +221,8 @@ export const AGENT_ACTIONS: readonly AgentActionSpec[] = [
     description: 'Read every field of one layer, so you can see the exact dot-paths updateLayerProperty / addKeyframe accept and verify what an action produced. Read-only.',
     params: [LAYER_ID] },
   { id: 'agent.measureText', store: 'agent', method: 'measureText', undoable: false,
-    returns: '{ frame, center, box {width,height,left,top}, ink {width,height,left,right,top,bottom}, lines, lineWidths, lineHeightPx, fontSize, scale, rotation }',
-    description: 'Measure a text layer exactly as the renderer lays it out (comp px), so you can align other layers, size masks and cards, or left-align by centre. ink = the lines (width of the widest line x line count); box = the drawn quad incl. padding. Assumes scale 1 / no rotation for the edges. Read-only.',
+    returns: '{ frame, center, box {width,height,left,top}, ink {width,height,left,right,top,bottom}, glyphInk {left,right,top,bottom,width,height,centerX,centerY}, baselines, lines, lineWidths, lineHeightPx, fontSize, scale, rotation }',
+    description: 'Measure a text layer exactly as the renderer lays it out (comp px), so you can align other layers, size masks and cards, or left-align by centre. glyphInk = the TIGHT box of the drawn letters (cap / x-height, descenders, side bearings; includes the layer scale): use it to hug text with a pill, underline, highlight or mask. ink = the line box (widest line advance x line count; taller than the letters, unscaled). baselines = comp y of each line baseline. box = the drawn quad incl. padding. Rotation is not applied to the edges. Read-only.',
     params: [LAYER_ID, { name: 'frame', type: 'number', optional: true, description: 'Default: the playhead.' }] },
   { id: 'agent.placeText', store: 'agent', method: 'placeText', undoable: true,
     returns: '{ anchor, moved [dx,dy], position, keyframesShifted, inkTop, inkBottom, baselineY }',
@@ -352,7 +354,7 @@ export const AGENT_ACTIONS: readonly AgentActionSpec[] = [
     description: 'Move the pivot (anchor point) without moving the layer on screen.',
     params: [{ name: 'id', type: 'string' }, { name: 'anchor', type: '[number, number]' }, { name: 'frame', type: 'number' }] },
   { id: 'editor.reorderLayers', store: 'editor', method: 'reorderLayers', undoable: true,
-    description: 'Move layers to a stacking index.',
+    description: 'Move layers to an index of the layer LIST (getState().layers order). This does not change what draws on top: the render stack follows the timeline tracks. To put layers on top of everything use agent.bringToFront.',
     params: [{ name: 'sourceIds', type: 'string[]' }, { name: 'targetIndex', type: 'number' }] },
   { id: 'editor.moveClipInTime', store: 'editor', method: 'moveClipInTime', undoable: true,
     description: 'Slide a clip so it starts at a new frame (its length is kept; keyframes stay where they are: use agent.setClipTiming to move them with the clip). Exact by default, also for video on a magnetic track: the track turns absolute, and if the new range overlaps another clip on that track the clip moves to a new track directly above.',
@@ -482,7 +484,18 @@ export const AGENT_ACTIONS: readonly AgentActionSpec[] = [
     description: 'Make a layer trail another with spring-damped lag (follow-through).',
     params: [{ name: 'childId', type: 'string' }, { name: 'parentId', type: 'string' }, { name: 'opts', type: '{ lag?: number; bounce?: number }', optional: true }] },
   { id: 'editor.addMotionPath', store: 'editor', method: 'addMotionPath', undoable: true,
-    description: 'Attach an editable motion path to a layer.', params: [LAYER_ID] },
+    description: 'Attach an EMPTY editable motion path to a layer (the user then draws its nodes in the Motion Path tab). Agents: use agent.setMotionPath, which sets the nodes and the timing in one call.', params: [LAYER_ID] },
+  { id: 'agent.bringToFront', store: 'agent', method: 'bringToFront', undoable: true,
+    returns: '{ moved: ids bottom to top, topToBottom: the new top of the stack }',
+    description: 'Draw layers above everything else: each goes onto its own new timeline track at the top of the render stack, keeping their current order among themselves (a group takes its children along, so a cursor rig moves whole). Clip timing is unchanged. Use it when a layer added early must sit above shots built later (a cursor, a title, a flash). One undo step.',
+    params: [{ name: 'layerIds', type: 'string[]', description: 'Layer ids to raise.' }] },
+  { id: 'agent.setMotionPath', store: 'agent', method: 'setMotionPath', undoable: true,
+    returns: '{ pathId, nodes, closed, smooth, lengthPx, startFrame, endFrame, replaced } (or { pathId: null, removed } for [])',
+    description: 'Move a layer along a curve: set its motion path nodes (comp px) and the travel timing in one call. Nodes without handles are auto-smoothed into a flowing curve (smooth: false = straight segments); give { x, y, in, out } for exact bezier handles (relative to the node). The layer travels from the first node at startFrame to the last at endFrame (constant speed by default, any setKeyframes ease). orientToPath turns it along the tangent (planes, arrows, comets); loop / pingPong keep it going. Calling it again replaces the path; nodes [] removes it. Motion blur follows the path. The path stays editable in the Motion Path tab. One undo step.',
+    params: [LAYER_ID,
+      { name: 'nodes', type: '([x, y] | { x: number; y: number; in?: [dx, dy]; out?: [dx, dy] })[]', description: 'At least 2 nodes, in travel order; [] removes the path.' },
+      { name: 'options', type: '{ closed?: boolean; smooth?: boolean; orientToPath?: boolean; loop?: "none" | "loop" | "pingPong"; startFrame?: number; endFrame?: number; ease?: string | [x1, y1, x2, y2] }', optional: true,
+        description: 'Defaults: open, smooth (when no node has handles), no orient, loop none, startFrame = the layer in-point, endFrame = its last frame, ease linear.' }] },
 
   // ----- expressions -----
   { id: 'agent.setExpression', store: 'agent', method: 'setExpression', undoable: true,
@@ -648,14 +661,15 @@ export const AGENT_ACTIONS: readonly AgentActionSpec[] = [
 
   // ----- B51 cursor rig (animation-templates/cursorRig.ts) -----
   { id: 'agent.addCursor', store: 'agent', method: 'addCursor', undoable: true,
-    returns: '{ cursorId, icons: { arrow, hand, ibeam }, frame }',
-    description: 'Add a pointer cursor: a group (its position = the hotspot, the arrow tip) holding an arrow, a hand and an I-beam icon, one visible. On screen from `frame` to the comp end. Then script it with agent.cursorMoveTo / cursorClick / cursorIcon (author in time order). One undo step.',
+    returns: '{ cursorId, icons: { arrow, hand, ibeam }, frame, placement }',
+    description: 'Add a pointer cursor: a group (its position = the hotspot: the arrow tip, the hand fingertip, the I-beam centre) holding an arrow, a hand and an I-beam icon, one visible. On screen from `frame` to the comp end, stacked ABOVE every existing layer (placement "top"), so it can be added at any point of the build. Then script it with agent.cursorMoveTo / cursorClick / cursorIcon (author in time order; click ripples stack directly under the cursor). The icons may be renamed: the rig still finds them. One undo step.',
     params: [{ name: 'icon', type: 'string', optional: true, values: CURSOR_ICONS, description: 'Default arrow.' },
       { name: 'x', type: 'number', optional: true, description: 'Hotspot x (comp px), default the comp centre.' }, { name: 'y', type: 'number', optional: true },
       { name: 'frame', type: 'number', optional: true, description: 'First frame on screen (default 0).' },
       { name: 'color', type: '[r, g, b, a]', optional: true, description: 'Icon fill (default white, dark outline).' },
       { name: 'size', type: 'number', optional: true, description: 'Icon height in px (default 36).' },
-      { name: 'name', type: 'string', optional: true }] },
+      { name: 'name', type: 'string', optional: true },
+      { name: 'placement', type: 'string', optional: true, values: ['top', 'fit'], description: '"top" (default) = own tracks above every layer; "fit" = the first free track at that time (timeline-drop rules, can land under later backgrounds).' }] },
   { id: 'agent.cursorMoveTo', store: 'agent', method: 'cursorMoveTo', undoable: true,
     returns: '{ cursorId, from, to, startFrame, endFrame }',
     description: 'Move the cursor from wherever it is at `frame` to (x, y): two position keys with a ballistic ease-out (fast start, long settle; the template rig fitted as cubic-bezier [0.38, 1, 0.76, 1]) along a gentle arc (spatial tangents). It ARRIVES exactly at frame + durationFrames. Keys stay editable (timeline / graph editor / editor.setKeyframes on the group "transform.position"). One undo step.',
@@ -716,7 +730,7 @@ export const AGENT_FEATURES: readonly AgentFeature[] = [
   { id: 'layers.edit', area: 'layers', name: 'Select, rename, delete, duplicate, reorder',
     description: 'Core layer management and any property edit by dot-path.',
     ui: 'Canvas / timeline selection; Edit menu; Object > Bring to Front / Send to Back; Inspector fields',
-    actions: ['agent.getLayer', 'editor.selectLayer', 'editor.selectAllLayers', 'editor.deselectAll', 'editor.updateLayerProperty', 'editor.renameLayer', 'editor.removeLayer', 'editor.removeLayers', 'editor.duplicateSelection', 'editor.reorderLayers'],
+    actions: ['agent.getLayer', 'editor.selectLayer', 'editor.selectAllLayers', 'editor.deselectAll', 'editor.updateLayerProperty', 'editor.renameLayer', 'editor.removeLayer', 'editor.removeLayers', 'editor.duplicateSelection', 'editor.reorderLayers', 'agent.bringToFront'],
     status: 'shipped' },
   { id: 'layers.groups-parenting', area: 'layers', name: 'Groups, parenting and anchor point',
     description: 'Group layers, parent one layer to another, move the pivot.',
@@ -832,7 +846,7 @@ export const AGENT_FEATURES: readonly AgentFeature[] = [
     ui: 'Inspector > Animate tab > principles', actions: ['editor.applyMotionPrinciple', 'editor.applySecondaryMotion'], status: 'shipped' },
   { id: 'keyframes.motion-path', area: 'keyframes', name: 'Motion paths',
     description: 'Animate a layer along an editable bezier path.', ui: 'Inspector > Motion Path tab',
-    actions: ['editor.addMotionPath'], status: 'shipped' },
+    actions: ['agent.setMotionPath', 'editor.addMotionPath'], status: 'shipped' },
 
   // expressions
   { id: 'expressions.code', area: 'expressions', name: 'Expressions',

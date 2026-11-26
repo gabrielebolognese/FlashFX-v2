@@ -130,9 +130,9 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | B67 | Replicas: agent authoring ergonomics - setKeyframes accepts the breakdown ease names (easeOut, easeInOut, easeOutCubic ...; the replica kit aliases them today), createQuickText option to place by ink centre / baseline, glow defaults that show on coloured text, trim start angle option (12 o'clock), document that text layout trims leading / trailing spaces | ✅ (Nov 2026, engine session 26 Nov, headless-GPU verified) | light |
 | B68 | Replicas: export fails on video - `export_mp4` (the real exporter) aborts with "A valid external Instance reference no longer exists" when a scaled, position-keyed H.264 clip is in the comp, while render_frame of the same frames works (suspect a VideoFrame closed while still bound via importExternalTexture in the export path; found replicating r07, ties into the EX plan) | ✅ (browser) | medium |
 | B69 | Replicas: adjustment-layer masks - `editor.addMask` on an adjustment layer leaves the layer with no `masks` array (get_layer shows none), so an adjustment effect (glitch, RGB split) cannot be limited to a region; r01 f168-176 title glitch hits the whole frame (found replicating r01) | ⬜ | light |
-| B70 | Replicas: cursor rig robustness - `findCursorRig` (cursorRig.ts) finds the icon children only by the names arrow / hand / ibeam, so renaming them breaks cursorMoveTo / cursorClick / cursorIcon; a layer added at a later frame goes onto the first same-type track with free space (`ensureLayerHasTrack` findFirstFit) and renders under later shots' grounds (ties to B44). Both confirmed in source, not render-tested (found replicating r03 f1838-2589) | ⬜ | light |
+| B70 | Replicas: cursor rig robustness - `findCursorRig` (cursorRig.ts) finds the icon children only by the names arrow / hand / ibeam, so renaming them breaks cursorMoveTo / cursorClick / cursorIcon; a layer added at a later frame goes onto the first same-type track with free space (`ensureLayerHasTrack` findFirstFit) and renders under later shots' grounds (ties to B44). Both confirmed in source, not render-tested (found replicating r03 f1838-2589) | ✅ (Nov 2026, B67 follow-up: icons found by outline, agent.addCursor on top, agent.bringToFront) | light |
 | B71 | Replicas: path stroke width profile - a path stroke has one width per layer: add taper / per-vertex width along the path (r03 S34 line fans merge into a tapering bundle, f3436-3525) (found replicating r03) | ⬜ (browser) | medium |
-| B72 | Replicas: kit / measurement ergonomics - replica-kit `text({lineHeight})` writes `content.spans.0.style.lineHeight` but the renderer reads `animOverrides.lineHeight` (option silently ignored; write both); `measure_text` returns an ink box equal to the line box for VT323 (not tight to the glyph ink) (found replicating r01) | ⬜ | light |
+| B72 | Replicas: kit / measurement ergonomics - replica-kit `text({lineHeight})` writes `content.spans.0.style.lineHeight` but the renderer reads `animOverrides.lineHeight` (option silently ignored; write both); `measure_text` returns an ink box equal to the line box for VT323 (not tight to the glyph ink) (found replicating r01) | ✅ (Nov 2026, B67 follow-up: span lineHeight mirrored to the override, measure_text glyphInk) | light |
 | B73 | Replicas: render defects to reproduce (low confidence) - `editor.setShapeDash` on a 1 px tall stroked rect or a 2-point open path renders nothing (r01 f206-300); a text selector with shape 'square', start 0 and keyed `end` hides almost every glyph (r01 probe3); transform.rotation keys on some 3D-toggled text layers do not render (r05 f21-32, probe6). Repro each in a headless gpu check before fixing (found replicating r01 r05) | ⬜ (browser) | light |
 | B74 | Refs: conic (angular) gradient fill on shapes with a keyframable start angle - the spinning hue colour-wheel ring (conic exists only on text fills today) (r08) | ✅ (headless-GPU verified) | light |
 | B75 | Refs: styled number counter on a text layer - count between values with decimals, thousands separators / K-M suffix, prefix / suffix, any font and style (italic), eased (r08 view multipliers, follower count) | ✅ (headless-GPU verified) | light |
@@ -1108,6 +1108,26 @@ worked around through agent actions in the replica builds; the workaround is lis
   defaults visible on coloured text (white glow at threshold 0.6 vanishes on green); a trim start-angle option; AUTHORING note that
   text layout ignores leading / trailing spaces (padding does not move text).
 - **Verification:** gates + `verify:agent-manifest` + `verify:anim-props` extension (alias names resolve to the same curves).
+
+## B67 follow-up - authoring ergonomics, second pass (B70, B72, motion paths, errors) ✅ (Nov 2026, headless-GPU verified)
+- **Built:** clearer agent errors (`agent/suggest.ts`: "did you mean" on unknown action ids, argument names and enum
+  values; an `editor.*` action whose first param is `layerId` now fails on a missing layer instead of returning ok and
+  changing nothing; a layer NAME passed as an id names the id). B72: `editor.updateLayerProperty` on
+  `content.spans[0].style.lineHeight` also sets the unkeyed `animOverrides.lineHeight` (`core/textLineHeight.ts`, every text
+  consumer reads the override; the replica kit writes both); `agent.measureText` returns `glyphInk` (tight glyph box from
+  `getTextInkMetrics`, now with `inkLeft / inkRight`) and `baselines`, `ink` keeps its line-box meaning. B70:
+  `findCursorRig` recognises renamed icons by their outline; `agent.addCursor` stacks the rig on new tracks above every
+  layer (`placement: "fit"` = the old drop) and click ripples go directly under the cursor (`core/trackPlacement.ts:
+  placeOnNewTracks`, `applyLayerEdits({ stack })`); the agent rig's hand puts its fingertip on the hotspot (r06).
+  `agent.bringToFront { layerIds }` (store `raiseLayersToTop`): the render stack follows tracks, so `editor.reorderLayers`
+  (list order) never changed what draws on top. `agent.setMotionPath { layerId, nodes, options }` (`core/agentMotionPath.ts`):
+  nodes, auto-smooth or explicit handles, timing, ease, orient, loop in one call (B66 found `editor.addMotionPath` only made
+  an empty path).
+- **Verified:** `verify:authoring-ergonomics` 10/10 (in `npm test`), `gpu:authoring-ergonomics` 9/9 through the MCP
+  (render_frame pixels: line spacing -80 px at 0.8, VT323 `glyphInk` within 1 px of the rendered letters, cursor visible over
+  the later shot's ground while `placement: "fit"` is hidden under it, fingertip on the hotspot, ripple under the cursor,
+  `bringToFront` 40000 / 40000 px vs `reorderLayers` 0, motion path start / middle / end on the nodes), `verify:agent-manifest`
+  11/11 (137 actions).
 
 ## B68 - Export fails on a video clip ✅ (browser, launch-relevant)
 - **Delivers:** the real exporter (`agent.exportMp4` / File > Export Video) completes on comps with video layers. Today it aborts with

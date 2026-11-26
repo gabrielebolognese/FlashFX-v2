@@ -54,9 +54,12 @@ await call('run_actions', { actions: st.layers.map((l) => ({ actionId: 'editor.u
 - `renameLayer` every layer with its role: `Title line 1`, `Card`, `Accent bar`, `Avatar`,
   `Spark burst`. The owner edits by name; a timeline of `Text 1`, `Rectangle 3` is not editable in
   practice.
-- **Create back to front.** The renderer stacks by timeline track, and each new layer gets its own
-  track on top. `editor.reorderLayers` does NOT change what draws on top today (queued as B44), so
-  plan the order: background shapes first, then text, then foreground accents.
+- **Create back to front.** The renderer stacks by timeline track: a new layer drops onto the
+  top-most track that has room at its time range, else onto a new track on top. Plan the order:
+  background shapes first, then text, then foreground accents. `editor.reorderLayers` only reorders
+  the layer LIST and does NOT change what draws on top. To lift layers built earlier above everything
+  (a title, a flash, a cursor after the next shot's ground), use `agent.bringToFront { layerIds }`:
+  each goes onto its own new top track, in their current order, one undo step, no timing change.
 - Need a size from a layer you have not created yet (a card sized to its text)? Measure the string
   first with `agent.measureString { text, fontFamily, fontSize, fontWeight, fontStyle, letterSpacing }`
   (no layer is created; same layout code as the renderer), size the card, then create back to front.
@@ -139,6 +142,16 @@ House eases:
 
 Never leave real motion on linear (the default for `addKeyframe`), except progress bars.
 
+- **Motion along a curve:** `agent.setMotionPath { layerId, nodes, options }` sets the nodes (comp
+  px) and the timing in one call: the layer leaves node 0 at `startFrame` (default its in-point) and
+  arrives at the last node at `endFrame` (default its last frame). Handle-less nodes are auto-smoothed
+  into a flowing curve (`smooth: false` = straight segments); `{ x, y, in: [dx, dy], out: [dx, dy] }`
+  gives exact bezier handles. `ease` takes any setKeyframes ease (default linear = constant speed),
+  `orientToPath: true` turns the layer along the tangent (arrows, planes, comets), `loop` /
+  `pingPong` keep it going, `closed: true` closes the loop. While the path exists it replaces the
+  layer position; call it again to reshape or re-time, `nodes: []` removes it. Motion blur follows.
+  (`editor.addMotionPath` only attaches an EMPTY path for the user to draw.)
+
 ## 5. Text
 
 - `editor.createQuickText { x, y, text }`: x is the CENTRE of the text, y the centre of the line
@@ -155,10 +168,16 @@ Never leave real motion on linear (the default for `addKeyframe`), except progre
   (`content.spans.0.style.fill = { kind: "linear", angle, stops }`, angle 0 = left to right, 90 = top
   to bottom) spans the whole text, also on animated / accent-styled text.
 - Set the size in BOTH places: `animOverrides.fontSize.defaultValue` (what renders, animatable)
-  and `content.spans.0.style.fontSize`. Colour, weight, family: `content.spans.0.style.*`.
+  and `content.spans.0.style.fontSize`. Line height: `content.spans.0.style.lineHeight` now also
+  sets the unkeyed `animOverrides.lineHeight` the renderer reads (B72; it used to be ignored); key
+  `animOverrides.lineHeight` to animate it. Colour, weight, family: `content.spans.0.style.*`.
   Tracking: `animOverrides.letterSpacing.defaultValue` (px).
 - **Measure, do not guess:** `measure_text { layerId }` returns the centre, the ink box
   (`left/right/top/bottom`), per-line widths and line height, exactly as the renderer lays it out.
+  `ink` is the LINE box (advance width x line height, unscaled): taller than the letters. To hug the
+  visible letters (a pill, highlight, underline, mask or the cap band of a pixel face like VT323) use
+  `glyphInk` (`left/right/top/bottom/width/height/centerX/centerY`, comp px, layer scale included,
+  within about 1 px of the rendered pixels) and `baselines` (comp y per line).
   Left-align by putting the centre at `left + ink.width / 2` (`horizontalAlign` alone does nothing
   on an auto box). In a fixed / fixedWidth box (`layoutConfig.boundingBox`) `horizontalAlign` aligns
   inside the box, and animated or accent-styled glyphs land exactly where the static text does.
@@ -496,8 +515,13 @@ Never leave real motion on linear (the default for `addKeyframe`), except progre
   30 fps) with a ballistic ease-out and an arc (`arc`, fraction of the distance, 0 = straight); pass a
   measured cubic-bezier as `ease` to match a reference. The click squashes to `squash` (0.82) ON the
   click frame and adds a "Click ripple" ring layer (`ripple: false` to skip); make the UI react at the
-  returned `responseFrame` (click + 2). Icons: `arrow`, `hand`, `ibeam`. Keep the cursor outside any
-  "camera" group so it stays in screen space.
+  returned `responseFrame` (click + 2). Icons: `arrow`, `hand`, `ibeam`; the hotspot is the arrow
+  tip, the hand's fingertip and the I-beam centre. Keep the cursor outside any "camera" group so it
+  stays in screen space.
+- The cursor is stacked ABOVE every existing layer (B70), so add it after the shots it clicks in;
+  the ripple goes directly under the cursor. Layers you add later can still land above it: finish
+  with `agent.bringToFront { layerIds: [cursorId] }` (the rig moves whole). `placement: "fit"` keeps
+  the old timeline drop. Renaming the icons is fine: the rig finds them by their outline.
 - **UI templates.** `editor.insertAnimationTemplate { id }` at the playhead: `search-bar-typing`
   (pill opens, placeholder, query types on behind a blue caret), `toggle-switch` (a cursor clicks a
   settings toggle: knob slides, track turns green), `chat-bubbles` (received / sent bubbles with
@@ -562,6 +586,10 @@ within 1 px of the camera projection). 2.5D only: flat cards in space, no extrus
   space; per-glyph text animators are not pinned.
 
 ## 9. Check your work
+
+- **Errors name the fix.** A mistyped action id, argument name or enum value comes back with
+  `did you mean "..."`; an `editor.*` action on a missing layer id fails (it used to return ok and
+  change nothing), and a layer NAME passed as an id names the id to use. Read the error before retrying.
 
 - `seek { frame }` then `screenshot { region: "canvas" }`: the canvas capture hides DOM overlays
   (selection handles, the Flash character) by default. Check at least: mid-entrance, first full

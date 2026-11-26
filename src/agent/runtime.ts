@@ -11,7 +11,7 @@
 // commands; the composite helpers below either delegate to an undoable editor action or wrap their
 // change in a history Command, so every undoable action is one Ctrl+Z.
 
-import type { ClipTimingSpec } from '../core/trackPlacement';
+import { renderOrder, type ClipTimingSpec } from '../core/trackPlacement';
 import { isTrackCompressed } from '../core/trackCompression';
 import { useEditorStore } from '../store/editor';
 import { useHistoryStore } from '../store/history';
@@ -34,6 +34,8 @@ import { PARTICLE_PRESETS } from '../particles/presets';
 import { resolveFrame } from '../core/interpolation';
 import { getTextInkMetrics, getTextLayout, measureStringWidth } from '../engine/textAtlas';
 import { pathFractionAtAngle } from '../core/shapeModifiers';
+import { planAgentMotionPath } from '../core/agentMotionPath';
+import { uid } from '../core/factory';
 import { ensureCompositionFonts, ensureFontFace } from '../engine/fonts';
 import { MAX_FONT_BYTES, hydrateCustomFonts, useCustomFontStore } from '../engine/customFonts';
 import type { Layer, ParticleLayer, ResolvedText, TextLayer } from '../core/types';
@@ -46,6 +48,7 @@ import {
   type AgentManifest,
 } from './featureManifest';
 import { buildAgentCatalogs, type AgentCatalogs } from './catalogs';
+import { didYouMean, missingLayerMessage } from './suggest';
 import {
   buildAgentCursor, findCursorRig, planCursorMove, planCursorClick, buildClickRipple, planCursorIcon, cursorIconAt,
   AGENT_CURSOR_ICONS, type AgentCursorIcon,
@@ -216,22 +219,27 @@ export function normalizeArgs(spec: AgentActionSpec, args: unknown): unknown[] {
     const obj = args as Record<string, unknown>;
     const known = new Set(spec.params.map((p) => p.name));
     const unknownKeys = Object.keys(obj).filter((k) => !known.has(k));
-    if (unknownKeys.length) throw new Error(`unknown argument(s) ${unknownKeys.join(', ')}; expected ${spec.params.map((p) => p.name).join(', ') || 'none'}`);
+    if (unknownKeys.length) {
+      // B67: name the likely intended argument ("layerID" -> "layerId", "ease" on a layer action...).
+      const names = spec.params.map((p) => p.name);
+      const hints = unknownKeys.map((k) => didYouMean(k, names, 1)).filter(Boolean);
+      throw new Error(`unknown argument(s) ${unknownKeys.join(', ')}${hints.length === 1 && unknownKeys.length === 1 ? hints[0] : ''}; ${spec.id} expects ${names.join(', ') || 'no arguments'}`);
+    }
     positional = spec.params.map((p) => obj[p.name]);
   } else throw new Error('args must be an object keyed by param name or a positional array');
 
   if (positional.length > spec.params.length) {
-    throw new Error(`too many arguments: ${spec.id} takes ${spec.params.length}`);
+    throw new Error(`too many arguments: ${spec.id} takes ${spec.params.length} (${spec.params.map((p) => p.name).join(', ') || 'none'})`);
   }
   spec.params.forEach((p, i) => {
     const v = positional[i];
     if (v === undefined) {
-      if (!p.optional && !p.type.includes('undefined')) throw new Error(`missing required argument "${p.name}" (${p.type})`);
+      if (!p.optional && !p.type.includes('undefined')) throw new Error(`missing required argument "${p.name}" (${p.type}) for ${spec.id}`);
       return;
     }
     if (v === null && p.type.includes('null')) return;
     if (p.values && !p.values.includes(v as string)) {
-      throw new Error(`"${p.name}" must be one of ${p.values.join(', ')}`);
+      throw new Error(`"${p.name}" must be one of ${p.values.join(', ')}${typeof v === 'string' ? didYouMean(v, p.values, 1) : ''}`);
     }
   });
   // Trim trailing undefineds so optional params keep their defaults.
@@ -260,9 +268,23 @@ function pbRect(v: unknown, label: string): { x: number; y: number; width: numbe
 }
 
 function requireLayer(layerId: unknown): Layer {
-  const layer = useEditorStore.getState().composition.layers.find((l) => l.id === layerId);
-  if (!layer) throw new Error(`no layer with id "${String(layerId)}"`);
+  const layers = useEditorStore.getState().composition.layers;
+  const layer = layers.find((l) => l.id === layerId);
+  if (!layer) throw new Error(missingLayerMessage(layerId, layers));
   return layer;
+}
+
+/**
+ * B67: editor.* store actions return silently when their target layer does not exist (the UI never passes a
+ * stale id), so an agent saw ok: true and nothing changed. Check the `layerId` first param up front.
+ * agent.* helpers already throw through requireLayer.
+ */
+function assertTargetLayerExists(spec: AgentActionSpec, positional: readonly unknown[]): void {
+  if (spec.store !== 'editor' || spec.params[0]?.name !== 'layerId') return;
+  const id = positional[0];
+  if (id === undefined || id === null) return; // missing-arg errors are normalizeArgs' job
+  const layers = useEditorStore.getState().composition.layers;
+  if (!layers.some((l) => l.id === id)) throw new Error(missingLayerMessage(id, layers));
 }
 
 function requireTextLayer(layerId: unknown): TextLayer {
@@ -718,11 +740,24 @@ const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
     // The renderer centres the text quad on the layer position (scale 1, no rotation assumed here).
     const cx = t.positionX;
     const cy = t.positionY;
+    // B72: the TIGHT box of the drawn glyphs (canvas ink metrics, same layout as the rasterizer). `ink` above is
+    // the line box (advance widths x line height), kept for old builds: for a pixel face like VT323 or caps it
+    // is much taller than the visible letters.
+    const g = getTextInkMetrics(resolved.text);
+    const sx = t.scaleX;
+    const sy = t.scaleY;
+    const glyphInk = {
+      left: cx + g.inkLeft * sx, right: cx + g.inkRight * sx, top: cy + g.inkTop * sy, bottom: cy + g.inkBottom * sy,
+      width: (g.inkRight - g.inkLeft) * Math.abs(sx), height: (g.inkBottom - g.inkTop) * Math.abs(sy),
+      centerX: cx + ((g.inkLeft + g.inkRight) / 2) * sx, centerY: cy + g.inkCenterY * sy,
+    };
     return {
       frame: f,
       center: [cx, cy],
       box: { width: layout.canvasWidth, height: layout.canvasHeight, left: cx - layout.canvasWidth / 2, top: cy - layout.canvasHeight / 2 },
       ink: { width: inkWidth, height: inkHeight, left: cx - inkWidth / 2, right: cx + inkWidth / 2, top: cy - inkHeight / 2, bottom: cy + inkHeight / 2 },
+      glyphInk,
+      baselines: g.baselines.map((b) => cy + b * sy),
       lines: layout.lines,
       lineWidths,
       lineHeightPx: layout.lineHeightPx,
@@ -926,7 +961,7 @@ const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
   },
 
   // ----- B51 cursor rig (animation-templates/cursorRig.ts): each call is ONE undo step -----
-  addCursor: (icon, x, y, frame, color, size, name) => {
+  addCursor: (icon, x, y, frame, color, size, name, placement) => {
     const comp = useEditorStore.getState().composition;
     const num = (v: unknown, fallback: number, label: string): number => {
       if (v === undefined || v === null) return fallback;
@@ -945,10 +980,14 @@ const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
       size: num(size, 36, 'size'),
       name: typeof name === 'string' && name.trim() ? name.trim() : undefined,
     });
-    useEditorStore.getState().applyLayerEdits('Add cursor', { add: layers });
+    if (placement !== undefined && placement !== null && placement !== 'top' && placement !== 'fit') throw new Error('"placement" must be "top" (default: above every layer) or "fit" (the first free track, like a timeline drop)');
+    // B70: a pointer belongs above the shot it clicks in. 'fit' (the old behaviour) drops it onto the first
+    // track with free space at that time, which can be under later shots' backgrounds.
+    const onTop = placement !== 'fit';
+    useEditorStore.getState().applyLayerEdits('Add cursor', { add: layers, ...(onTop ? { stack: { ids: layers.map((l) => l.id), top: true as const } } : {}) });
     const icons: Record<string, string> = {};
     for (const l of layers.slice(1)) icons[l.name] = l.id;
-    return { cursorId: layers[0].id, icons, frame: start };
+    return { cursorId: layers[0].id, icons, frame: start, placement: onTop ? 'top' : 'fit' };
   },
 
   cursorMoveTo: (cursorId, frame, x, y, durationFrames, ease, arc) => {
@@ -974,7 +1013,9 @@ const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
     const f = Math.round(frame);
     const group = planCursorClick(rig.group, { frame: f, squash: squash as number | undefined });
     const ring = ripple === false ? null : buildClickRipple(rig.group, f, { color: rippleColor as [number, number, number, number] | undefined });
-    ed.applyLayerEdits('Cursor click', { update: [group], add: ring ? [ring] : [] });
+    // B70: the ripple goes on a new track directly under the cursor (above the content it clicks).
+    const rigIds = [rig.group.id, ...Object.values(rig.icons).map((l) => l!.id)];
+    ed.applyLayerEdits('Cursor click', { update: [group], add: ring ? [ring] : [], ...(ring ? { stack: { ids: [ring.id], belowLayerIds: rigIds } } : {}) });
     if (!ring) useEditorStore.getState().selectLayer(rig.group.id);
     return { cursorId: rig.group.id, frame: f, rippleId: ring ? ring.id : null, responseFrame: f + 2 };
   },
@@ -987,6 +1028,57 @@ const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
     const before = cursorIconAt(rig, Math.round(frame));
     ed.applyLayerEdits('Cursor icon', { update: planCursorIcon(rig, frame, icon as AgentCursorIcon) });
     return { cursorId: rig.group.id, frame: Math.round(frame), from: before, icon };
+  },
+
+  // ----- B67 follow-up (B70): raise layers to the top of the RENDER stack (tracks), in one undo step -----
+  bringToFront: (layerIds) => {
+    if (!Array.isArray(layerIds) || layerIds.length === 0 || !layerIds.every((id) => typeof id === 'string')) throw new Error('"layerIds" must be a non-empty array of layer ids');
+    const ed = useEditorStore.getState();
+    const comp = ed.composition;
+    for (const id of layerIds) if (!comp.layers.some((l) => l.id === id)) throw new Error(missingLayerMessage(id, comp.layers));
+    // Keep their current relative order (bottom to top), and take each group's children along (a rig moves whole).
+    const want = new Set<string>(layerIds as string[]);
+    for (let grew = true; grew;) {
+      grew = false;
+      for (const l of comp.layers) if (l.parentId && want.has(l.parentId) && !want.has(l.id) && comp.layers.find((p) => p.id === l.parentId)?.type === 'group') { want.add(l.id); grew = true; }
+    }
+    const ordered = renderOrder(comp.layers, comp.tracks).filter((l) => want.has(l.id) && l.type !== 'audio').map((l) => l.id);
+    ed.raiseLayersToTop(ordered, 'Bring to front');
+    const after = useEditorStore.getState().composition;
+    return { moved: ordered, topToBottom: renderOrder(after.layers, after.tracks).map((l) => l.id).reverse().slice(0, ordered.length) };
+  },
+
+  // ----- B67 follow-up: give a layer's motion path real nodes (editor.addMotionPath only made an empty one) -----
+  setMotionPath: (layerId, nodes, options) => {
+    const layer = requireLayer(layerId);
+    if (layer.type === 'audio') throw new Error('audio layers have no position to move along a path');
+    const ed = useEditorStore.getState();
+    const oldComp = ed.composition;
+    const all = oldComp.motionPaths ?? [];
+    const own = all.filter((p) => p.layerId === layer.id);
+    if (Array.isArray(nodes) && nodes.length === 0) {
+      if (own.length === 0) return { pathId: null, removed: 0 };
+      const next = { ...oldComp, motionPaths: all.filter((p) => p.layerId !== layer.id) };
+      useHistoryStore.getState().execute({
+        label: 'Remove motion path',
+        execute: () => { useEditorStore.setState({ composition: { ...useEditorStore.getState().composition, motionPaths: next.motionPaths } }); },
+        undo: () => { useEditorStore.setState({ composition: { ...useEditorStore.getState().composition, motionPaths: all } }); },
+      });
+      return { pathId: null, removed: own.length };
+    }
+    const plan = planAgentMotionPath(layer, nodes, options, uid, own[0]);
+    // One path per layer drives it (the resolver takes the first with >= 2 nodes): replace them all.
+    const nextPaths = [...all.filter((p) => p.layerId !== layer.id), plan.path];
+    useHistoryStore.getState().execute({
+      label: own.length ? 'Edit motion path' : 'Add motion path',
+      execute: () => { useEditorStore.setState({ composition: { ...useEditorStore.getState().composition, motionPaths: nextPaths } }); },
+      undo: () => { useEditorStore.setState({ composition: { ...useEditorStore.getState().composition, motionPaths: all } }); },
+    });
+    return {
+      pathId: plan.path.id, nodes: plan.path.nodes.length, closed: plan.path.closed, smooth: plan.path.nodes.some((n) => n.vertexType !== 'corner'),
+      lengthPx: Math.round(plan.length * 10) / 10, startFrame: plan.startFrame, endFrame: plan.endFrame, replaced: own.length > 0,
+      note: 'While the path exists its position replaces the layer position (orientToPath also sets the rotation). Re-time or reshape it by calling agent.setMotionPath again; [] removes it.',
+    };
   },
 
   // ----- B67 place text by what the eye sees: ink centre / baseline instead of the line-box centre -----
@@ -1302,9 +1394,10 @@ function resolveCallable(spec: AgentActionSpec): (...args: unknown[]) => unknown
 
 export async function runAgentAction(actionId: string, args?: unknown): Promise<AgentRunResult> {
   const spec = ACTIONS_BY_ID.get(actionId);
-  if (!spec) return { ok: false, actionId, error: `"${actionId}" is not an allowed agent action (see listFeatures().actions)` };
+  if (!spec) return { ok: false, actionId, error: `"${actionId}" is not an allowed agent action${didYouMean(String(actionId), [...ACTIONS_BY_ID.keys()])} (see listFeatures().actions)` };
   try {
     const positional = normalizeArgs(spec, args);
+    assertTargetLayerExists(spec, positional);
     const fn = resolveCallable(spec);
     const result = await fn(...positional);
     const ed = useEditorStore.getState();

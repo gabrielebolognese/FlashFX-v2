@@ -156,7 +156,7 @@ const TOOLS = [
   },
   {
     name: 'measure_text',
-    description: 'Measure a text layer as the renderer lays it out (agent.measureText): centre, ink box (left/right/top/bottom of the lines), per-line widths, line height. Use it to align shapes, size masks and cards, or left-align text by computing its centre.',
+    description: 'Measure a text layer as the renderer lays it out (agent.measureText): centre, glyphInk (the TIGHT box of the drawn letters, use it to hug text with a pill, underline or mask), ink (the line box: advance width x line height, taller than the letters), baselines, per-line widths, line height. Use it to align shapes, size masks and cards, or left-align text by computing its centre.',
     inputSchema: { type: 'object', required: ['layerId'], properties: { layerId: { type: 'string' }, frame: { type: 'number', description: 'Default: the playhead.' } } },
     annotations: { readOnlyHint: true },
     handler: async ({ layerId, frame }) => fromRun(await session.run('agent.measureText', frame === undefined ? { layerId } : { layerId, frame })),

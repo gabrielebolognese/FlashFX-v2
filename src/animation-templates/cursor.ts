@@ -50,6 +50,11 @@ export interface CursorRig {
   current: CursorIcon;
 }
 
+/** One cursor icon polygon (exported for B70: the agent rig recognises a renamed icon by this geometry). */
+export function cursorIconShape(kind: CursorIcon, color: Vec4): ShapeLayer {
+  return iconShape(kind, color);
+}
+
 function iconShape(kind: CursorIcon, color: Vec4): ShapeLayer {
   // Each icon is a small polygon at the cursor's local origin; only one is opaque at a time.
   // I-beam (text cursor): hotspot at its centre, serifs top and bottom.

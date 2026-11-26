@@ -252,6 +252,9 @@ export interface TextInkMetrics {
   inkCenterY: number;
   /** The line-box centre offset (always ~0 for point text: the raster is centred on the position). */
   boxCenterY: number;
+  /** B72: left / right of the real glyph ink across all lines (+ = right of the centre; skew not applied). */
+  inkLeft: number;
+  inkRight: number;
 }
 
 // B67 - agents place text by what the eye sees (the ink centre or the baseline), not the line-box
@@ -263,9 +266,13 @@ export function getTextInkMetrics(text: ResolvedText): TextInkMetrics {
   ctx.font = buildFontString(text);
   ctx.textBaseline = 'top';
   const half = layout.canvasHeight / 2;
+  const alignWidth = layout.canvasWidth - 2 * (layout.skewPad ?? 0);
+  const halfW = layout.canvasWidth / 2;
   const baselines: number[] = [];
   let inkTop = Infinity;
   let inkBottom = -Infinity;
+  let inkLeft = Infinity;
+  let inkRight = -Infinity;
   layout.lines.forEach((line, i) => {
     const top = layout.padding + i * layout.lineHeightPx;
     const m = ctx.measureText(line.length ? line : 'x');
@@ -274,9 +281,26 @@ export function getTextInkMetrics(text: ResolvedText): TextInkMetrics {
     if (line.trim().length === 0) return;
     inkTop = Math.min(inkTop, top - m.actualBoundingBoxAscent - half);
     inkBottom = Math.max(inkBottom, top + m.actualBoundingBoxDescent - half);
+    // B72: horizontal ink, drawn at the same x as renderTextToCanvas (per glyph when letter-spaced).
+    const x0 = lineStartX(text, alignWidth, layout.padding, lineWidth(ctx, line, text.letterSpacing)) + (layout.skewPad ?? 0) - halfW;
+    if (text.letterSpacing === 0) {
+      inkLeft = Math.min(inkLeft, x0 - m.actualBoundingBoxLeft);
+      inkRight = Math.max(inkRight, x0 + m.actualBoundingBoxRight);
+    } else {
+      let gx = x0;
+      for (const ch of line) {
+        const g = ctx.measureText(ch);
+        if (ch.trim().length) {
+          inkLeft = Math.min(inkLeft, gx - g.actualBoundingBoxLeft);
+          inkRight = Math.max(inkRight, gx + g.actualBoundingBoxRight);
+        }
+        gx += g.width + text.letterSpacing;
+      }
+    }
   });
   if (!Number.isFinite(inkTop)) { inkTop = 0; inkBottom = 0; }
-  return { baselines, inkTop, inkBottom, inkCenterY: (inkTop + inkBottom) / 2, boxCenterY: 0 };
+  if (!Number.isFinite(inkLeft)) { inkLeft = 0; inkRight = 0; }
+  return { baselines, inkTop, inkBottom, inkCenterY: (inkTop + inkBottom) / 2, boxCenterY: 0, inkLeft, inkRight };
 }
 
 // X advance to reach character index `count` within `line`, mirroring how

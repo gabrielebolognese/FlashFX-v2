@@ -18,6 +18,7 @@ npm run mcp:flashfx    # Local stdio MCP server driving a real FlashFX tab over 
 npm run gpu:mcp        # MCP smoke over real stdio: project + text + keyframe + screenshot + MP4 (local, needs Chrome)
 npm run gpu:anim-props # Colour / effect-param keyframes, setKeyframes, renderFrame: keyed == static twin on the real WebGPU renderer (local)
 npm run gpu:text-paint # B64 + B67: gradient / outline text, agent.placeText, first glow, trim start angle - render_frame pixels via the MCP (local)
+npm run gpu:authoring-ergonomics # B67 follow-up: error hints, lineHeight, glyphInk, cursor stacking / hotspot, bringToFront, setMotionPath - render_frame pixels via the MCP (local)
 npm run gpu:bridge     # FlashFX Link e2e (local, needs Chrome): VITE_FFX_LINK=1 build + real tab paired over loopback, recipe build, MP4 + .ffx, round trip, security
 npm run verify:mcp-link # FlashFX Link without a browser (CI): protocol, RFC 6455 codec, Origin/Host/token checks, access gate, packaged server over stdio
 npm run mcp:package    # Build packages/flashfx-mcp (one-file server bundle + recipes + skill + flashfx.mcpb for Claude Desktop)

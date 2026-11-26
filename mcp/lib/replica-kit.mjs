@@ -122,7 +122,12 @@ export async function openReplica({ name, width, height, fps, frames, bg = '#000
     const extra = {};
     if (spacing !== undefined) extra['animOverrides.letterSpacing.defaultValue'] = spacing;
     if (italic) extra['content.spans.0.style.fontStyle'] = 'italic';
-    if (lineHeight !== undefined) extra['content.spans.0.style.lineHeight'] = lineHeight;
+    // B72: the renderer reads animOverrides.lineHeight. The engine now mirrors a span write there too, but
+    // the kit writes both so it also works against an older engine.
+    if (lineHeight !== undefined) {
+      extra['content.spans.0.style.lineHeight'] = lineHeight;
+      extra['animOverrides.lineHeight.defaultValue'] = lineHeight;
+    }
     if (box) extra['layoutConfig.boundingBox'] = box;
     if (align) extra['layoutConfig.horizontalAlign'] = align;
     if (Object.keys(extra).length) await sets(id, extra);

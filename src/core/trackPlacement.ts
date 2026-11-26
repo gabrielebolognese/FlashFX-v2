@@ -90,6 +90,53 @@ export function placeMatteAbove(
   return { ...comp, tracks, layers };
 }
 
+/** Where `placeOnNewTracks` puts its tracks: above every visual track, or directly under the lowest track of some layers. */
+export type NewTrackSpot = { top: true } | { belowLayerIds: readonly string[] };
+
+/**
+ * B70: put each listed layer on its OWN new absolute track, in list order (first = lowest of them), either
+ * above every visual track or directly under the lowest track that holds one of `belowLayerIds` (a click
+ * ripple under its cursor). Tracks a layer leaves turn absolute first so a magnetic track does not re-pack
+ * the clips that stay; no clip changes time. Orders may be fractional (the store's settle pass renumbers).
+ * Unknown ids are skipped; audio layers are never moved.
+ */
+export function placeOnNewTracks(
+  comp: Composition,
+  layerIds: readonly string[],
+  spot: NewTrackSpot,
+  makeTrack: TrackFactory,
+  trackTypeOf: (layer: Layer) => TrackType,
+): Composition {
+  const moving = layerIds.map((id) => comp.layers.find((l) => l.id === id)).filter((l): l is Layer => !!l && l.type !== 'audio');
+  if (moving.length === 0) return comp;
+  const tracks = comp.tracks.slice();
+  const orderOf = (trackId: string | null): number | null => (trackId ? (tracks.find((t) => t.id === trackId)?.order ?? null) : null);
+  for (const l of moving) {
+    const idx = l.trackId ? tracks.findIndex((t) => t.id === l.trackId) : -1;
+    if (idx >= 0 && isTrackCompressed(tracks[idx])) tracks[idx] = { ...tracks[idx], compressed: false };
+  }
+  const n = moving.length;
+  let orderAt: (i: number) => number;
+  if ('top' in spot) {
+    const visual = tracks.filter((t) => t.type !== 'audio').map((t) => t.order);
+    const minVisual = visual.length ? Math.min(...visual) : 0;
+    orderAt = (i) => minVisual - 1 - i;
+  } else {
+    const below = spot.belowLayerIds.map((id) => orderOf(comp.layers.find((l) => l.id === id)?.trackId ?? null)).filter((o): o is number => o !== null);
+    if (below.length === 0) return placeOnNewTracks(comp, layerIds, { top: true }, makeTrack, trackTypeOf);
+    const lowest = Math.max(...below);
+    // Between the reference track and the next one down (orders are integers before this call).
+    orderAt = (i) => lowest + (n - i) / (n + 1);
+  }
+  let layers = comp.layers;
+  moving.forEach((l, i) => {
+    const t: Track = { ...makeTrack(`${l.type} track`, trackTypeOf(l), orderAt(i)), compressed: false };
+    tracks.push(t);
+    layers = layers.map((x) => (x.id === l.id ? ({ ...x, trackId: t.id } as Layer) : x));
+  });
+  return { ...comp, tracks, layers };
+}
+
 /** Set a track's magnetism (compressed = clips packed gaplessly from frame 0). Unknown id = unchanged. */
 export function withTrackCompression(comp: Composition, trackId: string, compressed: boolean): Composition {
   const track = comp.tracks.find((t) => t.id === trackId);
