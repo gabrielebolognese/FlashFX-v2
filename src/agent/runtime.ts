@@ -31,7 +31,8 @@ import { videoDecoderPool } from '../engine/video/videoDecoderPool';
 import { frameScheduler } from '../engine/video/frameScheduler';
 import { PARTICLE_PRESETS } from '../particles/presets';
 import { resolveFrame } from '../core/interpolation';
-import { getTextLayout, measureStringWidth } from '../engine/textAtlas';
+import { getTextInkMetrics, getTextLayout, measureStringWidth } from '../engine/textAtlas';
+import { pathFractionAtAngle } from '../core/shapeModifiers';
 import { ensureCompositionFonts, ensureFontFace } from '../engine/fonts';
 import { MAX_FONT_BYTES, hydrateCustomFonts, useCustomFontStore } from '../engine/customFonts';
 import type { Layer, ParticleLayer, ResolvedText, TextLayer } from '../core/types';
@@ -935,6 +936,69 @@ const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
     const before = cursorIconAt(rig, Math.round(frame));
     ed.applyLayerEdits('Cursor icon', { update: planCursorIcon(rig, frame, icon as AgentCursorIcon) });
     return { cursorId: rig.group.id, frame: Math.round(frame), from: before, icon };
+  },
+
+  // ----- B67 place text by what the eye sees: ink centre / baseline instead of the line-box centre -----
+  placeText: async (layerId, x, y, anchor, frame) => {
+    const layer = requireTextLayer(layerId);
+    const mode = anchor === undefined || anchor === null ? 'inkCenter' : anchor;
+    if (mode !== 'inkCenter' && mode !== 'baseline' && mode !== 'box') throw new Error('anchor must be "inkCenter", "baseline" (first line) or "box" (line-box centre)');
+    if (typeof y !== 'number' || !Number.isFinite(y)) throw new Error('"y" must be a number (comp px)');
+    if (x !== undefined && x !== null && (typeof x !== 'number' || !Number.isFinite(x))) throw new Error('"x" must be a number (comp px) or null to keep it');
+    await ensureCompositionFonts(layer);
+    const ed = useEditorStore.getState();
+    const f = typeof frame === 'number' && Number.isFinite(frame) ? Math.round(frame) : useTimelineStore.getState().currentFrame;
+    const probe = { ...layer, animators: [], decode: undefined, masks: [], textPath: undefined, inPoint: Math.min(layer.inPoint, f), outPoint: Math.max(layer.outPoint, f + 1) };
+    const fullText = layer.content.spans.map((sp) => sp.text).join('');
+    const first = layer.content.spans[0];
+    if (first) probe.content = { ...layer.content, spans: [{ ...first, text: fullText }] };
+    const comp = { ...ed.composition, layers: ed.composition.layers.map((l) => (l.id === layer.id ? probe : l)) };
+    const resolved = resolveFrame(comp, f, { getComposition: ed.getComposition }).layers.find((l) => l.id === layer.id);
+    if (!resolved?.text) throw new Error('the text did not resolve at this frame');
+    const m = getTextInkMetrics(resolved.text);
+    const t = resolved.transform;
+    const local = mode === 'inkCenter' ? m.inkCenterY : mode === 'baseline' ? m.baselines[0] ?? 0 : 0;
+    // The raster is centred on the position; the local offset scales and rotates with the layer.
+    const rad = (t.rotation * Math.PI) / 180;
+    const offX = -Math.sin(rad) * local * t.scaleY;
+    const offY = Math.cos(rad) * local * t.scaleY;
+    const dx = x === undefined || x === null ? 0 : x - (t.positionX + offX);
+    const dy = y - (t.positionY + offY);
+    const pos = layer.transform.position;
+    const shift = (v: unknown): [number, number] => { const p = v as [number, number]; return [p[0] + dx, p[1] + dy]; };
+    const nextPos = { ...pos, defaultValue: shift(pos.defaultValue), keyframes: pos.keyframes.map((k) => ({ ...k, value: shift(k.value) })) };
+    if (dx !== 0 || dy !== 0) ed.applyLayerEdits('Place text', { update: [{ ...layer, transform: { ...layer.transform, position: nextPos } }] });
+    return {
+      anchor: mode,
+      moved: [dx, dy],
+      position: shift(pos.defaultValue),
+      keyframesShifted: pos.keyframes.length,
+      inkTop: y - offY + m.inkTop * t.scaleY,
+      inkBottom: y - offY + m.inkBottom * t.scaleY,
+      baselineY: y - offY + (m.baselines[0] ?? 0) * t.scaleY,
+      note: layer.parentId ? 'parented layer: the shift is applied in parent space (exact when the parent chain is unscaled and unrotated)' : undefined,
+    };
+  },
+
+  // ----- B67 trim start angle: rings and arcs draw on from a clock angle (0 = 12 o’clock, clockwise) -----
+  setTrimStartAngle: (layerId, angle, modifierIndex) => {
+    const layer = requireLayer(layerId);
+    if (layer.type !== 'shape') throw new Error(`layer "${String(layerId)}" is a ${layer.type}, not a shape layer`);
+    if (layer.shape.type !== 'polygon') throw new Error('trim works on path shapes: run editor.convertShapeToPath first (rings: a stroked circle converted to a path)');
+    if (typeof angle !== 'number' || !Number.isFinite(angle)) throw new Error('"angle" must be a number in degrees (0 = 12 o’clock, clockwise)');
+    const mods = layer.modifiers ?? [];
+    const idx = modifierIndex === undefined || modifierIndex === null ? mods.findIndex((m) => m.type === 'trim') : modifierIndex;
+    const trim = typeof idx === 'number' ? mods[idx] : undefined;
+    if (!trim || trim.type !== 'trim') throw new Error('no trim modifier on this layer (add one with editor.addShapeModifier { type: "trim" })');
+    const f = pathFractionAtAngle(layer.shape.vertices, layer.shape.closed !== false, angle);
+    // The visible span starts at start + offset; shift the offset (and its keys) so it starts at f.
+    const startNow = trim.start.keyframes.length ? trim.start.keyframes[0].value as number : trim.start.defaultValue as number;
+    const offNow = trim.offset.defaultValue as number;
+    const delta = f - startNow - offNow;
+    const offset = { ...trim.offset, defaultValue: offNow + delta, keyframes: trim.offset.keyframes.map((k) => ({ ...k, value: (k.value as number) + delta })) };
+    const nextMods = mods.map((m, i) => (i === idx ? { ...trim, offset } : m));
+    useEditorStore.getState().applyLayerEdits('Trim start angle', { update: [{ ...layer, modifiers: nextMods }] });
+    return { modifierIndex: idx, angle, pathFraction: f, offset: offNow + delta };
   },
 
   // ----- B35 typing caret on a text layer (core/textCaret.ts) -----

@@ -150,6 +150,32 @@ export function trimPath(
  * path (the pattern position at arc 0 is `dashOffset`). An empty/zero pattern returns the whole path as
  * one contour (no dashing). Pure arc-length walk - mirrors trim; the fill is unaffected (stroke only).
  */
+/**
+ * B67 - trim start angle: the arc-length fraction (0..1, measured from vertex 0 along the path) where a
+ * ray from the path's bounding-box centre at `angleDeg` meets the outline. Clock convention, Y-down
+ * comp space: 0 = 12 o'clock, 90 = 3 o'clock, clockwise. Set a trim's start + offset to this value and
+ * a ring draws on from that angle (AE rings usually start at 12 o'clock; vertex 0 of a converted
+ * circle sits elsewhere). Pure; ~1/256 of the perimeter resolution, below a pixel on a 1080 ring.
+ */
+export function pathFractionAtAngle(vertices: PathVertex[], closed: boolean, angleDeg: number): number {
+  if (vertices.length < 2) return 0;
+  const { pts, cum, total } = flattenAll(vertices, closed, 64);
+  if (total <= 0 || pts.length === 0) return 0;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const q of pts) { minX = Math.min(minX, q[0]); maxX = Math.max(maxX, q[0]); minY = Math.min(minY, q[1]); maxY = Math.max(maxY, q[1]); }
+  const c: Vec2 = [(minX + maxX) / 2, (minY + maxY) / 2];
+  const a = (angleDeg * Math.PI) / 180;
+  const dir: Vec2 = [Math.sin(a), -Math.cos(a)];
+  let best = 0, bestDot = -Infinity;
+  for (let i = 0; i < pts.length; i++) {
+    const d = norm(sub(pts[i], c));
+    const dot = d[0] * dir[0] + d[1] * dir[1];
+    if (dot > bestDot) { bestDot = dot; best = i; }
+  }
+  const f = cum[best] / total;
+  return f >= 1 - 1e-9 ? 0 : f;
+}
+
 export function dashPath(vertices: PathVertex[], closed: boolean, dashArray: number[], dashOffset: number, perSeg = 24): PathVertex[][] {
   if (vertices.length < 2) return [vertices.map(clonePathVertex)];
   let pattern = dashArray.filter((d) => Number.isFinite(d) && d > 0);

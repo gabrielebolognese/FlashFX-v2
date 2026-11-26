@@ -232,6 +232,44 @@ export function measureStringWidth(text: ResolvedText, str: string): number {
   return lineWidth(ctx, str, text.letterSpacing);
 }
 
+/** Vertical glyph metrics of a text raster, in layer px relative to the raster CENTRE (= the layer position at scale 1). */
+export interface TextInkMetrics {
+  /** Alphabetic baseline of every line (y offset from the centre, + = down). */
+  baselines: number[];
+  /** Top / bottom of the real glyph ink across all lines (+ = down). */
+  inkTop: number;
+  inkBottom: number;
+  /** (inkTop + inkBottom) / 2: how far the visible ink centre sits below the layer position. */
+  inkCenterY: number;
+  /** The line-box centre offset (always ~0 for point text: the raster is centred on the position). */
+  boxCenterY: number;
+}
+
+// B67 - agents place text by what the eye sees (the ink centre or the baseline), not the line-box
+// centre: mixed-case words sit ~0.15 x size high when y is the box centre. Same font string, wrap and
+// line tops as the rasterizer below (textBaseline 'top' at padding + i * lineHeightPx).
+export function getTextInkMetrics(text: ResolvedText): TextInkMetrics {
+  const ctx = measureCtx();
+  const layout = computeLayout(ctx, text);
+  ctx.font = buildFontString(text);
+  ctx.textBaseline = 'top';
+  const half = layout.canvasHeight / 2;
+  const baselines: number[] = [];
+  let inkTop = Infinity;
+  let inkBottom = -Infinity;
+  layout.lines.forEach((line, i) => {
+    const top = layout.padding + i * layout.lineHeightPx;
+    const m = ctx.measureText(line.length ? line : 'x');
+    // alphabeticBaseline is measured from the textBaseline ('top') with + = up.
+    baselines.push(top - m.alphabeticBaseline - half);
+    if (line.trim().length === 0) return;
+    inkTop = Math.min(inkTop, top - m.actualBoundingBoxAscent - half);
+    inkBottom = Math.max(inkBottom, top + m.actualBoundingBoxDescent - half);
+  });
+  if (!Number.isFinite(inkTop)) { inkTop = 0; inkBottom = 0; }
+  return { baselines, inkTop, inkBottom, inkCenterY: (inkTop + inkBottom) / 2, boxCenterY: 0 };
+}
+
 // X advance to reach character index `count` within `line`, mirroring how
 // drawTextWithSpacing advances curX (each glyph adds its width + spacing).
 export function measureAdvance(text: ResolvedText, line: string, count: number): number {
