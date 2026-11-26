@@ -44,6 +44,7 @@ import type {
 } from '../../core/types';
 import { DEFAULT_DECODE_CHARSET } from '../../core/textDecode';
 import { normalizeTextCaret } from '../../core/textCaret';
+import { normalizeTextCounter } from '../../core/textCounter';
 import { isMaskMode } from '../../core/maskCoverage';
 import { normalizeBlockParams } from '../../core/pixelBlocks';
 import { sanitizeRefineEdge } from '../../core/refineEdge';
@@ -597,6 +598,7 @@ function validateLayer(raw: unknown): Layer | null {
       const decode = ensureTextDecode(r.decode);
       const textPath = ensureTextPath(r.textPath);
       const caret = normalizeTextCaret(r.caret);
+      const counter = normalizeTextCounter(r.counter);
       return {
         ...baseFields,
         type: 'text',
@@ -608,6 +610,7 @@ function validateLayer(raw: unknown): Layer | null {
         ...(typeof r.strokeStyleId === 'string' ? { strokeStyleId: r.strokeStyleId } : {}),
         ...(animators ? { animators } : {}),
         ...(decode ? { decode } : {}),
+        ...(counter ? { counter } : {}),
         ...(textPath ? { textPath } : {}),
         ...(r.reflowHidden === true ? { reflowHidden: true } : {}),
         ...(caret ? { caret } : {}),

@@ -135,7 +135,7 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | B72 | Replicas: kit / measurement ergonomics - replica-kit `text({lineHeight})` writes `content.spans.0.style.lineHeight` but the renderer reads `animOverrides.lineHeight` (option silently ignored; write both); `measure_text` returns an ink box equal to the line box for VT323 (not tight to the glyph ink) (found replicating r01) | ⬜ | light |
 | B73 | Replicas: render defects to reproduce (low confidence) - `editor.setShapeDash` on a 1 px tall stroked rect or a 2-point open path renders nothing (r01 f206-300); a text selector with shape 'square', start 0 and keyed `end` hides almost every glyph (r01 probe3); transform.rotation keys on some 3D-toggled text layers do not render (r05 f21-32, probe6). Repro each in a headless gpu check before fixing (found replicating r01 r05) | ⬜ (browser) | light |
 | B74 | Refs: conic (angular) gradient fill on shapes with a keyframable start angle - the spinning hue colour-wheel ring (conic exists only on text fills today) (r08) | ⬜ | light |
-| B75 | Refs: styled number counter on a text layer - count between values with decimals, thousands separators / K-M suffix, prefix / suffix, any font and style (italic), eased (r08 view multipliers, follower count) | ⬜ | light |
+| B75 | Refs: styled number counter on a text layer - count between values with decimals, thousands separators / K-M suffix, prefix / suffix, any font and style (italic), eased (r08 view multipliers, follower count) | ✅ (headless-GPU verified) | light |
 | B76 | Refs: design-tool UI kit - pen / crosshair / rotate / direct-select cursor icons, a selection box with handles that follows a layer's bounds, anchor squares, live dX / dY / W / H / angle tooltip readouts, smart-guide labels (extends the B51 cursor rig) (r11) | ⬜ | medium |
 | B77 | Refs: text style keyframes - hold-keyed font family / weight / style switches on one text layer (type-style switcher) (r10) | ⬜ | light |
 | B78 | Refs: soft freeform matte - a blurred / feathered shape used as a track matte keeps its blur (flower-shaped soft reveal) (r10) | ⬜ (browser) | medium |
@@ -1072,10 +1072,18 @@ footage-person-matte = B79, outline-imported-fonts = B80.
 - **Source beats:** r08 f145-1057, f1082-1477 (spinning hue colour-wheel ring in every section).
 - **Verification:** gates + CPU twin of the conic colour at a pixel + headless pixel check (hue at 12 / 3 / 6 / 9 o'clock).
 
-## B75 - Styled number counter ⬜
+## B75 - Styled number counter ✅ (headless-GPU verified)
 - **Delivers:** a counter binding on a text layer: from / to, decimals, separators, compact suffix (10K, 1.2M), prefix / suffix text, ease, start / end frame; the text keeps its own font, style and colour; frame-pure.
 - **Source beats:** r08 f330-440, f653-684, f893-924, f1196-1335, f1480-1492.
 - **Verification:** gates + `verify:*` harness (formatted string per frame, scrubbing byte-identical).
+- **Built (wave 2, Nov 2026):** `TextLayer.counter` (`core/textCounter.ts`: from / to, frame range, ease name or cubic-bezier,
+  stepFrames, decimals, separator, decimal mark, compact K / M / B with rounding that never shows "1000K", prefix / suffix,
+  spanIndex), applied in `resolveFrame` by rewriting the counter span per frame (`withTextCounter`, same object when absent);
+  persisted through validation. `agent.setTextCounter` (one undo step, returns sample strings), feature `text.counter`,
+  recipe `count-up`, AUTHORING section 5.
+- **Verified:** `verify:text-counter` 8/8 (formatting, compact, easing / stepping / clamping, prefix / suffix, only the counter
+  span rewritten, per-frame resolve + identical scrub, persistence); `gpu:text-counter` 3/3 through the MCP (an italic
+  Instrument Serif counter at f0 / f15 / f30 is pixel-identical to the same layer typed by hand: 0 px differ).
 
 ## B76 - Design-tool UI kit ⬜
 - **Delivers:** cursor icons for a design app (pen, crosshair, rotate, direct-select) on the B51 rig, a selection box with corner handles that tracks a target layer's bounds over time, anchor squares on path points, and a number tooltip (dX / dY / W / H / angle) whose value follows the target; agent actions; one undo step each.

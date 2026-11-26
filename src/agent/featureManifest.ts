@@ -61,7 +61,8 @@ export type AgentHelperMethod =
   | 'pixelBlockReveal'
   | 'pixelSparkle'
   | 'applyLayerEffects'
-  | 'setClonerSources';
+  | 'setClonerSources'
+  | 'setTextCounter';
 
 export type FeatureStatus = 'shipped' | 'browser-gated' | 'partial';
 
@@ -371,6 +372,11 @@ export const AGENT_ACTIONS: readonly AgentActionSpec[] = [
   { id: 'agent.applyTextDecode', store: 'agent', method: 'applyTextDecode', undoable: true,
     description: 'Scramble/decode reveal (hacker text) over [startFrame, startFrame+durationFrames].',
     params: [LAYER_ID, { name: 'startFrame', type: 'number', optional: true }, { name: 'durationFrames', type: 'number', optional: true }] },
+  { id: 'agent.setTextCounter', store: 'agent', method: 'setTextCounter', undoable: true,
+    returns: '{ counter, sampleText: { start, middle, end } }',
+    description: 'Styled number counter (B75): one span of a text layer counts from `from` to `to` over [startFrame, endFrame] on an ease, formatted with separators / decimals / compact units (10K, 1.2M) and a prefix / suffix. The span keeps its own font, weight, italic and colour; put a differently styled prefix or suffix in the neighbouring spans (editor.styleTextRange). Frame-pure. null removes it. One undo step.',
+    params: [LAYER_ID, { name: 'counter', type: '{ from: number; to: number; startFrame: number; endFrame: number; decimals?: number; separator?: string; decimalMark?: "." | ","; compact?: boolean; compactDecimals?: number; compactUpper?: boolean; prefix?: string; suffix?: string; ease?: string | [x1, y1, x2, y2]; stepFrames?: number; spanIndex?: number } | null',
+      description: 'Defaults: separator ",", decimals 0, ease "cubicOut" (names from core/easings.ts: expoOut, quartOut, backOut...), compactDecimals 1, spanIndex 0.' }] },
   { id: 'agent.setTextCaret', store: 'agent', method: 'setTextCaret', undoable: true,
     returns: 'the caret now on the layer (TextCaret), or null',
     description: 'Typing caret (B35): a bar, block or underline drawn right after the last revealed glyph, so it rides a type-on (agent.applyTextAnimatorPreset "type-on") frame by frame. Fields merge into the current caret; null turns it off. Solid while typing, blinking before / after (blinkRate cycles per second, 0 = solid). Single-line text. One undo step (updateLayerProperty "caret"; tweak one field later with "caret.<field>").',
@@ -719,6 +725,10 @@ export const AGENT_FEATURES: readonly AgentFeature[] = [
     ui: 'Agent / MCP: agent.setTextCaret (Inspector control: not yet)',
     actions: ['agent.setTextCaret', 'editor.updateLayerProperty'], status: 'shipped',
     notes: 'Lives in layer.caret (TextCaret in src/core/types.ts), resolved as one rectangle stamp (core/textCaret.ts), frame-pure. Single-line text only (like per-glyph animators); not on text-on-path. Pair with agent.applyTextAnimatorPreset(layerId, "type-on", start, duration). Block caret = style "block" (e.g. lime [0.6, 0.85, 0.16, 1]).' },
+  { id: 'text.counter', area: 'text', name: 'Number counter on a styled text layer',
+    description: 'Counts views, followers, prices or percentages up (or down) inside a styled text layer: separators, decimals, compact 10K / 1.2M, prefix / suffix, any ease, stepped or smooth.',
+    ui: 'Agent / MCP only (lives in layer.counter)', actions: ['agent.setTextCounter'], status: 'shipped',
+    notes: 'The counter rewrites one span per frame before layout, so measure_text / placeText measure the stored text: set the counter after placing, or place with the widest value as content.' },
   { id: 'text.decode', area: 'text', name: 'Text decode / scramble reveal',
     description: 'Characters flicker through random glyphs before resolving (hacker text).',
     ui: 'Select a text layer > Inspector > Animators section > Decode', actions: ['agent.applyTextDecode'], status: 'shipped' },

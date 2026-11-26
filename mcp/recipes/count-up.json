@@ -1,0 +1,30 @@
+{
+  "id": "count-up",
+  "name": "Number count-up on a styled text",
+  "category": "text",
+  "description": "A view count / follower count / price that counts up inside an existing styled text layer (its font, italic and colour stay), fast at first and settling on the final value, with separators or compact units (10K, 1.2M) and a prefix / suffix. Style the text first; put a differently styled prefix in its own span and pass spanIndex.",
+  "source": ["r08 f330-440, f653-684, f893-924, f1196-1335 view-count multipliers and follower count"],
+  "taste": ["TASTE.md 2 Easing", "3 Timing"],
+  "params": {
+    "layerId": { "type": "layerId", "description": "The text layer that shows the number." },
+    "from": { "type": "number", "default": 0, "description": "Start value." },
+    "to": { "type": "number", "default": 1200000, "description": "Final value." },
+    "compact": { "type": "boolean", "default": true, "description": "10K / 1.2M style." },
+    "decimals": { "type": "integer", "default": 0, "min": 0, "max": 6, "description": "Decimals when not compact." },
+    "prefix": { "type": "string", "default": "", "description": "Text before the number (same style)." },
+    "suffix": { "type": "string", "default": "", "description": "Text after the number (same style)." },
+    "spanIndex": { "type": "integer", "default": 0, "min": 0, "description": "Which span shows the number." },
+    "length": { "type": "number", "default": 36, "min": 4, "description": "Count length, frames at 30 fps." },
+    "ease": { "type": "ease", "default": [0.16, 1, 0.3, 1], "description": "Count ease (expoOut: fast start, long settle)." }
+  },
+  "length30": "length",
+  "checkFrames30": ["length * 0.3", "length"],
+  "lets": {},
+  "steps": [
+    { "id": "ct", "action": "agent.setTextCounter", "args": { "layerId": "{{layerId}}", "counter": {
+      "from": "{{from}}", "to": "{{to}}", "startFrame": "{{start}}", "endFrame": "{{end}}", "compact": "{{compact}}", "decimals": "{{decimals}}",
+      "prefix": "{{prefix}}", "suffix": "{{suffix}}", "spanIndex": "{{spanIndex}}", "ease": "{{ease}}" } } }
+  ],
+  "returns": { "layerId": "{{layerId}}", "final": "{{@ct.result.sampleText.end}}" },
+  "example": { "params": { "layerId": "LAYER", "to": 1200000, "prefix": "+", "suffix": " views" }, "startFrame": 10 }
+}

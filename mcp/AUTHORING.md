@@ -249,6 +249,15 @@ Never leave real motion on linear (the default for `addKeyframe`), except progre
 { "actionId": "editor.styleTextWord", "args": { "layerId": "<id>", "wordIndex": 2, "style": { "fontFamily": "Instrument Serif", "fontStyle": "italic" }, "exclusive": true } }
 ```
 
+- **Number counters (B75).** `agent.setTextCounter { layerId, counter: { from, to, startFrame, endFrame, compact?,
+  decimals?, separator?, decimalMark?, prefix?, suffix?, ease?, stepFrames?, spanIndex? } }`: one span of a styled
+  text layer counts from `from` to `to` (r08 "+10K -> 1.2M views"). The span keeps its font / italic / colour; a
+  prefix in another style goes in its own span (`editor.styleTextRange`) and `spanIndex` points at the number span.
+  `compact: true` gives 10K / 1.2M / 3.4B (`compactDecimals`, default 1); otherwise `separator` (",") and `decimals`.
+  `ease` is a name from core/easings.ts ("cubicOut" default, "expoOut" for fast-then-settle) or a cubic-bezier quad;
+  `stepFrames: 2` counts on twos. Frame-pure. measure_text reads the stored text, so place the layer with the widest
+  value typed in, then set the counter. Recipe: `count-up`. `counter: null` removes it.
+
 ## 6. Shapes and colour
 
 - `editor.addShapeLayer { opts: { type, x, y, width, height, fill, radius, name, stroke?, strokeWidth? } }`

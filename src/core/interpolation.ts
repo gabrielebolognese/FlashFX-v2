@@ -34,6 +34,7 @@ import { measureText, getTextLayout, measureAdvance, TEXT_POINT_PADDING } from '
 import { mapLinesToContent, lineStartX } from './textGlyphLayout';
 import { accumulateGlyphDeltas, trackingShifts, type GlyphDelta, type ResolvedTextAnimator } from './textAnimator';
 import { decodeCharAt } from './textDecode';
+import { withTextCounter } from './textCounter';
 import { resolveTextCaretStamp } from './textCaret';
 import { textRunsFromSpans, runAt } from './textRuns';
 import { totalPathLength, pointAndAngleAt, glyphPathFraction, type TextPathNode } from './textPath';
@@ -1409,7 +1410,8 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
   }
 
   for (let i = 0; i < sortedLayers.length; i++) {
-    const layer = sortedLayers[i];
+    // B75: a text counter rewrites its span at this frame (same object when there is no counter).
+    const layer = withTextCounter(sortedLayers[i], frame);
     if (layer.type === 'group') continue;
     if (layer.type === 'audio') continue;
     if (layer.type === 'camera') continue; // 2.5D: cameras resolve to matrices, not a drawn quad

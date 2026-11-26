@@ -1,6 +1,7 @@
 // The cloner is a first-class layer; its data-model types live in the feature
 // module (src/cloner) and are imported type-only here (erased at runtime - no
 // runtime dependency of core on the feature module).
+import type { TextCounter } from './textCounter';
 import type { ClonerLayer, InstanceTransform } from '../cloner/types';
 import type { SharedStyle } from './styles'; // M21 - type-only (erased; no runtime cycle)
 import type { ClonerRenderPath } from '../cloner/renderPath';
@@ -815,6 +816,8 @@ export interface TextLayer {
   animators?: TextAnimator[];
   /** Text Decode / scramble reveal (B9). Absent/disabled → unchanged path. */
   decode?: TextDecode;
+  /** B75: styled number counter - rewrites one span's text per frame (core/textCounter.ts). Absent = plain text. */
+  counter?: TextCounter;
   /** Text on a path (B9b): flow glyphs along a referenced MotionPath (interpreted in layer space).
    *  Absent/disabled → normal linear layout. */
   textPath?: TextPathBinding;

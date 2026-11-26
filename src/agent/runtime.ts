@@ -52,6 +52,8 @@ import { buildPixelBlockMask } from '../animation-templates/pixelBlockReveal';
 import { buildPixelSparkle } from '../animation-templates/pixelSparkle';
 import { isPixelBlockOrder } from '../core/pixelBlocks';
 import { layerEffectsRoute, parseAgentEffects } from '../core/effects/layerEffects';
+import { normalizeTextCounter, counterTextAt } from '../core/textCounter';
+import { EASINGS } from '../core/easings';
 import { getEffectDefByType } from '../core/effects/effectRegistry';
 import type { KeyframeEaseSpec } from '../core/keyframeSpecs';
 import { normalizeTextCaret } from '../core/textCaret';
@@ -1037,6 +1039,24 @@ const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
     const nextMods = mods.map((m, i) => (i === idx ? { ...trim, offset } : m));
     useEditorStore.getState().applyLayerEdits('Trim start angle', { update: [{ ...layer, modifiers: nextMods }] });
     return { modifierIndex: idx, angle, pathFraction: f, offset: offNow + delta };
+  },
+
+  // ----- B75 number counter on a styled text layer (core/textCounter.ts) -----
+  setTextCounter: (layerId, counter) => {
+    const layer = requireTextLayer(layerId);
+    if (counter === null) {
+      if (!layer.counter) return { counter: null };
+      useEditorStore.getState().applyLayerEdits('Remove counter', { update: [{ ...layer, counter: undefined }] });
+      return { counter: null };
+    }
+    const c = normalizeTextCounter(counter);
+    if (!c) throw new Error('"counter" must be an object { from, to, startFrame, endFrame, ... } or null');
+    if (typeof c.ease === 'string' && !(c.ease in EASINGS)) throw new Error(`"counter.ease": unknown easing "${c.ease}" (one of ${Object.keys(EASINGS).join(', ')}, or a cubic-bezier [x1, y1, x2, y2])`);
+    useEditorStore.getState().applyLayerEdits('Text counter', { update: [{ ...layer, counter: c }] });
+    return {
+      counter: c,
+      sampleText: { start: counterTextAt(c, c.startFrame), middle: counterTextAt(c, Math.round((c.startFrame + c.endFrame) / 2)), end: counterTextAt(c, c.endFrame) },
+    };
   },
 
   // ----- B60 cloner per-instance sources -----
