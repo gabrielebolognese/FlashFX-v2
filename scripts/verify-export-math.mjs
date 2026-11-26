@@ -100,6 +100,12 @@ try {
     assert.deepEqual(collectExportVideoDecodes([vid('a', 5, { blendMix: 0.5 })]), [{ assetId: 'a', frame: 5 }]);
   });
 
+  check('collectExportVideoDecodes: B68 - video inside a precomp (nested resolved frame) is decoded too, deduped', () => {
+    const nested = { layerType: 'precomp', precomp: { renderFrame: { layers: [vid('n', 7), vid('a', 5)] } } };
+    assert.deepEqual(collectExportVideoDecodes([vid('a', 5), nested]), [{ assetId: 'a', frame: 5 }, { assetId: 'n', frame: 7 }]);
+    assert.deepEqual(collectExportVideoDecodes([{ layerType: 'precomp', precomp: { renderFrame: null } }]), []);
+  });
+
   check('collectExportVideoDecodes: dedupes repeated (asset, frame) pairs incl. A/B overlap', () => {
     // two layers on the same asset+frame collapse to one decode
     assert.deepEqual(collectExportVideoDecodes([vid('a', 5), vid('a', 5)]), [{ assetId: 'a', frame: 5 }]);

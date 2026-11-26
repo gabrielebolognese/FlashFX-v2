@@ -63,6 +63,8 @@ interface ExportDecodeLayer {
     sourceFrameB?: number;
     blendMix?: number;
   } | null;
+  /** A precomp layer's nested resolved frame (B68: its video layers are decoded too). */
+  precomp?: { renderFrame: { layers: ExportDecodeLayer[] } | null } | null;
 }
 
 /**
@@ -80,13 +82,20 @@ export function collectExportVideoDecodes(layers: ExportDecodeLayer[]): VideoDec
     seen.add(key);
     reqs.push({ assetId, frame });
   };
-  for (const layer of layers) {
-    if (layer.layerType === 'video' && layer.video) {
-      const { assetId, sourceFrame, sourceFrameB, blendMix } = layer.video;
-      add(assetId, sourceFrame);
-      if (sourceFrameB != null && blendMix) add(assetId, sourceFrameB);
+  const walk = (list: ExportDecodeLayer[], depth: number) => {
+    for (const layer of list) {
+      if (layer.layerType === 'video' && layer.video) {
+        const { assetId, sourceFrame, sourceFrameB, blendMix } = layer.video;
+        add(assetId, sourceFrame);
+        if (sourceFrameB != null && blendMix) add(assetId, sourceFrameB);
+      }
+      // Video inside a precomp renders in the nested pre-pass: it needs its frames as well. The
+      // resolver already caps nesting; the depth guard is a backstop.
+      const nested = layer.precomp?.renderFrame?.layers;
+      if (nested && depth < 16) walk(nested, depth + 1);
     }
-  }
+  };
+  walk(layers, 0);
   return reqs;
 }
 

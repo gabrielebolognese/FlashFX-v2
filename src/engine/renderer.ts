@@ -34,6 +34,7 @@ import { PATTERN_TYPE } from '../patterns/types';
 import { lottieRendererEngine } from './lottieRenderer';
 import { videoTextureCache, VideoTextureCache } from './video/videoTextureCache';
 import { frameScheduler } from './video/frameScheduler';
+import type { VideoFrameLookup } from './video/exportFrames';
 import { videoDecoderPool } from './video/videoDecoderPool';
 import { FLOW_WARP_SHADER, FLOW_UNIFORM_SIZE } from './video/opticalFlow';
 
@@ -3068,12 +3069,22 @@ export class WebGPURenderer {
   // the screen renderer reads the proxy-aware rotation; EXPORT decodes the ORIGINAL (coded) frame and
   // never routes through the proxy, so the export renderer must read the original rotation instead.
   private exportMode = false;
+  // B68: an export / render_frame run's own video-frame source (exportFrameSource.ts). When set, video
+  // layers read the exact decoded frame from it and the renderer never reports requirements to, reads
+  // from, or prunes the shared preview frameScheduler (whose prefetch and open-frame cap used to race
+  // the export). Null for the screen renderer.
+  private frameSource: VideoFrameLookup | null = null;
 
   /** GPU adapter info captured at offscreen (export) init, for the export diagnostics block. Best-effort. */
   private offscreenAdapterInfo: GPUAdapterInfo | null = null;
 
   setMotionBlurSamples(n: number): void {
     this.motionBlurSamples = Math.max(2, Math.round(n));
+  }
+
+  /** B68: export / render_frame read video frames from their own source (null = the preview scheduler). */
+  setVideoFrameSource(source: VideoFrameLookup | null): void {
+    this.frameSource = source;
   }
 
   /** Mark this as the export renderer (reads original container rotation; see exportMode). */
@@ -3761,9 +3772,9 @@ export class WebGPURenderer {
     if (video.sourceFrameB == null || !video.blendMix) return null;
     try {
       const bId = `${layerId}:fbw`;
-      frameScheduler.reportVideoRequirement(bId, video.assetId, video.sourceFrameB, video.playbackRate);
+      if (!this.frameSource) frameScheduler.reportVideoRequirement(bId, video.assetId, video.sourceFrameB, video.playbackRate);
       if (this.videoTex.getCurrentFrameIndex(bId) !== video.sourceFrameB) {
-        const bFrame = frameScheduler.getFrame(video.assetId, video.sourceFrameB);
+        const bFrame = (this.frameSource ?? frameScheduler).getFrame(video.assetId, video.sourceFrameB);
         if (bFrame) this.videoTex.uploadFrame(bId, video.sourceFrameB, bFrame);
       }
       const texA = this.videoTex.getTexture(layerId);
@@ -4036,7 +4047,7 @@ export class WebGPURenderer {
       this.renderTree.markAllClean(this.frameClock);
       // P2a: prune video requirements for layers not drawn last frame BEFORE this frame's video loops
       // (incl. the precomp pre-pass below) re-report them, so prefetch only decodes assets still in use.
-      frameScheduler.frameBoundary();
+      if (!this.frameSource) frameScheduler.frameBoundary();
     }
 
     // Precomp pre-pass: render each precomp layer's nested composition into its own
@@ -4257,47 +4268,56 @@ export class WebGPURenderer {
         }
 
         const sourceFrame = video.sourceFrame;
-        // Report the exact resolved source frame so the scheduler prefetches from
-        // the same trim/offset/rate the renderer draws (single mapping source).
-        frameScheduler.reportVideoRequirement(vidLayer.id, video.assetId, sourceFrame, video.playbackRate);
-
         const currentIdx = this.videoTex.getCurrentFrameIndex(vidLayer.id);
-        if (this.presentLatest) {
-          // Audio-master: display the newest decoded frame ≤ target and drop the
-          // rest; hold the current texture on a miss - never block. Selection is
-          // PER LAYER (two layers on one asset can need different source frames).
-          const pick = frameScheduler.getPresentableFrame(
-            video.assetId,
-            sourceFrame,
-            currentIdx < 0 ? null : currentIdx,
-            WebGPURenderer.PRESENT_MAX_DISTANCE
-          );
-          if (pick && pick.index !== currentIdx) {
-            this.videoTex.uploadFrame(vidLayer.id, pick.index, pick.frame);
+        if (this.frameSource) {
+          // B68: export / render_frame. The exact frame comes from the run's own source (decoded
+          // before this render); the preview scheduler is neither read nor told about it.
+          if (currentIdx !== sourceFrame) {
+            const exact = this.frameSource.getFrame(video.assetId, sourceFrame);
+            if (exact) this.videoTex.uploadFrame(vidLayer.id, sourceFrame, exact);
           }
-        } else if (currentIdx !== sourceFrame) {
-          // Classic path: request the EXACT source frame; only upload when the texture doesn't already
-          // hold it (avoids a redundant GPU copy every render while paused).
-          const videoFrame = frameScheduler.getFrame(video.assetId, sourceFrame);
-          if (videoFrame) {
-            this.videoTex.uploadFrame(vidLayer.id, sourceFrame, videoFrame);
-          } else {
-            // Exact frame not decoded yet: show the freshest decoded frame <= target (drop-to-newest)
-            // instead of FREEZING, then upgrade to exact on a later tick. During a SCRUB allow ANY
-            // distance so a far seek snaps to the nearest decoded keyframe (frameScheduler prefetches it)
-            // rather than holding the pre-jump frame; during playback keep the tight window so a miss
-            // never shows a stale frame.
-            const maxDist = frameScheduler.isScrubbingNow()
-              ? Number.MAX_SAFE_INTEGER
-              : WebGPURenderer.PRESENT_MAX_DISTANCE;
+        } else {
+          // Report the exact resolved source frame so the scheduler prefetches from
+          // the same trim/offset/rate the renderer draws (single mapping source).
+          frameScheduler.reportVideoRequirement(vidLayer.id, video.assetId, sourceFrame, video.playbackRate);
+
+          if (this.presentLatest) {
+            // Audio-master: display the newest decoded frame ≤ target and drop the
+            // rest; hold the current texture on a miss - never block. Selection is
+            // PER LAYER (two layers on one asset can need different source frames).
             const pick = frameScheduler.getPresentableFrame(
               video.assetId,
               sourceFrame,
               currentIdx < 0 ? null : currentIdx,
-              maxDist
+              WebGPURenderer.PRESENT_MAX_DISTANCE
             );
             if (pick && pick.index !== currentIdx) {
               this.videoTex.uploadFrame(vidLayer.id, pick.index, pick.frame);
+            }
+          } else if (currentIdx !== sourceFrame) {
+            // Classic path: request the EXACT source frame; only upload when the texture doesn't already
+            // hold it (avoids a redundant GPU copy every render while paused).
+            const videoFrame = frameScheduler.getFrame(video.assetId, sourceFrame);
+            if (videoFrame) {
+              this.videoTex.uploadFrame(vidLayer.id, sourceFrame, videoFrame);
+            } else {
+              // Exact frame not decoded yet: show the freshest decoded frame <= target (drop-to-newest)
+              // instead of FREEZING, then upgrade to exact on a later tick. During a SCRUB allow ANY
+              // distance so a far seek snaps to the nearest decoded keyframe (frameScheduler prefetches it)
+              // rather than holding the pre-jump frame; during playback keep the tight window so a miss
+              // never shows a stale frame.
+              const maxDist = frameScheduler.isScrubbingNow()
+                ? Number.MAX_SAFE_INTEGER
+                : WebGPURenderer.PRESENT_MAX_DISTANCE;
+              const pick = frameScheduler.getPresentableFrame(
+                video.assetId,
+                sourceFrame,
+                currentIdx < 0 ? null : currentIdx,
+                maxDist
+              );
+              if (pick && pick.index !== currentIdx) {
+                this.videoTex.uploadFrame(vidLayer.id, pick.index, pick.frame);
+              }
             }
           }
         }

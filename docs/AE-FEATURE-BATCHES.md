@@ -128,7 +128,7 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | B65 | Replicas: agent video clip timing - video tracks are magnetic with no agent toggle: `editor.moveClipInTime` returns ok but does not move a video layer, every `import_media` of a video re-packs the earlier video clips back to back, `import_project` snaps inPoint-timed clips back to frame 0, a shape track matte over a video does not matte it (found replicating r07) | ⬜ | light |
 | B66 | Replicas: motion blur from parent transforms - a layer moved / zoomed by a parent (or grand-parent) null gets much weaker blur than the same motion on the layer itself (r02 f6-16 zoom smear) | ⬜ (browser) | medium |
 | B67 | Replicas: agent authoring ergonomics - setKeyframes accepts the breakdown ease names (easeOut, easeInOut, easeOutCubic ...; the replica kit aliases them today), createQuickText option to place by ink centre / baseline, glow defaults that show on coloured text, trim start angle option (12 o'clock), document that text layout trims leading / trailing spaces | ✅ (Nov 2026, engine session 26 Nov, headless-GPU verified) | light |
-| B68 | Replicas: export fails on video - `export_mp4` (the real exporter) aborts with "A valid external Instance reference no longer exists" when a scaled, position-keyed H.264 clip is in the comp, while render_frame of the same frames works (suspect a VideoFrame closed while still bound via importExternalTexture in the export path; found replicating r07, ties into the EX plan) | ⬜ (browser) | medium |
+| B68 | Replicas: export fails on video - `export_mp4` (the real exporter) aborts with "A valid external Instance reference no longer exists" when a scaled, position-keyed H.264 clip is in the comp, while render_frame of the same frames works (suspect a VideoFrame closed while still bound via importExternalTexture in the export path; found replicating r07, ties into the EX plan) | ✅ (browser) | medium |
 | B69 | Replicas: adjustment-layer masks - `editor.addMask` on an adjustment layer leaves the layer with no `masks` array (get_layer shows none), so an adjustment effect (glitch, RGB split) cannot be limited to a region; r01 f168-176 title glitch hits the whole frame (found replicating r01) | ⬜ | light |
 | B70 | Replicas: cursor rig robustness - `findCursorRig` (cursorRig.ts) finds the icon children only by the names arrow / hand / ibeam, so renaming them breaks cursorMoveTo / cursorClick / cursorIcon; a layer added at a later frame goes onto the first same-type track with free space (`ensureLayerHasTrack` findFirstFit) and renders under later shots' grounds (ties to B44). Both confirmed in source, not render-tested (found replicating r03 f1838-2589) | ⬜ | light |
 | B71 | Replicas: path stroke width profile - a path stroke has one width per layer: add taper / per-vertex width along the path (r03 S34 line fans merge into a tapering bundle, f3436-3525) (found replicating r03) | ⬜ (browser) | medium |
@@ -996,7 +996,7 @@ worked around through agent actions in the replica builds; the workaround is lis
   text layout ignores leading / trailing spaces (padding does not move text).
 - **Verification:** gates + `verify:agent-manifest` + `verify:anim-props` extension (alias names resolve to the same curves).
 
-## B68 - Export fails on a video clip ⬜ (browser, launch-relevant)
+## B68 - Export fails on a video clip ✅ (browser, launch-relevant)
 - **Delivers:** the real exporter (`agent.exportMp4` / File > Export Video) completes on comps with video layers. Today it aborts with
   `A valid external Instance reference no longer exists.` whenever r07's stand-in flower clip (538x958 H.264, scale 2.0-2.5, keyed
   position) is in the comp, about 80 s in. Bisected on the saved project: all 5 clips fail (also at 540 px wide, also with the clips
@@ -1008,6 +1008,16 @@ worked around through agent actions in the replica builds; the workaround is lis
   frame with render_frame (`replicas/r07/render_mp4.mjs`) because of this.
 - **Verification:** gates + `gpu:mcp` extension: export a comp with a scaled, keyed 540x960 H.264 clip end to end; decoded frame at
   t matches render_frame(t).
+- **Built (wave 2, Nov 2026):** the exporter and `render_frame` own their video frames (`src/engine/video/exportFrameSource.ts`
+  + pure planner `exportFrames.ts`): exactly the frames the current comp frame needs are held, each clip decodes through one
+  forward mediabunny cursor (`videoDecoderPool.openExportReader`, at most 3 per asset), and the shared preview `frameScheduler`
+  is never read, filled or pruned by an export (its playback prefetch and open-frame cap used to close / race export frames and
+  multiply live decoders). Video inside precomps is decoded too (`collectExportVideoDecodes` walks nested frames). A software
+  retry keeps the first failure in its message.
+- **Verified:** `verify:export-frames` 6/6 (planner + simulated linear export: each clip frame decoded once, held = need),
+  `verify:export-math` 14/14, `gpu:export-video` 5/5: five 540x960 H.264 clips scaled 2.0 -> 2.5 and position-keyed export
+  through `export_mp4` (150 frames, 19 s) with exported frames == `render_frame(t)` (mean abs diff 1.8-2.0 / 255, exact frame
+  alignment), and the real repro `replicas/r07/project.ffx` exports end to end (1200 frames, 111 s; f600 diff 1.22 / 255).
 
 ## Second-batch gaps (B74-B80, from the r08-r11 breakdowns, Nov 2026)
 

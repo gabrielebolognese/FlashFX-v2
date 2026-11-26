@@ -459,7 +459,11 @@ within 1 px of the camera projection). 2.5D only: flat cards in space, no extrus
 1. `export_project { path: ".../piece.ffx" }`: the editable project (every composition plus
    imported media). This is the deliverable the owner opens in FlashFX (File > Import Project).
 2. `export_mp4 { path: ".../piece.mp4", width: 1920, height: 1080 }`: the real exporter.
-   A 4 s 1080p piece renders in about 7 s.
+   A 4 s 1080p piece renders in about 7 s. Comps with video clips export too (B68): the exporter
+   and `render_frame` decode their own full-resolution frames (one forward decoder per clip, video
+   inside precomps included), so the exported frame at t matches `render_frame(t)`; no need for the
+   old render_frame-per-frame fallback (r07's `render_mp4.mjs`). Pass both `width` and `height` for
+   a scaled export (width alone keeps the comp height).
 3. Optional proof: `import_project { path }` re-opens the `.ffx` as a new project
    (`mcp/examples/verify-roundtrip.mjs`).
 

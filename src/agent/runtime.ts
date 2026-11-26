@@ -27,8 +27,7 @@ import { exportToMp4, type ExportSettings } from '../codec/exporter';
 import { collectExportVideoDecodes } from '../codec/exportMath';
 import { WebGPURenderer } from '../engine/renderer';
 import { EXPORT_MOTION_BLUR_SAMPLES } from '../store/preview';
-import { videoDecoderPool } from '../engine/video/videoDecoderPool';
-import { frameScheduler } from '../engine/video/frameScheduler';
+import { ExportFrameSource } from '../engine/video/exportFrameSource';
 import { PARTICLE_PRESETS } from '../particles/presets';
 import { resolveFrame } from '../core/interpolation';
 import { getTextInkMetrics, getTextLayout, measureStringWidth } from '../engine/textAtlas';
@@ -390,6 +389,18 @@ async function waitForOpenedProject(projectId: string): Promise<void> {
 
 /** One offscreen renderer reused across renderFrame calls (re-created when the size changes). */
 let frameRenderer: { renderer: WebGPURenderer; width: number; height: number } | null = null;
+/** B68: render_frame's own video frames + decode session (like the exporter's), kept across calls so a
+ *  run of consecutive frames decodes forward; released after a few idle seconds (frees the decoders). */
+let frameSource: ExportFrameSource | null = null;
+let frameSourceIdle: ReturnType<typeof setTimeout> | null = null;
+const FRAME_SOURCE_IDLE_MS = 4000;
+function releaseFrameSource(): void {
+  if (frameSourceIdle) { clearTimeout(frameSourceIdle); frameSourceIdle = null; }
+  frameRenderer?.renderer.setVideoFrameSource(null);
+  const src = frameSource;
+  frameSource = null;
+  void src?.dispose();
+}
 /** Serialize frame renders: they share the renderer and its canvas. */
 let frameRenderChain: Promise<unknown> = Promise.resolve();
 
@@ -412,7 +423,9 @@ function renderSize(width: unknown, height: unknown): { w: number; h: number } {
  */
 async function renderCompFrame(frame: number, w: number, h: number): Promise<OffscreenCanvas> {
   const job = frameRenderChain.then(async () => {
+    if (frameSourceIdle) { clearTimeout(frameSourceIdle); frameSourceIdle = null; }
     if (!frameRenderer || frameRenderer.width !== w || frameRenderer.height !== h) {
+      releaseFrameSource();
       frameRenderer?.renderer.destroy();
       frameRenderer = null;
       const r = new WebGPURenderer();
@@ -428,21 +441,22 @@ async function renderCompFrame(frame: number, w: number, h: number): Promise<Off
     // B52: lazy font faces load before the frame is resolved (measured) and rasterized.
     await ensureCompositionFonts(comp, ed.getComposition);
     const data = resolveFrame(comp, f, { getComposition: ed.getComposition, depth: 0, visited: new Set() });
-    // Full-resolution source frames (the exporter's path), never a buffered half-res preview proxy.
+    // Full-resolution source frames through the exporter's own frame source (B68): never a buffered
+    // half-res preview proxy, and the preview scheduler is left alone.
     const decodes = collectExportVideoDecodes(data.layers);
-    if (decodes.length) {
-      frameScheduler.releaseBufferedFrames();
-      await Promise.all(decodes.map(async ({ assetId, frame: sf }) => {
-        if (frameScheduler.getFrame(assetId, sf)) return;
-        frameScheduler.injectFrame(assetId, sf, await videoDecoderPool.decodeFrameForExport(assetId, sf));
-      }));
+    if (decodes.length && !frameSource) frameSource = new ExportFrameSource();
+    if (frameSource) {
+      r.setVideoFrameSource(frameSource);
+      await frameSource.prepare(decodes);
     }
     await Promise.all(data.layers.filter((l) => l.layerType === 'image' && l.image?.assetId).map((l) => mediaAssetManager.ensureImageBitmap(l.image!.assetId)));
     try {
       await r.renderFrameAsync(data, 'offscreen');
     } finally {
-      // Like the exporter's cleanup: do not leave full-resolution frames in the shared scheduler.
-      if (decodes.length) frameScheduler.releaseBufferedFrames();
+      if (frameSource) {
+        if (frameSourceIdle) clearTimeout(frameSourceIdle);
+        frameSourceIdle = setTimeout(releaseFrameSource, FRAME_SOURCE_IDLE_MS);
+      }
     }
     const src = r.getOffscreenCanvas();
     if (!src) throw new Error('the offscreen renderer has no canvas');

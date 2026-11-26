@@ -2,8 +2,7 @@ import type { Composition } from '../core/types';
 import { resolveFrame } from '../core/interpolation';
 import { WebGPURenderer } from '../engine/renderer';
 import { EXPORT_MOTION_BLUR_SAMPLES } from '../store/preview';
-import { videoDecoderPool } from '../engine/video/videoDecoderPool';
-import { frameScheduler } from '../engine/video/frameScheduler';
+import { ExportFrameSource } from '../engine/video/exportFrameSource';
 import { mediaAssetManager } from '../engine/media/assetManager';
 import { ensureCompositionFonts } from '../engine/fonts';
 import { exportCompositionAudio, type EncodedAudio } from './audioMixer';
@@ -208,9 +207,11 @@ export async function exportToMp4(
         : 'This browser or GPU does not support the selected export configuration.');
     }
 
-    // Drop any frames the shared scheduler buffered during preview (half-res PROXY frames) so every export
-    // frame is decoded fresh at full resolution. Done per attempt so a retry also starts clean.
-    frameScheduler.releaseBufferedFrames();
+    // B68: this attempt's OWN video frames (full resolution, one forward decoder per clip, only the
+    // frames the current comp frame needs are held). The shared preview scheduler is never touched, so
+    // playback prefetch can no longer close or race an export frame. Fresh per attempt: a retry starts clean.
+    const frames = new ExportFrameSource();
+    renderer.setVideoFrameSource(frames);
 
     const target = new ArrayBufferTarget();
     const muxer = new Muxer({
@@ -271,20 +272,13 @@ export async function exportToMp4(
         const compFrame = exportCompFrame(frame, durationFrames, compFps, exportFps);
         const renderData = resolveFrame(composition, compFrame, { getComposition, depth: 0, visited: new Set() });
 
-        // Pre-decode video frames at full resolution for this composition frame (plus the frame-blend B
-        // frame when active - see collectExportVideoDecodes), or the export would drop what the preview shows.
-        const videoDecodePromises: Promise<void>[] = [];
-        for (const { assetId, frame: sourceFrame } of collectExportVideoDecodes(renderData.layers)) {
-          if (frameScheduler.getFrame(assetId, sourceFrame)) continue;
-          videoDecodePromises.push(
-            videoDecoderPool.decodeFrameForExport(assetId, sourceFrame).then((decoded) => {
-              frameScheduler.injectFrame(assetId, sourceFrame, decoded);
-            }),
-          );
-        }
-        if (videoDecodePromises.length > 0) {
+        // Decode the video frames this composition frame samples at full resolution (plus the frame-blend
+        // B frame when active, and video inside precomps - see collectExportVideoDecodes); frames the
+        // previous comp frame held and this one does not are closed first.
+        const videoDecodes = collectExportVideoDecodes(renderData.layers);
+        if (videoDecodes.length > 0 || frames.heldCount() > 0) {
           lastAdvanceTs = performance.now();
-          await guard(Promise.all(videoDecodePromises), 'video-decode');
+          await guard(frames.prepare(videoDecodes), 'video-decode');
         }
 
         // Images decode lazily, so ensure every image layer in THIS frame is resident before rendering.
@@ -369,6 +363,8 @@ export async function exportToMp4(
       return blob;
     } finally {
       try { if (encoder.state !== 'closed') encoder.close(); } catch { /* already closed */ }
+      renderer.setVideoFrameSource(null);
+      await frames.dispose();
     }
   };
 
@@ -388,7 +384,11 @@ export async function exportToMp4(
       } catch (e) {
         const err = e instanceof Error ? e : new Error(String(e));
         if (err.message === 'Export cancelled') throw err; // user cancel: propagate, never retry
-        lastError = err;
+        // Keep the FIRST failure in the message: a software retry can fail for a knock-on reason (a GPU
+        // device the first failure took down), which used to hide the real cause.
+        lastError = lastError && lastError.message !== err.message
+          ? new Error(`${lastError.message} (software encoder retry: ${err.message})`)
+          : err;
         const triedSoftware = hwAccel === 'prefer-software';
         if (shouldRetryWithSoftware({ cancelled: false, triedSoftware })) {
           console.warn(`[export] ${hwAccel} attempt failed (${err.message}); retrying with a software encoder.`);
@@ -417,7 +417,6 @@ export async function exportToMp4(
     return { blob, audioDropped };
   } finally {
     renderer.destroy();
-    frameScheduler.releaseBufferedFrames();
   }
 }
 
