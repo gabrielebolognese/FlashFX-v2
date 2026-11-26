@@ -316,6 +316,19 @@ Never leave real motion on linear (the default for `addKeyframe`), except progre
 
 ## 8. Effects, images, particles
 
+- **Effects on text and shapes (B57).** `agent.applyLayerEffects { layerId, effects: [{ effect, params? }], mode? }`
+  puts an effect stack on any visual layer. A text / shape / video layer is first nested in a precomp
+  (it stays editable inside: `editor.enterPrecomp { compositionId }`), and the stack runs on the precomp
+  texture, so the layers behind are untouched; the result's `layerId` is the precomp. Ids from
+  `src/core/effects/effectRegistry.ts`: `digitalGlitch [amount 0..1]` (row slices + RGB offset: r01 title
+  glitch f168-176, use ~0.6-0.9 for 6-8 frames), `rgbSplit [px]`, `chromaticAberration`, `twirl`, `wave`,
+  `ripple`, `pixelate`, and `bulge [amount -1..1, centreX, centreY, radius]` with the centre in UV of
+  the precomp (= comp px / comp size) and the radius as a fraction of the comp height (radius 0 =
+  centred, the old behaviour): a word bulges in place (r05 "hope i make it out of here"). Key any param
+  with `editor.setKeyframes { layerId: <precomp>, propertyPath: "effect.<type>.<i>" }`, e.g.
+  `"effect.245.0"` = glitch amount (0 = no effect), `"effect.215.1"` / `".2"` = bulge centre (it moves).
+  Precompose itself is exact now (B57): the precomp sits at the comp centre, has no background, and
+  its anti-aliased edges composite like the original layers (pixel-identical in `gpu:layer-effects`).
 - Motion blur: `updateLayerProperty(id, "motionBlur", true)`. Preview shows a few stepped copies;
   export uses 16+ samples and is smooth.
 - Glow: `editor.enableLayerEffect { kind: "glow" }`, then `glow.color`, `glow.radius`,

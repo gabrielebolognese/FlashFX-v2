@@ -5,7 +5,7 @@ import { buildMaskReveal, type MaskRevealKind } from '../core/maskReveal';
 import { insertPointOnSegment, applyVertexType } from '../core/pathVertexOps';
 import { pathMaskFromComp } from '../core/maskPath';
 import type { TrackMatteMode } from '../core/trackMatte';
-import type { LayerEffect, RefineEdge, ImageLayer, AdjustmentLayer, TextSpanStyle } from '../core/types';
+import type { LayerEffect, RefineEdge, ImageLayer, AdjustmentLayer, PrecompLayer, TextSpanStyle } from '../core/types';
 import { setBaseSpanStyle, styleTextRange as styleSpansRange, clearTextStyles as clearSpanStyles, wordRanges, type RunStylePatch } from '../core/textRuns';
 import { clampRefineEdge } from '../core/refineEdge';
 import { cloneEffectStack } from '../core/effects/effectStack';
@@ -7531,10 +7531,11 @@ function deepGet(obj: unknown, path: string): unknown {
 // Immutable set at `key` on either an object or an array. Arrays MUST be cloned
 // via slice() with a numeric index - spreading an array into `{...arr}` would
 // corrupt it into an index-keyed object (breaks `effects.0.params.1` paths).
-// Layers with an editable effect stack: image layers, and adjustment layers (whose stack applies to
-// everything below them - B11b-gpu).
-function hasEffectStack(l: Layer): l is ImageLayer | AdjustmentLayer {
-  return l.type === 'image' || l.type === 'adjustment';
+// Layers with an editable effect stack: image layers, adjustment layers (whose stack applies to
+// everything below them - B11b-gpu) and precomp layers (B57: the stack runs on the precomp texture,
+// which is how text / shape layers get effects).
+function hasEffectStack(l: Layer): l is ImageLayer | AdjustmentLayer | PrecompLayer {
+  return l.type === 'image' || l.type === 'adjustment' || l.type === 'precomp';
 }
 
 function cloneWith(container: unknown, key: string, value: unknown): unknown {

@@ -59,7 +59,8 @@ export type AgentHelperMethod =
   | 'cursorIcon'
   | 'setTextCaret'
   | 'pixelBlockReveal'
-  | 'pixelSparkle';
+  | 'pixelSparkle'
+  | 'applyLayerEffects';
 
 export type FeatureStatus = 'shipped' | 'browser-gated' | 'partial';
 
@@ -531,6 +532,9 @@ export const AGENT_ACTIONS: readonly AgentActionSpec[] = [
     description: 'Enable/disable an effect-stack effect.', params: [LAYER_ID, { name: 'type', type: 'number' }] },
   { id: 'editor.removeLayerEffect', store: 'editor', method: 'removeLayerEffect', undoable: true,
     description: 'Remove an effect-stack effect.', params: [LAYER_ID, { name: 'type', type: 'number' }] },
+  { id: 'editor.setLayerEffects', store: 'editor', method: 'setLayerEffects', undoable: true,
+    description: 'Replace the whole effect stack of an image / adjustment / precomp layer (one undo step). Order = render order. For text / shape layers use agent.applyLayerEffects.',
+    params: [LAYER_ID, { name: 'effects', type: '{ type: number; enabled: boolean; params: number[] }[]' }] },
   { id: 'editor.addAdjustmentLayer', store: 'editor', method: 'addAdjustmentLayer', undoable: true, params: [], returns: 'new layer id (activeLayerId)',
     description: 'Add an adjustment layer (its effects apply to everything below it).' },
   { id: 'editor.addBeamLayer', store: 'editor', method: 'addBeamLayer', undoable: true, params: [], returns: 'new layer id (activeLayerId)',
@@ -583,6 +587,14 @@ export const AGENT_ACTIONS: readonly AgentActionSpec[] = [
     params: [{ name: 'id', type: 'string', catalog: 'animationTemplates' }, { name: 'center', type: '[number, number]', optional: true }] },
   { id: 'editor.addAnimationItem', store: 'editor', method: 'addAnimationItem', undoable: true, returns: 'new layer id (activeLayerId)',
     description: 'Add an animation item (ready-made animated element).', params: [{ name: 'presetName', type: 'string', catalog: 'animationItems' }] },
+
+  // ----- B57 effects on text / shape layers (via a precomp) + positionable bulge (core/effects/layerEffects.ts) -----
+  { id: 'agent.applyLayerEffects', store: 'agent', method: 'applyLayerEffects', undoable: true,
+    returns: '{ layerId, wrapped, compositionId, effects: [{ effect, type, params }] }',
+    description: 'Put an effect stack (glitch, RGB split, bulge, twirl, wave, blur-free colour looks...) on ANY visual layer. Image / adjustment / precomp layers take it directly; a text, shape, video or lottie layer is first nested in a precomp (Precompose, the layer stays fully editable inside it) and the stack runs on that precomp, so nothing behind the layer is touched. Key a param afterwards with editor.setKeyframes on the returned layerId, path "effect.<type>.<paramIndex>" (e.g. "effect.245.0" = digitalGlitch amount). Undo: 1 step (2 when it wraps: precompose + effects).',
+    params: [LAYER_ID, { name: 'effects', type: '{ effect: string; params?: number[]; enabled?: boolean }[]',
+      description: 'Registry ids (src/core/effects/effectRegistry.ts). Useful: digitalGlitch [amount 0..1] (row-slice glitch + RGB offset), rgbSplit [px], chromaticAberration, bulge [amount -1..1, centreX, centreY, radius] (centre in UV 0..1 of the precomp = the comp, radius as a fraction of the comp height; radius 0 = centred), twirl, wave, ripple, pixelate.' },
+      { name: 'mode', type: 'string', optional: true, values: ['replace', 'append'], description: 'replace (default) or append to the existing stack.' }] },
 
   // ----- B54 pixel-block dissolve / build-on + 8-bit sparkle (core/pixelBlocks.ts, animation-templates/pixelSparkle.ts) -----
   { id: 'agent.pixelBlockReveal', store: 'agent', method: 'pixelBlockReveal', undoable: true,
@@ -807,6 +819,11 @@ export const AGENT_FEATURES: readonly AgentFeature[] = [
     description: 'Rectangle / ellipse / star / polygon masks with AE modes, feather, expansion, plus one-click iris / wipe reveals.',
     ui: 'Inspector > Masks tab > add a mask; reveal buttons in the same tab',
     actions: ['editor.addMask', 'editor.removeMask', 'editor.updateMaskProperty', 'editor.addMaskKeyframe', 'editor.applyMaskReveal'], status: 'shipped' },
+  { id: 'effects.layer-stack', area: 'effects', name: 'Effect stack on text / shape layers (via precomp) + positionable bulge',
+    description: 'Glitch, RGB split, bulge, twirl, wave and the rest of the effect stack on any visual layer: precomp layers carry a stack (keyable params), and text / shape / video layers get one by being nested in a precomp. The bulge warp takes a centre and radius, so a word can bulge in place.',
+    ui: 'Agent / MCP (agent.applyLayerEffects); in the app: Precompose, then the effect stack on the precomp',
+    actions: ['agent.applyLayerEffects', 'editor.setLayerEffectParam', 'editor.setLayerEffects', 'editor.toggleLayerEffect', 'editor.removeLayerEffect', 'editor.setKeyframes'], status: 'shipped',
+    notes: 'Effects sample the layer\'s own texture: the precomp is the comp size, so warps read UV of the comp (bulge centre = layer centre / comp size). Layers below stay untouched.' },
   { id: 'masks.pixel-blocks', area: 'masks', name: 'Pixel-block dissolve / build-on + 8-bit sparkle',
     description: 'Seeded pixel-block transitions on any masked layer (random, directional sweep or centre-out; build-on or dissolve; stepped on ones or twos) and an 8-bit sparkle of flickering squares around a target box.',
     ui: 'Agent / MCP only (the mask lands in the layer Masks list; its progress keys are ordinary keys)',

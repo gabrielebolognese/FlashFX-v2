@@ -51,6 +51,8 @@ import {
 import { buildPixelBlockMask } from '../animation-templates/pixelBlockReveal';
 import { buildPixelSparkle } from '../animation-templates/pixelSparkle';
 import { isPixelBlockOrder } from '../core/pixelBlocks';
+import { layerEffectsRoute, parseAgentEffects } from '../core/effects/layerEffects';
+import { getEffectDefByType } from '../core/effects/effectRegistry';
 import type { KeyframeEaseSpec } from '../core/keyframeSpecs';
 import { normalizeTextCaret } from '../core/textCaret';
 
@@ -1035,6 +1037,35 @@ const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
     const nextMods = mods.map((m, i) => (i === idx ? { ...trim, offset } : m));
     useEditorStore.getState().applyLayerEdits('Trim start angle', { update: [{ ...layer, modifiers: nextMods }] });
     return { modifierIndex: idx, angle, pathFraction: f, offset: offNow + delta };
+  },
+
+  // ----- B57 effects on text / shape layers (nested in a precomp) -----
+  applyLayerEffects: (layerId, effects, mode) => {
+    const layer = requireLayer(layerId);
+    const route = layerEffectsRoute(layer.type);
+    if (!route) throw new Error(`layer "${String(layerId)}" is a ${layer.type}: effects go on image, adjustment, precomp, text, shape, video or lottieIcon layers`);
+    if (mode !== undefined && mode !== null && mode !== 'replace' && mode !== 'append') throw new Error('"mode" must be "replace" or "append"');
+    const stack = parseAgentEffects(effects);
+    const ed = useEditorStore.getState();
+    let targetId = layer.id;
+    if (route === 'wrap') {
+      ed._setSelection({ selectedIds: [layer.id], activeId: layer.id, selectedKeyframes: [], selectedCurvePoints: [] });
+      ed.precomposeSelection();
+      const after = useEditorStore.getState();
+      const pre = after.composition.layers.find((l) => l.id === after.selection.activeId);
+      if (!pre || pre.type !== 'precomp') throw new Error('precompose failed: no precomp layer was created');
+      targetId = pre.id;
+    }
+    const target = requireLayer(targetId);
+    const existing = 'effects' in target && Array.isArray(target.effects) ? target.effects : [];
+    const next = mode === 'append' ? [...existing, ...stack] : stack;
+    useEditorStore.getState().setLayerEffects(targetId, next);
+    return {
+      layerId: targetId,
+      wrapped: route === 'wrap',
+      compositionId: target.type === 'precomp' ? target.compositionId : undefined,
+      effects: next.map((e) => ({ effect: getEffectDefByType(e.type)?.id, type: e.type, params: e.params })),
+    };
   },
 
   // ----- B54 pixel-block dissolve / build-on (core/pixelBlocks.ts) + 8-bit sparkle -----

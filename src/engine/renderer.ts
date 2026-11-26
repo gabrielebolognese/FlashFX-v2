@@ -902,6 +902,14 @@ const ADJUST_FS_UV = `
 const ADJUST_FS_UNPREMULTIPLY = `
   color = vec4f(select(vec3f(0.0), color.rgb / max(color.a, 1e-4), color.a > 1e-4), color.a);`;
 
+// B57: a precomp texture is premultiplied (its layers blended into a transparent target), so un-premultiply
+// it before the straight-colour stages; otherwise anti-aliased edges and semi-transparent content came out
+// darkened (c * a * a). No-op for straight sources (srcPremultiplied = 0) and opaque pixels.
+const SRC_FS_UNPREMULTIPLY = `
+  if (u.srcPremultiplied > 0.5) {
+    color = vec4f(select(vec3f(0.0), color.rgb / max(color.a, 1e-4), color.a > 1e-4), color.a);
+  }`;
+
 // Clamp + re-premultiply the effected colour; apply-only returns it (into the split plan's
 // intermediate), apply-mix mixes it with the below by k = opacity x mask alpha.
 const ADJUST_FS_EPILOGUE = `  if (u.adjustMode > 0.5) {
@@ -982,6 +990,9 @@ struct ImageUniforms {
   refineRadius: f32,
   refineContrast: f32,
   refineDecontam: f32,
+  // B57: 1 = the texture holds PREMULTIPLIED colour (a precomp rendered into a transparent target);
+  // un-premultiplied after the warp + spatial stages. 0 (images, video, lottie) = straight colour.
+  srcPremultiplied: f32,
 }
 
 @group(0) @binding(0) var<uniform> u: ImageUniforms;
@@ -1689,10 +1700,16 @@ fn applyWarpEffect(uv: vec2f, a: vec4f, b: vec4f, aspect: f32, time: f32) -> vec
       }
     }
     case ${EFFECT_TYPE.bulge}: {
-      let maxr = 0.5;
-      if (r < maxr && r > 1.0e-5) {
-        let d = normalize(ca) * pow(r / maxr, 1.0 - p0) * maxr;
-        w = vec2f(d.x / aspect, d.y) + vec2f(0.5);
+      // B57: params [amount, centreX, centreY, radius] (centre in UV, radius in texture heights).
+      // radius <= 0 (an old 1-param bulge) keeps the centred bulge. CPU twin: core/effects/layerEffects.ts.
+      var c0 = vec2f(0.5);
+      var maxr = 0.5;
+      if (b.x > 0.0) { c0 = vec2f(a.z, a.w); maxr = b.x; }
+      let cb = vec2f((uv.x - c0.x) * aspect, uv.y - c0.y);
+      let rb = length(cb);
+      if (rb < maxr && rb > 1.0e-5) {
+        let d = normalize(cb) * pow(rb / maxr, 1.0 - p0) * maxr;
+        w = vec2f(d.x / aspect, d.y) + c0;
       }
     }
     case ${EFFECT_TYPE.pinch}: {
@@ -1858,6 +1875,13 @@ fn applySpatialEffect(color: vec4f, a: vec4f, b: vec4f, uv: vec2f, texel: vec2f,
         sampleTex(uv + vec2f(du, 0.0)).g,
         sampleTex(uv + vec2f(du - off, 0.0)).b,
       );
+      // B57: on a premultiplied source with transparency (a text / shape precomp) the slice shifts the
+      // coverage too, so a shifted row is not drawn as a black bar. Opaque / straight sources unchanged.
+      if (u.srcPremultiplied > 0.5) {
+        alpha = max(textureSampleLevel(texData, texSampler, uv + vec2f(du + off, 0.0), 0.0).a,
+          max(textureSampleLevel(texData, texSampler, uv + vec2f(du, 0.0), 0.0).a,
+              textureSampleLevel(texData, texSampler, uv + vec2f(du - off, 0.0), 0.0).a));
+      }
     }
     case ${EFFECT_TYPE.vhs}: {
       let jitter = (hash21(vec2f(floor(uv.y * 220.0), floor(time))) - 0.5) * p0 * 0.02;
@@ -2195,7 +2219,7 @@ ${adjust ? ADJUST_FS_PROLOGUE : ''}  let aspect = max(u.quadSize.x, 1.0) / max(u
   // The clamp-to-edge sampler + this bounds test give geometric warps a transparent
   // border (tiling/fold warps keep uv in range, so inBounds stays 1).
   let inBounds = step(0.0, uv.x) * step(uv.x, 1.0) * step(0.0, uv.y) * step(uv.y, 1.0);
-  color = color * inBounds;${adjust ? ADJUST_FS_UNPREMULTIPLY : ''}
+  color = color * inBounds;${adjust ? ADJUST_FS_UNPREMULTIPLY : SRC_FS_UNPREMULTIPLY}
 
   // Exposure
   let exposureMul = pow(2.0, u.exposure);
@@ -2263,6 +2287,8 @@ const IMAGE_MVP_BASE = 260; // float index of mvp[0]
 const IMAGE_SRCROT_FLOAT = 276; // float index of srcRotation (deg); 0 for images/text, 90/180/270 for rotated video
 // Refine Edge (B10e): radius / contrast / decontaminate at 277..279 (radius 0 = off; buffers start zeroed).
 const IMAGE_REFINE_FLOAT = 277;
+// B57: srcPremultiplied at 280 (precomp textures hold premultiplied colour; the struct ends at 1136 bytes).
+const IMAGE_SRCPREMUL_FLOAT = 280;
 
 function writeRefineEdge(data: Float32Array, layer: ResolvedLayer): void {
   if (!layer.refineEdge) return;
@@ -4035,6 +4061,9 @@ export class WebGPURenderer {
 
     // Upload background uniforms (per-call - a nested precomp frame has its own bg).
     this.uploadBackgroundUniforms(gpu, frame.background);
+    // B57: a nested precomp frame whose background has no enabled layer is transparent where nothing is
+    // drawn (AE precomps; new precomposes get an empty background). The top level always draws its bg.
+    const drawBackground = depth === 0 || frame.background.layers.some((l) => l.enabled);
 
     // Cached Render Tree bookkeeping runs ONLY at the top level; nested precomp
     // frames re-render fully into their own textures (no dirty-tracking). Text keys
@@ -4067,6 +4096,9 @@ export class WebGPURenderer {
           precompViews.set(layer.id, view);
         }
       }
+      // B57: the nested renders above re-uploaded the SHARED background buffer with their own bg, and
+      // this frame's pass is submitted after theirs: restore this frame's background.
+      if (precompViews.size > 0) this.uploadBackgroundUniforms(gpu, frame.background);
     }
 
     const shapeLayers: { index: number; layer: ResolvedLayer }[] = [];
@@ -4472,7 +4504,9 @@ export class WebGPURenderer {
           precompView = view;
           sourceWidth = imgLayer.precomp.width;
           sourceHeight = imgLayer.precomp.height;
-          // filters/CC/effects stay identity → the precomp texture composites as-is.
+          // filters / CC stay identity; B57: the precomp's own effect stack (if any) runs on its texture
+          // (warp / spatial / colour slots), so nothing behind the layer is touched.
+          if (imgLayer.precomp.effects) imgEffects = imgLayer.precomp.effects;
         } else {
           const img = imgLayer.image;
           if (!img) {
@@ -4535,6 +4569,7 @@ export class WebGPURenderer {
         let textureView: GPUTextureView | null;
         if (precompView) {
           textureView = precompView;
+          data[IMAGE_SRCPREMUL_FLOAT] = 1;
         } else {
           const gpuTexture = bitmap ? this.getOrCreateImageTexture(gpu, textureKey, bitmap, sourceWidth, sourceHeight) : null;
           textureView = gpuTexture?.createView() ?? null;
@@ -4870,9 +4905,11 @@ export class WebGPURenderer {
           clearValue: { r: 0, g: 0, b: 0, a: clearAlpha },
         }],
       });
-      pass.setPipeline(bgPipeline);
-      pass.setBindGroup(0, bgBindGroup);
-      pass.draw(6);
+      if (drawBackground) {
+        pass.setPipeline(bgPipeline);
+        pass.setBindGroup(0, bgBindGroup);
+        pass.draw(6);
+      }
       for (const d of draws) d.fn(pass);
       pass.end();
     } else {
@@ -4995,9 +5032,11 @@ export class WebGPURenderer {
       let scenePass = encoder.beginRenderPass({
         colorAttachments: [{ view: sceneView, loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 0 } }],
       });
-      scenePass.setPipeline(bgPipeline);
-      scenePass.setBindGroup(0, bgBindGroup);
-      scenePass.draw(6);
+      if (drawBackground) {
+        scenePass.setPipeline(bgPipeline);
+        scenePass.setBindGroup(0, bgBindGroup);
+        scenePass.draw(6);
+      }
 
       let blurSlot = 0;
       let shadowSlot = 0;

@@ -117,7 +117,7 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | B54 | Refs: seeded pixel-block dissolve / build-on for any layer + 8-bit sparkle generator (ref gap #10: r01 r07) | ✅ | medium |
 | B55 | Refs: word roll / slot swap text primitive (stepped or rolled vertical word list, in-place swap, per-row colour) (ref gap #11: r03 r04) | ⬜ | light |
 | B56 | Refs: animatable text on path - keyframable `textPath.margin` + path-shape keyframes bound to the text (unfurl along a curl, text riding an opening mask edge) (ref gap #18: r05) | ⬜ | medium |
-| B57 | Refs: effect stack on text / shape / precomp layers (today image + adjustment only) + layer-local bulge / mesh warp with animatable centre and radius (ref gap #12: r01 r05) | ⬜ (browser) | **heavy** |
+| B57 | Refs: effect stack on text / shape / precomp layers (today image + adjustment only) + layer-local bulge / mesh warp with animatable centre and radius (ref gap #12: r01 r05) | ✅ (headless-GPU verified; mesh warp not built) | **heavy** |
 | B58 | Refs: gradient-blob field generator (soft animated blurred colour blobs, lumpy cloud floor; seeded, frame-pure) (ref gap #13: r06) | ⬜ | medium |
 | B59 | Refs: script / logo write-on - stroke-order centreline trim reveal for filled glyphs and logos (ref gap #14: r03) | ⬜ | medium |
 | B60 | Refs: cloner per-instance sources - render `ResolvedCloner.instanceSources` so each copy can be a different image (photo rings / grids) (ref gap #15: r04) | ⬜ (browser) | medium |
@@ -892,13 +892,27 @@ Source: the frame-by-frame breakdowns of the 7 motion references the owner sent 
 - **Likely files:** `src/core/textPath.ts`, `src/core/types.ts`, `src/core/interpolation.ts`, `src/core/motionPath.ts`, `src/agent/featureManifest.ts`.
 - **Verification:** gates + `verify:text-kinetic` extension (glyph positions along an animated margin and a morphing path, frame-pure).
 
-## B57 - Effects on text / shape / precomp layers + layer-local warp ⬜ (browser)
+## B57 - Effects on text / shape / precomp layers + layer-local warp ✅ (headless-GPU verified; mesh warp not built)
 - **Delivers:** the `effects?: LayerEffect[]` stack on text, shape and precomp layers (today only `ImageLayer` / `AdjustmentLayer` carry it), rendered by sampling the layer's own texture, plus a layer-local bulge / mesh warp effect with an animatable centre and radius that does not touch what is behind.
 - **Source beats:** r01 f168-176 (glitch on the title text); r05 f466-578 ("hope i make it out of here" bulges and warps over footage).
 - **Depends on:** B50 for animated params; reuses the precomp RTT path for text / shapes.
 - **Perf weight:** **heavy** (per-layer RTT for non-image layers).
 - **Likely files:** `src/core/types.ts`, `src/engine/renderer.ts`, `src/core/effects/effectStack.ts`, `src/core/warp/`, the Inspector effects panel.
 - **Verification:** gates + `verify:effects` + `verify:warp` + a headless pixel check on a text layer (gpu:adjustment pattern; layers below stay byte-identical).
+- **Built (wave 2, Nov 2026):** precomp layers carry `effects?: LayerEffect[]` (resolved per frame with B50 keyed params into
+  `ResolvedPrecomp.effects`, run by the image pipeline's warp / spatial / colour slots on the precomp texture); text / shape /
+  video / lottie layers get a stack through `agent.applyLayerEffects` (precompose + stack; `editor.setLayerEffects` is now an
+  agent action too; the editor's effect-stack actions accept precomps). `bulge` takes `[amount, centreX, centreY, radius]`
+  (radius 0 = the old centred bulge; CPU twin `core/effects/layerEffects.ts`). `digitalGlitch` on a premultiplied source shifts
+  coverage with the slices. Precompose fixes found on the way (pre-existing): the precomp layer was placed at (0, 0) (its
+  centre on the top-left corner, so everything precomposed moved), the new sub-comp drew the default opaque background,
+  precomp textures (premultiplied) were composited as straight alpha (darkened edges), and a nested render overwrote the
+  parent's shared background uniforms. Not built: a free-form mesh warp (bulge / twirl / wave / ripple cover r05's beat).
+- **Verified:** `verify:layer-effects` 9/9 (parser, bulge twin == the original centred bulge to 1e-12 for 1-param stacks,
+  positioned bulge only inside its radius, precomp stack resolution + keyed params, persistence), `verify:precomp` 16/16,
+  `gpu:layer-effects` 6/6 through the MCP: precompose + identity stack == the plain frame (max delta 1), the glitch changes
+  the title and no row above / below it, the text stays editable inside the precomp, keyed amount 0 at f0 == plain, the
+  positioned bulge changes pixels only inside its circle; `gpu:camera-cards` 22/22 (precomp card + corner pin).
 
 ## B58 - Gradient-blob field generator ⬜
 - **Delivers:** a seeded generator layer of soft animated colour blobs (count, palette, blur, drift speed, lumpy top-edge "cloud floor" mode) so blurred-glow backgrounds are one layer instead of hand-placed blurred ellipses.

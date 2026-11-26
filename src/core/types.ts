@@ -1433,6 +1433,10 @@ export interface PrecompLayer {
   /** Registry key of the referenced sub-composition. */
   compositionId: string;
   timeRemap?: PrecompTimeRemap;
+  /** B57: effect stack applied to the precomp's rendered texture (warp / spatial / colour slots, like an
+   *  image layer). Text / shape layers get effects by being nested in a precomp (agent.applyLayerEffects).
+   *  Absent = the texture composites as-is (old projects unchanged). */
+  effects?: LayerEffect[];
 }
 
 /**
@@ -2236,6 +2240,8 @@ export interface ResolvedPrecomp {
   renderFrame: RenderFrame | null;
   width: number;
   height: number;
+  /** B57: the evaluated effect stack (keyed params at this frame); absent when the layer has none. */
+  effects?: ResolvedEffect[];
 }
 
 /**

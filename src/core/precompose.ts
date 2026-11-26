@@ -9,7 +9,7 @@
 // KEY difference from createGroup: transforms are preserved VERBATIM (world coords +
 // keyframes) and the precomp layer gets an identity transform, so nothing moves.
 
-import { createComposition, createPrecompLayer } from './factory';
+import { createComposition, createPrecompLayer, createTransform } from './factory';
 import type { Composition, Layer, PrecompLayer } from './types';
 
 /** rootIds plus every layer whose parent chain leads to one of them (descendants). */
@@ -55,6 +55,8 @@ export function buildPrecompose(
   if (moved.length === 0) return null;
 
   const subComposition = createComposition(subName, { ...composition.settings });
+  // B57: a precomp is transparent where its layers draw nothing (no opaque default background box).
+  subComposition.background = { layers: [] };
   subComposition.layers = moved.map((l) => ({
     ...l,
     trackId: null,
@@ -65,6 +67,10 @@ export function buildPrecompose(
   const outPoint = Math.max(...moved.map((l) => l.outPoint));
   const precompLayer: PrecompLayer = {
     ...createPrecompLayer(subName, subComposition.id, composition.settings.durationFrames),
+    // B57: centred. Layer quads (the precomp texture included) are centred on their position, so the
+    // sub-comp (same size as the parent) lines up 1:1 only at the comp centre; (0, 0) put its centre on
+    // the top-left corner and moved everything that was precomposed.
+    transform: createTransform(composition.settings.width / 2, composition.settings.height / 2),
     inPoint,
     outPoint,
   };

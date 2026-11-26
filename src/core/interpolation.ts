@@ -55,7 +55,7 @@ import type { Mat4, Vec3 } from './mat4';
 import type { CameraLayer } from './types';
 import { defaultCamera, cameraFromParams, localModelMatrix, composeWorldMatrix, forwardVector, cubicBezierVec3, type ResolvedCamera } from './camera3d';
 import { resolveStyleColor, type StyleLookup } from './styles';
-import type { PrecompLayer, BeamLayer } from './types';
+import type { PrecompLayer, BeamLayer, ResolvedEffect } from './types';
 import { straightBeam, lightningPath } from './beam/beamGeometry';
 import { resolveDominantColor, resolveShapeFill, resolveShapePattern, hexToVec4 } from './material';
 import { getMotionBlur } from './layerSwitches';
@@ -889,6 +889,13 @@ function resolveVideoLayer(layer: VideoLayer, frame: number, compositionFrameRat
     proxyScale: v.proxyScale,
     ...(sourceFrameB != null ? { sourceFrameB, blendMix, interp: v.retimeInterp ?? 'mix' } : {}),
   };
+}
+
+// B57: a precomp's effect stack (B50 keyed params evaluated at this frame). Empty ({}) without effects,
+// so precomps without a stack resolve exactly as before.
+function precompEffectsField(layer: PrecompLayer, frame: number): { effects?: ResolvedEffect[] } {
+  const effects = resolveEffectStack(layer.effects, layer.effectsEnabled !== false, effectParamEvaluator(layer.animProps, frame));
+  return effects.length ? { effects } : {};
 }
 
 function resolveImageLayer(layer: ImageLayer, frame: number): ResolvedImage {
@@ -1868,6 +1875,7 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
             renderFrame: nested,
             width: sub?.settings.width ?? settings.width,
             height: sub?.settings.height ?? settings.height,
+            ...precompEffectsField(precomp, frame),
           },
           layerType: 'precomp',
         });
