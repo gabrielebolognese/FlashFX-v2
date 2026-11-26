@@ -68,3 +68,41 @@ export function bulgeWarpUV(uv: [number, number], aspect: number, params: readon
   const k = (Math.pow(r / maxr, 1 - p0) * maxr) / r;
   return [(dx * k) / aspect + cx, dy * k + cy];
 }
+
+// ---- digitalGlitch slice twin (B57 "slice glitch") ----
+// CPU twin of the WGSL digitalGlitch case in engine/renderer.ts applySpatialEffect: the texture is cut into
+// GLITCH_ROWS horizontal bands (row = floor(uv.y * 40)); a band slides sideways by `du` (texture UV) when
+// hash21f32(row, floor(frame * 0.5)) < amount * 0.5, with du = (hash21f32(row, 7) - 0.5) * amount * 0.2. So the
+// glitch re-rolls every 2 frames, each band always slides by its own fixed amount, and the R / B channels
+// are additionally split by amount * 6 px. Arithmetic is done in f32 (Math.fround) like the GPU.
+
+/** Horizontal bands the glitch cuts the texture into (WGSL: floor(uv.y * 40.0)). */
+export const GLITCH_ROWS = 40;
+
+const f32 = Math.fround;
+const fract32 = (x: number): number => f32(x - Math.floor(x));
+
+/** CPU twin of the WGSL hash21 evaluated in f32 (glitchGpu.ts hash21 is the f64 version, whose values can differ near a threshold). */
+export function hash21f32(px: number, py: number): number {
+  const k = f32(0.1031);
+  let x = fract32(f32(f32(px) * k));
+  let y = fract32(f32(f32(py) * k));
+  let z = fract32(f32(f32(px) * k));
+  // p3 += dot(p3, p3.yzx + 33.33)
+  const c = f32(33.33);
+  const d = f32(f32(f32(x * f32(y + c)) + f32(y * f32(z + c))) + f32(z * f32(x + c)));
+  x = f32(x + d); y = f32(y + d); z = f32(z + d);
+  return fract32(f32(f32(x + y) * z));
+}
+
+/** The UV shift of glitch band `row` at `frame` for amount `p0` (0 = the band stays put). */
+export function digitalGlitchRowShift(row: number, frame: number, p0: number): number {
+  if (!(p0 > 0)) return 0;
+  if (hash21f32(row, Math.floor(f32(frame * 0.5))) < f32(p0 * 0.5)) return f32(f32(hash21f32(row, 7) - 0.5) * f32(p0 * 0.2));
+  return 0;
+}
+
+/** Every band's UV shift (index = row, top to bottom) at `frame`. */
+export function digitalGlitchSlices(p0: number, frame: number, rows = GLITCH_ROWS): number[] {
+  return Array.from({ length: rows }, (_, r) => digitalGlitchRowShift(r, frame, p0));
+}

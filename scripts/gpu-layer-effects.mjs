@@ -4,10 +4,26 @@
 //    and leaves every row above / below it byte-identical (the layers behind are untouched);
 //  - the text stays editable inside the precomp; a keyed effect param ("effect.245.0") is 0 at f0 (== no
 //    effect) and full at f20;
-//  - the positioned bulge (centre + radius) changes pixels only inside its circle.
+//  - the positioned bulge (centre + radius) changes pixels only inside its circle;
+//  - GPU == CPU twin for the slice glitch: on black, every 27 px band of a glitched title equals the plain
+//    title shifted by exactly the twin's digitalGlitchSlices(amount, frame)[band] (core/effects/layerEffects.ts).
 // Local only (Chrome + a GPU), like every gpu:* script:  npm run gpu:layer-effects
 import assert from 'node:assert/strict';
+import { build } from 'esbuild';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { startMcp, makeRenderer, idOf, diff, diffBox } from './lib/mcp-pixels.mjs';
+
+// The CPU twin of the glitch slice schedule, bundled from the real TS.
+const twinDir = mkdtempSync(join(tmpdir(), 'gpu-layer-effects-'));
+await build({
+  stdin: { contents: "export { digitalGlitchSlices, GLITCH_ROWS } from './src/core/effects/layerEffects';", resolveDir: process.cwd(), sourcefile: 'entry.ts', loader: 'ts' },
+  bundle: true, format: 'esm', platform: 'node', outfile: join(twinDir, 'twin.mjs'), logLevel: 'silent',
+});
+const { digitalGlitchSlices, GLITCH_ROWS } = await import(pathToFileURL(join(twinDir, 'twin.mjs')).href);
+rmSync(twinDir, { recursive: true, force: true });
 
 const OUT = process.env.FLASHFX_GPU_OUT ?? 'C:/Users/there/AppData/Local/Foreman/tasks/t_124df7beea/artifacts/engine/wave2/fx';
 let passed = 0;
@@ -113,6 +129,99 @@ try {
     assert.equal(bl.result.wrapped, true);
     assert.ok(bd.n > 1000, `the bulge changed too little (${bd.n})`);
     assert.ok(bd.left >= 1400 - R - 2 && bd.right <= 1400 + R + 2 && bd.top >= 260 - R - 2 && bd.bottom <= 260 + R + 2, 'pixels outside the bulge circle changed');
+  });
+
+  // GPU == CPU twin for the slice glitch. A fresh comp: a black backdrop (so the composite is exactly the
+  // precomp's premultiplied colour), a big white title, wrapped with amount 0, then amount AMT.
+  const AMT = 0.9;
+  await mcp.call('create_project', { name: 'B57 glitch twin', format: 'long', durationFrames: 60, clipLength: 'comp', uiMode: 'pro' }, 400000);
+  idOf(await mcp.action('editor.addShapeLayer', { opts: { type: 'rectangle', x: 960, y: 540, width: 1920, height: 1080, fill: [0, 0, 0, 1], name: 'black' } }));
+  const tb = await mcp.actions([
+    { actionId: 'editor.addText', args: { content: 'SLICE' } },
+    { actionId: 'editor.updateLayerProperty', args: { layerId: '$0.activeLayerId', path: 'animOverrides.fontSize.defaultValue', value: 420 } },
+    { actionId: 'editor.updateLayerProperty', args: { layerId: '$0.activeLayerId', path: 'content.spans.0.style.color', value: [1, 1, 1, 1] } },
+  ]);
+  const sliceId = tb.results[0].activeLayerId;
+  const sInk = (await mcp.call('measure_text', { layerId: sliceId, frame: 10 })).result.ink;
+  const sw = await mcp.action('agent.applyLayerEffects', { layerId: sliceId, effects: [{ effect: 'digitalGlitch', params: [0] }] });
+  const W = 1920; const H = 1080; const bandH = H / GLITCH_ROWS;
+  const x0 = Math.max(0, Math.floor(sInk.left - 160)); const x1 = Math.min(W, Math.ceil(sInk.left + sInk.width + 160));
+  // Bands that lie fully inside the title's ink rows.
+  const bands = [];
+  for (let r = 0; r < GLITCH_ROWS; r++) if (r * bandH >= sInk.top && (r + 1) * bandH <= sInk.top + sInk.height) bands.push(r);
+  // Two frames from different 2-frame buckets whose schedules both slide some of those bands and keep others.
+  const frames = [];
+  for (let f = 4; f < 60 && frames.length < 2; f += 2) {
+    const sl = digitalGlitchSlices(AMT, f);
+    const moved = bands.filter((r) => Math.abs(sl[r]) * W >= 3).length;
+    if (moved >= 1 && bands.length - moved >= 1) frames.push(f);
+  }
+  const plain = {};
+  for (const f of frames) plain[f] = await render(`effects-slice-plain-f${f}`, f);
+  await mcp.action('agent.applyLayerEffects', { layerId: sw.result.layerId, effects: [{ effect: 'digitalGlitch', params: [AMT] }] });
+  /** Green channel of `img` at fractional pixel-space x (bilinear along x, like the GPU's linear sampler). */
+  const greenAt = (img, x, y) => {
+    const xc = x - 0.5; const xa = Math.floor(xc); const t = xc - xa;
+    const g = (xi) => img.px[(y * img.width + Math.min(img.width - 1, Math.max(0, xi))) * 4 + 1];
+    return g(xa) * (1 - t) + g(xa + 1) * t;
+  };
+  const report = [];
+  let movedBands = 0; let stillBands = 0; let worst = 0;
+  for (const f of frames) {
+    const gl = await render(`effects-slice-glitch-f${f}`, f);
+    const sl = digitalGlitchSlices(AMT, f);
+    for (const r of bands) {
+      const shiftPx = sl[r] * W;
+      let madTwin = 0; let madNone = 0; let n = 0; let inkPx = 0;
+      for (let y = Math.ceil(r * bandH); y < Math.floor((r + 1) * bandH); y++) for (let x = x0; x < x1; x++) {
+        const g = gl.px[(y * W + x) * 4 + 1];
+        if (plain[f].px[(y * W + x) * 4 + 1] > 128) inkPx++;
+        madTwin += Math.abs(g - greenAt(plain[f], x + 0.5 + shiftPx, y));
+        madNone += Math.abs(g - plain[f].px[(y * W + x) * 4 + 1]);
+        n++;
+      }
+      madTwin /= n; madNone /= n;
+      worst = Math.max(worst, madTwin);
+      // A band the glyphs leave empty (the measured box includes line space) proves nothing either way.
+      const inked = inkPx >= 400;
+      if (inked) { if (Math.abs(shiftPx) >= 3) movedBands++; else stillBands++; }
+      report.push({ f, band: r, inked, shiftPx: +shiftPx.toFixed(2), madTwin: +madTwin.toFixed(2), madNone: +madNone.toFixed(2) });
+    }
+  }
+  console.log(`  slice bands: ${JSON.stringify(report)}`);
+  check(`slice glitch GPU == CPU twin: ${movedBands + stillBands} inked bands over f${frames.join(' / f')} (${movedBands} slid, ${stillBands} still) match the twin's shift, worst mean |dG| ${worst.toFixed(2)}/255`, () => {
+    assert.equal(frames.length, 2, `no frames with both slid and still bands (bands ${bands})`);
+    assert.ok(movedBands >= 2 && stillBands >= 2, 'need slid and still bands');
+    for (const b of report) {
+      assert.ok(b.madTwin < 3, `band ${b.band} f${b.f}: twin shift ${b.shiftPx}px leaves mean |dG| ${b.madTwin}`);
+      if (b.inked && Math.abs(b.shiftPx) >= 3) assert.ok(b.madNone > b.madTwin * 3 + 2, `band ${b.band} f${b.f}: the slid band is not clearly shifted (${JSON.stringify(b)})`);
+    }
+  });
+
+  // The glitch-burst recipe end to end (apply_recipe -> agent.applyLayerEffects + keyed amount): clean
+  // before / at the start and at the end, glitched at the peak, nothing outside the word's rows.
+  const bt = await mcp.actions([
+    { actionId: 'editor.addText', args: { content: 'BURST' } },
+    { actionId: 'editor.updateLayerProperty', args: { layerId: '$0.activeLayerId', path: 'animOverrides.fontSize.defaultValue', value: 160 } },
+    { actionId: 'editor.updateLayerProperty', args: { layerId: '$0.activeLayerId', path: 'transform.position.defaultValue', value: [960, 960] } },
+    { actionId: 'editor.updateLayerProperty', args: { layerId: '$0.activeLayerId', path: 'content.spans.0.style.color', value: [1, 1, 1, 1] } },
+  ]);
+  const burstId = bt.results[0].activeLayerId;
+  const bInk = (await mcp.call('measure_text', { layerId: burstId, frame: 30 })).result.ink;
+  const beforeR = {};
+  for (const f of [30, 33, 38]) beforeR[f] = await render(`effects-burst-before-f${f}`, f);
+  const rec = await mcp.call('apply_recipe', { id: 'glitch-burst', params: { layerId: burstId, amount: 0.9 }, startFrame: 30 });
+  const afterR = {};
+  for (const f of [30, 33, 38]) afterR[f] = await render(`effects-burst-recipe-f${f}`, f);
+  const rows = { x: 0, y: Math.floor(bInk.top - 20), width: 1920, height: Math.ceil(bInk.height + 40) };
+  const peak = diff(afterR[33], beforeR[33], rows, 8).n;
+  const outside = diff(afterR[33], beforeR[33], { x: 0, y: 0, width: 1920, height: rows.y }, 0).n;
+  check(`glitch-burst recipe via apply_recipe: f30 and f38 clean (${diff(afterR[30], beforeR[30], null, 2).n} / ${diff(afterR[38], beforeR[38], null, 2).n} px), f33 glitched (${peak} px), 0 px changed above the word`, () => {
+    assert.ok(rec.ok !== false, JSON.stringify(rec));
+    assert.equal(diff(afterR[30], beforeR[30], null, 2).n, 0);
+    assert.equal(diff(afterR[38], beforeR[38], null, 2).n, 0);
+    assert.ok(peak > 1000, `the burst barely changed the word (${peak})`);
+    assert.equal(outside, 0);
   });
 
   console.log(`\n${passed} checks passed. Frames: ${OUT}`);

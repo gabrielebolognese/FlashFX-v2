@@ -333,7 +333,10 @@ Never leave real motion on linear (the default for `addKeyframe`), except progre
   (r01 card dissolve f300-316, build-on f326-358). `region` is comp px, top-left (default the whole comp): pass the layer
   box for `order: "directional"` (sweep, `angle` 0 = left to right) or `"center"` (centre-out) so the sweep spans the
   layer. `stepFrames: 2` steps the blocks on twos (8-bit read). Frame-pure: scrubbing is identical. A blocks mask takes 2
-  of the 8 mask slots. Recipe: `pixel-dissolve`.
+  of the 8 mask slots. Build-on never removes a shown block and dissolve never brings one back; `jitter` (default 0.35)
+  mixes randomness into the directional / centre sweeps (0 = a clean wipe of squares, 1 = fully random). The CPU twin
+  (`pixelBlockThreshold` + `pixelBlockShown` in `core/pixelBlocks.ts`) says which squares show at a progress;
+  `gpu:pixel-blocks` proves the GPU matches it square for square in both directions and all three orders. Recipe: `pixel-dissolve`.
 - **8-bit sparkle (B54).** `agent.pixelSparkle { options: { box, color, startFrame, durationFrames, count?, blockSize?,
   margin?, stepFrames?, density?, wander?, seed? } }`: seeded squares flicker and crawl in a ring around `box` (comp px,
   top-left; use the `measure_text` ink box of a word) and never cover it (r07 lime squares around "Video editors!"). Lands
@@ -346,7 +349,12 @@ Never leave real motion on linear (the default for `addKeyframe`), except progre
   (it stays editable inside: `editor.enterPrecomp { compositionId }`), and the stack runs on the precomp
   texture, so the layers behind are untouched; the result's `layerId` is the precomp. Ids from
   `src/core/effects/effectRegistry.ts`: `digitalGlitch [amount 0..1]` (row slices + RGB offset: r01 title
-  glitch f168-176, use ~0.6-0.9 for 6-8 frames), `rgbSplit [px]`, `chromaticAberration`, `twirl`, `wave`,
+  glitch f168-176, use ~0.6-0.9 for 6-8 frames; how it moves: the precomp is cut into 40 horizontal bands,
+  the pattern re-rolls every 2 frames, about amount / 2 of the bands slide per roll, each band always by its
+  own fixed shift of at most amount x 10 % of the comp width, and R / B split by amount x 6 px. The CPU twin
+  `digitalGlitchSlices(amount, frame)` in `core/effects/layerEffects.ts` gives every band's shift for a frame,
+  so you can see which bands of a word will slide before rendering; `gpu:layer-effects` proves the GPU
+  matches it band for band), `rgbSplit [px]`, `chromaticAberration`, `twirl`, `wave`,
   `ripple`, `pixelate`, and `bulge [amount -1..1, centreX, centreY, radius]` with the centre in UV of
   the precomp (= comp px / comp size) and the radius as a fraction of the comp height (radius 0 =
   centred, the old behaviour): a word bulges in place (r05 "hope i make it out of here"). Key any param
@@ -372,7 +380,8 @@ Never leave real motion on linear (the default for `addKeyframe`), except progre
     cost nothing;
   - effect-stack params: `effect.<type>.<paramIndex>`, the same type id / index as
     `editor.setLayerEffectParam` (which adds the effect). E.g. an adjustment layer's pixelate size,
-    RGB split amount or invert amount ramping. The effect stack lives on image and adjustment layers.
+    RGB split amount or invert amount ramping. The effect stack lives on image, adjustment and precomp
+    layers (text / shape layers get one through `agent.applyLayerEffects`, above).
   These render byte-identically to the same values set statically (`npm run gpu:anim-props`).
 - Images and logos: `import_image { path, rasterSize?, x?, y? }` imports PNG / JPEG / WebP / GIF /
   SVG (rasterized) and places it. Scale it with `transform.scale` = target px / `result.width`.

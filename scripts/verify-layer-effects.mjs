@@ -2,6 +2,7 @@
 // positionable bulge warp. Pure node (esbuild bundle of the real TS):
 //  - parseAgentEffects / layerEffectsRoute (core/effects/layerEffects.ts), the agent helper's input side;
 //  - bulgeWarpUV, the CPU twin of the WGSL bulge case (old 1-param stacks map exactly as before);
+//  - digitalGlitchSlices, the CPU twin of the WGSL digitalGlitch slice schedule (which bands slide, how far);
 //  - resolveFrame: a precomp's stack resolves into precomp.effects (B50 keyed params evaluated per frame),
 //    absent / disabled stacks add no field (old projects resolve byte-identically);
 //  - validation keeps the precomp stack through save / load.
@@ -37,7 +38,7 @@ try {
     bundle: true, format: 'esm', platform: 'node', outfile, logLevel: 'silent',
   });
   const m = await import(pathToFileURL(outfile).href);
-  const { parseAgentEffects, layerEffectsRoute, bulgeWarpUV, bulgeParamsForComp, EFFECT_TYPE, resolveFrame, createComposition, createRectangleLayer, createPrecompLayer, validateComposition } = m;
+  const { parseAgentEffects, layerEffectsRoute, bulgeWarpUV, bulgeParamsForComp, hash21f32, digitalGlitchRowShift, digitalGlitchSlices, GLITCH_ROWS, EFFECT_TYPE, resolveFrame, createComposition, createRectangleLayer, createPrecompLayer, validateComposition } = m;
 
   console.log('verify:layer-effects');
 
@@ -91,6 +92,45 @@ try {
     assert.ok(inside[0] > 1460 / 1920 && inside[0] < 1550 / 1920, `inside: the sample moves radially outward (${inside[0] * 1920})`);
     assert.ok(Math.abs(inside[1] - 300 / 1080) < 1e-12, 'inside: on the horizontal through the centre the sample stays on it');
     assert.deepEqual(bulgeWarpUV([0.3, 0.4], 1.5, [0, 0.5, 0.5, 0.3]).map((v) => +v.toFixed(12)), [0.3, 0.4], 'amount 0 = identity');
+  });
+
+  check('glitch twin: hash21f32 is the WGSL hash (f32) in [0,1) and close to the f64 formula', () => {
+    const f64 = (px, py) => { const fr = (x) => x - Math.floor(x); let a = fr(px * 0.1031), b = fr(py * 0.1031), c = fr(px * 0.1031); const d = a * (b + 33.33) + b * (c + 33.33) + c * (a + 33.33); a += d; b += d; c += d; return fr((a + b) * c); };
+    let close = 0; let n = 0;
+    for (let r = 0; r < GLITCH_ROWS; r++) for (let t = 0; t < 60; t++) {
+      const h = hash21f32(r, t);
+      assert.ok(h >= 0 && h < 1, `hash ${h}`);
+      assert.equal(h, Math.fround(h));
+      if (Math.abs(h - f64(r, t)) < 0.01) close++;
+      n++;
+    }
+    assert.ok(close / n > 0.9, `f32 and f64 hash agree on only ${close}/${n}`);
+  });
+  check('glitch twin: amount 0 shifts nothing; the schedule is frame-pure and re-rolls every 2 frames', () => {
+    for (let f = 0; f < 50; f++) assert.ok(digitalGlitchSlices(0, f).every((d) => d === 0));
+    assert.deepEqual(digitalGlitchSlices(0.9, 17), digitalGlitchSlices(0.9, 17), 'same frame, same slices');
+    for (let f = 0; f < 60; f += 2) assert.deepEqual(digitalGlitchSlices(0.9, f), digitalGlitchSlices(0.9, f + 1), `f${f} and f${f + 1} share a bucket`);
+    let changes = 0;
+    for (let f = 0; f < 60; f += 2) if (JSON.stringify(digitalGlitchSlices(0.9, f)) !== JSON.stringify(digitalGlitchSlices(0.9, f + 2))) changes++;
+    assert.ok(changes >= 25, `the glitch re-rolled on only ${changes} of 30 buckets`);
+  });
+  check('glitch twin: about amount/2 of the bands slide, each by its own fixed shift, never more than amount * 0.1 UV', () => {
+    for (const p0 of [0.3, 0.6, 0.9]) {
+      let slid = 0; let total = 0;
+      for (let f = 0; f < 400; f += 2) {
+        const s = digitalGlitchSlices(p0, f);
+        for (let r = 0; r < GLITCH_ROWS; r++) {
+          total++;
+          if (s[r] !== 0) {
+            slid++;
+            assert.ok(Math.abs(s[r]) <= p0 * 0.1 + 1e-6, `row ${r} shift ${s[r]}`);
+            assert.equal(s[r], Math.fround(Math.fround(hash21f32(r, 7) - 0.5) * Math.fround(p0 * 0.2)), 'a band always slides by its own amount');
+          }
+        }
+      }
+      assert.ok(Math.abs(slid / total - p0 / 2) < 0.05, `amount ${p0}: ${(slid / total).toFixed(3)} of bands slid, expected ~${p0 / 2}`);
+    }
+    assert.equal(digitalGlitchRowShift(3, 10, -1), 0, 'negative amount = no glitch');
   });
 
   const sub = createComposition('sub', { ...SETTINGS });

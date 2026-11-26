@@ -885,6 +885,10 @@ Source: the frame-by-frame breakdowns of the 7 motion references the owner sent 
 - **Verified:** `verify:pixel-blocks` 20/20; `gpu:pixel-blocks` 6/6 through the MCP: the GPU mask equals the CPU twin
   block by block (400 / 400 blocks at f5, f20, f26, f35), dissolve 400 -> 177 -> 85 -> 0 blocks, every block uniform
   inside, scrubbing back renders the identical set, the sparkle puts 2661 lime px in the ring and 0 on the box.
+- **Re-verified + extended (2026-11-26, on `17531c2`):** `gpu:pixel-blocks` 11/11: build-on (`direction: "in"`) now proven
+  too, GPU == CPU twin square for square for a 30 deg directional sweep stepped on twos (f17 holds f16) and a centre-out
+  sweep at 7 frames each; blocks are only ever added; the `pixel-dissolve` and `pixel-sparkle` recipes run end to end
+  through `apply_recipe` (card 55696 -> 26028 -> 0 white px; 2783 lime px around the box, 0 on it).
 
 ## B55 - Word roll / slot swap ⬜
 - **Delivers:** a text primitive for a vertical word list that steps or rolls (one row per step, hold or eased), with a mask window, per-row colour / opacity (centre bright, neighbours dim) and in-place word swap inside a sentence (the line re-flows around the new word). Agent action `agent.addWordRoll({words, steps:[{frame}], ease})`.
@@ -923,6 +927,12 @@ Source: the frame-by-frame breakdowns of the 7 motion references the owner sent 
   `gpu:layer-effects` 6/6 through the MCP: precompose + identity stack == the plain frame (max delta 1), the glitch changes
   the title and no row above / below it, the text stays editable inside the precomp, keyed amount 0 at f0 == plain, the
   positioned bulge changes pixels only inside its circle; `gpu:camera-cards` 22/22 (precomp card + corner pin).
+- **Re-verified + extended (2026-11-26, on `17531c2`):** CPU twin of the slice glitch (`digitalGlitchSlices` / `hash21f32`
+  in `core/effects/layerEffects.ts`: 40 bands, re-roll every 2 frames, ~amount/2 bands slide, each by its own fixed shift
+  <= amount x 0.1 UV). `verify:layer-effects` 12/12 (3 new twin checks). `gpu:layer-effects` 8/8: on black, each glitched
+  27 px band equals the plain title shifted by the twin's shift (22 inked bands at f4 / f6, 7 slid, 15 still, worst mean
+  |dG| 0.01/255), and the `glitch-burst` recipe runs end to end through `apply_recipe` (clean at f30 / f38, glitched at
+  f33, 0 px changed above the word).
 
 ## B58 - Gradient-blob field generator ⬜
 - **Delivers:** a seeded generator layer of soft animated colour blobs (count, palette, blur, drift speed, lumpy top-edge "cloud floor" mode) so blurred-glow backgrounds are one layer instead of hand-placed blurred ellipses.
