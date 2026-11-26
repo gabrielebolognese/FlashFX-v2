@@ -225,11 +225,14 @@ export function resolveShapeFill(config: ShapeMaterialConfig | undefined, fallba
 
     const angleDeg = layer.type === 'linear'
       ? (layer.angle ?? (layer.direction ? getLinearAngle(layer.direction) : 180))
-      : 0;
-    const [cx, cy] = radialCenter(layer.radialType);
+      : layer.type === 'conic' ? (Number.isFinite(layer.angle) ? (layer.angle as number) : 0) : 0;
+    const [rcx, rcy] = radialCenter(layer.radialType);
+    // B74: an explicit centre (0..1 in the shape box) wins over the radialType preset.
+    const cx = typeof layer.centerX === 'number' && Number.isFinite(layer.centerX) ? layer.centerX : rcx;
+    const cy = typeof layer.centerY === 'number' && Number.isFinite(layer.centerY) ? layer.centerY : rcy;
 
     layers.push({
-      gradientType: layer.type === 'radial' ? 1 : 0,
+      gradientType: layer.type === 'radial' ? 1 : layer.type === 'conic' ? 2 : 0,
       angle: angleDeg * (Math.PI / 180),
       centerX: cx,
       centerY: cy,

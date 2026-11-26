@@ -134,7 +134,7 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | B71 | Replicas: path stroke width profile - a path stroke has one width per layer: add taper / per-vertex width along the path (r03 S34 line fans merge into a tapering bundle, f3436-3525) (found replicating r03) | ⬜ (browser) | medium |
 | B72 | Replicas: kit / measurement ergonomics - replica-kit `text({lineHeight})` writes `content.spans.0.style.lineHeight` but the renderer reads `animOverrides.lineHeight` (option silently ignored; write both); `measure_text` returns an ink box equal to the line box for VT323 (not tight to the glyph ink) (found replicating r01) | ⬜ | light |
 | B73 | Replicas: render defects to reproduce (low confidence) - `editor.setShapeDash` on a 1 px tall stroked rect or a 2-point open path renders nothing (r01 f206-300); a text selector with shape 'square', start 0 and keyed `end` hides almost every glyph (r01 probe3); transform.rotation keys on some 3D-toggled text layers do not render (r05 f21-32, probe6). Repro each in a headless gpu check before fixing (found replicating r01 r05) | ⬜ (browser) | light |
-| B74 | Refs: conic (angular) gradient fill on shapes with a keyframable start angle - the spinning hue colour-wheel ring (conic exists only on text fills today) (r08) | ⬜ | light |
+| B74 | Refs: conic (angular) gradient fill on shapes with a keyframable start angle - the spinning hue colour-wheel ring (conic exists only on text fills today) (r08) | ✅ (headless-GPU verified) | light |
 | B75 | Refs: styled number counter on a text layer - count between values with decimals, thousands separators / K-M suffix, prefix / suffix, any font and style (italic), eased (r08 view multipliers, follower count) | ✅ (headless-GPU verified) | light |
 | B76 | Refs: design-tool UI kit - pen / crosshair / rotate / direct-select cursor icons, a selection box with handles that follows a layer's bounds, anchor squares, live dX / dY / W / H / angle tooltip readouts, smart-guide labels (extends the B51 cursor rig) (r11) | ⬜ | medium |
 | B77 | Refs: text style keyframes - hold-keyed font family / weight / style switches on one text layer (type-style switcher) (r10) | ⬜ | light |
@@ -1067,10 +1067,18 @@ references"). The ids proposed there as "B69-B74" collided with the replica rows
 conic-gradient-fill = B74, text-counter = B75, design-tool-ui-kit = B76, text-style-keyframes = B77, freeform-mask-feather = B78,
 footage-person-matte = B79, outline-imported-fonts = B80.
 
-## B74 - Conic gradient fill on shapes ⬜
+## B74 - Conic gradient fill on shapes ✅ (headless-GPU verified)
 - **Delivers:** a conic (angular) gradient fill type on shape layers (rect / circle / path) with keyframable start angle and centre, so a hue-wheel ring spins by keying one number; agent-reachable.
 - **Source beats:** r08 f145-1057, f1082-1477 (spinning hue colour-wheel ring in every section).
 - **Verification:** gates + CPU twin of the conic colour at a pixel + headless pixel check (hue at 12 / 3 / 6 / 9 o'clock).
+- **Built (wave 2, Nov 2026):** material layer type `conic` (start `angle` in degrees, optional `centerX` / `centerY`) ->
+  `gradientType 2` in `resolveShapeFill`; the shape gradient shader's `gradientT` and its CPU twin `core/fillSampler.ts` sweep
+  clockwise from the start angle (0 = 12 o'clock) around the centre; works for fills and strokes (`strokeMaterialConfig`);
+  the Material panel offers Conic. The start angle is static: spin the wheel by keying the layer rotation (same result for a
+  wheel / ring around its centre). Feature `shapes.conic-gradient`; AUTHORING section 6.
+- **Verified:** `verify:conic-gradient` 5/5 (resolver mapping, hue at 12 / 3 / 6 / 9, radius-independent + seamless, start
+  angle + centre, linear / radial unchanged); `gpu:conic-gradient` 3/3 through the MCP (GPU wheel colours at the four clock
+  points, GPU == CPU twin at 16 angles within 0.9 / 255, keyed rotation spins it 90 deg).
 
 ## B75 - Styled number counter ✅ (headless-GPU verified)
 - **Delivers:** a counter binding on a text layer: from / to, decimals, separators, compact suffix (10K, 1.2M), prefix / suffix text, ease, start / end frame; the text keeps its own font, style and colour; frame-pure.

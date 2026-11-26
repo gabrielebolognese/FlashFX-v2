@@ -37,10 +37,18 @@ function blendRGB(mode: number, cb: Vec4, cs: Vec4): [number, number, number] {
 }
 
 // Gradient parameter in 0..1 - exact port of gradientT(). Linear uses the CSS gradient-line formula
-// (0deg toward top); radial uses a circle with farthest-corner extent. boxSize is the shape box in px.
+// (0deg toward top); radial uses a circle with farthest-corner extent; conic (B74) sweeps clockwise from
+// `angle` around the centre. boxSize is the shape box in px.
 function gradientT(gType: number, angle: number, cx: number, cy: number, uv: Vec2, boxSize: Vec2): number {
   const localX = (uv[0] - 0.5) * boxSize[0];
   const localY = (uv[1] - 0.5) * boxSize[1];
+  if (gType === 2) {
+    // B74 conic: the angle from the centre, 0 at `angle` (0 = toward top), clockwise, wrapped to 0..1.
+    const dvx = localX - (cx - 0.5) * boxSize[0];
+    const dvy = localY - (cy - 0.5) * boxSize[1];
+    const a = (Math.atan2(dvx, -dvy) - angle) / (2 * Math.PI);
+    return a - Math.floor(a);
+  }
   if (gType === 1) {
     const cpx = (cx - 0.5) * boxSize[0];
     const cpy = (cy - 0.5) * boxSize[1];

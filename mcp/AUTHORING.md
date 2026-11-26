@@ -305,6 +305,14 @@ Never leave real motion on linear (the default for `addKeyframe`), except progre
   { "frame": 36, "shape": { "type": "ellipse", "width": 240, "height": 240 } } ] } }
 ```
 
+- **Conic gradients (B74).** `editor.updateLayerProperty { layerId, path: "materialConfig", value: { enabled: true,
+  layers: [{ id: "w", type: "conic", angle: 0, blendMode: "normal", opacity: 100, colorStops: [{ id: "a", color:
+  "#ff0000", opacity: 100, position: 0 }, ..., { id: "z", color: "#ff0000", opacity: 100, position: 100 }] }] } }`
+  sweeps the stops clockwise from `angle` (degrees, 0 = 12 o'clock) around the shape centre (or `centerX` /
+  `centerY`, 0..1 in the shape box). Repeat the first colour at 100 for a seamless hue wheel. A ring: a circle with
+  no fill and a thick stroke, with the same layers on `strokeMaterialConfig`. Spin it by keying `transform.rotation`
+  (r08 spinning hue ring, f145-1057).
+
 ## 7. Masks
 
 - `editor.addMask { layerId, type: "rectangle" }`, then `get_layer` to read the new mask id (the

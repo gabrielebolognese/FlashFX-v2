@@ -405,6 +405,11 @@ fn blendRGB(mode: i32, cb: vec3f, cs: vec3f) -> vec3f {
 // extent. boxSize is the shape's bounding box in pixels.
 fn gradientT(gType: i32, angle: f32, center: vec2f, uv: vec2f, boxSize: vec2f) -> f32 {
   let localPos = (uv - vec2f(0.5)) * boxSize;
+  if (gType == 2) {
+    // B74 conic: angle from the centre, 0 at the start angle (0 = toward top), clockwise, wrapped (core/fillSampler.ts).
+    let dc = localPos - (center - vec2f(0.5)) * boxSize;
+    return fract((atan2(dc.x, -dc.y) - angle) / 6.283185307);
+  }
   if (gType == 1) {
     let centerPix = (center - vec2f(0.5)) * boxSize;
     let dv = localPos - centerPix;

@@ -346,7 +346,8 @@ export type ShapeGeometry = RectangleShape | CircleShape | StarShape | PolygonSh
 
 // ─── Material Fill System (multi-layer gradient) ───
 
-export type MaterialGradientType = 'linear' | 'radial';
+/** B74: 'conic' = an angular sweep around a centre (hue wheels, progress rings). */
+export type MaterialGradientType = 'linear' | 'radial' | 'conic';
 
 export type MaterialLinearDirection =
   | 'top-to-bottom' | 'bottom-to-top'
@@ -375,7 +376,11 @@ export interface MaterialFillLayer {
   colorStops: MaterialColorStop[];
   direction?: MaterialLinearDirection;
   radialType?: MaterialRadialType;
+  /** Linear: direction in degrees. Conic (B74): start angle in degrees (0 = 12 o'clock, clockwise). */
   angle?: number;
+  /** B74: conic / radial centre in the shape box (0..1); overrides radialType when both are set. */
+  centerX?: number;
+  centerY?: number;
   blendMode: MaterialBlendMode;
   opacity: number;
 }
@@ -1887,7 +1892,7 @@ export interface ResolvedFillStop {
 }
 
 export interface ResolvedFillLayer {
-  gradientType: number; // 0 linear, 1 radial
+  gradientType: number; // 0 linear, 1 radial, 2 conic (B74)
   angle: number;        // radians, CSS convention (0 = toward top)
   centerX: number;      // 0..1 in the shape box (radial)
   centerY: number;      // 0..1 in the shape box (radial)
