@@ -103,7 +103,7 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | B40 | Property links - pick-whip UI + expressions that read another layer's property (Bricks gap #9) | ⬜ | medium |
 | B41 | Background gradients - renderer drops stops 5-6 (bug) + 4-corner (mesh-like) gradient (Bricks gap #10) | ⬜ (browser) | light |
 | B42 | Orbit / custom 2.5D debug view + bundle true italic serif faces for accent words (Bricks gap #11) | ⬜ | light |
-| B43 | Text raster bounds: synthesized-italic (oblique) glyphs are clipped at the left/right of the text box, e.g. a word-initial italic "f" loses its hook (found in tutorial sample-01) | ⬜ (browser) | light |
+| B43 | Text raster bounds: synthesized-italic (oblique) glyphs are clipped at the left/right of the text box, e.g. a word-initial italic "f" loses its hook (found in tutorial sample-01) | ✅ (headless-GPU verified) | light |
 | B44 | Agent/MCP: one stacking model - render order follows track order, so `reorderLayers` (agent AND the UI's Bring to Front / Send to Back) has no visible effect; make it move the clip's track, add agent stack actions (MCP audit F10) | ⬜ | light |
 | B45 | Agent/MCP: text layout correctness for agents - fixed / fixedWidth text boxes misplace per-glyph (animated, accent) stamps; range reveal presets (type-on, blur-in) show the first glyph before startFrame; optional agent clip length = comp length (MCP audit F9, F12, F13) | ✅ (Nov 2026, wave 1B, headless-GPU verified) | medium |
 | B46 | Agent/MCP: authoring ergonomics - `agent.setKeyframes` with per-keyframe ease (bezier / named / hold) in one call, `agent.addShape` with clean defaults (no stroke, name, fill, radius), `agent.measureString` (no layer), background stack ids + tracks in get_state (MCP audit F14, F16, F21, F22) | ✅ | light |
@@ -735,7 +735,7 @@ Source: the YouTube tutorial-channel project compared every technique in the 4 B
 - **Likely files:** `src/ui/panels/Camera3DView.tsx`, `src/engine/fonts.ts`, `public/fonts/`.
 - **Verification:** gates; fonts: `verify:*` for the manifest entry + headless screenshot of an italic accent.
 
-## B43 - text raster bounds for oblique / overhanging glyphs ⬜
+## B43 - text raster bounds for oblique / overhanging glyphs ✅ (headless-GPU verified)
 - **Delivers:** the text rasterizer pads its measured box by the glyph overhang (actualBoundingBoxLeft/Right) plus the synthetic oblique shear (about 0.2 x line height), so no glyph is clipped; applies to the whole-layer path and the per-glyph stamp path (animators, accent words).
 - **Source beats:** videos/sample-01 cold open (S05): the accent word "free" in Playfair Display, fontStyle italic, renders its "f" with the left hook cut off (shows as "1ree"). Worked around in the sample by keeping that word upright.
 - **Reference replication (Nov 2026):** needed by r02 f102-181, f196-252, f779-832 (italic overhangs on 'second', 'spends', 'Aren't louder.'); ref gap #16. See `refs/GAP-MATRIX.md` in the task artifacts.
@@ -743,6 +743,16 @@ Source: the YouTube tutorial-channel project compared every technique in the 4 B
 - **Perf weight:** light.
 - **Likely files:** `src/text/` raster/measure code, the per-glyph stamp path.
 - **Verification:** gates + headless screenshot of "free project file" with an italic accent on "free" (no clipped pixels at the box edge).
+- **Built (wave 2, Nov 2026):** `textAtlas.renderTextToCanvas` pads the raster symmetrically by the measured ink overhang
+  (Canvas `actualBoundingBox*` per line or per glyph with tracking, half the stroke, the B36 stamp shear, 1 px slack on both
+  axes once padded), then scans the padded raster's border and redraws with a larger pad if a face's metrics under-reported
+  its ink (Instrument Serif italic). The raster stays centred on the measured box, so the layout, `measure_text`, glyph slots
+  and the layer position do not move; corner pins still map the box. Upright text with no overhang keeps pad 0 / 0 and its
+  old raster. Applies to the whole-layer path and the per-glyph stamp path (animators, accent words).
+- **Verified:** `gpu:text-bounds` 20/20 against the pinned pre-B43 renderer (b7e9ba3): layout identical; every italic case
+  keeps more ink than before and stays within 2% of an unclipped Canvas-2D reference; the pinned ink stops short (defect
+  reproduced: stamps "jiffy" +21%, accent word "free" +1.3%, Playfair "f" hook); no ink on any padded raster's border; 7
+  upright cases byte-identical. Regression: `gpu:text-paint`, `gpu:text-kinetic`, `gpu:fonts`.
 
 ---
 

@@ -2,9 +2,15 @@ import type { ResolvedText, TextGradientFill } from '../core/types';
 
 interface CachedTextEntry {
   bitmap: ImageBitmap;
+  /** Raster size in px, INCLUDING the B43 overhang pad (padX / padY on each side). */
   width: number;
   height: number;
   key: string;
+  /** B43: extra px on EACH side for glyph ink that overhangs the measured box (italics, f hooks,
+   *  strokes). 0 when nothing overhangs. The raster stays centred on the measured box, so the layout
+   *  (measureText, glyph slots, the layer position) does not move; only the drawn quad grows. */
+  padX: number;
+  padY: number;
 }
 
 export interface TextLayout {
@@ -286,6 +292,78 @@ export function measureAdvance(text: ResolvedText, line: string, count: number):
   return x;
 }
 
+/** Left x of a drawn line inside the (unskewed) raster box, exactly as renderTextToCanvas aligns it. */
+function lineStartX(text: ResolvedText, alignWidth: number, padding: number, lineW: number): number {
+  if (text.textAlign === 'center') return (alignWidth - lineW) / 2;
+  if (text.textAlign === 'right') return alignWidth - padding - lineW;
+  return padding;
+}
+
+/**
+ * B43: the symmetric pad (px per side) that keeps every glyph's ink inside the raster. Canvas 2D's
+ * actualBoundingBox* metrics are the real ink extents (true italics, the synthesized oblique of a face
+ * with no italic file, f / j hooks), so the pad is the largest overhang past the measured box, plus half
+ * the stroke (round joins) and 1 px of antialiasing slack. 0 when nothing overhangs, so upright text
+ * rasterizes exactly as before. Box text keeps its old clipping for lines that do not fit the box (a
+ * word wider than the box, lines below its bottom): only lines inside it can grow the raster.
+ * `ctx` has the text's font set and textBaseline 'top'.
+ */
+function inkOverhangPad(ctx: OffscreenCanvasRenderingContext2D, text: ResolvedText, layout: TextLayout, alignWidth: number, tan: number): { padX: number; padY: number } {
+  const { lines, lineHeightPx, canvasHeight, padding } = layout;
+  const halfStroke = text.strokeWidth > 0 ? text.strokeWidth / 2 : 0;
+  let left = 0, right = 0, top = 0, bottom = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.trim().length === 0) continue;
+    const y = padding + i * lineHeightPx;
+    const lineW = lineWidth(ctx, line, text.letterSpacing);
+    if (text.mode === 'box' && (lineW > alignWidth + 0.5 || y + lineHeightPx > canvasHeight + 0.5)) continue;
+    const x = lineStartX(text, alignWidth, padding, lineW);
+    let inkL = Infinity, inkR = -Infinity, inkT = Infinity, inkB = -Infinity;
+    const take = (m: TextMetrics, gx: number) => {
+      inkL = Math.min(inkL, gx - m.actualBoundingBoxLeft);
+      inkR = Math.max(inkR, gx + m.actualBoundingBoxRight);
+      inkT = Math.min(inkT, y - m.actualBoundingBoxAscent);
+      inkB = Math.max(inkB, y + m.actualBoundingBoxDescent);
+    };
+    if (text.letterSpacing !== 0) {
+      let curX = x;
+      for (let j = 0; j < line.length; j++) {
+        const m = ctx.measureText(line[j]);
+        take(m, curX);
+        curX += m.width + text.letterSpacing;
+      }
+    } else {
+      take(ctx.measureText(line), x);
+    }
+    if (!Number.isFinite(inkL)) continue;
+    left = Math.max(left, halfStroke - inkL);
+    right = Math.max(right, inkR + halfStroke - alignWidth);
+    top = Math.max(top, halfStroke - inkT);
+    bottom = Math.max(bottom, inkB + halfStroke - canvasHeight);
+  }
+  const ox = Math.max(left, right);
+  const oy = Math.max(top, bottom);
+  if (!(ox > 0.01) && !(oy > 0.01)) return { padX: 0, padY: 0 }; // nothing overhangs: the old raster, byte-identical
+  // Once the raster is padded at all, both axes keep >= 1 px of antialiasing slack: ink that ends exactly on
+  // the box edge (an italic serif, a round bowl) still bleeds a faint pixel past it.
+  const padY = Math.ceil(Math.max(0, oy)) + 1;
+  // A skewed stamp (B36) shears rows about the vertical centre: the taller raster shears further.
+  const padX = Math.ceil(Math.max(0, ox) + Math.abs(tan) * padY) + 1;
+  return { padX, padY };
+}
+
+/** B43: does any pixel of the raster's outermost rows / columns carry ink (alpha > 0)? */
+function rasterBorderHasInk(ctx: OffscreenCanvasRenderingContext2D, w: number, h: number): boolean {
+  if (w < 1 || h < 1) return false;
+  const strips: [number, number, number, number][] = [[0, 0, w, 1], [0, h - 1, w, 1], [0, 0, 1, h], [w - 1, 0, 1, h]];
+  for (const [x, y, sw, sh] of strips) {
+    const d = ctx.getImageData(x, y, sw, sh).data;
+    for (let i = 3; i < d.length; i += 4) if (d[i] > 0) return true;
+  }
+  return false;
+}
+
 export function renderTextToCanvas(text: ResolvedText): CachedTextEntry | null {
   const key = textCacheKey(text);
   const cached = cache.get(key);
@@ -300,69 +378,86 @@ export function renderTextToCanvas(text: ResolvedText): CachedTextEntry | null {
   const skewPad = layout.skewPad ?? 0;
   const alignWidth = canvasWidth - 2 * skewPad;
 
-  const canvas = new OffscreenCanvas(canvasWidth, canvasHeight);
-  const ctx = canvas.getContext('2d')!;
-
-  ctx.font = buildFontString(text);
-  ctx.textBaseline = 'top';
   const tan = skewTan(text);
-  if (tan !== 0) ctx.setTransform(1, 0, -tan, 1, skewPad + (tan * canvasHeight) / 2, 0);
+  // B43: grow the raster by the ink that overhangs the measured box (measured on the scratch context,
+  // same font), symmetrically so its centre - the layer position - stays put.
+  measureCtx.font = buildFontString(text);
+  measureCtx.textBaseline = 'top';
+  const pad0 = inkOverhangPad(measureCtx, text, layout, alignWidth, tan);
+  let padX = pad0.padX;
+  let padY = pad0.padY;
+  let rasterWidth = canvasWidth;
+  let rasterHeight = canvasHeight;
+  let canvas = new OffscreenCanvas(1, 1);
+  // B43: canvas metrics can under-report a face's real ink by a pixel or two (Instrument Serif italic), so a
+  // padded raster is checked after drawing: ink on its border means it was cut, and it is redrawn with a larger
+  // pad (at most twice). Unpadded (upright) text skips the check: its raster is exactly the old one.
+  for (let attempt = 0; ; attempt++) {
+    rasterWidth = canvasWidth + 2 * padX;
+    rasterHeight = canvasHeight + 2 * padY;
+    canvas = new OffscreenCanvas(rasterWidth, rasterHeight);
+    const ctx = canvas.getContext('2d')!;
+    ctx.font = buildFontString(text);
+    ctx.textBaseline = 'top';
+    if (tan !== 0) ctx.setTransform(1, 0, -tan, 1, padX + skewPad + (tan * canvasHeight) / 2, padY);
+    else if (padX !== 0 || padY !== 0) ctx.setTransform(1, 0, 0, 1, padX, padY);
 
-  const [fr, fg, fb, fa] = text.fillColor;
-  const solidFill = `rgba(${Math.round(fr * 255)},${Math.round(fg * 255)},${Math.round(fb * 255)},${fa})`;
-  // Gradient fills paint across the whole box (layer space) so they don't swim per glyph.
-  const fillPaint: string | CanvasGradient = text.fill
-    ? (text.fillFrame
-      ? buildTextGradient(ctx, text.fill, text.fillFrame.width, text.fillFrame.height, text.fillFrame.x, text.fillFrame.y)
-      : buildTextGradient(ctx, text.fill, canvasWidth, canvasHeight))
-    : solidFill;
+    const [fr, fg, fb, fa] = text.fillColor;
+    const solidFill = `rgba(${Math.round(fr * 255)},${Math.round(fg * 255)},${Math.round(fb * 255)},${fa})`;
+    // Gradient fills paint across the whole box (layer space) so they don't swim per glyph.
+    const fillPaint: string | CanvasGradient = text.fill
+      ? (text.fillFrame
+        ? buildTextGradient(ctx, text.fill, text.fillFrame.width, text.fillFrame.height, text.fillFrame.x, text.fillFrame.y)
+        : buildTextGradient(ctx, text.fill, canvasWidth, canvasHeight))
+      : solidFill;
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const y = padding + i * lineHeightPx;
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const y = padding + i * lineHeightPx;
 
-    const lineW = lineWidth(ctx, line, text.letterSpacing);
-    let x = padding;
-    if (text.textAlign === 'center') {
-      x = (alignWidth - lineW) / 2;
-    } else if (text.textAlign === 'right') {
-      x = alignWidth - padding - lineW;
-    }
+      const lineW = lineWidth(ctx, line, text.letterSpacing);
+      const x = lineStartX(text, alignWidth, padding, lineW);
 
-    if (text.strokeWidth > 0) {
-      const [sr, sg, sb, sa] = text.strokeColor;
-      ctx.strokeStyle = `rgba(${Math.round(sr * 255)},${Math.round(sg * 255)},${Math.round(sb * 255)},${sa})`;
-      ctx.lineWidth = text.strokeWidth;
-      ctx.lineJoin = 'round';
-      if (text.letterSpacing !== 0) {
-        drawTextWithSpacing(ctx, line, x, y, text.letterSpacing, 'stroke');
-      } else {
-        ctx.strokeText(line, x, y);
+      if (text.strokeWidth > 0) {
+        const [sr, sg, sb, sa] = text.strokeColor;
+        ctx.strokeStyle = `rgba(${Math.round(sr * 255)},${Math.round(sg * 255)},${Math.round(sb * 255)},${sa})`;
+        ctx.lineWidth = text.strokeWidth;
+        ctx.lineJoin = 'round';
+        if (text.letterSpacing !== 0) {
+          drawTextWithSpacing(ctx, line, x, y, text.letterSpacing, 'stroke');
+        } else {
+          ctx.strokeText(line, x, y);
+        }
       }
-    }
 
-    ctx.fillStyle = fillPaint;
-    if (text.letterSpacing !== 0) {
-      drawTextWithSpacing(ctx, line, x, y, text.letterSpacing, 'fill');
-    } else {
-      ctx.fillText(line, x, y);
-    }
-
-    if (text.underline || text.strikethrough) {
       ctx.fillStyle = fillPaint;
-      if (text.underline) {
-        const uy = y + text.fontSize * 1.1;
-        ctx.fillRect(x, uy, lineW, Math.max(1, text.fontSize * 0.06));
+      if (text.letterSpacing !== 0) {
+        drawTextWithSpacing(ctx, line, x, y, text.letterSpacing, 'fill');
+      } else {
+        ctx.fillText(line, x, y);
       }
-      if (text.strikethrough) {
-        const sy = y + text.fontSize * 0.55;
-        ctx.fillRect(x, sy, lineW, Math.max(1, text.fontSize * 0.06));
+
+      if (text.underline || text.strikethrough) {
+        ctx.fillStyle = fillPaint;
+        if (text.underline) {
+          const uy = y + text.fontSize * 1.1;
+          ctx.fillRect(x, uy, lineW, Math.max(1, text.fontSize * 0.06));
+        }
+        if (text.strikethrough) {
+          const sy = y + text.fontSize * 0.55;
+          ctx.fillRect(x, sy, lineW, Math.max(1, text.fontSize * 0.06));
+        }
       }
     }
+
+    if ((padX === 0 && padY === 0) || attempt >= 2 || !rasterBorderHasInk(ctx, rasterWidth, rasterHeight)) break;
+    const grow = Math.max(2, Math.ceil(text.fontSize * 0.02));
+    padX += grow + Math.ceil(Math.abs(tan) * grow);
+    padY += grow;
   }
 
   const bitmap = canvas.transferToImageBitmap();
-  const entry: CachedTextEntry = { bitmap, width: canvasWidth, height: canvasHeight, key };
+  const entry: CachedTextEntry = { bitmap, width: rasterWidth, height: rasterHeight, key, padX, padY };
 
   if (cache.size >= MAX_CACHE_SIZE) {
     const firstKey = cache.keys().next().value;

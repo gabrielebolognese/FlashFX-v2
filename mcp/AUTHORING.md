@@ -232,7 +232,10 @@ Never leave real motion on linear (the default for `addKeyframe`), except progre
 - A weight between bundled faces resolves like CSS: 500 asks for 500, else 400; 600 asks for 600,
   else 700; 300 falls to 400 only when nothing lighter exists. 600+ on a family whose nearest
   face is lighter is a synthesized bold. "oblique" = italic is the upright face sheared (looks
-  fake on serifs): use Instrument Serif or Playfair Display for italic accents.
+  fake on serifs): use Instrument Serif or Playfair Display for italic accents. Italic / oblique
+  overhangs (an f hook, a j tail, a leaning serif) are never clipped (B43): the raster grows by the
+  measured ink, so there is no need to pad the box or add trailing spaces; the layout box and
+  `measure_text` are unchanged.
 - **Any other face:** `import_font { path, family? }` (WOFF2 / WOFF / TTF / OTF), then use the
   returned `result.family`. WOFF2 has no readable name table here, so pass `family`. For a real
   Bold / Italic import each file under the same family with `weight` / `style`
