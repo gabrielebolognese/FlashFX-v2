@@ -134,6 +134,13 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | B71 | Replicas: path stroke width profile - a path stroke has one width per layer: add taper / per-vertex width along the path (r03 S34 line fans merge into a tapering bundle, f3436-3525) (found replicating r03) | ⬜ (browser) | medium |
 | B72 | Replicas: kit / measurement ergonomics - replica-kit `text({lineHeight})` writes `content.spans.0.style.lineHeight` but the renderer reads `animOverrides.lineHeight` (option silently ignored; write both); `measure_text` returns an ink box equal to the line box for VT323 (not tight to the glyph ink) (found replicating r01) | ⬜ | light |
 | B73 | Replicas: render defects to reproduce (low confidence) - `editor.setShapeDash` on a 1 px tall stroked rect or a 2-point open path renders nothing (r01 f206-300); a text selector with shape 'square', start 0 and keyed `end` hides almost every glyph (r01 probe3); transform.rotation keys on some 3D-toggled text layers do not render (r05 f21-32, probe6). Repro each in a headless gpu check before fixing (found replicating r01 r05) | ⬜ (browser) | light |
+| B74 | Refs: conic (angular) gradient fill on shapes with a keyframable start angle - the spinning hue colour-wheel ring (conic exists only on text fills today) (r08) | ⬜ | light |
+| B75 | Refs: styled number counter on a text layer - count between values with decimals, thousands separators / K-M suffix, prefix / suffix, any font and style (italic), eased (r08 view multipliers, follower count) | ⬜ | light |
+| B76 | Refs: design-tool UI kit - pen / crosshair / rotate / direct-select cursor icons, a selection box with handles that follows a layer's bounds, anchor squares, live dX / dY / W / H / angle tooltip readouts, smart-guide labels (extends the B51 cursor rig) (r11) | ⬜ | medium |
+| B77 | Refs: text style keyframes - hold-keyed font family / weight / style switches on one text layer (type-style switcher) (r10) | ⬜ | light |
+| B78 | Refs: soft freeform matte - a blurred / feathered shape used as a track matte keeps its blur (flower-shaped soft reveal) (r10) | ⬜ (browser) | medium |
+| B79 | Refs: person matte on footage (AI roto) - creator pops out over a divider (r09); fallback a pre-keyed stand-in clip | ⬜ (browser) | **heavy** |
+| B80 | Refs: outline text robustness - `editor.outlineTextLayer` on imported fonts, and glyphs with separate parts (i, j, !, :) keep the dot / second contour (r11, read in the code) | ⬜ | light |
 | PB1 | Playback: decoded-frame LRU on the mediabunny path (backward/oscillating scrubs hit the cache instead of re-walking the GOP) | ✅ | medium |
 | PB2a | Playback: keyframe-snap-then-refine on far seeks (kills the scrub freeze) | ✅ | medium |
 | PB2b | Playback: real half-res proxy decode (cuts 4K upload/convert cost during scrub) | ✅ | heavy |
@@ -1001,3 +1008,45 @@ worked around through agent actions in the replica builds; the workaround is lis
   frame with render_frame (`replicas/r07/render_mp4.mjs`) because of this.
 - **Verification:** gates + `gpu:mcp` extension: export a comp with a scaled, keyed 540x960 H.264 clip end to end; decoded frame at
   t matches render_frame(t).
+
+## Second-batch gaps (B74-B80, from the r08-r11 breakdowns, Nov 2026)
+
+Mapped against the branch after waves 1A + 1B (`refs/GAP-MATRIX.md` in the task artifacts, "Ranked open gaps across all 11
+references"). The ids proposed there as "B69-B74" collided with the replica rows B69-B73 above and were renumbered here:
+conic-gradient-fill = B74, text-counter = B75, design-tool-ui-kit = B76, text-style-keyframes = B77, freeform-mask-feather = B78,
+footage-person-matte = B79, outline-imported-fonts = B80.
+
+## B74 - Conic gradient fill on shapes ⬜
+- **Delivers:** a conic (angular) gradient fill type on shape layers (rect / circle / path) with keyframable start angle and centre, so a hue-wheel ring spins by keying one number; agent-reachable.
+- **Source beats:** r08 f145-1057, f1082-1477 (spinning hue colour-wheel ring in every section).
+- **Verification:** gates + CPU twin of the conic colour at a pixel + headless pixel check (hue at 12 / 3 / 6 / 9 o'clock).
+
+## B75 - Styled number counter ⬜
+- **Delivers:** a counter binding on a text layer: from / to, decimals, separators, compact suffix (10K, 1.2M), prefix / suffix text, ease, start / end frame; the text keeps its own font, style and colour; frame-pure.
+- **Source beats:** r08 f330-440, f653-684, f893-924, f1196-1335, f1480-1492.
+- **Verification:** gates + `verify:*` harness (formatted string per frame, scrubbing byte-identical).
+
+## B76 - Design-tool UI kit ⬜
+- **Delivers:** cursor icons for a design app (pen, crosshair, rotate, direct-select) on the B51 rig, a selection box with corner handles that tracks a target layer's bounds over time, anchor squares on path points, and a number tooltip (dX / dY / W / H / angle) whose value follows the target; agent actions; one undo step each.
+- **Source beats:** r11 every shot (f7-1067).
+- **Verification:** gates + `verify:*` harness (box tracks the target bounds per frame, tooltip text = measured delta).
+
+## B77 - Text style keyframes ⬜
+- **Delivers:** hold keyframes on a text layer's font family / weight / style (the face switches on the key frame, layout re-flows); agent-reachable.
+- **Source beats:** r10 f674-735.
+- **Verification:** gates + `verify:*` harness (resolved face per frame).
+
+## B78 - Soft freeform matte ⬜ (browser)
+- **Delivers:** a blurred (or feathered) shape used as an alpha track matte keeps its blur in the matte, so a soft-edged shape reveals the layer below.
+- **Source beats:** r10 f604-611.
+- **Verification:** gates + headless pixel check of the soft matte edge ramp.
+
+## B79 - Person matte on footage ⬜ (browser, heavy)
+- **Delivers:** an AI person segmentation matte on a video layer. Out of wave 2 scope; fallback a pre-keyed stand-in clip.
+- **Source beats:** r09 f256-296.
+
+## B80 - Outline text robustness ⬜
+- **Delivers:** `editor.outlineTextLayer` works on imported fonts and keeps every contour of multi-part glyphs (i, j, !, :).
+- **Source beats:** r11 (all letter edits).
+- **Verification:** gates + `verify:*` harness on the outline contours.
+
