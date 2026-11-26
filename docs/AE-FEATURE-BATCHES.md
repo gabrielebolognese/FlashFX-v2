@@ -1048,15 +1048,33 @@ worked around through agent actions in the replica builds; the workaround is lis
 - **Verification:** gates + `verify:text-runs` extension + `gpu:text-kinetic` screenshot (crossbar pixels present, stroke-only glyph
   coverage > 0).
 
-## B65 - Agent video clip timing ⬜
-- **Delivers:** `editor.moveClipInTime` moves video layers (today it returns ok and the inPoint stays 0); `import_media` of a video no
-  longer re-packs earlier video clips back to back; a shape used as a track matte over a video mattes it in render_frame / export.
-- **Source beats:** r07 f191-368, f479-667, f763-823, f1053-1200 (webcam card, screen recording, demo previews, selfie card).
-- **Workarounds in the replicas:** each clip at frame 0 on its own track, padded with a frozen first frame up to the shot start, hold
-  opacity until the shot, outPoint at the shot end (reload-safe); square-cornered
-  webcam card instead of a matte.
-- **Verification:** gates + `gpu:mcp` extension (two clips imported, the first keeps its timing; moveClipInTime shifts the decoded
-  source frame; matte coverage pixel check).
+## B65 - Agent video clip timing ✅ (headless-GPU verified)
+- **Delivers:** exact clip timing for agents. Video tracks stay magnetic by default for the UI (CapCut-style), but every agent
+  placement turns the clip's track absolute first (no clip changes time), so a clip stays where it is put through later imports,
+  edits and a reload (`core/trackPlacement.ts` `pinClipToTime`).
+  - `agent.setClipTiming { layerId, timing }`: start / end / duration in comp frames, `sourceStart` / `sourceEnd` (source seconds),
+    `speed`, `reversed`, `moveKeyframes` (keyframes follow the clip, default on) in one undo step; pure planner
+    `planClipTiming` (source mapping of `core/timeRemap.ts`), readable errors, warnings (past the source end, Time Remap).
+  - `editor.moveClipInTime` is exact by default (`placement: 'timeline'` keeps the timeline-drag rules; the MiniTimeline uses it).
+  - `editor.setTrackCompressed { trackId, compressed }`; `get_state().tracks[].magnetic`.
+  - `editor.updateLayerProperty(layerId, "inPoint", v)` on a magnetic track pins the track (else the settle pass undid it).
+  - `editor.setTrackMatte(layerId, mode, matteLayerId?)`: re-stacks so the named layer is directly above (`placeMatteAbove`), so a
+    shape created after a video mattes it. resolveFrame and the placement helpers share one render-order comparator.
+  - Renderer (two track-matte bugs found by the proof, both pre-existing): (1) a frame whose only effect was a track matte never
+    mattered: `hasMatte` required the composite bind group, which is only built on the multipass path the matte alone never
+    entered, so every matte silently drew as two plain layers unless a blur / glow / shadow was also on screen (why r05's matte
+    worked and r07's did not). It now gates on the bind-group layout. (2) A layer used as a matte no longer draws on its own on
+    frames where the layer it mattes is off screen (After Effects hides the matte layer); only when the matte pipeline built.
+- **Source beats:** r07 f191-368, f479-667, f763-823, f1053-1200 (webcam card, screen recording, demo previews, selfie card);
+  r09 10 footage placements (f114-207, f256-296, f382-697).
+- **Verification:** `verify:clip-timing` (12 checks, in `npm test`: the old settle-pass repro, exact placement, planner maths
+  against resolveFrame's source frame, keyframe shift, matte re-stack paired by resolveFrame) and `gpu:clip-timing` (local: four
+  test clips with the source frame number burned in as binary blocks; moveClipInTime, setClipTiming, undo / redo, a later import
+  re-packs nothing, decoded source frames in render_frame, reload byte-identical, named track matte, real `export_mp4`, a matte that
+  is the frame's only effect; 11 checks).
+- **Not changed:** loading a project still re-packs magnetic tracks (old saves keep their behaviour); builds made with the new
+  actions save absolute tracks, so they reload as built. Re-rendering r05 now hides its two eye-matte shapes on the ~13 frames
+  where they outlive the clip / text they matte (f299-304, f340-347); no other replica uses a track matte.
 
 ## B66 - Motion blur from parent transforms ⬜ (browser)
 - **Delivers:** export / render_frame motion blur samples the full world transform (parent chain included), so a layer moved or zoomed

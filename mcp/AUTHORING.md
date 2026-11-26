@@ -408,12 +408,32 @@ Never leave real motion on linear (the default for `addKeyframe`), except progre
   it unscaled at a point, or `fit: false`); audio becomes an audio layer from frame 0. The result
   has `kind`, `assetId`, `duration` (s), `width` / `height`, `frameRate`, `compFrames` (clip length
   in comp frames) and `activeLayerId`. A clip inside a card or a portal (r05, r07): place it, size it
-  with `transform.scale`, then mask it or nest it in a precomp. Move it in time with
-  `editor.moveClipInTime { newInPoint }`. Without the MCP bridge: `agent.importMedia` takes
+  with `transform.scale`, then mask it or nest it in a precomp. Without the MCP bridge: `agent.importMedia` takes
   `{ fileName, data }` (base64) or `{ fileName, uploadId }` after staging the bytes with
   `__ffxAgent.writeUpload(uploadId, offset, base64)`; place with `editor.addVideoFromAsset` /
   `editor.addAudioFromAsset` / `editor.addImageFromAsset`. `render_frame` decodes the exact
   source frame at full resolution (the exporter path), so side-by-sides of footage are true.
+- **Clip timing (B65).** Every import lands at frame 0. Time a clip with ONE call:
+  `agent.setClipTiming { layerId, timing: { startFrame?, endFrame? | durationFrames? | sourceEnd?, sourceStart?, speed?, reversed?, moveKeyframes? } }`.
+  Frames are comp frames (`endFrame` exclusive); `sourceStart` / `sourceEnd` are seconds of the source file
+  (`sourceStart: 2.5` = the clip opens on the source's 2.5 s mark); `speed` 0.01-100 (a speed change alone
+  keeps the source range, so the clip gets shorter or longer); `reversed` plays that range backwards. Unset
+  fields keep their value. It returns the applied `inPoint` / `outPoint` / `sourceStart` / `sourceEnd` /
+  `speed` plus `warnings` (e.g. the clip runs past its source end and holds the last frame). Placement is
+  exact: video tracks are magnetic by default (clips packed from frame 0; `get_state().tracks[].magnetic`),
+  and the clip's track turns absolute first, so the clip stays where you put it through later imports,
+  edits and a reload, and nothing else moves; an overlap on the same track moves the clip to a new track
+  directly above. Keyframes are comp frames: `setClipTiming` moves them with the clip when its start moves
+  (`moveKeyframes: false` keeps them). Order: import every clip, then time each one (any order works now).
+  `editor.moveClipInTime { layerId, newInPoint }` is also exact (keeps the length, does not move keyframes);
+  `editor.setTrackCompressed { trackId, compressed }` turns a track's magnetism on / off. The old workarounds
+  (each clip at frame 0 padded with a frozen head, opacity hold keys) are no longer needed.
+- **Track matte over a video (B65).** The matte is the layer directly above in the stack, and a shape created
+  after a video can land on a track below it. Name the matte:
+  `editor.setTrackMatte { layerId: videoId, mode: "alpha", matteLayerId: shapeId }` re-stacks so the shape is
+  directly above the video (each on its own track, no clip changes time) in the same undo step. A rounded
+  rectangle matte gives a webcam card its rounded corners. The matte layer never draws on its own (also on frames
+  where the matted clip is off screen), so a comp-long matte shape is fine.
 - Particles: `editor.addParticleLayer`, then
   `agent.configureParticles { layerId, presetId, overrides, seed }` (one undo step; overrides are
   `EmitterConfig` fields, e.g. `{ spawnRate: 0, burstCount: 140, emitterShape: "circle" }`).

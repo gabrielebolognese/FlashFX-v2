@@ -11,6 +11,8 @@
 // commands; the composite helpers below either delegate to an undoable editor action or wrap their
 // change in a history Command, so every undoable action is one Ctrl+Z.
 
+import type { ClipTimingSpec } from '../core/trackPlacement';
+import { isTrackCompressed } from '../core/trackCompression';
 import { useEditorStore } from '../store/editor';
 import { useHistoryStore } from '../store/history';
 import { useExpressionStore } from '../expressions/store';
@@ -94,6 +96,8 @@ export interface AgentTrackSummary {
   order: number;
   visible: boolean;
   locked: boolean;
+  /** Magnetic (compressed) track: clips are packed gaplessly from frame 0 (video tracks default to it). */
+  magnetic: boolean;
 }
 
 export interface AgentStateSummary {
@@ -197,7 +201,7 @@ export function getAgentState(): AgentStateSummary {
     activeLayerId: ed.selection.activeId,
     layers: comp.layers.map(summarizeLayer),
     background: (comp.background?.layers ?? []).map((b) => ({ id: b.id, type: b.type, enabled: b.enabled, opacity: b.opacity })),
-    tracks: comp.tracks.map((t) => ({ id: t.id, name: t.name, type: t.type, order: t.order, visible: t.visible, locked: t.locked })),
+    tracks: comp.tracks.map((t) => ({ id: t.id, name: t.name, type: t.type, order: t.order, visible: t.visible, locked: t.locked, magnetic: isTrackCompressed(t) })),
     canUndo: hist.undoStack.length > 0,
     canRedo: hist.redoStack.length > 0,
   };
@@ -1049,6 +1053,26 @@ const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
   },
 
   // ----- B77 hold-keyed typeface switch (core/textStyleKeys.ts) -----
+  setClipTiming: (layerId, timing) => {
+    // B65: exact clip timing for agents (core/trackPlacement.ts). A magnetic video track turns absolute, so the
+    // clip stays where it is put through later imports, edits and a reload; one undo step.
+    const layer = requireLayer(layerId);
+    if (!timing || typeof timing !== 'object' || Array.isArray(timing)) throw new Error('"timing" must be an object { startFrame?, endFrame? | durationFrames? | sourceEnd?, sourceStart?, speed?, reversed?, moveKeyframes? }');
+    const known = new Set(['startFrame', 'endFrame', 'durationFrames', 'sourceStart', 'sourceEnd', 'speed', 'reversed', 'moveKeyframes']);
+    const unknown = Object.keys(timing).filter((k) => !known.has(k));
+    if (unknown.length) throw new Error(`unknown timing field(s): ${unknown.join(', ')} (accepted: ${[...known].join(', ')})`);
+    const res = useEditorStore.getState().applyClipTiming(layer.id, timing as ClipTimingSpec);
+    if (!res) throw new Error(`layer ${layer.id} not found`);
+    const out: Record<string, unknown> = { layerId: layer.id, inPoint: res.inPoint, outPoint: res.outPoint, durationFrames: res.outPoint - res.inPoint, trackId: res.trackId };
+    if (res.startOffset !== undefined) Object.assign(out, { sourceStart: res.sourceStart, sourceEnd: res.sourceEnd, sourceDuration: res.sourceDuration, startOffset: res.startOffset });
+    if (res.playbackRate !== undefined) Object.assign(out, { speed: res.playbackRate, reversed: !!res.reversed });
+    if (res.keyframeShift) out.keyframesShiftedBy = res.keyframeShift;
+    if (res.unpinnedTrack) out.trackNowAbsolute = true;
+    if (res.movedToNewTrack) out.movedToNewTrack = true;
+    if (res.warnings.length) out.warnings = res.warnings;
+    return out;
+  },
+
   setTextStyleKeys: (layerId, keys, spanIndex) => {
     const layer = requireTextLayer(layerId);
     if (keys === null) {

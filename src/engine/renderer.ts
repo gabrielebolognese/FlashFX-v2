@@ -4966,6 +4966,19 @@ export class WebGPURenderer {
       for (const d of sorted) draws.push(d);
     }
 
+    // Track matte (B65): a layer used AS a matte never draws on its own (After Effects turns the matte layer's
+    // video off), also on frames where the layer it mattes is not on screen. Before, a comp-long matte shape
+    // showed up as a plain shape outside the matted clip's time range. Only when the composite pipeline built:
+    // without it, matted / source layers still degrade to drawing normally.
+    if (gpu.matteCompositePipeline && gpu.matteBindGroupLayout && gpu.matteUniformBuffer && draws.some((d) => d.consumedAsMatte)) {
+      const liveSources = new Set<string>();
+      for (const d of draws) if (d.matte && !d.consumedAsMatte) liveSources.add(d.matte.sourceId);
+      for (let k = draws.length - 1; k >= 0; k--) {
+        const d = draws[k];
+        if (d.consumedAsMatte && !(d.layerId && liveSources.has(d.layerId))) draws.splice(k, 1);
+      }
+    }
+
     const blurDraws = draws.filter((d) => d.blur);
     const shadowDraws = draws.filter((d) => d.shadow);
     const glowDraws = draws.filter((d) => d.glow);
@@ -4978,7 +4991,11 @@ export class WebGPURenderer {
     // single scene pass). `matteDraws` are the matted layers, in composite order, for the flags uniform.
     const matteDraws = draws.filter((d) => d.matte && !d.consumedAsMatte);
     // Requires the (guarded) composite pipeline; if it failed to build, matted layers just draw normally.
-    const hasMatte = matteDraws.length > 0 && !!gpu.matteCompositePipeline && !!gpu.matteBindGroup && !!gpu.matteUniformBuffer;
+    // B65: gate on the bind-group LAYOUT, not the bind group: the bind group is built by ensureBlurTextures,
+    // which only runs on the multipass path, so requiring it here meant a frame whose only effect is a track
+    // matte never went multipass and the matte silently drew as two plain layers (mattes only worked next to
+    // a blur / glow / shadow that had already allocated the textures).
+    const hasMatte = matteDraws.length > 0 && !!gpu.matteCompositePipeline && !!gpu.matteBindGroupLayout && !!gpu.matteUniformBuffer;
     // Adjustment layers (B11b-gpu): an active adjustment replaces the composite below it, which only the
     // multipass path (an offscreen scene texture) can do.
     const hasAdjust = draws.some((d) => d.adjust);

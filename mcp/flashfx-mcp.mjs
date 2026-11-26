@@ -382,7 +382,7 @@ const TOOLS = [
   },
   {
     name: 'import_media',
-    description: 'Import a video (MP4, MOV, WebM, MKV), audio (MP3, WAV, M4A, AAC, OGG, FLAC) or image file from disk into the open project (streamed in chunks, so big clips work) and, by default, place it: video as a video layer (fit to the canvas unless fit=false), audio as an audio layer, images as an image layer. Returns the import result (kind, assetId, duration, size, compFrames) plus activeLayerId of the placed layer. The clip starts at frame 0; move it in time with editor.moveClipInTime.',
+    description: 'Import a video (MP4, MOV, WebM, MKV), audio (MP3, WAV, M4A, AAC, OGG, FLAC) or image file from disk into the open project (streamed in chunks, so big clips work) and, by default, place it: video as a video layer (fit to the canvas unless fit=false), audio as an audio layer, images as an image layer. Returns the import result (kind, assetId, duration, size, compFrames) plus activeLayerId of the placed layer. The clip starts at frame 0; time it with agent.setClipTiming { layerId, timing: { startFrame, endFrame | durationFrames | sourceEnd, sourceStart, speed, reversed } } (exact, stays put through later imports and a reload).',
     inputSchema: {
       type: 'object',
       required: ['path'],

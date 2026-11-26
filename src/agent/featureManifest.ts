@@ -64,7 +64,8 @@ export type AgentHelperMethod =
   | 'setClonerSources'
   | 'setClonerData'
   | 'setTextCounter'
-  | 'setTextStyleKeys';
+  | 'setTextStyleKeys'
+  | 'setClipTiming';
 
 export type FeatureStatus = 'shipped' | 'browser-gated' | 'partial';
 
@@ -354,8 +355,17 @@ export const AGENT_ACTIONS: readonly AgentActionSpec[] = [
     description: 'Move layers to a stacking index.',
     params: [{ name: 'sourceIds', type: 'string[]' }, { name: 'targetIndex', type: 'number' }] },
   { id: 'editor.moveClipInTime', store: 'editor', method: 'moveClipInTime', undoable: true,
-    description: 'Slide a clip so it starts at a new frame.',
-    params: [LAYER_ID, { name: 'newInPoint', type: 'number' }] },
+    description: 'Slide a clip so it starts at a new frame (its length is kept; keyframes stay where they are: use agent.setClipTiming to move them with the clip). Exact by default, also for video on a magnetic track: the track turns absolute, and if the new range overlaps another clip on that track the clip moves to a new track directly above.',
+    params: [LAYER_ID, { name: 'newInPoint', type: 'number' },
+      { name: 'placement', type: 'string', values: ['exact', 'timeline'], optional: true, description: '"timeline" = the timeline drag rules instead: a magnetic track re-packs by order, an overlap refuses the move.' }] },
+  { id: 'agent.setClipTiming', store: 'agent', method: 'setClipTiming', undoable: true,
+    returns: '{ layerId, inPoint, outPoint, durationFrames, trackId, sourceStart?, sourceEnd?, sourceDuration?, startOffset?, speed?, reversed?, keyframesShiftedBy?, trackNowAbsolute?, movedToNewTrack?, warnings? }',
+    description: 'Clip timing in one undo step (B65): where a clip starts and ends on the timeline, which part of its source it plays, its speed and direction. Works on any layer (in / out); sourceStart / sourceEnd on video and audio; speed / reversed on video. Unset fields keep their value; a speed change alone keeps the source range (the clip gets shorter or longer). Placement is exact: a magnetic video track turns absolute (nothing else moves), so the clip stays put through later imports, edits and a reload; an overlap on the same track moves the clip to a new track directly above. When the start moves, the layer\'s keyframes move with it (moveKeyframes: false keeps them).',
+    params: [LAYER_ID, { name: 'timing', type: '{ startFrame?: number; endFrame?: number; durationFrames?: number; sourceStart?: number; sourceEnd?: number; speed?: number; reversed?: boolean; moveKeyframes?: boolean }',
+      description: 'Frames are comp frames (endFrame exclusive); sourceStart / sourceEnd are seconds of the source file. Pass at most one of endFrame / durationFrames / sourceEnd. speed 0.01-100 (2 = twice as fast).' }] },
+  { id: 'editor.setTrackCompressed', store: 'editor', method: 'setTrackCompressed', undoable: true,
+    description: 'Turn a track\'s magnetism on or off. Magnetic (compressed) tracks pack their clips gaplessly from frame 0 in clip order; video tracks are magnetic by default. Off = every clip keeps its own frames (nothing moves when you turn it off). getState().tracks[].magnetic shows it.',
+    params: [{ name: 'trackId', type: 'string', description: 'Track id (getState().tracks or a layer\'s trackId).' }, { name: 'compressed', type: 'boolean' }] },
   { id: 'editor.trimSplit', store: 'editor', method: 'trimSplit', undoable: true,
     description: 'Split a clip at the playhead.', params: [{ name: 'layerId', type: 'string', optional: true }] },
 
@@ -545,8 +555,9 @@ export const AGENT_ACTIONS: readonly AgentActionSpec[] = [
     description: 'Keyframe an iris / wipe reveal of the layer through a mask.',
     params: [LAYER_ID, { name: 'maskId', type: 'string' }, { name: 'kind', type: 'string', values: MASK_REVEALS }, { name: 'startFrame', type: 'number' }, { name: 'durationFrames', type: 'number' }] },
   { id: 'editor.setTrackMatte', store: 'editor', method: 'setTrackMatte', undoable: true,
-    description: 'Matte a layer by the layer directly above it (undefined clears).',
-    params: [LAYER_ID, { name: 'mode', type: 'string | undefined', values: TRACK_MATTES }] },
+    description: 'Matte a layer by the layer directly above it (undefined clears). Pass matteLayerId to name the matte: the stack is re-ordered first so that layer sits directly above (each on its own track, no clip changes time), in the same undo step.',
+    params: [LAYER_ID, { name: 'mode', type: 'string | undefined', values: TRACK_MATTES },
+      { name: 'matteLayerId', type: 'string', optional: true, description: 'The layer to use as the matte (e.g. a shape created after a video).' }] },
 
   // ----- effects / adjustment -----
   { id: 'editor.enableLayerEffect', store: 'editor', method: 'enableLayerEffect', undoable: true,
@@ -712,8 +723,10 @@ export const AGENT_FEATURES: readonly AgentFeature[] = [
     ui: 'Object > Group (Ctrl+G) / Ungroup; Inspector > Anchor tab (pivot). Parenting has no UI control yet: agent-only via setLayerParent',
     actions: ['editor.createGroup', 'editor.ungroupSelection', 'editor.setLayerParent', 'editor.setLayerAnchor'], status: 'shipped' },
   { id: 'layers.timing', area: 'layers', name: 'Clip timing',
-    description: 'Slide and split clips on the timeline.', ui: 'Drag clips in the timeline; right-click a clip > Split at Playhead (Ctrl+Shift+S)',
-    actions: ['editor.moveClipInTime', 'editor.trimSplit'], status: 'shipped' },
+    description: 'Slide, trim and split clips; set a video clip\'s source range, speed and direction; magnetic or free tracks.',
+    ui: 'Drag clips in the timeline; drag clip edges to trim; right-click a clip > Split at Playhead (Ctrl+Shift+S); the Compression button on a track header (packed or free positioning); Inspector > Speed; right-click a clip > Speed / Duration',
+    actions: ['agent.setClipTiming', 'editor.moveClipInTime', 'editor.setTrackCompressed', 'editor.trimSplit'], status: 'shipped',
+    notes: 'B65: agent placement is exact. Video tracks are magnetic by default (clips packed from frame 0); agent.setClipTiming and editor.moveClipInTime turn the clip\'s track absolute first, so a clip put at frame 114 stays there through later imports, edits and a reload. Typing a layer\'s "inPoint" with editor.updateLayerProperty does the same. Keyframes are comp frames: setClipTiming moves them with the clip (moveKeyframes: false keeps them), moveClipInTime does not.' },
 
   // text
   { id: 'text.add', area: 'text', name: 'Text layers',
@@ -868,8 +881,9 @@ export const AGENT_FEATURES: readonly AgentFeature[] = [
     actions: ['agent.pixelBlockReveal', 'agent.pixelSparkle', 'editor.updateMaskProperty'], status: 'shipped',
     notes: 'A blocks mask takes 2 of the 8 mask slots and combines by intersect with the other masks. Blocks are squares in comp px; region corners round to whole pixels so block edges stay crisp.' },
   { id: 'masks.track-matte', area: 'masks', name: 'Track mattes',
-    description: 'Alpha / luma (inverted) matte from the layer above.', ui: 'Inspector (properties) > Matte dropdown',
-    actions: ['editor.setTrackMatte'], status: 'shipped' },
+    description: 'Alpha / luma (inverted) matte from the layer above, on any layer including video.', ui: 'Inspector (properties) > Matte dropdown',
+    actions: ['editor.setTrackMatte'], status: 'shipped',
+    notes: 'The matte is the layer directly above in the render stack. editor.setTrackMatte(layerId, mode, matteLayerId) re-stacks first so the named layer is the matte (B65: a shape created after a video can land on a track below it).' },
 
   // effects / adjustment
   { id: 'effects.motion-blur', area: 'effects', name: 'Motion blur',

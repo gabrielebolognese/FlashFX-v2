@@ -89,6 +89,7 @@ import { useImageSizePromptStore } from './imageSizePrompt';
 import { canParentTo } from '../core/layerSwitches';
 import { recomputeCompositionDuration, withMinimumDuration, getMinimumDuration } from '../core/compositionDuration';
 import { reflowCompressedTracks, isTrackCompressed } from '../core/trackCompression';
+import { pinClipToTime, placeMatteAbove, planClipTiming, shiftLayerKeyframes, withTrackCompression, type ClipTimingSpec, type ClipTimingPlan } from '../core/trackPlacement';
 import { clampGroupResizeDelta, applyResizeDelta, type ResizeEdge } from '../core/clipResize';
 import { buildCaptionLayers, deoverlapCaptionLayers, type CaptionSegment, type CaptionOptions } from '../core/captions';
 import { computeExplodeElements, type SplitMode } from '../core/textExplode';
@@ -593,7 +594,8 @@ interface EditorState {
   removeLayers: (ids: string[]) => void;
   updateLayerProperty: (layerId: string, path: string, value: unknown) => void;
   /** Track matte (B10b): set/clear how this layer is matted by the layer directly above it. */
-  setTrackMatte: (layerId: string, mode: TrackMatteMode | undefined) => void;
+  /** `matteLayerId` (B65): re-stack first so that layer is the one directly above (one undo step). */
+  setTrackMatte: (layerId: string, mode: TrackMatteMode | undefined, matteLayerId?: string) => void;
   /** Refine Edge (B10e): set / clear the colour-aware matte-edge refinement of an image / video layer.
    *  Batch-aware (a slider drag is one undo step). */
   setRefineEdge: (layerId: string, refine: RefineEdge | undefined) => void;
@@ -817,7 +819,14 @@ interface EditorState {
   reorderLayers: (sourceIds: string[], targetIndex: number) => void;
 
   // Track operations
-  moveClipInTime: (layerId: string, newInPoint: number) => void;
+  /**
+   * Slide a clip so it starts at `newInPoint`. 'exact' (default, B65): the clip lands on that frame even on a
+   * magnetic track (the track turns absolute; on an overlap the clip moves to a new track directly above).
+   * 'timeline': the timeline-drag rules (a magnetic track re-packs by order, an overlap refuses the move).
+   */
+  moveClipInTime: (layerId: string, newInPoint: number, placement?: 'exact' | 'timeline') => void;
+  /** B65: set a clip's in / out, source range, speed and direction in one undo step (exact placement). */
+  applyClipTiming: (layerId: string, spec: ClipTimingSpec) => (ClipTimingPlan & { trackId: string | null; movedToNewTrack: boolean; unpinnedTrack: boolean }) | null;
   moveClipToTrack: (layerId: string, targetTrackId: string, newInPoint?: number) => void;
   reorderClipToTrackPosition: (layerId: string, targetOrder: number, newInPoint?: number) => void;
   resizeClips: (layerIds: string[], edge: ResizeEdge, delta: number) => void;
@@ -837,6 +846,8 @@ interface EditorState {
   // gapless layout immediately when enabled; leaves clips in place (now freely
   // positionable) when disabled.
   toggleTrackCompression: (trackId: string) => void;
+  /** B65: set a track's magnetism explicitly (true = clips packed gaplessly from frame 0). */
+  setTrackCompressed: (trackId: string, compressed: boolean) => void;
 
   // Trim operations
   trimSplit: (layerId?: string) => void;
@@ -4070,7 +4081,13 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       if (l.id !== layerId) return l;
       return deepSet(l, path, value) as Layer;
     });
-    const newComp = { ...composition, layers: newLayers };
+    let newComp = { ...composition, layers: newLayers };
+    // B65: an in-point typed on a clip of a magnetic track would be packed back by the next settle pass (and
+    // by a reload), so the track turns absolute first; no other clip changes time.
+    if (path === 'inPoint' && layer.trackId && value !== layer.inPoint) {
+      const track = composition.tracks.find((t) => t.id === layer.trackId);
+      if (track && isTrackCompressed(track)) newComp = withTrackCompression(newComp, track.id, false);
+    }
 
     exec({
       label: 'Update Property',
@@ -6757,13 +6774,19 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     });
   },
 
-  setTrackMatte: (layerId, mode) => {
+  setTrackMatte: (layerId, mode, matteLayerId) => {
     const { composition } = get();
     const layer = composition.layers.find((l) => l.id === layerId);
     if (!layer) return;
     const oldComp = composition;
-    const newLayers = composition.layers.map((l) => (l.id === layerId ? ({ ...l, trackMatte: mode } as Layer) : l));
-    const comp: Composition = { ...composition, layers: newLayers };
+    let base = composition;
+    if (mode && matteLayerId) {
+      const placed = placeMatteAbove(composition, layerId, matteLayerId, createTrack, (l) => layerTypeToTrackType(l.type));
+      if (!placed) return;
+      if (placed !== composition) base = settleComposition(placed);
+    }
+    const newLayers = base.layers.map((l) => (l.id === layerId ? ({ ...l, trackMatte: mode } as Layer) : l));
+    const comp: Composition = { ...base, layers: newLayers };
     exec({ label: mode ? 'Set Track Matte' : 'Clear Track Matte', execute: () => set({ composition: comp }), undo: () => set({ composition: oldComp }) });
   },
 
@@ -6968,7 +6991,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     });
   },
 
-  moveClipInTime: (layerId, newInPoint) => {
+  moveClipInTime: (layerId, newInPoint, placement = 'exact') => {
     const { composition } = get();
     const layer = composition.layers.find((l) => l.id === layerId);
     if (!layer) return;
@@ -6977,6 +7000,19 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     // No upper wall - the timeline expands to fit. Only floor at 0.
     const clamped = Math.max(0, newInPoint);
     const newOutPoint = clamped + duration;
+
+    if (placement === 'exact') {
+      const pinned = pinClipToTime(composition, layerId, clamped, newOutPoint, createTrack, (l) => layerTypeToTrackType(l.type));
+      if (!pinned) return;
+      const oldExact = composition;
+      const exactComp = settleComposition(pinned.comp);
+      exec({
+        label: 'Move Clip',
+        execute: () => { set({ composition: exactComp }); },
+        undo: () => { set({ composition: oldExact }); },
+      });
+      return;
+    }
 
     if (layer.trackId) {
       if (!canPlaceClipOnTrack(composition.layers, layer.trackId, layerId, clamped, newOutPoint)) return;
@@ -6993,6 +7029,31 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       execute: () => { set({ composition: newComp2 }); },
       undo: () => { set({ composition: oldComp }); },
     });
+  },
+
+  applyClipTiming: (layerId, spec) => {
+    const { composition } = get();
+    const layer = composition.layers.find((l) => l.id === layerId);
+    if (!layer) return null;
+    const plan = planClipTiming(layer, composition.settings.frameRate, spec); // throws on a bad spec
+    let next = shiftLayerKeyframes(layer, plan.keyframeShift);
+    if (next.type === 'video' && plan.startOffset !== undefined) {
+      next = { ...next, video: { ...next.video, startOffset: plan.startOffset, playbackRate: plan.playbackRate ?? next.video.playbackRate, reversed: plan.reversed ? true : undefined } };
+    } else if (next.type === 'audio' && plan.startOffset !== undefined) {
+      next = { ...next, audio: { ...next.audio, startOffset: plan.startOffset } };
+    }
+    const withLayer = { ...composition, layers: composition.layers.map((l) => (l.id === layerId ? next : l)) };
+    const pinned = pinClipToTime(withLayer, layerId, plan.inPoint, plan.outPoint, createTrack, (l) => layerTypeToTrackType(l.type));
+    if (!pinned) return null;
+    const oldComp = composition;
+    const newComp = settleComposition(pinned.comp);
+    exec({
+      label: 'Clip Timing',
+      execute: () => { set({ composition: newComp }); },
+      undo: () => { set({ composition: oldComp }); },
+    });
+    const placed = newComp.layers.find((l) => l.id === layerId);
+    return { ...plan, inPoint: placed?.inPoint ?? plan.inPoint, outPoint: placed?.outPoint ?? plan.outPoint, trackId: placed?.trackId ?? pinned.trackId, movedToNewTrack: pinned.movedToNewTrack, unpinnedTrack: pinned.unpinnedTrack };
   },
 
   moveClipToTrack: (layerId, targetTrackId, newInPoint) => {
@@ -7249,6 +7310,19 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const newComp = { ...composition, tracks };
     exec({
       label: 'Clear Solo',
+      execute: () => { set({ composition: newComp }); },
+      undo: () => { set({ composition: oldComp }); },
+    });
+  },
+
+  setTrackCompressed: (trackId, compressed) => {
+    const { composition } = get();
+    const next = withTrackCompression(composition, trackId, !!compressed);
+    if (next === composition) return;
+    const oldComp = composition;
+    const newComp = settleComposition(next);
+    exec({
+      label: compressed ? 'Compress Track' : 'Uncompress Track',
       execute: () => { set({ composition: newComp }); },
       undo: () => { set({ composition: oldComp }); },
     });

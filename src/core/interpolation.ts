@@ -41,6 +41,7 @@ import { resolveTextCaretStamp } from './textCaret';
 import { textRunsFromSpans, runAt } from './textRuns';
 import { totalPathLength, pointAndAngleAt, glyphPathFraction, type TextPathNode } from './textPath';
 import { pairTrackMattes, type TrackMatteMode } from './trackMatte';
+import { compareRenderOrder } from './trackPlacement';
 import { resolveMaskVertices, resolveMaskFeathers } from './maskPath';
 import { resolveRefineEdge } from './refineEdge';
 import { resolveEffectStack } from './effects/effectStack';
@@ -128,12 +129,7 @@ function getStructuralCache(layers: Layer[], tracks: Track[]): StructuralCache {
     layerById: new Map(layers.map((l) => [l.id, l])),
     // Highest track order first (top tracks render last / on top); ties break by
     // clip in-point so abutting multi-clip lanes stack deterministically.
-    sortedLayers: [...layers].sort((a, b) => {
-      const orderA = a.trackId ? (trackOrderMap.get(a.trackId) ?? 0) : 0;
-      const orderB = b.trackId ? (trackOrderMap.get(b.trackId) ?? 0) : 0;
-      if (orderA !== orderB) return orderB - orderA;
-      return a.inPoint - b.inPoint;
-    }),
+    sortedLayers: [...layers].sort(compareRenderOrder(trackOrderMap)),
     hiddenTrackIds: new Set(tracks.filter((t) => !t.visible).map((t) => t.id)),
     soloTrackIds,
     soloing: soloTrackIds.size > 0,
