@@ -10,6 +10,7 @@
 // `computeMaskStackAlpha` (every other caller) asks for no normal.
 
 import { FREEFORM_MASK_TYPE, FREEFORM_FLATTEN_TOL, FREEFORM_MAX_PIECES, FREEFORM_BEZIER_STRIDE, FREEFORM_POLY_STRIDE, MASK_MODE_ID } from '../core/maskCoverage';
+import { BLOCKS_MASK_TYPE } from '../core/pixelBlocks';
 
 const f32Lit = (v: number) => (Number.isInteger(v) ? `${v}.0` : `${v}`);
 
@@ -221,6 +222,57 @@ fn mask_freeformEval(world: vec2f, masks: array<MaskSlot, 8>, h: i32, band: f32)
   return vec4f(a, sd, g);
 }
 
+// B54 pixel blocks: the block hash, bit-identical to core/pixelBlocks.ts pixelBlockHash (the block index
+// mixed into the seed, then one mulberry32 step; 24-bit result so the f32 is exact).
+fn mask_blockHash(seed: u32, ix: i32, iy: i32) -> f32 {
+  let h = seed ^ (bitcast<u32>(ix) * 0x9e3779b1u) ^ (bitcast<u32>(iy) * 0x85ebca77u);
+  let a = h + 0x6d2b79f5u;
+  var t = (a ^ (a >> 15u)) * (a | 1u);
+  t = t ^ (t + (t ^ (t >> 7u)) * (t | 61u));
+  t = t ^ (t >> 14u);
+  return f32(t >> 8u) / 16777216.0;
+}
+
+// B54 pixel-block mask: a 2-slot run at h. Header: params = (type, invert + 2 * mode, opacity, block
+// size), center = region centre, size = half extents, rot, points = seed. Data slot: (progress, order,
+// dirX, dirY) in params, (jitter, out) in center. Hard 0 / 1 coverage per block (CPU twin: blocksEval in
+// core/maskCoverage.ts); the "distance" is half a block signed by visibility, with no gradient.
+fn mask_blocksEval(world: vec2f, masks: array<MaskSlot, 8>, h: i32) -> vec4f {
+  let hd = masks[h];
+  let dt = masks[h + 1];
+  let rel = world - hd.center;
+  let c = cos(-hd.rot);
+  let s = sin(-hd.rot);
+  let p = vec2f(rel.x * c - rel.y * s, rel.x * s + rel.y * c);
+  let bs = max(hd.params.w, 1.0);
+  let ix = i32(floor((p.x + hd.size.x) / bs));
+  let iy = i32(floor((p.y + hd.size.y) / bs));
+  let r = mask_blockHash(u32(max(round(hd.points), 0.0)), ix, iy);
+  let order = i32(dt.params.y + 0.5);
+  var t = r;
+  if (order != 0) {
+    let bc = vec2f((f32(ix) + 0.5) * bs - hd.size.x, (f32(iy) + 0.5) * bs - hd.size.y);
+    var u = 0.0;
+    if (order == 1) {
+      let ext = max(hd.size.x * abs(dt.params.z) + hd.size.y * abs(dt.params.w), 1e-3);
+      u = clamp(0.5 + 0.5 * (bc.x * dt.params.z + bc.y * dt.params.w) / ext, 0.0, 1.0);
+    } else {
+      let n = bc / max(hd.size, vec2f(1e-3));
+      u = clamp(length(n) * 0.70710678, 0.0, 1.0);
+    }
+    t = u + (r - u) * dt.center.x;
+  }
+  let progress = dt.params.x;
+  var vis = t < progress || progress >= 1.0;
+  if (dt.center.y > 0.5) { vis = !vis; }
+  let half = bs * 0.5;
+  let d = select(half, -half, vis);
+  let a = select(0.0, 1.0, vis);
+  let inv = mask_invert(hd);
+  if (inv) { return vec4f(1.0 - a, -d, 0.0, 0.0); }
+  return vec4f(a, d, 0.0, 0.0);
+}
+
 // The whole stack, combined top to bottom by mode (After Effects semantics): returns (coverage, CSG
 // signed distance of the combined matte, its unit outward normal). maskCount counts SLOTS: a parametric
 // mask is one slot, a freeform mask a run of 'inner' slots (skipped as a unit). A stack whose first mask
@@ -246,6 +298,9 @@ fn computeMaskStack(world: vec2f, maskCount: i32, masks: array<MaskSlot, 8>, ban
     var adv = 1;
     if (t == ${FREEFORM_MASK_TYPE}) {
       ev = mask_freeformEval(world, masks, i, band);
+      adv = max(i32(m.inner + 0.5), 1);
+    } else if (t == ${BLOCKS_MASK_TYPE}) {
+      ev = mask_blocksEval(world, masks, i);
       adv = max(i32(m.inner + 0.5), 1);
     } else {
       ev = mask_parametricEval(world, m, band);

@@ -45,6 +45,7 @@ import type {
 import { DEFAULT_DECODE_CHARSET } from '../../core/textDecode';
 import { normalizeTextCaret } from '../../core/textCaret';
 import { isMaskMode } from '../../core/maskCoverage';
+import { normalizeBlockParams } from '../../core/pixelBlocks';
 import { sanitizeRefineEdge } from '../../core/refineEdge';
 import { resolveAdjustmentFilters } from '../../core/effects/adjustmentComposite';
 import type { LayerConstraints } from '../../core/reframe';
@@ -433,6 +434,13 @@ function ensureMaskPathKeyframes(val: unknown): NonNullable<Mask['pathKeyframes'
     .sort((a, b) => a.frame - b.frame);
 }
 
+function ensureMaskBlocks(b: Record<string, unknown>): NonNullable<Mask['blocks']> {
+  return {
+    ...normalizeBlockParams(b as Partial<Omit<NonNullable<Mask['blocks']>, 'progress'>>),
+    progress: ensureAnimatableProperty(b.progress, 'Block Progress', 'number', 0),
+  };
+}
+
 function ensureMasks(val: unknown): Mask[] | undefined {
   if (!Array.isArray(val) || val.length === 0) return undefined;
   const validTypes: MaskType[] = ['rectangle', 'ellipse', 'star', 'polygon'];
@@ -463,6 +471,8 @@ function ensureMasks(val: unknown): Mask[] | undefined {
       // B10e - mask mode (absent = legacy intersect) + edge expansion.
       ...(isMaskMode(m.mode) ? { mode: m.mode } : {}),
       ...(isObject(m.expansion) ? { expansion: ensureAnimatableProperty(m.expansion, 'Mask Expansion', 'number', 0) } : {}),
+      // B54 - pixel-block dissolve / build-on: sanitized params + the keyed progress (rendered per pixel).
+      ...(isObject(m.blocks) ? { blocks: ensureMaskBlocks(m.blocks as Record<string, unknown>) } : {}),
     });
   }
   return masks.length > 0 ? masks : undefined;
