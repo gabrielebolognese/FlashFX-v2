@@ -454,3 +454,27 @@ within 1 px of the camera projection). 2.5D only: flat cards in space, no extrus
 | `mcp/examples/build-c-logo-reveal.mjs` | SVG import, glow, particle burst, shockwave ring, wordmark sliding out of the mark through a mask |
 
 Run one: `node mcp/examples/build-a-kinetic-title.mjs <outDir>` (writes PNG checks, `.ffx`, `.mp4`).
+
+## 12. Replicating a reference frame by frame
+
+The taste loop: rebuild a reference video through the MCP, compare frame by frame, refine. The kit in `mcp/lib/`
+does the plumbing; the build stays plain MCP calls, so Claude can repeat it.
+
+- `mcp/lib/replica-kit.mjs`: `openReplica({ name, width, height, fps, frames, bg })` starts the MCP server (its
+  own headless Chrome; parallel sessions are fine) and creates the comp at the reference's exact size, fps and
+  duration on a solid ground. Helpers take **reference frame numbers (1-based)**, the convention of
+  `refs/rNN/timeline.json`, and convert (FlashFX frame = reference frame - 1): `keys(id, path, [[f, value, ease]])`,
+  `span(id, in, out)`, `shape`, `text`, `mask`, `parent`, `measure`, `renderStrip`, `renderFrame`.
+- Each round: `compareFrames(refVideo, [frames], out.png)` renders those frames and tiles reference | replica with
+  whole-frame and foreground SSIM (`mcp/lib/pair_grid.py`).
+- End: `finish(outDir, { probeFrames })` writes `project.ffx` + `replica.mp4` (real exporter), reloads the `.ffx`
+  (import_project, which installs it with `editor.loadDocument`), censuses every layer (name, keyframes, animators,
+  masks), renames + undoes one, and byte-compares renders before and after reload (`editability.json`).
+- `python -I mcp/lib/compare_replica.py <ref.mp4> <replica.mp4> <outDir> --shots '[["S1",1,262],...]'`:
+  `side-by-side.mp4` (hstack, frame counter), per-frame luma SSIM after a global temporal alignment, worst 10 frames.
+  Read `ssim_fg_mean` (foreground-only SSIM) next to the whole-frame mean: flat grounds inflate whole-frame SSIM
+  (one static pill on a grey ground scores 0.96 whole-frame, 0.70 foreground).
+- 2D camera moves: a transparent shape (fill `[0, 0, 0, 0]`) at the comp centre that the scene layers are parented
+  to; key its scale / position. Children inherit position, rotation, scale AND opacity.
+- Worked replicas (build scripts, notes on what matches and what does not):
+  `artifacts/replicas/rNN/build.mjs` + `notes.md` of the replication step.
