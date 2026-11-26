@@ -96,6 +96,8 @@ let _layoutContainerSizes: Map<string, { width: number; height: number }> = new 
 // the top of resolveFrame (and by buildPhysicsEvaluator for its out-of-resolveFrame
 // use). Saved/restored around the precomp recursion like the layout maps.
 let _layerById: Map<string, Layer> = new Map();
+// B66: render-order index per layer id (see StructuralCache.indexById); saved / restored with _layerById.
+let _sortedIndexById: Map<string, number> = new Map();
 
 // ---------------------------------------------------------------------------
 // Structural cache: the frame-INDEPENDENT data resolveFrame would otherwise rebuild
@@ -110,6 +112,9 @@ interface StructuralCache {
   tracksRef: Track[];
   layerById: Map<string, Layer>;
   sortedLayers: Layer[];
+  /** B66: render-order index per layer id (the expression `index`), so an ancestor in a parent chain
+   *  evaluates its expressions with its own context instead of the child's. */
+  indexById: Map<string, number>;
   hiddenTrackIds: Set<string>;
   soloTrackIds: Set<string>;
   soloing: boolean;
@@ -130,6 +135,7 @@ function getStructuralCache(layers: Layer[], tracks: Track[]): StructuralCache {
     // Highest track order first (top tracks render last / on top); ties break by
     // clip in-point so abutting multi-clip lanes stack deterministically.
     sortedLayers: [...layers].sort(compareRenderOrder(trackOrderMap)),
+    indexById: new Map(),
     hiddenTrackIds: new Set(tracks.filter((t) => !t.visible).map((t) => t.id)),
     soloTrackIds,
     soloing: soloTrackIds.size > 0,
@@ -140,6 +146,7 @@ function getStructuralCache(layers: Layer[], tracks: Track[]): StructuralCache {
     hasThreeDLayers: layers.some((l) => l.is3D === true),
     hasCornerPins: layers.some((l) => l.cornerPin !== undefined),
   };
+  cache.sortedLayers.forEach((l, i) => cache.indexById.set(l.id, i));
   _structCacheByLayers.set(layers, cache);
   return cache;
 }
@@ -493,7 +500,16 @@ function isGroupVisible(groupId: string, layers: Layer[], frame: number): boolea
   return true;
 }
 
-function getParentTransform(layerId: string, layers: Layer[], frame: number): ResolvedTransform {
+/**
+ * The parent chain's world transform for `layerId` (identity, or its layout offset, when it has no parent).
+ * B66: every ancestor is evaluated as ITSELF - with its own expression context (it used to read the
+ * child's: a parent's own expression was ignored and a child's same-named expression was applied to the
+ * parent) and with its own motion path (it used to be ignored, so children of a path-animated null stayed
+ * put). Both only change chains that use them; plain keyframed chains resolve exactly as before. Because
+ * the motion-blur sampler re-resolves this chain one frame earlier, children inherit the parent's motion
+ * for their blur through the same function.
+ */
+function getParentTransform(layerId: string, layers: Layer[], frame: number, motionPaths: MotionPath[] = []): ResolvedTransform {
   const layer = _layerById.get(layerId);
   if (!layer || !layer.parentId) {
     const layoutOffset = _layoutOffsets.get(layerId);
@@ -507,9 +523,18 @@ function getParentTransform(layerId: string, layers: Layer[], frame: number): Re
     return { positionX: 0, positionY: 0, rotation: 0, scaleX: 1, scaleY: 1, anchorX: 0, anchorY: 0, opacity: 1, positionZ: 0, rotationX: 0, rotationY: 0 };
   }
 
-  const parentLocal = resolveTransformRaw(parent.transform, frame);
-  const grandparent = getParentTransform(parent.id, layers, frame);
+  const parentLocal = withAncestorExpressionContext(parent, () => resolveTransformRaw(parent.transform, frame));
+  const grandparent = getParentTransform(parent.id, layers, frame, motionPaths);
   let composed = composeTransforms(grandparent, parentLocal);
+
+  // The parent's own motion path places it in world space exactly like worldTransformAt does for the
+  // layer itself (path position wins; orient-to-path sets the rotation).
+  const parentPath = motionPaths.length > 0 ? motionPaths.find((p) => p.layerId === parent.id && p.nodes.length >= 2) : undefined;
+  if (parentPath) {
+    const { position, angle } = evaluateMotionPathAtFrame(parentPath, frame);
+    composed = { ...composed, positionX: position[0], positionY: position[1] };
+    if (parentPath.orientToPath) composed = { ...composed, rotation: angle };
+  }
 
   const layoutOffset = _layoutOffsets.get(layerId);
   if (layoutOffset) {
@@ -522,6 +547,28 @@ function getParentTransform(layerId: string, layers: Layer[], frame: number): Re
   }
 
   return composed;
+}
+
+/**
+ * Run `fn` with the expression context switched to `ancestor` (same frame / comp, its own id, render
+ * index and in / out), then restore the caller's context. No-op when no expression context is active
+ * (bakes outside resolveFrame), so those keep evaluating keyframes only, as before.
+ */
+function withAncestorExpressionContext<T>(ancestor: Layer, fn: () => T): T {
+  if (!_exprLayerId || _exprLayerId === ancestor.id) return fn();
+  const saved = { id: _exprLayerId, index: _exprLayerIndex, inPoint: _exprLayerInPoint, outPoint: _exprLayerOutPoint };
+  _exprLayerId = ancestor.id;
+  _exprLayerIndex = _sortedIndexById.get(ancestor.id) ?? saved.index;
+  _exprLayerInPoint = ancestor.inPoint;
+  _exprLayerOutPoint = ancestor.outPoint;
+  try {
+    return fn();
+  } finally {
+    _exprLayerId = saved.id;
+    _exprLayerIndex = saved.index;
+    _exprLayerInPoint = saved.inPoint;
+    _exprLayerOutPoint = saved.outPoint;
+  }
 }
 
 function composeTransforms(parent: ResolvedTransform, child: ResolvedTransform): ResolvedTransform {
@@ -933,6 +980,7 @@ function resolveDataBoundContent(
   const savedOffsets = _layoutOffsets;
   const savedSizes = _layoutContainerSizes;
   const savedById = _layerById;
+  const savedIndexById = _sortedIndexById;
   try {
     const out: ResolvedLayer[] = [];
     for (const src of instanceSources) {
@@ -947,6 +995,7 @@ function resolveDataBoundContent(
     _layoutOffsets = savedOffsets;
     _layoutContainerSizes = savedSizes;
     _layerById = savedById;
+    _sortedIndexById = savedIndexById;
   }
 }
 
@@ -1065,7 +1114,7 @@ function worldTransformAt(
   frame: number,
 ): ResolvedTransform {
   const localTransform = resolveTransform(layer.transform, frame);
-  const parentTransform = getParentTransform(layer.id, layers, frame);
+  const parentTransform = getParentTransform(layer.id, layers, frame, motionPaths);
   let worldTransform = composeTransforms(parentTransform, localTransform);
 
   const layerPath = motionPaths.find((p) => p.layerId === layer.id && p.nodes.length >= 2);
@@ -1101,7 +1150,11 @@ function computeMotionBlur(
   if (shutter <= 0) return undefined;
   const phase = shutterPhaseFraction(compShutterPhase, shutter);
 
-  const prevFrame = Math.max(frame - 1, layer.inPoint);
+  // B66: the previous sample may sit before the clip's in-point. Transforms (own keys and the parent
+  // chain) are defined there, so a layer that enters while it - or its parent / camera null - is already
+  // moving smears on its first frame, as in After Effects. It used to clamp to the in-point and render
+  // the first frame sharp. Only comp frame 0 has no earlier sample.
+  const prevFrame = Math.max(frame - 1, 0);
   const prev = prevFrame === frame
     ? current
     : worldTransformAt(layer, layers, motionPaths, prevFrame);
@@ -1125,7 +1178,7 @@ function glyphMotionBlurContext(
   if (!getMotionBlur(layer)) return null;
   const shutter = effectiveShutterAngle(compShutterAngle, layer.motionBlurShutter);
   if (shutter <= 0) return null;
-  const prevFrame = Math.max(frame - 1, layer.inPoint);
+  const prevFrame = Math.max(frame - 1, 0); // B66: see computeMotionBlur (no in-point clamp)
   if (prevFrame === frame) return null;
   return {
     shutter,
@@ -1394,6 +1447,7 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
   // only soloed tracks render (AE/Premiere semantics); empty set → no-op.
   const struct = getStructuralCache(layers, tracks);
   _layerById = struct.layerById;
+  _sortedIndexById = struct.indexById;
   const hiddenTrackIds = struct.hiddenTrackIds;
   const soloTrackIds = struct.soloTrackIds;
   const soloing = struct.soloing;
@@ -1920,10 +1974,12 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
           const savedOffsets = _layoutOffsets;
           const savedSizes = _layoutContainerSizes;
           const savedById = _layerById;
+          const savedIndexById = _sortedIndexById;
           nested = resolveFrame(sub, subLocalFrame, { getComposition, depth: depth + 1, visited: inProgress });
           _layoutOffsets = savedOffsets;
           _layoutContainerSizes = savedSizes;
           _layerById = savedById;
+          _sortedIndexById = savedIndexById;
         }
         resolvedLayers.push({
           id: layer.id,

@@ -126,7 +126,7 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | B63 | Replicas: shape render correctness - SDF stroke clipped at the shape bounds (rings get flat sides), rounded rect wider than ~2048 px draws lens ends, circle ignores non-uniform scale (no ellipse), setShapeMorph ellipse pose with w != h has wrong geometry, borderRadius not clamped to min(w,h)/2, shape materialConfig radial gradient renders nothing, setShapeMorph with one pose (or a hold first pose) renders nothing, addShapeLayer polygon has no sides (found replicating r02 r04 r06 r07) | ✅ (Nov 2026, headless-GPU verified, `gpu:shape-render` 18/18) | medium |
 | B64 | Replicas: text paint - stroke-only text (transparent fill + stroke) renders nothing; vertical linear gradient fill (angle 180) drops horizontal strokes (T / f crossbars), angle 90 shows no top-to-bottom ramp (found replicating r02 r04) | ✅ (Nov 2026, engine session 26 Nov, headless-GPU verified) | light |
 | B65 | Replicas: agent video clip timing - video tracks are magnetic with no agent toggle: `editor.moveClipInTime` returns ok but does not move a video layer, every `import_media` of a video re-packs the earlier video clips back to back, `import_project` snaps inPoint-timed clips back to frame 0, a shape track matte over a video does not matte it (found replicating r07) | ⬜ | light |
-| B66 | Replicas: motion blur from parent transforms - a layer moved / zoomed by a parent (or grand-parent) null gets much weaker blur than the same motion on the layer itself (r02 f6-16 zoom smear) | ⬜ (browser) | medium |
+| B66 | Replicas: motion blur from parent transforms - a layer moved / zoomed by a parent (or grand-parent) null gets much weaker blur than the same motion on the layer itself (r02 f6-16 zoom smear) | ✅ (Nov 2026, headless-GPU verified, `gpu:parent-blur` 8/8; keyframed parent chains already matched, the fix closes the first frame, parent motion paths and parent expressions) | medium |
 | B67 | Replicas: agent authoring ergonomics - setKeyframes accepts the breakdown ease names (easeOut, easeInOut, easeOutCubic ...; the replica kit aliases them today), createQuickText option to place by ink centre / baseline, glow defaults that show on coloured text, trim start angle option (12 o'clock), document that text layout trims leading / trailing spaces | ✅ (Nov 2026, engine session 26 Nov, headless-GPU verified) | light |
 | B68 | Replicas: export fails on video - `export_mp4` (the real exporter) aborts with "A valid external Instance reference no longer exists" when a scaled, position-keyed H.264 clip is in the comp, while render_frame of the same frames works (suspect a VideoFrame closed while still bound via importExternalTexture in the export path; found replicating r07, ties into the EX plan) | ✅ (browser) | medium |
 | B69 | Replicas: adjustment-layer masks - `editor.addMask` on an adjustment layer leaves the layer with no `masks` array (get_layer shows none), so an adjustment effect (glitch, RGB split) cannot be limited to a region; r01 f168-176 title glitch hits the whole frame (found replicating r01) | ⬜ | light |
@@ -1076,7 +1076,19 @@ worked around through agent actions in the replica builds; the workaround is lis
   actions save absolute tracks, so they reload as built. Re-rendering r05 now hides its two eye-matte shapes on the ~13 frames
   where they outlive the clip / text they matte (f299-304, f340-347); no other replica uses a track matte.
 
-## B66 - Motion blur from parent transforms ⬜ (browser)
+## B66 - Motion blur from parent transforms ✅ (Nov 2026, headless-GPU verified)
+- **Built:** `core/interpolation.ts`: `getParentTransform` evaluates every ancestor as itself - its own expression
+  context (`withAncestorExpressionContext`; the chain used to read the CHILD's context, so a parent's expression was
+  ignored and a child's same-named expression replaced the parent's value) and its own motion path (was ignored);
+  the motion-blur previous sample (`computeMotionBlur`, `glyphMotionBlurContext`) is no longer clamped to the clip's
+  in-point, so a layer entering while its rig moves smears on its first frame (After Effects behaviour).
+- **Finding:** keyframed parent / grand-parent chains already produced the same descriptor as an unparented twin
+  (render_frame byte-identical, before and after); r02's weaker smear vs the reference is the blur length (raise the
+  comp shutter angle), not the parenting.
+- **Verified:** `verify:parent-blur` 8/8 (in `npm test`; 3 of them red on the old engine), `gpu:parent-blur` 8/8
+  (r02 rig vs twin byte-identical, first-frame streak 180 px vs 160 sharp, parent expression followed, blur-off frames
+  byte-identical to the pre-B66 engine, export_mp4 carries the smear). Replica impact: 60 first frames gain blur
+  (r02 23, r03 27, r04 10), nothing else changes in 9,762 resolved frames.
 - **Delivers:** export / render_frame motion blur samples the full world transform (parent chain included), so a layer moved or zoomed
   by a null gets the same smear as when the motion is keyed on the layer itself.
 - **Source beats:** r02 f6-16 ("Attention" zooming in from ~5x), f150-154, f232 (whips).

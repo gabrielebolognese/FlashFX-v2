@@ -379,7 +379,12 @@ Never leave real motion on linear (the default for `addKeyframe`), except progre
   Precompose itself is exact now (B57): the precomp sits at the comp centre, has no background, and
   its anti-aliased edges composite like the original layers (pixel-identical in `gpu:layer-effects`).
 - Motion blur: `updateLayerProperty(id, "motionBlur", true)`. Preview shows a few stepped copies;
-  export uses 16+ samples and is smooth.
+  export uses 16+ samples and is smooth. The blur follows the layer's WORLD motion (B66): motion that
+  comes from a parent / camera null (move, zoom, turn, a parent's motion path or Position expression)
+  blurs exactly like the same motion keyed on the layer, so put the switch on the layers you see, not
+  on the null. A layer that enters while its rig is already moving smears on its first frame. For a
+  longer smear raise `editor.setCompositionSetting("shutterAngle", 270-360)` or the layer's
+  `motionBlurShutter` (180 = neutral); expression-driven motion itself (wiggle, time * n) does not blur.
 - Glow: `editor.enableLayerEffect { kind: "glow" }`, then `glow.color`, `glow.radius`,
   `glow.intensity`, `glow.threshold`. On text and shapes the first glow is the layer's own colour at
   threshold 0 (B67: the old white glow at 0.6 vanished on saturated colours); images and video keep
