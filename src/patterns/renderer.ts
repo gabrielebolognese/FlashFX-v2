@@ -1,4 +1,4 @@
-import { patternValue, samplePalette } from './patterns';
+import { patternSample } from './patterns';
 import { parsePatternConfig } from './config';
 
 // CPU renderer for the generativePattern layer (Phase 1). Mirrors the fieldSampled/particle route:
@@ -48,10 +48,9 @@ class PatternRendererManager {
     for (let y = 0; y < ih; y++) {
       const v = (y + 0.5) / ih;
       for (let x = 0; x < iw; x++) {
-        const val = patternValue(cfg, (x + 0.5) / iw, v, aspect, t);
-        const [r, g, b] = samplePalette(cfg.palette, val, cfg.paletteMode === 'smooth');
+        const [r, g, b, a] = patternSample(cfg, (x + 0.5) / iw, v, aspect, t);
         const o = (y * iw + x) * 4;
-        data[o] = r * 255; data[o + 1] = g * 255; data[o + 2] = b * 255; data[o + 3] = 255;
+        data[o] = r * 255; data[o + 1] = g * 255; data[o + 2] = b * 255; data[o + 3] = a * 255;
       }
     }
     e.smallCtx.putImageData(img, 0, 0);

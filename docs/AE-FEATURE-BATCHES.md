@@ -118,7 +118,7 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | B55 | Refs: word roll / slot swap text primitive (stepped or rolled vertical word list, in-place swap, per-row colour) (ref gap #11: r03 r04) | ⬜ | light |
 | B56 | Refs: animatable text on path - keyframable `textPath.margin` + path-shape keyframes bound to the text (unfurl along a curl, text riding an opening mask edge) (ref gap #18: r05) | ⬜ | medium |
 | B57 | Refs: effect stack on text / shape / precomp layers (today image + adjustment only) + layer-local bulge / mesh warp with animatable centre and radius (ref gap #12: r01 r05) | ✅ (headless-GPU verified; mesh warp not built) | **heavy** |
-| B58 | Refs: gradient-blob field generator (soft animated blurred colour blobs, lumpy cloud floor; seeded, frame-pure) (ref gap #13: r06) | ⬜ | medium |
+| B58 | Refs: gradient-blob field generator (soft animated blurred colour blobs, lumpy cloud floor; seeded, frame-pure) (ref gap #13: r06) | ✅ (headless-GPU verified) | medium |
 | B59 | Refs: script / logo write-on - stroke-order centreline trim reveal for filled glyphs and logos (ref gap #14: r03) | ⬜ | medium |
 | B60 | Refs: cloner per-instance sources - render `ResolvedCloner.instanceSources` so each copy can be a different image (photo rings / grids) (ref gap #15: r04) | ✅ (headless-GPU verified) | medium |
 | B61 | Refs: liquid drip / melt text (letters melt into glowing drips that run down and pool; seeded, frame-pure) (ref gap #21: r05, low priority) | ⬜ (browser) | **heavy** |
@@ -954,13 +954,33 @@ Source: the frame-by-frame breakdowns of the 7 motion references the owner sent 
   |dG| 0.01/255), and the `glitch-burst` recipe runs end to end through `apply_recipe` (clean at f30 / f38, glitched at
   f33, 0 px changed above the word).
 
-## B58 - Gradient-blob field generator ⬜
+## B58 - Gradient-blob field generator ✅ (headless-GPU verified)
 - **Delivers:** a seeded generator layer of soft animated colour blobs (count, palette, blur, drift speed, lumpy top-edge "cloud floor" mode) so blurred-glow backgrounds are one layer instead of hand-placed blurred ellipses.
 - **Source beats:** r06 f97-372 (blue to white billowing cloud floor under the prompt bar). r03 and r07 hand-build similar glows today.
 - **Depends on:** nothing (generativePattern / procedural modules can host it).
 - **Perf weight:** medium.
 - **Likely files:** `src/procedural/`, `src/core/types.ts`, `src/agent/featureManifest.ts`.
 - **Verification:** gates + `scripts/verify-blob-field.mjs` (seeded, frame-pure) + headless render.
+- **Built (wave 2, Nov 2026):** new generative pattern type `blobField` (pattern id 11, appended; older ids unchanged) in
+  `src/patterns/blobField.ts`. Field mode (floor 0): a full-frame mesh gradient, N (1..16) seeded blobs on slow Lissajous
+  drifts, softmax-weighted blend of the blob colours (blob i = palette[i mod n]), fbm domain warp. Floor mode (floor > 0):
+  a billowing cloud floor, lumpy fbm top edge drifting with time, smooth alpha edge (transparent above), palette ramp by
+  depth below the edge plus billow noise. All randomness from an integer hash (lowbias32: Math.imul in TS, u32 in WGSL),
+  so the WGSL branch in `PATTERN_SHADER` matches the CPU twin within 1 level; optional config fields `blobCount`, `seed`,
+  `floor`, `lumps`, `softness`, `billow` ride in the pattern uniform's spare floats (21-23, 57-58) and persist inside
+  `configJSON` (kept by `parsePatternConfig` only when present, so older configs serialize unchanged). The CPU path
+  (`patterns/renderer.ts`, used for masked patterns) now writes alpha via `patternSample`. Agent: `editor.addBlobField
+  { opts }` (returns the id) and `editor.setBlobField { layerId, patch }`, one undo step each, feature
+  `particles.blob-field`; recipe `mcp/recipes/blob-field.json` (r06 rising floor, r10 fields); UI: Pattern panel type
+  "Blob Field" with Blobs / Seed / Floor / Lumps / Softness / Billow sliders and presets "Mesh Gradient" / "Cloud Floor".
+  Not done: `editor.addMask` still refuses pattern layers (`layerSupportsMasks`); clip a field with a track matte.
+- **Verified:** `verify:blob-field` 18/18 (ids, older types byte-identical on the CPU path, hash, bounds, determinism, frame
+  purity, seeds, drift, opaque field, floor transparency / edge position / lumpiness / billowing / ramp, palette reach,
+  param clamps, config round trip, agent options, persistence). `gpu:blob-field` 10/10 through the MCP: plasma
+  byte-identical to a pre-B58 baseline frame; mesh field GPU == twin (max 0.6 / 255 over 5184 px), drifts, setBlobField +
+  undo byte-exact, undo removes the layer; masked (CPU path) and track-matted fields == twin inside, ground outside;
+  cloud floor == twin over black (max 0.7 / 255), top quarter byte-identical to the ground. Evidence:
+  `artifacts/engine/wave2/blob-field/` (+ `evidence/` r06-style rising floor MP4 / strip, r10-style mesh seeds).
 
 ## B59 - Script / logo write-on ⬜
 - **Delivers:** stroke-order write-on for filled script glyphs and logos: derive a centreline (skeleton) from the outline, trim it over time and use the stroked centreline as the reveal matte of the filled shape.

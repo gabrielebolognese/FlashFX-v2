@@ -1,4 +1,5 @@
 import type { PatternConfig, PatternStop } from './types';
+import { blobFieldSample, type RGBA } from './blobField';
 
 // PURE pattern field math - deterministic function of (uv, aspect, time). Written to mirror the WGSL
 // utilities in renderer.ts (hash21/valueNoise/fbm) so it can port 1:1 to a GPU fragment shader.
@@ -123,4 +124,15 @@ export function samplePalette(stops: PatternStop[], v: number, smooth: boolean):
     }
   }
   return last.color;
+}
+
+/**
+ * The pattern's colour + alpha at uv (straight rgba 0..1). Every scalar type is exactly
+ * samplePalette(patternValue) with alpha 1 (byte-identical to before B58); 'blobField' computes its
+ * colour directly (patterns/blobField.ts) and has real alpha in cloud-floor mode.
+ */
+export function patternSample(cfg: PatternConfig, u: number, v: number, aspect: number, t: number): RGBA {
+  if (cfg.type === 'blobField') return blobFieldSample(cfg, u, v, aspect, t);
+  const [r, g, b] = samplePalette(cfg.palette, patternValue(cfg, u, v, aspect, t), cfg.paletteMode === 'smooth');
+  return [r, g, b, 1];
 }

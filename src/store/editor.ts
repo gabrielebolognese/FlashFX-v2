@@ -26,6 +26,7 @@ import { selectSameLayers, type SameAttr } from '../core/selection';
 import { applyReplaceSource, sourceFromLayer, sourceKindForLayer, type ReplaceSource } from '../core/replaceSource';
 import { computeReframe, applyAxisPosition, applyAxisScale, DEFAULT_CONSTRAINTS, type LayerConstraints, type ReframeInput } from '../core/reframe';
 import { serializePatternConfig, parsePatternConfig } from '../patterns/config';
+import { applyBlobFieldOptions, resolveBlobParams, type BlobFieldOptions } from '../patterns/blobField';
 import { DEFAULT_PATTERN } from '../patterns/presets';
 import { getVfxElement, buildVfxSweep } from '../core/vfx/vfxElements';
 import type { GenerativePatternLayer } from '../core/types';
@@ -501,6 +502,15 @@ interface EditorState {
   addParticleLayer: () => void;
   addFieldSampledLayer: (configJSON?: string) => void;
   addGenerativePatternLayer: (configJSON?: string) => void;
+  /**
+   * B58: add a gradient-blob field (a generativePattern layer of type 'blobField') in one undo step:
+   * mode 'field' = full-frame mesh gradient of drifting soft colour blobs, 'floor' = billowing cloud
+   * floor with a lumpy top edge (transparent above it). Defaults: the whole composition, centred.
+   * Returns the new layer id and selects it.
+   */
+  addBlobField: (opts?: BlobFieldOptions & { x?: number; y?: number; width?: number; height?: number; name?: string }) => string;
+  /** B58: patch a blob field's options (any pattern layer becomes a blob field), one undo step. */
+  setBlobField: (layerId: string, patch: BlobFieldOptions) => void;
   /** B30 - add a practical-VFX element (light leak / film burn / atmosphere) as a full-frame screen/add
    *  generativePattern with its sweep keyframes, in one undoable command. */
   addVfxElement: (elementId: string) => void;
@@ -2520,6 +2530,73 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       label: 'Add Pattern Layer',
       execute: () => { set({ composition: newComp, selection: newSel }); },
       undo: () => { set({ composition: oldComp, selection: oldSel }); },
+    });
+  },
+
+  addBlobField: (opts) => {
+    const o = opts ?? {};
+    if (typeof o !== 'object' || Array.isArray(o)) throw new Error('addBlobField options must be an object');
+    const cfg = applyBlobFieldOptions(null, o);
+    const { composition, selection } = get();
+    const oldComp = composition;
+    const oldSel = selection;
+    const cw = composition.settings.width, ch = composition.settings.height;
+    const num = (v: unknown, d: number, name: string): number => {
+      if (v === undefined) return d;
+      if (typeof v !== 'number' || !Number.isFinite(v)) throw new Error(`${name} must be a finite number`);
+      return v;
+    };
+    const w = Math.max(2, num(o.width, cw, 'width'));
+    const h = Math.max(2, num(o.height, ch, 'height'));
+    const x = num(o.x, cw / 2, 'x');
+    const y = num(o.y, ch / 2, 'y');
+    const count = composition.layers.filter((l) => l.type === 'generativePattern').length;
+    const floorMode = resolveBlobParams(cfg).floor > 0;
+    const name = typeof o.name === 'string' && o.name.trim() ? o.name : `${floorMode ? 'Cloud Floor' : 'Blob Field'} ${count + 1}`;
+    const knobs = { scale: cfg.scale, rotation: cfg.rotationDeg, warp: cfg.warp, contrast: cfg.contrast };
+    const layer = createGenerativePatternLayer(name, x, y, w, h, serializePatternConfig(cfg), knobs, defaultClipFrames(composition));
+    const newComp = settleComposition(ensureLayerHasTrack({ ...composition, layers: [...composition.layers, layer] }, layer));
+    const newSel: SelectionState = sel([layer.id], layer.id);
+    exec({
+      label: floorMode ? 'Add Cloud Floor' : 'Add Blob Field',
+      execute: () => { set({ composition: newComp, selection: newSel }); },
+      undo: () => { set({ composition: oldComp, selection: oldSel }); },
+    });
+    return layer.id;
+  },
+
+  setBlobField: (layerId, patch) => {
+    const { composition } = get();
+    const layer = composition.layers.find((l) => l.id === layerId);
+    if (!layer) throw new Error(`no layer with id "${layerId}"`);
+    if (layer.type !== 'generativePattern') throw new Error(`setBlobField works on pattern layers made by addBlobField (not ${layer.type})`);
+    const prev = parsePatternConfig(layer.generativePattern.configJSON);
+    const next = applyBlobFieldOptions(prev, patch);
+    // The knobs the renderer reads live on patternAnim: a new number sets the base value, keys stay.
+    // Converting another pattern type seeds all three from the blob config.
+    const converting = prev.type !== 'blobField';
+    const knob = (p: AnimatableProperty, v: number | undefined, cfgV: number): AnimatableProperty => (v === undefined && !converting ? p : { ...p, defaultValue: cfgV });
+    const oldComp = composition;
+    const newComp = {
+      ...composition,
+      layers: composition.layers.map((l) => {
+        if (l.id !== layerId || l.type !== 'generativePattern') return l;
+        return {
+          ...l,
+          generativePattern: { ...l.generativePattern, configJSON: serializePatternConfig(next) },
+          patternAnim: {
+            ...l.patternAnim,
+            scale: knob(l.patternAnim.scale, patch.size, next.scale),
+            warp: knob(l.patternAnim.warp, patch.warp, next.warp),
+            contrast: knob(l.patternAnim.contrast, patch.contrast, next.contrast),
+          },
+        } as Layer;
+      }),
+    };
+    exec({
+      label: 'Set Blob Field',
+      execute: () => { set({ composition: newComp }); },
+      undo: () => { set({ composition: oldComp }); },
     });
   },
 

@@ -31,6 +31,7 @@ import { particleRenderer } from './particleRenderer';
 import { fieldSampledRenderer } from '../field-sampling/renderer';
 import { patternRenderer } from '../patterns/renderer';
 import { parsePatternConfig } from '../patterns/config';
+import { resolveBlobParams } from '../patterns/blobField';
 import { PATTERN_TYPE } from '../patterns/types';
 import { lottieRendererEngine } from './lottieRenderer';
 import { videoTextureCache, VideoTextureCache } from './video/videoTextureCache';
@@ -797,11 +798,16 @@ struct PatternU {
   paletteMode: f32,       // 18 (0 linear, 1 smooth)
   paletteCount: f32,      // 19
   blendMode: f32,         // 20 (fragment output form, matched to the pipeline's blend state)
-  _p0: f32, _p1: f32, _p2: f32, // 21,22,23 (pad palette to a 16-byte boundary)
+  // B58 blobField (pattern id 11) only; 0 for every other type. They also pad the palette to 16 bytes.
+  blobSeed: f32,          // 21 (integer seed)
+  blobFloor: f32,         // 22 (0 = mesh field, >0 = cloud-floor top edge from the bottom)
+  blobLumps: f32,         // 23
   palette: array<vec4f, ${PATTERN_MAX_STOPS}>, // 24..55 (rgb, pos)
   // 2.5D (M2): 0 for a 2D layer; 1 → project the quad through mvp.
   is3D: f32,              // 56
-  _mvpPad0: f32, _mvpPad1: f32, _mvpPad2: f32, // 57,58,59
+  blobSoft: f32,          // 57 (B58 softness)
+  blobBillow: f32,        // 58 (B58 billow)
+  _mvpPad2: f32,          // 59
   mvp: mat4x4<f32>,       // 60..75
 }
 @group(0) @binding(0) var<uniform> u: PatternU;
@@ -895,6 +901,96 @@ fn patternValue(uv: vec2f) -> f32 {
   }
   return clamp((val - 0.5) * (1.0 + u.contrast*2.0) + 0.5, 0.0, 1.0);
 }
+// ---- B58 blobField: WGSL twin of patterns/blobField.ts (integer hash, so CPU == GPU) ----
+fn bHash(a: u32) -> u32 {
+  var x = a;
+  x = x ^ (x >> 16u); x = x * 0x7feb352du; x = x ^ (x >> 15u); x = x * 0x846ca68bu; x = x ^ (x >> 16u);
+  return x;
+}
+fn bHash3(a: i32, b: i32, c: i32) -> u32 { return bHash(bitcast<u32>(a) ^ bHash(bitcast<u32>(b) ^ bHash(bitcast<u32>(c)))); }
+fn bRand(a: i32, b: i32, c: i32) -> f32 { return f32(bHash3(a, b, c) >> 8u) / 16777216.0; }
+fn bNoise(x: f32, y: f32, salt: i32) -> f32 {
+  let fx0 = floor(x); let fy0 = floor(y);
+  let ix = i32(fx0); let iy = i32(fy0);
+  let fx = x - fx0; let fy = y - fy0;
+  let ux = fx*fx*(3.0 - 2.0*fx); let uy = fy*fy*(3.0 - 2.0*fy);
+  let a = bRand(ix, iy, salt); let b = bRand(ix + 1, iy, salt); let c = bRand(ix, iy + 1, salt); let d = bRand(ix + 1, iy + 1, salt);
+  let ab = a + (b - a) * ux; let cd = c + (d - c) * ux;
+  return ab + (cd - ab) * uy;
+}
+fn bFbm(x: f32, y: f32, salt: i32) -> f32 {
+  var v = 0.0; var amp = 0.5; var f = 1.0;
+  for (var o = 0; o < 4; o = o + 1) { v = v + amp * bNoise(x * f, y * f, salt + o * 1013); f = f * 2.0; amp = amp * 0.5; }
+  return v / 0.9375;
+}
+fn bRamp(v: f32) -> vec3f {
+  let n = i32(u.paletteCount);
+  if (n <= 0) { return vec3f(v); }
+  if (v <= u.palette[0].w) { return u.palette[0].xyz; }
+  if (v >= u.palette[n-1].w) { return u.palette[n-1].xyz; }
+  for (var i = 0; i < n-1; i = i + 1) {
+    let a = u.palette[i]; let b = u.palette[i+1];
+    if (v >= a.w && v <= b.w) {
+      var t = (v - a.w) / max(0.0001, b.w - a.w);
+      if (u.paletteMode > 0.5) { t = t*t*(3.0 - 2.0*t); }
+      return mix(a.xyz, b.xyz, t);
+    }
+  }
+  return u.palette[n-1].xyz;
+}
+fn blobField(uv: vec2f) -> vec4f {
+  let aspect = u.quadSize.x / max(1.0, u.quadSize.y);
+  let seed = i32(u.blobSeed + 0.5);
+  let tt = u.time * u.speed;
+  var p = rot2((uv - vec2f(0.5)) * vec2f(aspect, 1.0), u.patRot);
+  let size = max(0.05, u.scale);
+  if (u.warp > 0.0) {
+    let wx = bFbm(p.x * 2.2 / size + tt * 0.11, p.y * 2.2 / size, seed + 101) - 0.5;
+    let wy = bFbm(p.x * 2.2 / size + 5.2, p.y * 2.2 / size - tt * 0.13, seed + 202) - 0.5;
+    p = p + u.warp * 0.5 * vec2f(wx, wy);
+  }
+  var col = vec3f(0.0);
+  var alpha = 1.0;
+  if (u.blobFloor > 0.0) {
+    let edgeN = bFbm(p.x * 1.6 / size + tt * 0.25, tt * 0.12, seed + 303) - 0.5;
+    let edgeY = 0.5 - u.blobFloor + u.blobLumps * 2.0 * edgeN;
+    let depth = p.y - edgeY;
+    let feather = 0.05 * u.blobSoft;
+    let e = clamp((depth + feather) / (2.0 * feather), 0.0, 1.0);
+    alpha = e * e * (3.0 - 2.0 * e);
+    let bil = bFbm(p.x * 3.0 / size + tt * 0.1, p.y * 3.0 / size - tt * 0.05, seed + 404) - 0.5;
+    let k = clamp(depth / max(0.05, u.blobFloor) + u.blobBillow * bil, 0.0, 1.0);
+    col = bRamp(k);
+  } else {
+    let count = clamp(i32(u.complexity + 0.5), 1, 16);
+    var es = array<f32, 16>();
+    var m = -1e30;
+    for (var i = 0; i < 16; i = i + 1) {
+      if (i >= count) { break; }
+      let hx = bRand(i, 0, seed); let hy = bRand(i, 1, seed);
+      let p1 = bRand(i, 2, seed) * 6.2831853; let p2 = bRand(i, 3, seed) * 6.2831853;
+      let f1 = 0.45 + 0.8 * bRand(i, 4, seed); let f2 = 0.45 + 0.8 * bRand(i, 5, seed);
+      let rv = bRand(i, 6, seed);
+      let c = vec2f((hx - 0.5) * 0.9 * aspect + 0.22 * sin(tt * f1 + p1), (hy - 0.5) * 0.9 + 0.22 * cos(tt * f2 + p2));
+      let r = (0.62 / sqrt(max(1.0, f32(count)) / 4.0)) * size * (0.7 + 0.6 * rv);
+      let d = p - c;
+      let e = -dot(d, d) / (r * r * u.blobSoft);
+      es[i] = e;
+      m = max(m, e);
+    }
+    let n = max(1, i32(u.paletteCount));
+    var sw = 0.0; var acc = vec3f(0.0);
+    for (var i = 0; i < 16; i = i + 1) {
+      if (i >= count) { break; }
+      let w = exp(es[i] - m);
+      sw = sw + w;
+      acc = acc + w * u.palette[i % n].xyz;
+    }
+    col = acc / sw;
+  }
+  if (u.contrast != 0.0) { col = clamp((col - vec3f(0.5)) * (1.0 + u.contrast) + vec3f(0.5), vec3f(0.0), vec3f(1.0)); }
+  return vec4f(col, alpha);
+}
 fn samplePalette(v: f32) -> vec3f {
   let n = i32(u.paletteCount);
   if (n <= 0) { return vec3f(v); }
@@ -913,9 +1009,16 @@ fn samplePalette(v: f32) -> vec3f {
 
 @fragment
 fn fs(in: VO) -> @location(0) vec4f {
-  let val = patternValue(in.uv);
-  let col = samplePalette(val);
-  let a = u.opacity;
+  var col: vec3f;
+  var a = u.opacity;
+  if (i32(u.patternType) == 11) {
+    // B58 blobField: colour + alpha straight from the field (cloud floor is transparent above its edge).
+    let bf = blobField(in.uv);
+    col = bf.rgb;
+    a = a * bf.a;
+  } else {
+    col = samplePalette(patternValue(in.uv));
+  }
   let m = i32(u.blendMode);
   // Output form must match the selected pipeline's blend state (opacity-correct):
   //  multiply: dst*mix(1,col,a)  [blend dst,zero]     screen: col*a*(1-dst)+dst  [blend one-minus-dst,one]
@@ -4862,6 +4965,11 @@ export class WebGPURenderer {
         d[10] = gp.localFrame / (frame.frameRate ?? 30);
         d[11] = PATTERN_TYPE[cfg.type];
         d[12] = gp.scale; d[13] = cfg.speed; d[14] = gp.rotation; d[15] = cfg.complexity; // knobs are keyframed
+        if (cfg.type === 'blobField') {
+          // B58: blob count rides on complexity; seed / floor / lumps / softness / billow in the spare floats.
+          const bp = resolveBlobParams(cfg);
+          d[15] = bp.count; d[21] = bp.seed; d[22] = bp.floor; d[23] = bp.lumps; d[57] = bp.softness; d[58] = bp.billow;
+        }
         d[16] = gp.warp; d[17] = gp.contrast; d[18] = cfg.paletteMode === 'smooth' ? 1 : 0;
         d[20] = PATTERN_BLEND_INDEX[pl.blendMode] ?? 0; // blend-with-below mode
         const stops = cfg.palette.slice(0, PATTERN_MAX_STOPS);

@@ -485,6 +485,29 @@ Never leave real motion on linear (the default for `addKeyframe`), except progre
     with `get_layer`). Explicit `sources` win when both are set; `data: []` removes the binding. One undo step each.
   - In the editor: Inspector > Cloner > "Sources per copy" lists, reorders and adds the sources and sets Cycle / Random + seed.
 
+- **B58 gradient-blob field (mesh gradients, cloud floors).** One layer instead of hand-placed blurred ellipses.
+  `editor.addBlobField { opts: { mode, colors?, count?, seed?, size?, speed?, warp?, contrast?, floor?, lumps?,
+  softness?, billow?, x?, y?, width?, height?, name? } }` returns the layer id (one undo step; default: the whole comp).
+  - `mode: "field"`: a full-frame mesh gradient. `count` (1..16, default 7) seeded blobs drift on slow loops and
+    blend into each other; blob i takes `colors[i mod n]` (hex strings or `[r, g, b, a]`, at most 8; repeat a colour
+    to give it more area). r10 grounds: `colors: ["#f6eee8", "#e85aa6", "#4a6cf0", "#f6eee8", "#e458b0", "#6175ce",
+    "#fd5d88"], size: 0.75, softness: 0.6, warp: 0.5`, then try `seed` 0..9 for the arrangement (render_frame each).
+    `softness` < 1 = crisper colour regions, > 1 = one smooth wash; `warp` bends the regions into flowing shapes.
+  - `mode: "floor"`: a billowing cloud floor. The lumpy soft top edge sits at `floor` (default 0.4) x the layer
+    height from the bottom, `lumps` (default 0.12) sets the edge amplitude, `softness` the edge feather, `billow` the
+    puffs inside; the colour runs from `colors[0]` at the edge to the last colour at the bottom (default the r06 ramp
+    `#215cc4 / #558cdd / #9dbdeb / #e0e9f8`). Everything above the edge is transparent, so it sits over a black
+    ground under a UI. r06 rise: key `transform.position` from `[CX, CY + H * floor]` to `[CX, CY]` over 15 f with
+    `[0.33, 1, 0.68, 1]` and `transform.opacity` 0 -> 1 over 11 f (the `blob-field` recipe does this).
+  - `speed` (default 1, 0 = still) is the drift; the motion is a pure function of the frame (scrub / export match).
+    `size`, `warp` and `contrast` are also keyable knobs: `editor.setKeyframes { propertyPath: "patternAnim.scale" |
+    "patternAnim.warp" | "patternAnim.contrast" }`. Change anything later with `editor.setBlobField { layerId, patch }`
+    (unlisted options keep their value; `mode: "field"` sets floor 0; one undo step).
+  - Clip it to a shape (the gradient inside a button or a cursor): put the field directly under the shape and use the
+    shape as its track matte (`editor.setTrackMatte`). `editor.addMask` does not take pattern layers yet.
+  - In the editor: Canvas toolbar > Pattern, Type "Blob Field" (presets "Mesh Gradient" / "Cloud Floor"), with
+    Blobs / Seed / Floor / Lumps / Softness / Billow sliders.
+
 ## 8a. UI mocks: typing caret, cursor, UI templates (B35 / B51)
 
 - **Typing caret.** Type the text on, then give it a caret; it sits right after the last revealed
