@@ -2166,6 +2166,15 @@ export interface ResolvedCloner {
   instanceSources?: Layer[];
   /** B60: per-instance source layer ids (cloner.sources); stamp i uses sourceLayerIds[i mod n]. */
   sourceLayerIds?: string[];
+  /** B60 follow-up: 'random' = seeded pick per instance (sourceSeed); absent = cycle (i mod n). */
+  sourceOrder?: 'cycle' | 'random';
+  sourceSeed?: number;
+  /** B60 follow-up: extra sources' scale / rotation / opacity relative to the main source's settled
+   *  transform, keyed by source layer id (absent id = identity). */
+  sourceRelative?: Record<string, { scaleX: number; scaleY: number; rotation: number; opacity: number }>;
+  /** B60 follow-up: the data-bound per-instance content (instanceSources resolved at this frame);
+   *  instanceContent[j] <-> instances[j]. Used for stamps when no `sourceLayerIds` are set. */
+  instanceContent?: ResolvedLayer[];
 }
 
 export interface ResolvedLayer {

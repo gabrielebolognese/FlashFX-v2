@@ -965,6 +965,21 @@ Source: the frame-by-frame breakdowns of the 7 motion references the owner sent 
 - **Verified:** `verify:cloner-sources` 6/6 (cycling, identical instance transforms, hidden sources, unknown ids skipped,
   empty list = old behaviour, persistence), `gpu:cloner-sources` 4/4 through the MCP (8 copies render red / green / blue /
   logo image in order, the sources' own spot is empty, one undo returns to one source).
+- **Built (follow-up audit, Nov 26 2026):** the audit against `gpu:cloner-sources` found three real gaps and closed them.
+  (1) An extra source's own scale / rotation / opacity were dropped (every copy drew at the main source's transform,
+  so photos of different resolutions scaled to one tile size came out at different sizes): pure `src/cloner/sources.ts`
+  (`relativeSourceTransform` against the main source's settled transform, `settledFrame`), applied per stamp via
+  `ResolvedCloner.sourceRelative`; identity for the main source and for same-transform sources, so B60 output is
+  unchanged. (2) Data-bound cloners computed `instanceSources` but every copy drew the unmodified source: each one is now
+  resolved at the frame (`resolveDataBoundContent`, one-layer nested resolve with the module maps saved / restored) into
+  `ResolvedCloner.instanceContent`; explicit `sources` win. New `agent.setClonerData { layerId, data, bindings }` (paths
+  checked against the source, one undo step). (3) Only `i mod n`: `ClonerLayer.sourceOrder: 'random'` + `sourceSeed`
+  (seeded, scrub-stable pick, `pickSourceSlot`), persisted; `agent.setClonerSources` gains `order` / `seed` and returns
+  `picks`. Inspector > Cloner > "Sources per copy" (list, reorder, add, Cycle / Random, seed). AUTHORING section 8.
+- **Verified (follow-up):** `verify:cloner-sources` 11/11 (the 6 above unchanged + relative scale / rotation / opacity,
+  intro pop not divided out, random order, data-bound text rows + sources-win, order / seed persistence);
+  `gpu:cloner-sources` 8/8 (the 4 above + random order renders the returned picks, a 240 px photo scaled 0.5 draws at the
+  120 px photo's size (110 / 110 / 110 / 110 px), data rows [I, WWWW] render per copy, one undo removes the binding).
 
 ## B61 - Liquid drip / melt text ⬜ (browser, low priority)
 - **Delivers:** letters that melt into glowing drips running down and pooling, as a seeded drip-path generator (per-glyph drip origins, gravity curve, pool) rendered as stroked pen paths with glow.

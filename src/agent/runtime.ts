@@ -58,6 +58,7 @@ import { EASINGS } from '../core/easings';
 import { getEffectDefByType } from '../core/effects/effectRegistry';
 import type { KeyframeEaseSpec } from '../core/keyframeSpecs';
 import { normalizeTextCaret } from '../core/textCaret';
+import { pickSourceSlot } from '../cloner/sources';
 
 export interface AgentLayerSummary {
   id: string;
@@ -1087,7 +1088,7 @@ const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
   },
 
   // ----- B60 cloner per-instance sources -----
-  setClonerSources: (layerId, sources) => {
+  setClonerSources: (layerId, sources, order, seed) => {
     const layer = requireLayer(layerId);
     if (layer.type !== 'cloner') throw new Error(`layer "${String(layerId)}" is a ${layer.type}, not a cloner`);
     if (!Array.isArray(sources) || sources.some((s) => typeof s !== 'string')) throw new Error('"sources" must be an array of layer ids');
@@ -1098,9 +1099,58 @@ const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
         throw new Error(`"${id}" (${l.type}) cannot be a cloner source`);
       }
     }
-    const next = ids.length ? { ...layer, sources: ids } : { ...layer, sources: undefined };
+    if (order !== undefined && order !== 'cycle' && order !== 'random') throw new Error('"order" must be "cycle" or "random"');
+    if (seed !== undefined && (typeof seed !== 'number' || !Number.isFinite(seed))) throw new Error('"seed" must be a number');
+    const random = ids.length > 0 && order === 'random';
+    const seedNum = random && typeof seed === 'number' ? Math.trunc(seed) : undefined;
+    const next = ids.length
+      ? { ...layer, sources: ids, sourceOrder: random ? 'random' as const : undefined, sourceSeed: seedNum }
+      : { ...layer, sources: undefined, sourceOrder: undefined, sourceSeed: undefined };
     useEditorStore.getState().applyLayerEdits(ids.length ? 'Cloner sources' : 'Cloner single source', { update: [next] });
-    return { clonerId: layer.id, sources: ids, instances: layer.renderCount };
+    const picks = ids.length
+      ? Array.from({ length: Math.min(24, layer.renderCount) }, (_, i) => ids[pickSourceSlot(i, ids.length, random ? 'random' : 'cycle', seedNum)])
+      : [];
+    return { clonerId: layer.id, sources: ids, order: random ? 'random' : 'cycle', seed: seedNum ?? 0, instances: layer.renderCount, picks };
+  },
+
+  setClonerData: (layerId, data, bindings) => {
+    const layer = requireLayer(layerId);
+    if (layer.type !== 'cloner') throw new Error(`layer "${String(layerId)}" is a ${layer.type}, not a cloner`);
+    if (!Array.isArray(data)) throw new Error('"data" must be an array of rows');
+    const rows: Record<string, string | number>[] = [];
+    for (const [i, row] of data.entries()) {
+      if (!row || typeof row !== 'object' || Array.isArray(row)) throw new Error(`data[${i}] must be an object`);
+      const clean: Record<string, string | number> = {};
+      for (const [k, v] of Object.entries(row as Record<string, unknown>)) {
+        if (typeof v === 'string' || (typeof v === 'number' && Number.isFinite(v))) clean[k] = v;
+        else throw new Error(`data[${i}].${k} must be a string or a number`);
+      }
+      rows.push(clean);
+    }
+    if (rows.length === 0) {
+      useEditorStore.getState().applyLayerEdits('Cloner data unbound', { update: [{ ...layer, dataBinding: undefined }] });
+      return { clonerId: layer.id, rows: 0, bindings: [], instances: layer.renderCount };
+    }
+    if (!Array.isArray(bindings) || bindings.length === 0) throw new Error('"bindings" must be a non-empty array of { propertyPath, dataKey }');
+    const binds = bindings.map((b, i) => {
+      const o = b as { propertyPath?: unknown; dataKey?: unknown } | null;
+      if (!o || typeof o.propertyPath !== 'string' || !o.propertyPath || typeof o.dataKey !== 'string' || !o.dataKey) {
+        throw new Error(`bindings[${i}] must be { propertyPath: string, dataKey: string }`);
+      }
+      return { propertyPath: o.propertyPath, dataKey: o.dataKey };
+    });
+    const ref = layer.sourceRef;
+    const source = ref.type === 'layer' ? useEditorStore.getState().composition.layers.find((l) => l.id === ref.layerId) : undefined;
+    if (source) {
+      // Fail loudly on a path that does not exist on the source (the override step would silently skip it).
+      for (const b of binds) {
+        let cur: unknown = source;
+        for (const key of b.propertyPath.split('.')) cur = cur !== null && typeof cur === 'object' ? (cur as Record<string, unknown>)[key] : undefined;
+        if (cur === undefined) throw new Error(`"${b.propertyPath}" does not exist on the source layer "${source.name}" (${source.type}); read the paths with get_layer`);
+      }
+    }
+    useEditorStore.getState().applyLayerEdits('Cloner data binding', { update: [{ ...layer, dataBinding: { data: rows, bindings: binds } }] });
+    return { clonerId: layer.id, rows: rows.length, bindings: binds, instances: layer.renderCount };
   },
 
   // ----- B57 effects on text / shape layers (nested in a precomp) -----

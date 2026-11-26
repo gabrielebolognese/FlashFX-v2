@@ -424,8 +424,22 @@ Never leave real motion on linear (the default for `addKeyframe`), except progre
   grid / path); `agent.setClonerSources { layerId: <cloner>, sources: [id1, id2, ...] }` makes copy i draw
   sources[i mod n] (a ring of different photos, r04 f432-529; an orbit of different chips, r08 f12-157). The
   listed layers are hidden like the main source and stay editable (restyle one and every copy of it follows);
-  the main source still drives the stagger. Put the sources at the comp origin (0, 0): the cloner adds each
-  source's own position to every copy. `sources: []` goes back to one source.
+  the main source still drives the stagger. Put the main source at the comp origin (0, 0): the cloner adds the
+  main source's position to every copy (the other sources' positions are ignored, so they can stay anywhere).
+  `sources: []` goes back to one source.
+  - **Mixed sizes.** Every other source keeps its own scale, rotation and opacity relative to the main source's
+    settled transform (its value after its last key). Photos of different resolutions: scale each image layer to
+    the tile size (`transform.scale.defaultValue`) and every copy of it keeps that size; a source at the main
+    source's scale draws exactly like the main one. An intro pop on the main source (scale 0 -> 1) still pops every copy.
+  - **Random mix.** `agent.setClonerSources { layerId, sources, order: "random", seed: 3 }` picks a source per
+    copy from a seed (stable while scrubbing; change the seed to reshuffle). The result's `picks` lists the source id
+    of the first 24 copies, so you can check which copy shows what without rendering.
+  - **Different text / sizes per copy (data binding).** `agent.setClonerData { layerId: <cloner>, data: [{ "w": "Edit" },
+    { "w": "Animate" }, { "w": "Export" }], bindings: [{ "propertyPath": "content.spans.0.text", "dataKey": "w" }] }`:
+    copy i is the main source with row i mod rows written in (a ring of words, a grid of labels; numeric paths such
+    as `shape.width` / `shape.height` give bars of different sizes). Paths are checked against the source (read them
+    with `get_layer`). Explicit `sources` win when both are set; `data: []` removes the binding. One undo step each.
+  - In the editor: Inspector > Cloner > "Sources per copy" lists, reorders and adds the sources and sets Cycle / Random + seed.
 
 ## 8a. UI mocks: typing caret, cursor, UI templates (B35 / B51)
 

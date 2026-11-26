@@ -9,6 +9,7 @@ import type {
   ResolvedVideo,
   ResolvedImage,
   ResolvedLayer,
+  ResolvedCloner,
   ResolvedMask,
   ResolvedMaskBlocks,
   RenderFrame,
@@ -47,7 +48,7 @@ import { evalAnimColor, evalAnimNumber, evalEffectParam, mixColorLinear } from '
 import { resolveAdjustmentCoverage } from './effects/adjustmentCoverage';
 import { adjustmentHasWork, resolveAdjustmentFilters } from './effects/adjustmentComposite';
 import { evaluateMotionPathAtFrame } from './motionPath';
-import { computeInstanceTransforms, selectClonerRenderPath, buildDataBoundSources } from '../cloner';
+import { computeInstanceTransforms, selectClonerRenderPath, buildDataBoundSources, pickSourceSlot, settledFrame, relativeSourceTransform, isIdentityRelative } from '../cloner';
 import type { ClonerLayer } from '../cloner/types';
 import { rasterizeField, type FieldGrid } from '../field-sampling/fields';
 import { precompLocalFrame, MAX_PRECOMP_DEPTH } from './precomp';
@@ -894,10 +895,63 @@ function resolveVideoLayer(layer: VideoLayer, frame: number, compositionFrameRat
   };
 }
 
-// B60: the cloner's per-instance source ids (absent / empty = the single sourceRef layer, as before).
-function clonerSourcesField(cloner: ClonerLayer): { sourceLayerIds?: string[] } {
+// B60: the cloner's per-instance source ids (absent / empty = the single sourceRef layer, as before), the
+// source order ('random' + seed; absent = cycle) and each extra source's scale / rotation / opacity relative
+// to the main source's settled transform (an extra source scaled to 0.5 draws its copies at half the main
+// source's size). Position is not carried over: the main source's position still offsets every copy.
+function clonerSourcesField(
+  cloner: ClonerLayer, frame: number, source: Layer | undefined,
+): Pick<ResolvedCloner, 'sourceLayerIds' | 'sourceOrder' | 'sourceSeed' | 'sourceRelative'> {
   const ids = Array.isArray(cloner.sources) ? cloner.sources.filter((s): s is string => typeof s === 'string' && s.length > 0) : [];
-  return ids.length ? { sourceLayerIds: ids } : {};
+  if (!ids.length) return {};
+  const out: Pick<ResolvedCloner, 'sourceLayerIds' | 'sourceOrder' | 'sourceSeed' | 'sourceRelative'> = { sourceLayerIds: ids };
+  if (cloner.sourceOrder === 'random') {
+    out.sourceOrder = 'random';
+    out.sourceSeed = typeof cloner.sourceSeed === 'number' && Number.isFinite(cloner.sourceSeed) ? Math.trunc(cloner.sourceSeed) : 0;
+  }
+  if (source) {
+    const main = resolveTransformRaw(source.transform, settledFrame(source.transform));
+    let rel: ResolvedCloner['sourceRelative'];
+    for (const id of ids) {
+      if (id === source.id) continue;
+      const l = _layerById.get(id);
+      if (!l || !('transform' in l) || !l.transform) continue;
+      const own = resolveTransformRaw(l.transform, frame);
+      const r = relativeSourceTransform(own, main);
+      if (isIdentityRelative(r)) continue;
+      (rel ??= {})[id] = r;
+    }
+    if (rel) out.sourceRelative = rel;
+  }
+  return out;
+}
+
+// B60 follow-up: a data-bound cloner's per-instance content. Each instanceSources[j] (the source with the
+// bound values written in, core/overrides) is resolved at this frame through a one-layer composition, so
+// copy j draws its own text / size / colour. Same frame, same in / out as the source; parent and track are
+// dropped (the stamp gets the instance transform anyway). Module-level maps are saved and restored like the
+// precomp recursion does.
+function resolveDataBoundContent(
+  composition: Composition, frame: number, instanceSources: Layer[], ctx: ResolveContext | undefined,
+): ResolvedLayer[] | undefined {
+  const savedOffsets = _layoutOffsets;
+  const savedSizes = _layoutContainerSizes;
+  const savedById = _layerById;
+  try {
+    const out: ResolvedLayer[] = [];
+    for (const src of instanceSources) {
+      const solo = { ...src, parentId: null, trackId: null, visible: true } as Layer;
+      const rf = resolveFrame({ ...composition, layers: [solo], tracks: [], physicsBindings: [] }, frame, ctx);
+      const hit = rf.layers.find((l) => l.id === src.id);
+      if (!hit) return undefined;
+      out.push(hit);
+    }
+    return out;
+  } finally {
+    _layoutOffsets = savedOffsets;
+    _layoutContainerSizes = savedSizes;
+    _layerById = savedById;
+  }
 }
 
 // B57: a precomp's effect stack (B50 keyed params evaluated at this frame). Empty ({}) without effects,
@@ -1835,12 +1889,17 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
         const instanceSources = isDataBound && source
           ? buildDataBoundSources(source, cloner.dataBinding!, instances.length)
           : undefined;
+        const sourcesField = clonerSourcesField(cloner, frame, source);
+        // B60 follow-up: data-bound copies draw their own content (explicit `sources` win when both are set).
+        const instanceContent = instanceSources && !sourcesField.sourceLayerIds && frame >= (source?.inPoint ?? 0) && frame < (source?.outPoint ?? Infinity)
+          ? resolveDataBoundContent(composition, frame, instanceSources, ctx)
+          : undefined;
         resolvedLayers.push({
           id: layer.id,
           visible: true,
           blendMode: layer.blendMode,
           transform: worldTransform,
-          cloner: { renderPath, sourceLayerId, instances, instanceSources, ...clonerSourcesField(cloner) },
+          cloner: { renderPath, sourceLayerId, instances, instanceSources, ...sourcesField, ...(instanceContent ? { instanceContent } : {}) },
           layerType: 'cloner',
         });
       } else if (layer.type === 'precomp') {
@@ -2040,18 +2099,24 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
         .filter((l): l is ResolvedLayer => !!l);
       for (const p of pick) hiddenSourceIds.add(p.id);
       const stamps: ResolvedLayer[] = [];
+      const { sourceOrder, sourceSeed, sourceRelative, instanceContent } = cl.cloner;
       if (src && srcId) {
         hiddenSourceIds.add(srcId);
-        for (const inst of cl.cloner.instances) {
-          const instSrc = pick.length ? pick[((inst.index % pick.length) + pick.length) % pick.length] : src;
+        for (let j = 0; j < cl.cloner.instances.length; j++) {
+          const inst = cl.cloner.instances[j];
+          const instSrc = pick.length
+            ? pick[pickSourceSlot(inst.index, pick.length, sourceOrder, sourceSeed)]
+            : (instanceContent?.[j] ?? src);
+          // An extra source's own scale / rotation / opacity, relative to the main source (identity when absent).
+          const rel = pick.length && instSrc.id !== srcId ? sourceRelative?.[instSrc.id] : undefined;
           // Instance transform (relative to the cloner), composed under the cloner's world
           // transform. anchor 0 → the instance position IS the stamp centre.
           const child: ResolvedTransform = {
             positionX: inst.position.x, positionY: inst.position.y,
-            rotation: inst.rotationDegrees.z,
-            scaleX: inst.scale.x, scaleY: inst.scale.y,
+            rotation: inst.rotationDegrees.z + (rel ? rel.rotation : 0),
+            scaleX: inst.scale.x * (rel ? rel.scaleX : 1), scaleY: inst.scale.y * (rel ? rel.scaleY : 1),
             anchorX: 0, anchorY: 0,
-            opacity: inst.opacity,
+            opacity: inst.opacity * (rel ? rel.opacity : 1),
             positionZ: 0, rotationX: 0, rotationY: 0,
           };
           const stamp: ResolvedLayer = {

@@ -746,6 +746,9 @@ function validateLayer(raw: unknown): Layer | null {
         // B60: per-instance source layer ids (strings only; absent = one source).
         ...(Array.isArray(r.sources) && r.sources.some((x) => typeof x === 'string')
           ? { sources: (r.sources as unknown[]).filter((x): x is string => typeof x === 'string') } : {}),
+        // B60 follow-up: source order ('random' only; absent = cycle) and its integer seed.
+        ...(r.sourceOrder === 'random' ? { sourceOrder: 'random' } : {}),
+        ...(typeof r.sourceSeed === 'number' && Number.isFinite(r.sourceSeed) ? { sourceSeed: Math.trunc(r.sourceSeed) } : {}),
       } as unknown as Layer;
     }
     case 'adjustment': {

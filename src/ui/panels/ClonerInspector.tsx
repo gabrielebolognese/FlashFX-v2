@@ -108,6 +108,8 @@ export function ClonerInspector() {
         </select>
       </Sec>
 
+      <ClonerSourcesSection c={c} eligible={sources} setValue={(path, value) => updateLayerProperty(id, path, value)} />
+
       <Sec title="Distribution">
         <Seg
           value={dist.type === 'field' ? 'grid' : dist.type}
@@ -190,6 +192,60 @@ export function ClonerInspector() {
         ))}
       </Sec>
     </div>
+  );
+}
+
+// B60: per-instance sources. Copy i draws list[i mod n] (Cycle) or a seeded pick (Random). An empty list = the
+// single Source above. Same data as agent.setClonerSources, so agent-built cloners stay editable here.
+function ClonerSourcesSection({ c, eligible, setValue }: {
+  c: ClonerLayer; eligible: { id: string; name: string }[]; setValue: (path: string, value: unknown) => void;
+}) {
+  const list = Array.isArray(c.sources) ? c.sources : [];
+  const nameOf = (lid: string) => eligible.find((l) => l.id === lid)?.name ?? `missing (${lid})`;
+  const write = (next: string[]) => setValue('sources', next);
+  const move = (i: number, d: -1 | 1) => {
+    const j = i + d;
+    if (j < 0 || j >= list.length) return;
+    const next = [...list];
+    [next[i], next[j]] = [next[j], next[i]];
+    write(next);
+  };
+  const add = (lid: string) => {
+    if (!lid) return;
+    const main = c.sourceRef.type === 'layer' ? c.sourceRef.layerId : '';
+    // First extra source: keep the main source as copy 0 so the cycle starts with it.
+    write(list.length === 0 && main && main !== lid ? [main, lid] : [...list, lid]);
+  };
+  return (
+    <Sec title={`Sources per copy${list.length ? ` (${list.length})` : ''}`}>
+      {list.length === 0 && <div className="text-[9px] text-slate-600">Every copy draws the Source above. Add layers to give each copy a different one.</div>}
+      {list.map((lid, i) => (
+        <div key={`${lid}-${i}`} className="flex items-center gap-1">
+          <span className="text-[9px] text-slate-500 w-4">{i}</span>
+          <span className="flex-1 truncate text-[10px] text-slate-300" title={lid}>{nameOf(lid)}</span>
+          <button title="Move up" onClick={() => move(i, -1)} disabled={i === 0} className="text-slate-500 hover:text-slate-200 disabled:opacity-30"><ChevronUp size={12} /></button>
+          <button title="Move down" onClick={() => move(i, 1)} disabled={i === list.length - 1} className="text-slate-500 hover:text-slate-200 disabled:opacity-30"><ChevronDown size={12} /></button>
+          <button title="Remove" onClick={() => write(list.filter((_, k) => k !== i))} className="text-slate-500 hover:text-red-400"><Trash2 size={11} /></button>
+        </div>
+      ))}
+      <select
+        value=""
+        onChange={(e) => add(e.target.value)}
+        className="w-full bg-surface-3 text-[11px] text-slate-400 px-1.5 py-1 rounded border border-hairline focus:border-accent-dim outline-none"
+      >
+        <option value="">+ Add a source layer...</option>
+        {eligible.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+      </select>
+      {list.length > 0 && (
+        <>
+          <Seg label="Order" value={c.sourceOrder === 'random' ? 'random' : 'cycle'} opts={[{ v: 'cycle', l: 'Cycle' }, { v: 'random', l: 'Random' }]} onChange={(v) => setValue('sourceOrder', v)} />
+          {c.sourceOrder === 'random' && (
+            <Num label="Seed" value={c.sourceSeed ?? 0} step={1} precision={0} onChange={(v) => setValue('sourceSeed', Math.trunc(v))} commitLabel="Cloner Source Seed" />
+          )}
+          <div className="text-[9px] text-slate-600">Each source keeps its own scale, rotation and opacity relative to the main Source.</div>
+        </>
+      )}
+    </Sec>
   );
 }
 

@@ -12,5 +12,6 @@ export * from './stagger';
 export * from './instanceMatrix';
 export * from './renderPath';
 export * from './dataBinding';
+export * from './sources';
 export * from './validation';
 export * from './factory';

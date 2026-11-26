@@ -280,6 +280,11 @@ export interface ClonerLayer {
    *  sourceRef layer (a ring of different photos / chips). The sourceRef layer still drives the instance
    *  animation (stagger). Every listed layer is hidden like the main source. Absent = one source (old). */
   sources?: string[];
+  /** B60 follow-up: which source instance i draws. 'cycle' (absent) = sources[i mod n]; 'random' = a seeded,
+   *  scrub-stable pick per instance (sourceSeed). Ignored without `sources`. */
+  sourceOrder?: 'cycle' | 'random';
+  /** B60 follow-up: seed of the 'random' source order (integer; absent = 0). */
+  sourceSeed?: number;
   distribution: ClonerDistribution;
   effectors: ClonerEffector[];
   stagger: ClonerStagger;
