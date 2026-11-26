@@ -123,6 +123,12 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | B60 | Refs: cloner per-instance sources - render `ResolvedCloner.instanceSources` so each copy can be a different image (photo rings / grids) (ref gap #15: r04) | ⬜ (browser) | medium |
 | B61 | Refs: liquid drip / melt text (letters melt into glowing drips that run down and pool; seeded, frame-pure) (ref gap #21: r05, low priority) | ⬜ (browser) | **heavy** |
 | B62 | Refs / F2: agent shape morph - `editor.setShapeMorph` (parametric poses: rounded rect / ellipse / star / polygon / points, per-pose ease incl. overshoot, auto start-point + winding alignment) + fix: path fill dropped half the polygon when the ring had a collinear point | ✅ | medium |
+| B63 | Replicas: shape render correctness - SDF stroke clipped at the shape bounds (rings get flat sides), rounded rect wider than ~2048 px draws lens ends, circle ignores non-uniform scale (no ellipse), setShapeMorph ellipse pose with w != h has wrong geometry, borderRadius not clamped to min(w,h)/2, shape materialConfig radial gradient renders nothing, setShapeMorph with one pose (or a hold first pose) renders nothing, addShapeLayer polygon has no sides (found replicating r02 r04 r06 r07) | ⬜ (browser) | medium |
+| B64 | Replicas: text paint - stroke-only text (transparent fill + stroke) renders nothing; vertical linear gradient fill (angle 180) drops horizontal strokes (T / f crossbars), angle 90 shows no top-to-bottom ramp (found replicating r02 r04) | ⬜ (browser) | light |
+| B65 | Replicas: agent video clip timing - video tracks are magnetic with no agent toggle: `editor.moveClipInTime` returns ok but does not move a video layer, every `import_media` of a video re-packs the earlier video clips back to back, `import_project` snaps inPoint-timed clips back to frame 0, a shape track matte over a video does not matte it (found replicating r07) | ⬜ | light |
+| B66 | Replicas: motion blur from parent transforms - a layer moved / zoomed by a parent (or grand-parent) null gets much weaker blur than the same motion on the layer itself (r02 f6-16 zoom smear) | ⬜ (browser) | medium |
+| B67 | Replicas: agent authoring ergonomics - setKeyframes accepts the breakdown ease names (easeOut, easeInOut, easeOutCubic ...; the replica kit aliases them today), createQuickText option to place by ink centre / baseline, glow defaults that show on coloured text, trim start angle option (12 o'clock), document that text layout trims leading / trailing spaces | ⬜ | light |
+| B68 | Replicas: export fails on video - `export_mp4` (the real exporter) aborts with "A valid external Instance reference no longer exists" when a scaled, position-keyed H.264 clip is in the comp, while render_frame of the same frames works (suspect a VideoFrame closed while still bound via importExternalTexture in the export path; found replicating r07, ties into the EX plan) | ⬜ (browser) | medium |
 | PB1 | Playback: decoded-frame LRU on the mediabunny path (backward/oscillating scrubs hit the cache instead of re-walking the GOP) | ✅ | medium |
 | PB2a | Playback: keyframe-snap-then-refine on far seeks (kills the scrub freeze) | ✅ | medium |
 | PB2b | Playback: real half-res proxy decode (cuts 4K upload/convert cost during scrub) | ✅ | heavy |
@@ -907,3 +913,70 @@ Source: the frame-by-frame breakdowns of the 7 motion references the owner sent 
 
 ## B62 - Agent shape morph ✅ (Nov 2026, wave 1A; owner's F2 format: heavy morphs)
 **Delivered:** `PathKeyframe.ease` (named ease or cubic-bezier quad, overshoot allowed) and `PathKeyframe.align: 'auto'` (re-index the next pose to the start point + winding with the least squared travel, so rect -> circle does not twist); absent = the B8b linear index-0 morph, byte-identical. `core/shapeOutline.ts` builds bezier outlines (rounded rect, ellipse in 4 kappa arcs, star, regular polygon, free points), all starting at the top and running clockwise. Store action `setShapeMorph(layerId, poses, align?)` converts any shape layer to a path with the morph in one undo step (fill, stroke, materials, transform kept); agent action + `shapes.morph` feature; persistence of ease / align in `validation.ts`. **Bug fixed on the way:** `pathTessellation.earClip` stalled on rings with a collinear vertex (its inclusive point-in-triangle test blocks every ear) and filled only one triangle - a square starting at its top-middle filled half; resampled morph rings carry many collinear points. `cleanFillRing` drops the duplicated closing point, duplicates and collinear points before ear clipping (same filled region). **Verify:** `verify:shape-morph` (13 checks: outline geometry, legacy byte-identity, eases incl. overshoot, hold, alignment recovers shifted / reversed rings, frame purity, full fill area of every morph frame) + `gpu:anim-props` (morph renders byte-identically to static-path twins; square corner -> star tip -> circle on screen; one undo step).
+
+## Replica findings (B63-B67, from rebuilding r02 r04 r06 r07 through the MCP, Nov 2026)
+
+Found while rebuilding four of the owner's references frame by frame (artifacts `replicas/rNN/notes.md`, `gaps.json`). Each was
+worked around through agent actions in the replica builds; the workaround is listed so the fix can be checked against it.
+
+## B63 - Shape render correctness ⬜ (browser)
+- **Delivers:** fixes for seven shape defects: (1) the SDF circle / rounded-rect stroke is centred on the edge but clipped at the
+  shape bounds, so the outer half is cut (rings get flat sides, pill outlines lose their ends); (2) a rectangle whose width with
+  borderRadius exceeds ~2048 layer px draws pointed lens-shaped ends; (3) a circle with non-uniform `transform.scale` renders as a
+  uniform circle at the smaller scale (AUTHORING says this is the ellipse path), static or keyed; (4) a `setShapeMorph` ellipse pose
+  with width != height renders with wrong, larger geometry and drops a radial gradient to flat colour; (5) borderRadius is not
+  clamped to min(w, h) / 2; (6) a shape `materialConfig` with a radial colour-to-transparent layer renders nothing; (6b) `setShapeMorph` with a single pose, or
+  with ease `hold` on the first pose, renders nothing (two plain poses work); (7)
+  `addShapeLayer { type: 'polygon' }` has no sides option and makes a rectangle.
+- **Source beats:** r02 f26-66, f305-416, f833-1278 (rings, pill outlines), f422-674 (hexagons); r06 f96-334, f462-500 (prompt bar,
+  wipe bands, dome); r07 f1-190, f668-1200 (radial glow blobs).
+- **Workarounds in the replicas:** `editor.convertShapeToPath` for rings; black pill under a white pill for outlines; big rounded rects
+  built at half size with scale 2; stadium rects instead of ellipses; solid circles + gaussian blur instead of radial materials; a
+  6-point star with innerRatio 0.866 for a hexagon.
+- **Verification:** gates + `verify:shape-*` extension (stroke coverage outside the fill, ellipse from scale, radius clamp) + a
+  `gpu:anim-props`-style headless pixel check of each case against its path-shape twin.
+
+## B64 - Text paint ⬜ (browser)
+- **Delivers:** outline-only text (transparent fill + `strokeColor` / `strokeWidth`) renders its stroke; a linear gradient fill at any
+  angle keeps every glyph stroke (angle 180 drops the horizontal crossbars of T and f today) and angle 90 / 270 ramps top to bottom.
+- **Source beats:** r02 f264-366 (outlined question marks); r04 f355-431 (statement text gradient #151d24 to #306181).
+- **Workarounds in the replicas:** light solid fill instead of an outline; flat colour instead of the gradient.
+- **Verification:** gates + `verify:text-runs` extension + `gpu:text-kinetic` screenshot (crossbar pixels present, stroke-only glyph
+  coverage > 0).
+
+## B65 - Agent video clip timing ⬜
+- **Delivers:** `editor.moveClipInTime` moves video layers (today it returns ok and the inPoint stays 0); `import_media` of a video no
+  longer re-packs earlier video clips back to back; a shape used as a track matte over a video mattes it in render_frame / export.
+- **Source beats:** r07 f191-368, f479-667, f763-823, f1053-1200 (webcam card, screen recording, demo previews, selfie card).
+- **Workarounds in the replicas:** each clip at frame 0 on its own track, padded with a frozen first frame up to the shot start, hold
+  opacity until the shot, outPoint at the shot end (reload-safe); square-cornered
+  webcam card instead of a matte.
+- **Verification:** gates + `gpu:mcp` extension (two clips imported, the first keeps its timing; moveClipInTime shifts the decoded
+  source frame; matte coverage pixel check).
+
+## B66 - Motion blur from parent transforms ⬜ (browser)
+- **Delivers:** export / render_frame motion blur samples the full world transform (parent chain included), so a layer moved or zoomed
+  by a null gets the same smear as when the motion is keyed on the layer itself.
+- **Source beats:** r02 f6-16 ("Attention" zooming in from ~5x), f150-154, f232 (whips).
+- **Verification:** gates + headless pixel check: a parented layer and its unparented twin with identical world motion render the
+  same blurred frame.
+
+## B67 - Agent authoring ergonomics (replica friction) ⬜
+- **Delivers:** `setKeyframes` accepts the breakdown names (`easeIn`, `easeOut`, `easeInOut`, `easeOutCubic` ...); a `createQuickText`
+  option to place text by ink centre or baseline (today y = the line-box centre, so mixed-case words sit ~0.15 x size high); glow
+  defaults visible on coloured text (white glow at threshold 0.6 vanishes on green); a trim start-angle option; AUTHORING note that
+  text layout ignores leading / trailing spaces (padding does not move text).
+- **Verification:** gates + `verify:agent-manifest` + `verify:anim-props` extension (alias names resolve to the same curves).
+
+## B68 - Export fails on a video clip ⬜ (browser, launch-relevant)
+- **Delivers:** the real exporter (`agent.exportMp4` / File > Export Video) completes on comps with video layers. Today it aborts with
+  `A valid external Instance reference no longer exists.` whenever r07's stand-in flower clip (538x958 H.264, scale 2.0-2.5, keyed
+  position) is in the comp, about 80 s in. Bisected on the saved project: all 5 clips fail (also at 540 px wide, also with the clips
+  hidden by opacity, with a negative `video.startOffset`, with head-padded clips); no clips ok; webcam only ok; poster only ok;
+  flowers only fails, and replacing the flower clip with a still still fails, so another clip (screen recording or selfie) also
+  triggers it. `render_frame` of the same frames works. Suspect: the export path closes a `VideoFrame` that is still bound
+  (`frameScheduler.evictOldestForExport` / `importExternalTexture`); cause not confirmed.
+- **Repro:** `artifacts/replicas/r07/project.ffx` (import_project, then export_mp4); r07 shipped its replica.mp4 by rendering every
+  frame with render_frame (`replicas/r07/render_mp4.mjs`) because of this.
+- **Verification:** gates + `gpu:mcp` extension: export a comp with a scaled, keyed 540x960 H.264 clip end to end; decoded frame at
+  t matches render_frame(t).
