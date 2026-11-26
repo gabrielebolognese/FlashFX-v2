@@ -14,7 +14,13 @@
 
 import { createInterface } from 'node:readline';
 import { readFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { FlashFxSession, readConfig } from './lib/session.mjs';
+import { loadRecipes, describeRecipe, runRecipe } from './lib/recipes.mjs';
+
+const MCP_DIR = dirname(fileURLToPath(import.meta.url));
+const readDoc = (name) => readFileSync(join(MCP_DIR, name), 'utf8');
 
 const SERVER_INFO = { name: 'flashfx', title: 'FlashFX Studio', version: '1.0.0' };
 const SUPPORTED_PROTOCOLS = ['2025-06-18', '2025-03-26', '2024-11-05'];
@@ -26,7 +32,9 @@ const INSTRUCTIONS = [
   'In run_actions, a string argument "$N.path" (or "$last.path") is replaced by that value from the Nth earlier result, e.g. "$0.activeLayerId".',
   'Check your work with screenshot (it returns the image) and get_state; export_mp4 renders through the real exporter.',
   'Save the editable project with export_project {path} (a .ffx file the owner can open in FlashFX); import_project {path} re-opens one; import_image {path} brings a PNG/JPEG/WebP/SVG into the project; import_media {path} imports video, audio or images.',
-  'Authoring guide: mcp/AUTHORING.md in the FlashFX repo.',
+  'For clean, tasteful motion use the recipes: list_recipes, then apply_recipe {id, params, startFrame, endFrame?} (each recipe is a measured house move: kinetic title, prompt bar, pop, wipe, end card...).',
+  'Read the taste rules (resource flashfx://taste, or the prompt "taste") before planning a piece: easing, timing, stagger, type scale and colour numbers measured on reference videos.',
+  'Authoring guide: resource flashfx://authoring (mcp/AUTHORING.md). Brief-to-video workflow: the prompt "motion-brief".',
 ].join(' ');
 
 const config = readConfig();
@@ -396,6 +404,55 @@ const TOOLS = [
     },
   },
   {
+    name: 'list_recipes',
+    description: 'The animation recipes (mcp/recipes/*.json): parameterized house moves measured on reference motion videos (kinetic title, blur-in text, type-on, prompt bar, pop-in, underline, scene camera, shape morph, transition, cursor click, end card...). Each entry has its params schema with defaults, its natural length (frames at 30 fps) and the references it was extracted from. Use apply_recipe to build one.',
+    inputSchema: { type: 'object', properties: { category: { type: 'string', description: 'Only this category: background, text, ui, shape, camera, transition, endcard.' }, id: { type: 'string', description: 'Only this recipe.' } } },
+    annotations: { readOnlyHint: true },
+    handler: async ({ category, id }) => {
+      const all = [...recipes().values()];
+      const list = all.filter((r) => (!category || r.category === category) && (!id || r.id === id));
+      if (id && !list.length) return fail(`unknown recipe ${id} (known: ${all.map((r) => r.id).join(', ')})`);
+      return ok({ count: list.length, howTo: 'apply_recipe { id, params, startFrame, endFrame?, parentId? }. Times inside params are frames at 30 fps (scaled to the comp fps); startFrame / endFrame are comp frames. Apply back to front: background, camera, content, transitions last.', recipes: list.map(describeRecipe) });
+    },
+  },
+  {
+    name: 'apply_recipe',
+    description: 'Build one recipe into the open composition: runs its action sequence (whitelisted actions only, one undo step each) with your params. startFrame = comp frame where it begins; endFrame (optional) = where it ends (exits land on it and every created layer is clipped to [startFrame, endFrame]); without endFrame it uses its natural length. parentId = a scene camera / group null (from the scene-camera recipe) to hang its root layers on. dryRun = return the expanded actions without running them. Returns the created layers, useful ids / frames (returns) and checkFrames to render_strip.',
+    inputSchema: {
+      type: 'object',
+      required: ['id'],
+      properties: {
+        id: { type: 'string', description: 'Recipe id from list_recipes.' },
+        params: { type: 'object', description: 'Recipe params (see list_recipes); omitted ones use their defaults.' },
+        startFrame: { type: 'number', default: 0 },
+        endFrame: { type: 'number', description: 'Optional end in comp frames (exits finish here; layers are clipped to it).' },
+        parentId: { type: 'string', description: 'Optional parent null for the root layers (a scene camera).' },
+        dryRun: { type: 'boolean', default: false },
+      },
+    },
+    handler: async ({ id, params = {}, startFrame = 0, endFrame, parentId, dryRun = false }) => {
+      const recipe = recipes().get(id);
+      if (!recipe) return fail(`unknown recipe ${id} (known: ${[...recipes().keys()].join(', ')})`);
+      const st = dryRun ? { width: 1920, height: 1080, fps: 30, durationFrames: 300, ...(lastState ?? {}) } : await session.state();
+      lastState = { width: st.width, height: st.height, fps: st.fps, durationFrames: st.durationFrames };
+      let parentPosition;
+      if (parentId && !dryRun) {
+        const pl = await session.run('agent.getLayer', { layerId: parentId });
+        if (!pl?.ok) return fromRun(pl);
+        const pos = pl.result?.transform?.position?.defaultValue;
+        parentPosition = Array.isArray(pos) ? pos : [0, 0];
+      }
+      try {
+        const out = await runRecipe(recipe, params, {
+          width: st.width, height: st.height, fps: st.fps, durationFrames: st.durationFrames, startFrame, endFrame, parentId, parentPosition,
+        }, recipeExec, { dryRun });
+        return ok({ ok: true, ...out, next: dryRun ? 'dry run: nothing was changed' : `render_strip { frames: ${JSON.stringify(out.checkFrames)} } to check it` });
+      } catch (e) {
+        return fail(`apply_recipe ${id}: ${e.message}`);
+      }
+    },
+  },
+  {
     name: 'undo',
     description: 'Undo the last undoable action (history.undo).',
     inputSchema: { type: 'object', properties: {} },
@@ -418,21 +475,101 @@ const TOOLS = [
 const TOOL_BY_NAME = new Map(TOOLS.map((t) => [t.name, t]));
 
 // ---------------------------------------------------------------------------------------------
+// Recipes (mcp/recipes/*.json, engine in lib/recipes.mjs)
+// ---------------------------------------------------------------------------------------------
+
+let recipeCache = null;
+let lastState = null;
+/** Loaded once per server process (restart the server to pick up edited recipes). */
+function recipes() { if (!recipeCache) recipeCache = loadRecipes(); return recipeCache; }
+
+/** Runs one recipe step: a whitelisted action through the agent runtime, or one of the allowed tools. */
+async function recipeExec({ kind, name, args }) {
+  if (kind === 'action') {
+    const r = await session.run(name, args);
+    if (!r) throw new Error(`${name}: no result from the page`);
+    if (r.ok === false) throw new Error(`${name}: ${r.error}`);
+    return r;
+  }
+  const tool = TOOL_BY_NAME.get(name);
+  if (!tool) throw new Error(`unknown tool ${name}`);
+  const res = await tool.handler(args ?? {});
+  if (res.isError) throw new Error(`${name}: ${res.content?.[0]?.text ?? 'failed'}`);
+  return res.structuredContent;
+}
+
+// ---------------------------------------------------------------------------------------------
 // Resources
 // ---------------------------------------------------------------------------------------------
 
 const RESOURCES = [
   { uri: 'flashfx://manifest', name: 'features.json', title: 'FlashFX agent manifest', description: 'Features, whitelisted actions and live catalogs (/agent/features.json).', mimeType: 'application/json' },
   { uri: 'flashfx://state', name: 'state', title: 'FlashFX editor state', description: 'Live summary of the open composition (same as get_state).', mimeType: 'application/json' },
+  { uri: 'flashfx://taste', name: 'TASTE.md', title: 'FlashFX taste rules', description: 'Motion design principles with numbers measured on reference videos: easing, durations at 30 / 60 fps, stagger, overshoot, holds, type scale, colour, motion blur, transitions. Read before planning a piece.', mimeType: 'text/markdown' },
+  { uri: 'flashfx://authoring', name: 'AUTHORING.md', title: 'FlashFX MCP authoring guide', description: 'How to build through these tools: comp setup, layers, text, shapes, masks, effects, checks, export.', mimeType: 'text/markdown' },
+  { uri: 'flashfx://recipes', name: 'recipes', title: 'FlashFX animation recipes', description: 'Every recipe with its params schema (same as list_recipes).', mimeType: 'application/json' },
+];
+const RESOURCE_TEMPLATES = [
+  { uriTemplate: 'flashfx://recipe/{id}', name: 'recipe', title: 'One recipe (full JSON, steps included)', mimeType: 'application/json' },
 ];
 
 async function readResource(uri) {
+  if (uri === 'flashfx://taste') return { text: readDoc('TASTE.md'), mimeType: 'text/markdown' };
+  if (uri === 'flashfx://authoring') return { text: readDoc('AUTHORING.md'), mimeType: 'text/markdown' };
+  if (uri === 'flashfx://recipes') return JSON.stringify([...recipes().values()].map(describeRecipe), null, 2);
+  if (uri.startsWith('flashfx://recipe/')) {
+    const r = recipes().get(uri.slice('flashfx://recipe/'.length));
+    if (r) return JSON.stringify(r, null, 2);
+  }
   if (uri === 'flashfx://manifest') return JSON.stringify(await session.manifest(), null, 2);
   if (uri === 'flashfx://state') return JSON.stringify(await session.state(), null, 2);
   const e = new Error(`unknown resource ${uri}`);
   e.code = -32002;
   throw e;
 }
+
+// ---------------------------------------------------------------------------------------------
+// Prompts (slash commands in Claude Code: /mcp__flashfx__motion-brief, /mcp__flashfx__taste)
+// ---------------------------------------------------------------------------------------------
+
+const PROMPTS = [
+  {
+    name: 'motion-brief',
+    title: 'Build a motion graphic from a one-line brief',
+    description: 'Plan and build a clean, editable FlashFX piece from a brief with the taste rules and recipes, check it frame by frame, export the MP4 and the .ffx.',
+    arguments: [
+      { name: 'brief', description: 'What to make, e.g. "8 s launch title for FlashFX MCP early access".', required: true },
+      { name: 'format', description: 'square (1080x1080), vertical (1080x1920) or landscape (1920x1080). Default square.', required: false },
+      { name: 'outDir', description: 'Folder for piece.mp4 and piece.ffx. Default ./flashfx-out', required: false },
+    ],
+    build: ({ brief = '', format = 'square', outDir = './flashfx-out' }) => [
+      `Brief: ${brief}`,
+      `Format: ${format}. Output folder: ${outDir}`,
+      '',
+      'Follow the flashfx-motion workflow (mcp/skill/flashfx-motion/SKILL.md):',
+      '1. Read the taste rules (resource flashfx://taste) and call list_recipes.',
+      '2. Plan before any build call: shots (median 2 s, cut on beats), one idea per shot, the recipe for each element, start / end frames at the comp fps. Write the plan as a short table.',
+      '3. create_project (clipLength "comp"), editor.setCompositionSize for square / vertical, then apply_recipe back to front: background, scene-camera, content, transitions last.',
+      '4. After each shot: render_strip on the checkFrames that apply_recipe returns. Fix what breaks the taste rules (overlaps, crowding, elements visible too early, flat timing) with run_action / editor.setKeyframes, or undo and re-apply with new params.',
+      '5. Final pass: render_strip of 8-12 frames across the piece, then export_project and export_mp4 into the output folder.',
+      '6. Report the plan, the recipes used and the file paths.',
+    ].join(String.fromCharCode(10)),
+  },
+  {
+    name: 'taste',
+    title: 'FlashFX taste rules',
+    description: 'The full TASTE.md (measured motion design principles) as context.',
+    arguments: [],
+    build: () => readDoc('TASTE.md'),
+  },
+  {
+    name: 'authoring',
+    title: 'FlashFX MCP authoring guide',
+    description: 'The full AUTHORING.md as context.',
+    arguments: [],
+    build: () => readDoc('AUTHORING.md'),
+  },
+];
 
 // ---------------------------------------------------------------------------------------------
 // JSON-RPC over stdio
@@ -456,7 +593,7 @@ async function handle(msg) {
         const asked = params.protocolVersion;
         reply(id, {
           protocolVersion: SUPPORTED_PROTOCOLS.includes(asked) ? asked : SUPPORTED_PROTOCOLS[0],
-          capabilities: { tools: { listChanged: false }, resources: { listChanged: false, subscribe: false } },
+          capabilities: { tools: { listChanged: false }, resources: { listChanged: false, subscribe: false }, prompts: { listChanged: false } },
           serverInfo: SERVER_INFO,
           instructions: INSTRUCTIONS,
         });
@@ -480,14 +617,23 @@ async function handle(msg) {
         return;
       }
       case 'resources/list': reply(id, { resources: RESOURCES }); return;
-      case 'resources/templates/list': reply(id, { resourceTemplates: [] }); return;
+      case 'resources/templates/list': reply(id, { resourceTemplates: RESOURCE_TEMPLATES }); return;
       case 'resources/read': {
-        const uri = params.uri;
-        const body = await serial(() => readResource(uri));
-        reply(id, { contents: [{ uri, mimeType: 'application/json', text: body }] });
+        const uri = String(params.uri ?? '');
+        // Docs and recipes are files on disk: no need to wait for (or boot) the browser.
+        const local = /^flashfx:\/\/(taste|authoring|recipe)/.test(uri);
+        const body = local ? await readResource(uri) : await serial(() => readResource(uri));
+        const { text: t, mimeType } = typeof body === 'string' ? { text: body, mimeType: 'application/json' } : body;
+        reply(id, { contents: [{ uri, mimeType, text: t }] });
         return;
       }
-      case 'prompts/list': reply(id, { prompts: [] }); return;
+      case 'prompts/list': reply(id, { prompts: PROMPTS.map(({ build: _b, ...p }) => p) }); return;
+      case 'prompts/get': {
+        const pr = PROMPTS.find((p) => p.name === params.name);
+        if (!pr) { replyError(id, -32602, `unknown prompt: ${params.name}`); return; }
+        reply(id, { description: pr.description, messages: [{ role: 'user', content: { type: 'text', text: pr.build(params.arguments ?? {}) } }] });
+        return;
+      }
       default:
         if (method.startsWith('notifications/')) return; // initialized, cancelled, ... nothing to do
         if (isRequest) replyError(id, -32601, `method not found: ${method}`);

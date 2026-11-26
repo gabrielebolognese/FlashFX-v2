@@ -1,0 +1,275 @@
+{
+  "id": "shape-morph",
+  "name": "Heavy shape morph sequence",
+  "category": "shape",
+  "description": "One shape that pops in, then morphs through a list of outlines (square, star, circle, hexagon...) with a colour change and an overshooting spin on every beat, holding each pose briefly, and shrinks away on the end frame. The F2 'pure visual' building block; stack two or three at different sizes and offsets for a busier frame. With an endFrame shorter than its natural length, holds and morphs are compressed (down to a quarter) so the sequence fits.",
+  "source": [
+    "r02 S6 hexagon pops (fitted overshoots [0.407, 1.466, 0.3, 1.157], [0.433, 1.693, 0.2, 1.043])",
+    "r04 S2 wobbly blob (B62 shape morph through seeded loops)",
+    "r06 S1 disc-to-bar morph (outCubic 20 f at 60)",
+    "TASTE: easeInOutQuart family for moves between two rests"
+  ],
+  "taste": [
+    "TASTE.md 2 Easing",
+    "3 Timing (holds)",
+    "7 Colour"
+  ],
+  "params": {
+    "x": {
+      "type": "number",
+      "default": null,
+      "description": "Centre x (default comp centre)."
+    },
+    "y": {
+      "type": "number",
+      "default": null,
+      "description": "Centre y (default comp centre)."
+    },
+    "size": {
+      "type": "number",
+      "default": null,
+      "description": "Pose size px (default 28 % of the short side)."
+    },
+    "poses": {
+      "type": "array",
+      "default": [
+        "rounded",
+        "star",
+        "circle",
+        "hexagon",
+        "rounded"
+      ],
+      "description": "Outline names in order: square, rounded, pill, circle, star, burst, hexagon, triangle, diamond."
+    },
+    "colors": {
+      "type": "array",
+      "items": "color",
+      "default": [
+        "#2f6bff",
+        "#ff5a36",
+        "#ffc533",
+        "#14b37d",
+        "#0b0b0d"
+      ],
+      "description": "One colour per pose (wraps around)."
+    },
+    "hold": {
+      "type": "number",
+      "default": 8,
+      "min": 0,
+      "description": "Frames at 30 fps each pose holds."
+    },
+    "morph": {
+      "type": "number",
+      "default": 12,
+      "min": 3,
+      "description": "Frames at 30 fps per morph."
+    },
+    "ease": {
+      "type": "ease",
+      "default": [
+        0.76,
+        0,
+        0.24,
+        1
+      ],
+      "description": "Morph / colour ease (easeInOutQuart: moves between two rests)."
+    },
+    "spin": {
+      "type": "number",
+      "default": 90,
+      "description": "Degrees turned per morph (0 = none)."
+    },
+    "spinEase": {
+      "type": "ease",
+      "default": [
+        0.41,
+        1.47,
+        0.3,
+        1.16
+      ],
+      "description": "Spin ease (overshoot = the pop on arrival)."
+    },
+    "delay": {
+      "type": "number",
+      "default": 0,
+      "min": 0,
+      "description": "Frames at 30 fps before the pop-in."
+    },
+    "exit": {
+      "type": "boolean",
+      "default": true,
+      "description": "Shrink away ending on the end frame."
+    },
+    "name": {
+      "type": "string",
+      "default": "Morph shape",
+      "description": "Layer name."
+    }
+  },
+  "length30": "delay + 10 + len(poses) * (hold + morph) - morph + 8 + (exit ? 8 : 0)",
+  "checkFrames30": [
+    "delay + 5",
+    "delay + 10 + hold + morph * 0.5",
+    "delay + 10 + hold + morph",
+    "delay + 10 + 2 * (hold + morph) + morph * 0.5"
+  ],
+  "lets": {
+    "X": "x == null ? CX : x",
+    "Y": "y == null ? CY : y",
+    "SZ": "size == null ? round(min(W, H) * 0.28) : size",
+    "s0": "start + f(delay)",
+    "a0": "start + f(delay) + f(10)",
+    "avail": "end - start - f(delay) - f(10) - (exit ? f(8) : 0) - f(6)",
+    "nat": "len(poses) * (f(hold) + f(morph)) - f(morph)",
+    "fitK": "min(1, max(0.25, (end - start - f(delay) - f(10) - (exit ? f(8) : 0) - f(6)) / max(1, len(poses) * (f(hold) + f(morph)) - f(morph))))",
+    "HF": "round(f(hold) * fitK)",
+    "MF": "max(2, round(f(morph) * fitK))",
+    "N": "len(poses)",
+    "P": "[]",
+    "CK": "[]",
+    "RK": "[]"
+  },
+  "steps": [
+    {
+      "id": "sh",
+      "action": "editor.addShapeLayer",
+      "args": {
+        "opts": {
+          "type": "rectangle",
+          "x": "{{X - PX}}",
+          "y": "{{Y - PY}}",
+          "width": "{{SZ}}",
+          "height": "{{SZ}}",
+          "fill": "{{pick(colors, 0)}}",
+          "name": "{{name}}"
+        }
+      },
+      "layer": true,
+      "root": true
+    },
+    {
+      "let": {
+        "L": "@sh.result"
+      }
+    },
+    {
+      "forEach": "range(N)",
+      "as": "k",
+      "index": "i",
+      "steps": [
+        {
+          "let": {
+            "fa": "a0 + i * (HF + MF)",
+            "arr": "HF > 0 || i == N - 1"
+          }
+        },
+        {
+          "let": {
+            "P": "append(P, obj('frame', fa, 'shape', outline(pick(poses, i), SZ), 'ease', arr ? 'linear' : ease))",
+            "CK": "append(CK, obj('frame', fa, 'value', pick(colors, i), 'ease', arr ? 'linear' : ease))",
+            "RK": "append(RK, obj('frame', fa, 'value', i * spin, 'ease', arr ? 'linear' : spinEase))"
+          }
+        },
+        {
+          "when": "i < N - 1 && HF > 0",
+          "let": {
+            "P": "append(P, obj('frame', fa + HF, 'shape', outline(pick(poses, i), SZ), 'ease', ease))",
+            "CK": "append(CK, obj('frame', fa + HF, 'value', pick(colors, i), 'ease', ease))",
+            "RK": "append(RK, obj('frame', fa + HF, 'value', i * spin, 'ease', spinEase))"
+          }
+        }
+      ]
+    },
+    {
+      "action": "editor.setShapeMorph",
+      "args": {
+        "layerId": "{{L}}",
+        "poses": "{{P}}"
+      }
+    },
+    {
+      "action": "editor.setKeyframes",
+      "args": {
+        "layerId": "{{L}}",
+        "propertyPath": "shape.fillColor",
+        "keyframes": "{{CK}}"
+      }
+    },
+    {
+      "when": "spin != 0",
+      "action": "editor.setKeyframes",
+      "args": {
+        "layerId": "{{L}}",
+        "propertyPath": "transform.rotation",
+        "keyframes": "{{RK}}"
+      }
+    },
+    {
+      "action": "editor.setKeyframes",
+      "args": {
+        "layerId": "{{L}}",
+        "propertyPath": "transform.scale",
+        "keyframes": [
+          {
+            "frame": "{{s0}}",
+            "value": [
+              0,
+              0
+            ],
+            "ease": [
+              0.34,
+              1.56,
+              0.64,
+              1
+            ]
+          },
+          {
+            "frame": "{{s0 + f(10)}}",
+            "value": [
+              1,
+              1
+            ],
+            "ease": "hold"
+          },
+          {
+            "frame": "{{exit ? end - f(8) : end}}",
+            "value": [
+              1,
+              1
+            ],
+            "ease": [
+              0.5,
+              0,
+              0.75,
+              0
+            ]
+          },
+          {
+            "frame": "{{end}}",
+            "value": "{{exit ? [0, 0] : [1, 1]}}"
+          }
+        ]
+      }
+    }
+  ],
+  "returns": {
+    "layerId": "{{L}}",
+    "lastPoseFrame": "{{a0 + (N - 1) * (HF + MF)}}"
+  },
+  "example": {
+    "params": {
+      "poses": [
+        "rounded",
+        "star",
+        "circle"
+      ],
+      "colors": [
+        "#2f6bff",
+        "#ff5a36",
+        "#ffc533"
+      ]
+    },
+    "startFrame": 0
+  }
+}

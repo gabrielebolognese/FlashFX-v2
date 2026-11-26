@@ -1,0 +1,45 @@
+{
+  "id": "transition",
+  "name": "Shot transition (band wipe or white flash)",
+  "category": "transition",
+  "description": "Covers the frame for a cut: two full-frame bands sweep across (a leading accent band, then the cover colour), fully covering the screen at the cut frame, then sweep off the far side to reveal the next shot; or a 2-frame white flash that peaks on the cut. Apply it LAST (it must sit on top), and end the outgoing shot / start the incoming shot at returns.cutFrame. Most cuts in the references are plain hard cuts: use this for the one or two big beats.",
+  "source": ["r06 S6 wipe: white band over a blue band rising ([0, 0.089, 0.315, 0.684] / [0.107, -0.095, 0, 0.63])", "r01, r02, r05 white flash cuts (2 references, flash peaks on the cut)", "refs: 28 of 87 shot changes are hard cuts, then push-outs (4), fades (3), ring-zooms (3), wipes (2), flashes (2)"],
+  "taste": ["TASTE.md 10 Transitions"],
+  "params": {
+    "style": { "type": "enum", "enum": ["wipe-left", "wipe-right", "wipe-up", "wipe-down", "flash"], "default": "wipe-left", "description": "Wipe direction (the bands travel that way) or a white flash." },
+    "color": { "type": "color", "default": "#0b0b0d", "description": "Cover band colour (often the next shot's ground)." },
+    "color2": { "type": "color", "default": "#2f6bff", "description": "Leading band colour (the accent)." },
+    "frames": { "type": "number", "default": 16, "min": 4, "description": "Whole transition length, frames at 30 fps." },
+    "name": { "type": "string", "default": "Transition", "description": "Layer name prefix." }
+  },
+  "length30": "frames",
+  "checkFrames30": ["frames * 0.25", "frames * 0.5", "frames * 0.75"],
+  "lets": {
+    "CUT": "start + round((end - start) / 2)",
+    "lead": "max(1, f(2))",
+    "horiz": "style == 'wipe-left' || style == 'wipe-right'",
+    "dir": "style == 'wipe-left' || style == 'wipe-up' ? -1 : 1",
+    "BWd": "round(W * 1.15)",
+    "BHd": "round(H * 1.15)",
+    "travel": "style == 'wipe-left' || style == 'wipe-right' ? round(W * 1.15) : round(H * 1.15)",
+    "inEase": [0.55, 0, 0.85, 0.35],
+    "outEase": [0.15, 0.65, 0.45, 1]
+  },
+  "steps": [
+    { "when": "style != 'flash'", "let": {
+      "p0": "horiz ? [CX - dir * travel, CY] : [CX, CY - dir * travel]",
+      "p2": "horiz ? [CX + dir * travel, CY] : [CX, CY + dir * travel]"
+    } },
+    { "when": "style != 'flash'", "id": "b2", "action": "editor.addShapeLayer", "args": { "opts": { "type": "rectangle", "x": "{{p0[0]}}", "y": "{{p0[1]}}", "width": "{{BWd}}", "height": "{{BHd}}", "fill": "{{color2}}", "name": "{{name}} lead band" } }, "layer": true },
+    { "when": "style != 'flash'", "action": "editor.setKeyframes", "args": { "layerId": "{{@b2.result}}", "propertyPath": "transform.position", "keyframes": [
+      { "frame": "{{start}}", "value": "{{p0}}", "ease": "{{inEase}}" }, { "frame": "{{CUT - lead}}", "value": "{{[CX, CY]}}", "ease": "{{outEase}}" }, { "frame": "{{end - lead}}", "value": "{{p2}}" } ] } },
+    { "when": "style != 'flash'", "id": "b1", "action": "editor.addShapeLayer", "args": { "opts": { "type": "rectangle", "x": "{{p0[0]}}", "y": "{{p0[1]}}", "width": "{{BWd}}", "height": "{{BHd}}", "fill": "{{color}}", "name": "{{name}} cover band" } }, "layer": true },
+    { "when": "style != 'flash'", "action": "editor.setKeyframes", "args": { "layerId": "{{@b1.result}}", "propertyPath": "transform.position", "keyframes": [
+      { "frame": "{{start + lead}}", "value": "{{p0}}", "ease": "{{inEase}}" }, { "frame": "{{CUT}}", "value": "{{[CX, CY]}}", "ease": "{{outEase}}" }, { "frame": "{{end}}", "value": "{{p2}}" } ] } },
+    { "when": "style == 'flash'", "id": "fl", "action": "editor.addShapeLayer", "args": { "opts": { "type": "rectangle", "x": "{{CX}}", "y": "{{CY}}", "width": "{{W + 8}}", "height": "{{H + 8}}", "fill": [1, 1, 1, 1], "name": "{{name}} flash" } }, "layer": true },
+    { "when": "style == 'flash'", "action": "editor.setKeyframes", "args": { "layerId": "{{@fl.result}}", "propertyPath": "transform.opacity", "keyframes": [
+      { "frame": "{{start}}", "value": 0, "ease": "hold" }, { "frame": "{{CUT - f(2)}}", "value": 0, "ease": [0.55, 0, 1, 0.45] }, { "frame": "{{CUT}}", "value": 1, "ease": [0.16, 1, 0.3, 1] }, { "frame": "{{end}}", "value": 0 } ] } }
+  ],
+  "returns": { "cutFrame": "{{CUT}}" },
+  "example": { "params": { "style": "wipe-up", "color": "#0b0b0d", "color2": "#2f6bff" }, "startFrame": 52 }
+}

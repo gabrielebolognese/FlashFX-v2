@@ -1,0 +1,41 @@
+{
+  "id": "scene-camera",
+  "name": "2D scene camera (push, whip, pull-back, drift)",
+  "category": "camera",
+  "description": "An invisible null at the comp centre whose scale / position are keyed like a camera: a slow push-in across a shot, a 2-3 frame whip zoom on a beat, an eased pull-back, or a gentle drift. Apply it BEFORE the content and pass returns.cameraId as parentId to the content recipes so their root layers ride it. Masks are comp-space and do not follow it: keep pushes small (<= 1.1) on masked titles.",
+  "source": ["r04 S1 whip zoom 1 -> 1.47 -> 1.5 in 3 f at 60, pan, drift up", "r04 S2 push-in (334-350 at 60)", "r04 S4 measured pull-back (498-529 at 60)", "r06 S1-S3 camera null: zoom-out 1 -> 0.5 with [0.525, 0.498, 0.414, 0.911], drift, pan", "r02 S1 camera zoom [0.062, 0.878, 0.149, 0.99]"],
+  "taste": ["TASTE.md 9 Camera"],
+  "params": {
+    "mode": { "type": "enum", "enum": ["push", "whip-in", "pull-back", "drift"], "default": "push", "description": "push = slow scale-in over the whole span; whip-in = snap zoom on a beat; pull-back = settle from a zoomed frame; drift = slow position move, no zoom." },
+    "x": { "type": "number", "default": null, "description": "Pivot x (default comp centre). Zooms scale around it." },
+    "y": { "type": "number", "default": null, "description": "Pivot y (default comp centre)." },
+    "from": { "type": "number", "default": null, "description": "Start scale (default: push 1, whip-in 1, pull-back 1.18, drift 1)." },
+    "to": { "type": "number", "default": null, "description": "End scale (default: push 1.06, whip-in 1.45, pull-back 1, drift 1)." },
+    "at": { "type": "number", "default": 0, "min": 0, "description": "whip-in / pull-back: frames at 30 fps from start to the move." },
+    "frames": { "type": "number", "default": null, "description": "Move length, frames at 30 fps (default: push / drift = the whole span, whip-in 2, pull-back 22)." },
+    "drift": { "type": "vec2", "default": [0, -24], "description": "Position travel in px over the move (drift mode; push adds a third of it)." },
+    "name": { "type": "string", "default": "Scene camera", "description": "Layer name." }
+  },
+  "length30": 90,
+  "clip": false,
+  "lets": {
+    "X": "x == null ? CX : x",
+    "Y": "y == null ? CY : y",
+    "A": "from == null ? (mode == 'pull-back' ? 1.18 : 1) : from",
+    "B": "to == null ? (mode == 'push' ? 1.06 : mode == 'whip-in' ? 1.45 : 1) : to",
+    "m0": "mode == 'whip-in' || mode == 'pull-back' ? start + f(at) : start",
+    "ML": "frames == null ? (mode == 'whip-in' ? f(2) : mode == 'pull-back' ? f(22) : end - start) : f(frames)",
+    "ez": "mode == 'whip-in' ? [0.55, 0, 0.45, 1] : mode == 'pull-back' ? [0.33, 1, 0.68, 1] : [0.42, 0.09, 0.58, 1]",
+    "dk": "mode == 'drift' ? 1 : mode == 'push' ? 0.33 : 0"
+  },
+  "steps": [
+    { "id": "cam", "action": "editor.addShapeLayer", "args": { "opts": { "type": "rectangle", "x": "{{X}}", "y": "{{Y}}", "width": 2, "height": 2, "fill": [0, 0, 0, 0], "name": "{{name}}" } }, "layer": true },
+    { "let": { "C": "@cam.result" } },
+    { "when": "mode != 'drift'", "action": "editor.setKeyframes", "args": { "layerId": "{{C}}", "propertyPath": "transform.scale", "keyframes": [
+      { "frame": "{{m0}}", "value": "{{[A, A]}}", "ease": "{{ez}}" }, { "frame": "{{m0 + max(1, ML)}}", "value": "{{[B, B]}}" } ] } },
+    { "when": "dk > 0", "action": "editor.setKeyframes", "args": { "layerId": "{{C}}", "propertyPath": "transform.position", "keyframes": [
+      { "frame": "{{m0}}", "value": "{{[X, Y]}}", "ease": [0.42, 0.09, 0.58, 1] }, { "frame": "{{m0 + max(1, ML)}}", "value": "{{[X + drift[0] * dk, Y + drift[1] * dk]}}" } ] } }
+  ],
+  "returns": { "cameraId": "{{C}}", "pivot": "{{[X, Y]}}", "moveStart": "{{m0}}", "moveEnd": "{{m0 + max(1, ML)}}" },
+  "example": { "params": { "mode": "push", "to": 1.05 }, "startFrame": 0, "endFrame": 120 }
+}

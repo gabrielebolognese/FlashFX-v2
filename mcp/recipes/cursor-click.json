@@ -1,0 +1,199 @@
+{
+  "id": "cursor-click",
+  "name": "Cursor moves in and clicks",
+  "category": "ui",
+  "description": "A pointer (arrow, hand or I-beam) glides in on the measured ballistic ease with a slight arc, arrives exactly on target, squashes on the click with a ripple ring, and fades out on the end frame. Make the clicked UI react at returns.responseFrame (prompt-bar: point it at sendX / sendY and time the click on pressFrame). Apply it after the UI so it draws on top.",
+  "source": [
+    "r06 S3 cursor path, measured ease [0.052, 0.057, 0.232, 0.981]",
+    "B51 cursor rig (agent.addCursor / cursorMoveTo / cursorClick)",
+    "r04 S1 I-beam caret states"
+  ],
+  "taste": [
+    "TASTE.md 8 UI mocks"
+  ],
+  "params": {
+    "x": {
+      "type": "number",
+      "description": "Target x (the hotspot lands here)."
+    },
+    "y": {
+      "type": "number",
+      "description": "Target y."
+    },
+    "fromX": {
+      "type": "number",
+      "default": null,
+      "description": "Start x (default: lower right, 82 % of the width)."
+    },
+    "fromY": {
+      "type": "number",
+      "default": null,
+      "description": "Start y (default: 92 % of the height)."
+    },
+    "icon": {
+      "type": "enum",
+      "enum": [
+        "arrow",
+        "hand",
+        "ibeam"
+      ],
+      "default": "arrow",
+      "description": "Pointer icon."
+    },
+    "size": {
+      "type": "number",
+      "default": null,
+      "description": "Pointer size px (default 5.5 % of the short side)."
+    },
+    "delay": {
+      "type": "number",
+      "default": 0,
+      "min": 0,
+      "description": "Frames at 30 fps before it starts moving."
+    },
+    "travel": {
+      "type": "number",
+      "default": null,
+      "description": "Travel time, frames at 30 fps (default: from the distance, 7-14)."
+    },
+    "clickAt": {
+      "type": "number",
+      "default": null,
+      "description": "Comp frame of the click (default: 3 frames at 30 fps after arrival). Must be after the arrival."
+    },
+    "ease": {
+      "type": "ease",
+      "default": [
+        0.052,
+        0.057,
+        0.232,
+        0.981
+      ],
+      "description": "Travel ease (r06 measured)."
+    },
+    "ripple": {
+      "type": "boolean",
+      "default": true,
+      "description": "Ripple ring on the click."
+    },
+    "fadeOut": {
+      "type": "boolean",
+      "default": true,
+      "description": "Fade the pointer out over the last 6 frames at 30 fps before the end frame."
+    },
+    "name": {
+      "type": "string",
+      "default": "Cursor",
+      "description": "Cursor name."
+    }
+  },
+  "length30": "delay + (travel == null ? 12 : travel) + 3 + 24",
+  "clip": false,
+  "checkFrames30": [
+    "delay",
+    "delay + (travel == null ? 12 : travel) * 0.5",
+    "delay + (travel == null ? 12 : travel) + 3"
+  ],
+  "lets": {
+    "FX": "fromX == null ? round(W * 0.82) : fromX",
+    "FY": "fromY == null ? round(H * 0.92) : fromY",
+    "SZ": "size == null ? round(min(W, H) * 0.055) : size",
+    "s0": "start + f(delay)"
+  },
+  "steps": [
+    {
+      "id": "cur",
+      "action": "agent.addCursor",
+      "args": {
+        "icon": "{{icon}}",
+        "x": "{{FX}}",
+        "y": "{{FY}}",
+        "frame": "{{start}}",
+        "size": "{{SZ}}",
+        "name": "{{name}}"
+      }
+    },
+    {
+      "let": {
+        "C": "@cur.result.cursorId"
+      }
+    },
+    {
+      "id": "mv",
+      "action": "agent.cursorMoveTo",
+      "args": {
+        "cursorId": "{{C}}",
+        "frame": "{{s0}}",
+        "x": "{{x}}",
+        "y": "{{y}}",
+        "ease": "{{ease}}"
+      },
+      "when": "travel == null"
+    },
+    {
+      "id": "mv",
+      "action": "agent.cursorMoveTo",
+      "args": {
+        "cursorId": "{{C}}",
+        "frame": "{{s0}}",
+        "x": "{{x}}",
+        "y": "{{y}}",
+        "durationFrames": "{{f(travel)}}",
+        "ease": "{{ease}}"
+      },
+      "when": "travel != null"
+    },
+    {
+      "let": {
+        "CLK": "clickAt == null ? @mv.result.endFrame + f(3) : max(clickAt, @mv.result.endFrame)"
+      }
+    },
+    {
+      "id": "ck",
+      "action": "agent.cursorClick",
+      "args": {
+        "cursorId": "{{C}}",
+        "frame": "{{CLK}}",
+        "ripple": "{{ripple}}"
+      }
+    },
+    {
+      "when": "fadeOut",
+      "action": "editor.setKeyframes",
+      "args": {
+        "layerId": "{{C}}",
+        "propertyPath": "transform.opacity",
+        "keyframes": [
+          {
+            "frame": "{{max(CLK + 1, end - f(6))}}",
+            "value": 1,
+            "ease": [
+              0.55,
+              0,
+              1,
+              0.45
+            ]
+          },
+          {
+            "frame": "{{max(CLK + 2, end)}}",
+            "value": 0
+          }
+        ],
+        "merge": true
+      }
+    }
+  ],
+  "returns": {
+    "cursorId": "{{C}}",
+    "arriveFrame": "{{@mv.result.endFrame}}",
+    "clickFrame": "{{CLK}}",
+    "responseFrame": "{{@ck.result.responseFrame}}"
+  },
+  "example": {
+    "params": {
+      "x": 820,
+      "y": 540
+    },
+    "startFrame": 60
+  }
+}

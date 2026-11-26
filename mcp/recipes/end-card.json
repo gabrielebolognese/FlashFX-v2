@@ -1,0 +1,590 @@
+{
+  "id": "end-card",
+  "name": "End card: logo lockup",
+  "category": "endcard",
+  "description": "The closing lockup: the mark spins and pops in with a glow pulse, then (inline layout) slides left to make room while the wordmark resolves from a blur beside it and rides the same slide (one lockup), and a quiet tagline / URL fades up underneath. Stacked layout puts the wordmark under the mark. The mark is any PNG / SVG (default: the FlashFX mark).",
+  "source": [
+    "r06 S1 / S6 logo lockup: mark spin-in -90 -> 0 deg (7 f at 60, outCubic), scale 0.29 -> 1.01 ([0, 0.746, 0.817, 1.133]), lockup slide ([0.595, -0.143, 0.531, 1.082], 42 f at 60), wordmark blur-in",
+    "r04 S5 end card on #030303 with glow",
+    "mcp/examples/build-c-logo-reveal.mjs glow pulse"
+  ],
+  "taste": [
+    "TASTE.md 2 Easing",
+    "5 Typography",
+    "6 Effects (glow)",
+    "11 Endings"
+  ],
+  "params": {
+    "wordmark": {
+      "type": "string",
+      "default": "FlashFX",
+      "description": "Wordmark text."
+    },
+    "tagline": {
+      "type": "string",
+      "default": "",
+      "description": "Small line under the lockup, e.g. a URL ('' = none)."
+    },
+    "logo": {
+      "type": "path",
+      "default": "public/flashfx-mark.svg",
+      "description": "Mark image: absolute path or relative to the FlashFX repo (PNG, JPEG, WebP, SVG)."
+    },
+    "layout": {
+      "type": "enum",
+      "enum": [
+        "inline",
+        "stacked"
+      ],
+      "default": "inline",
+      "description": "inline = mark left of the wordmark; stacked = mark above."
+    },
+    "x": {
+      "type": "number",
+      "default": null,
+      "description": "Lockup centre x (default comp centre)."
+    },
+    "y": {
+      "type": "number",
+      "default": null,
+      "description": "Lockup centre y (default comp centre)."
+    },
+    "logoSize": {
+      "type": "number",
+      "default": null,
+      "description": "Mark size px (default 15 % of the short side)."
+    },
+    "size": {
+      "type": "number",
+      "default": null,
+      "description": "Wordmark size px (default 8.5 % of the short side)."
+    },
+    "color": {
+      "type": "color",
+      "default": "#ffffff",
+      "description": "Wordmark colour."
+    },
+    "taglineColor": {
+      "type": "color",
+      "default": "#8b8f98",
+      "description": "Tagline colour."
+    },
+    "glowColor": {
+      "type": "color",
+      "default": "#ffd25a",
+      "description": "Glow pulse colour on the mark."
+    },
+    "glow": {
+      "type": "boolean",
+      "default": true,
+      "description": "Glow pulse when the mark lands."
+    },
+    "name": {
+      "type": "string",
+      "default": "End card",
+      "description": "Layer name prefix."
+    },
+    "glowPeak": {
+      "type": "number",
+      "default": 0.45,
+      "min": 0,
+      "max": 3,
+      "description": "Peak glow intensity when the mark lands (settles to 20 % of it). 0.3-0.5 on light grounds, up to 1.6 on dark."
+    }
+  },
+  "length30": 75,
+  "checkFrames30": [
+    "4",
+    "9",
+    "18",
+    "32",
+    "60"
+  ],
+  "lets": {
+    "X": "x == null ? CX : x",
+    "Y": "y == null ? CY : y",
+    "LS": "logoSize == null ? round(min(W, H) * 0.15) : logoSize",
+    "S": "size == null ? round(min(W, H) * 0.085) : size",
+    "TS": "size == null ? round(min(W, H) * 0.03) : round(size * 0.36)"
+  },
+  "steps": [
+    {
+      "id": "wm",
+      "action": "agent.measureString",
+      "args": {
+        "text": "{{wordmark}}",
+        "fontFamily": "Inter",
+        "fontSize": "{{S}}",
+        "fontWeight": 700,
+        "letterSpacing": "{{round(-0.02 * S, 2)}}"
+      }
+    },
+    {
+      "let": {
+        "GAP": "round(LS * 0.26)",
+        "WW": "@wm.result.width"
+      }
+    },
+    {
+      "let": {
+        "TOT": "LS + GAP + WW",
+        "MX1": "layout == 'inline' ? X - (LS + GAP + WW) / 2 + LS / 2 : X",
+        "MY": "layout == 'inline' ? Y : Y - (GAP + 0.72 * S) / 2",
+        "WX": "layout == 'inline' ? X - (LS + GAP + WW) / 2 + LS + GAP + WW / 2 : X",
+        "WY": "layout == 'inline' ? Y + round(S * 0.26) : Y - (GAP + 0.72 * S) / 2 + LS / 2 + GAP + round(S * 0.645)",
+        "TY": "layout == 'inline' ? Y + LS / 2 + TS * 2 : Y - (GAP + 0.72 * S) / 2 + LS / 2 + GAP + S + TS * 1.8",
+        "slide": "layout == 'inline'"
+      }
+    },
+    {
+      "id": "logo",
+      "tool": "import_image",
+      "args": {
+        "path": "{{repo(logo)}}",
+        "x": "{{X - PX}}",
+        "y": "{{MY - PY}}",
+        "rasterSize": "{{min(2048, LS * 2)}}"
+      },
+      "layer": true,
+      "root": true
+    },
+    {
+      "let": {
+        "M": "@logo.activeLayerId",
+        "K": "LS / max(@logo.result.width, @logo.result.height)"
+      }
+    },
+    {
+      "action": "editor.renameLayer",
+      "args": {
+        "id": "{{M}}",
+        "name": "{{name}} mark"
+      }
+    },
+    {
+      "action": "editor.updateLayerProperty",
+      "args": {
+        "layerId": "{{M}}",
+        "path": "motionBlur",
+        "value": true
+      }
+    },
+    {
+      "action": "editor.setKeyframes",
+      "args": {
+        "layerId": "{{M}}",
+        "propertyPath": "transform.scale",
+        "keyframes": [
+          {
+            "frame": "{{start}}",
+            "value": "{{[K * 0.3, K * 0.3]}}",
+            "ease": [
+              0,
+              0.746,
+              0.817,
+              1.133
+            ]
+          },
+          {
+            "frame": "{{t(7)}}",
+            "value": "{{[K, K]}}"
+          }
+        ]
+      }
+    },
+    {
+      "action": "editor.setKeyframes",
+      "args": {
+        "layerId": "{{M}}",
+        "propertyPath": "transform.rotation",
+        "keyframes": [
+          {
+            "frame": "{{start}}",
+            "value": -90,
+            "ease": [
+              0.33,
+              1,
+              0.68,
+              1
+            ]
+          },
+          {
+            "frame": "{{t(6)}}",
+            "value": 0
+          }
+        ]
+      }
+    },
+    {
+      "action": "editor.setKeyframes",
+      "args": {
+        "layerId": "{{M}}",
+        "propertyPath": "transform.opacity",
+        "keyframes": [
+          {
+            "frame": "{{start}}",
+            "value": 0,
+            "ease": "linear"
+          },
+          {
+            "frame": "{{t(2)}}",
+            "value": 1
+          }
+        ]
+      }
+    },
+    {
+      "when": "slide",
+      "action": "editor.setKeyframes",
+      "args": {
+        "layerId": "{{M}}",
+        "propertyPath": "transform.position",
+        "keyframes": [
+          {
+            "frame": "{{t(9)}}",
+            "value": "{{[X - PX, MY - PY]}}",
+            "ease": [
+              0.595,
+              -0.143,
+              0.531,
+              1.082
+            ]
+          },
+          {
+            "frame": "{{t(27)}}",
+            "value": "{{[MX1 - PX, MY - PY]}}"
+          }
+        ]
+      }
+    },
+    {
+      "when": "glow",
+      "action": "editor.enableLayerEffect",
+      "args": {
+        "layerId": "{{M}}",
+        "kind": "glow"
+      }
+    },
+    {
+      "when": "glow",
+      "action": "editor.updateLayerProperty",
+      "args": {
+        "layerId": "{{M}}",
+        "path": "glow.color",
+        "value": "{{glowColor}}"
+      }
+    },
+    {
+      "when": "glow",
+      "action": "editor.updateLayerProperty",
+      "args": {
+        "layerId": "{{M}}",
+        "path": "glow.radius",
+        "value": "{{round(LS * 0.22)}}"
+      }
+    },
+    {
+      "when": "glow",
+      "action": "editor.updateLayerProperty",
+      "args": {
+        "layerId": "{{M}}",
+        "path": "glow.threshold",
+        "value": 0.55
+      }
+    },
+    {
+      "when": "glow",
+      "action": "editor.setKeyframes",
+      "args": {
+        "layerId": "{{M}}",
+        "propertyPath": "glow.intensity",
+        "keyframes": [
+          {
+            "frame": "{{t(5)}}",
+            "value": 0,
+            "ease": "expoOut"
+          },
+          {
+            "frame": "{{t(11)}}",
+            "value": "{{glowPeak}}",
+            "ease": "sineInOut"
+          },
+          {
+            "frame": "{{t(34)}}",
+            "value": "{{round(glowPeak * 0.2, 2)}}"
+          }
+        ]
+      }
+    },
+    {
+      "id": "w",
+      "action": "editor.createQuickText",
+      "args": {
+        "x": "{{WX - PX}}",
+        "y": "{{WY - PY}}",
+        "text": "{{wordmark}}"
+      },
+      "layer": true,
+      "root": true
+    },
+    {
+      "let": {
+        "T": "@w.result"
+      }
+    },
+    {
+      "action": "editor.renameLayer",
+      "args": {
+        "id": "{{T}}",
+        "name": "{{name}} wordmark"
+      }
+    },
+    {
+      "action": "editor.updateLayerProperty",
+      "args": {
+        "layerId": "{{T}}",
+        "path": "animOverrides.fontSize.defaultValue",
+        "value": "{{S}}"
+      }
+    },
+    {
+      "action": "editor.updateLayerProperty",
+      "args": {
+        "layerId": "{{T}}",
+        "path": "content.spans.0.style.fontSize",
+        "value": "{{S}}"
+      }
+    },
+    {
+      "action": "editor.updateLayerProperty",
+      "args": {
+        "layerId": "{{T}}",
+        "path": "content.spans.0.style.fontWeight",
+        "value": 700
+      }
+    },
+    {
+      "action": "editor.updateLayerProperty",
+      "args": {
+        "layerId": "{{T}}",
+        "path": "content.spans.0.style.fontFamily",
+        "value": "Inter"
+      }
+    },
+    {
+      "action": "editor.updateLayerProperty",
+      "args": {
+        "layerId": "{{T}}",
+        "path": "content.spans.0.style.color",
+        "value": "{{color}}"
+      }
+    },
+    {
+      "action": "editor.updateLayerProperty",
+      "args": {
+        "layerId": "{{T}}",
+        "path": "animOverrides.letterSpacing.defaultValue",
+        "value": "{{round(-0.02 * S, 2)}}"
+      }
+    },
+    {
+      "when": "slide",
+      "action": "editor.setKeyframes",
+      "args": {
+        "layerId": "{{T}}",
+        "propertyPath": "transform.position",
+        "keyframes": [
+          {
+            "frame": "{{t(9)}}",
+            "value": "{{[WX + (X - MX1) - PX, WY - PY]}}",
+            "ease": [
+              0.595,
+              -0.143,
+              0.531,
+              1.082
+            ]
+          },
+          {
+            "frame": "{{t(27)}}",
+            "value": "{{[WX - PX, WY - PY]}}"
+          }
+        ]
+      }
+    },
+    {
+      "action": "agent.applyTextAnimatorPreset",
+      "args": {
+        "layerId": "{{T}}",
+        "presetId": "blur-in",
+        "startFrame": "{{slide ? t(14) : t(10)}}",
+        "durationFrames": "{{f(14)}}",
+        "replace": true
+      }
+    },
+    {
+      "action": "editor.updateLayerProperty",
+      "args": {
+        "layerId": "{{T}}",
+        "path": "animators.0.delta",
+        "value": {
+          "opacity": -1,
+          "blur": "{{round(S * 0.35)}}",
+          "position": "{{slide ? [round(S * 0.12), 0] : [0, round(S * 0.25)]}}"
+        }
+      }
+    },
+    {
+      "action": "editor.setKeyframes",
+      "args": {
+        "layerId": "{{T}}",
+        "propertyPath": "animators.0.offset",
+        "keyframes": [
+          {
+            "frame": "{{slide ? t(14) : t(10)}}",
+            "value": -0.25,
+            "ease": "quadOut"
+          },
+          {
+            "frame": "{{slide ? t(28) : t(24)}}",
+            "value": 1
+          }
+        ]
+      }
+    },
+    {
+      "when": "tagline != ''",
+      "id": "tg",
+      "action": "editor.createQuickText",
+      "args": {
+        "x": "{{X - PX}}",
+        "y": "{{TY - PY}}",
+        "text": "{{tagline}}"
+      },
+      "layer": true,
+      "root": true
+    },
+    {
+      "when": "tagline != ''",
+      "action": "editor.renameLayer",
+      "args": {
+        "id": "{{@tg.result}}",
+        "name": "{{name}} tagline"
+      }
+    },
+    {
+      "when": "tagline != ''",
+      "action": "editor.updateLayerProperty",
+      "args": {
+        "layerId": "{{@tg.result}}",
+        "path": "animOverrides.fontSize.defaultValue",
+        "value": "{{TS}}"
+      }
+    },
+    {
+      "when": "tagline != ''",
+      "action": "editor.updateLayerProperty",
+      "args": {
+        "layerId": "{{@tg.result}}",
+        "path": "content.spans.0.style.fontSize",
+        "value": "{{TS}}"
+      }
+    },
+    {
+      "when": "tagline != ''",
+      "action": "editor.updateLayerProperty",
+      "args": {
+        "layerId": "{{@tg.result}}",
+        "path": "content.spans.0.style.fontWeight",
+        "value": 500
+      }
+    },
+    {
+      "when": "tagline != ''",
+      "action": "editor.updateLayerProperty",
+      "args": {
+        "layerId": "{{@tg.result}}",
+        "path": "content.spans.0.style.fontFamily",
+        "value": "Inter"
+      }
+    },
+    {
+      "when": "tagline != ''",
+      "action": "editor.updateLayerProperty",
+      "args": {
+        "layerId": "{{@tg.result}}",
+        "path": "content.spans.0.style.color",
+        "value": "{{taglineColor}}"
+      }
+    },
+    {
+      "when": "tagline != ''",
+      "action": "editor.updateLayerProperty",
+      "args": {
+        "layerId": "{{@tg.result}}",
+        "path": "animOverrides.letterSpacing.defaultValue",
+        "value": "{{round(0.04 * TS, 2)}}"
+      }
+    },
+    {
+      "when": "tagline != ''",
+      "action": "editor.setKeyframes",
+      "args": {
+        "layerId": "{{@tg.result}}",
+        "propertyPath": "transform.opacity",
+        "keyframes": [
+          {
+            "frame": "{{t(26)}}",
+            "value": 0,
+            "ease": [
+              0.33,
+              1,
+              0.68,
+              1
+            ]
+          },
+          {
+            "frame": "{{t(38)}}",
+            "value": 1
+          }
+        ]
+      }
+    },
+    {
+      "when": "tagline != ''",
+      "action": "editor.setKeyframes",
+      "args": {
+        "layerId": "{{@tg.result}}",
+        "propertyPath": "transform.position",
+        "keyframes": [
+          {
+            "frame": "{{t(26)}}",
+            "value": "{{[X - PX, TY - PY + round(TS * 0.8)]}}",
+            "ease": [
+              0.33,
+              1,
+              0.68,
+              1
+            ]
+          },
+          {
+            "frame": "{{t(38)}}",
+            "value": "{{[X - PX, TY - PY]}}"
+          }
+        ]
+      }
+    }
+  ],
+  "returns": {
+    "markId": "{{M}}",
+    "wordmarkId": "{{T}}",
+    "taglineId": "{{@tg.result}}",
+    "settledFrame": "{{t(38)}}"
+  },
+  "example": {
+    "params": {
+      "wordmark": "FlashFX",
+      "tagline": "editor.flashfx.app"
+    },
+    "startFrame": 0
+  }
+}

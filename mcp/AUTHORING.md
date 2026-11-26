@@ -7,6 +7,10 @@ FlashFX. Everything here was learned building the three reference pieces in `mcp
 The contract: **Claude builds it, FlashFX renders it, the owner can open and edit it.** So every
 build ends with an `.ffx` project file, not only an MP4.
 
+Start with the taste layer: [`TASTE.md`](./TASTE.md) (measured timing, easing, type and colour rules) and the
+recipes (`list_recipes` / `apply_recipe`, section 13), which build the common moves with those numbers. This
+guide is for everything the recipes do not cover and for retouching what they build.
+
 ## 0. Session
 
 - Register the server once: `claude mcp add flashfx -- node mcp/flashfx-mcp.mjs` (see `mcp/README.md`).
@@ -452,6 +456,7 @@ within 1 px of the camera projection). 2.5D only: flat cards in space, no extrus
 | `mcp/examples/build-a-kinetic-title.mjs` | per-word rise out of masks, accent word, motion blur, underline draw-on, type-on caption, staggered exit |
 | `mcp/examples/build-b-lower-third.mjs` | measured layout, custom bezier card grow, named back ease pop, parenting, clip-length fix |
 | `mcp/examples/build-c-logo-reveal.mjs` | SVG import, glow, particle burst, shockwave ring, wordmark sliding out of the mark through a mask |
+| `mcp/examples/build-d-recipe-launch-title.mjs` | recipes only: prompt bar + cursor click, wipe, kinetic title with underline / subtitle / badge on a camera push, end-card lockup (the flashfx-motion skill's worked example) |
 
 Run one: `node mcp/examples/build-a-kinetic-title.mjs <outDir>` (writes PNG checks, `.ffx`, `.mp4`).
 
@@ -478,3 +483,13 @@ does the plumbing; the build stays plain MCP calls, so Claude can repeat it.
   to; key its scale / position. Children inherit position, rotation, scale AND opacity.
 - Worked replicas (build scripts, notes on what matches and what does not):
   `artifacts/replicas/rNN/build.mjs` + `notes.md` of the replication step.
+
+## 13. Recipes (taste layer)
+
+`list_recipes` lists the recipes in `mcp/recipes/` with their params; `apply_recipe { id, params, startFrame,
+endFrame?, parentId?, dryRun? }` builds one. Apply back to front (background, `scene-camera`, content,
+`cursor-click`, `transition` last). Chain `returns` between recipes (a title's `inkBottom` places its underline,
+the prompt bar's `sendX` / `sendY` / `pressFrame` drive `cursor-click`, a transition's `cutFrame` is where the
+shots change). Recipe time params are frames at 30 fps, scaled to the comp fps. Everything a recipe creates is
+ordinary named layers and keyframes, so the sections above apply when you retouch it. The full workflow is the
+Claude Code skill `mcp/skill/flashfx-motion/SKILL.md`; the numbers behind the recipes are in `TASTE.md`.

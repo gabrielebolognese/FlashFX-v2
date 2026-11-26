@@ -59,6 +59,7 @@
     "verify:oauth-providers": "node scripts/verify-oauth-providers.mjs",
     "verify:cloner": "node scripts/verify-cloner.mjs",
     "verify:agent-manifest": "node scripts/verify-agent-manifest.mjs",
+    "verify:recipes": "node scripts/verify-recipes.mjs",
     "verify:crop-solver": "node scripts/verify-crop-solver.mjs",
     "verify:color-transfer": "node scripts/verify-color-transfer.mjs",
     "verify:face-mask": "node scripts/verify-face-mask.mjs",

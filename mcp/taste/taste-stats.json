@@ -1,0 +1,2927 @@
+{
+ "source": "refs/rNN/timeline.json (7 references, 87 shots, 357 elements, 550 keyed anims)",
+ "families": {
+  "easeOutCubic": {
+   "count": 84,
+   "measured": 35,
+   "median_bezier": [
+    0.142,
+    0.346,
+    0.21,
+    0.942
+   ],
+   "sec_median": 0.425,
+   "sec_p25": 0.2,
+   "sec_p75": 0.733,
+   "f30_median": 12.75,
+   "f60_median": 25.5,
+   "examples": [
+    {
+     "ref": "r01",
+     "el": "S5.E1",
+     "prop": "position_y",
+     "frames": 20,
+     "fps": 60,
+     "bezier": [
+      0.318,
+      1.149,
+      0.718,
+      0.942
+     ]
+    },
+    {
+     "ref": "r01",
+     "el": "S5.E3",
+     "prop": "position_y",
+     "frames": 11,
+     "fps": 60,
+     "bezier": [
+      0.161,
+      0.436,
+      0.378,
+      0.974
+     ]
+    },
+    {
+     "ref": "r01",
+     "el": "S5.E4",
+     "prop": "position_y",
+     "frames": 12,
+     "fps": 60,
+     "bezier": [
+      0.252,
+      0.877,
+      0.666,
+      0.986
+     ]
+    },
+    {
+     "ref": "r02",
+     "el": "S3.E1",
+     "prop": "position.y (centre person)",
+     "frames": 61,
+     "fps": 60,
+     "bezier": [
+      0.232,
+      0.744,
+      0.641,
+      0.959
+     ]
+    }
+   ]
+  },
+  "linear": {
+   "count": 73,
+   "measured": 15,
+   "median_bezier": [
+    0.143,
+    0.219,
+    0.688,
+    0.531
+   ],
+   "sec_median": 0.45,
+   "sec_p25": 0.25,
+   "sec_p75": 0.85,
+   "f30_median": 13.5,
+   "f60_median": 27.0,
+   "examples": [
+    {
+     "ref": "r01",
+     "el": "S2.E1",
+     "prop": "camera_scale",
+     "frames": 48,
+     "fps": 60,
+     "bezier": [
+      0.075,
+      0.219,
+      0.0,
+      0.092
+     ]
+    },
+    {
+     "ref": "r01",
+     "el": "S2.E6",
+     "prop": "fill_hue",
+     "frames": 107,
+     "fps": 60,
+     "bezier": [
+      0,
+      0,
+      1,
+      1
+     ]
+    },
+    {
+     "ref": "r01",
+     "el": "S2.E11",
+     "prop": "card_area",
+     "frames": 16,
+     "fps": 60,
+     "bezier": [
+      0.0,
+      0.115,
+      0.0,
+      0.165
+     ]
+    },
+    {
+     "ref": "r02",
+     "el": "S2.E4",
+     "prop": "rotation",
+     "frames": 101,
+     "fps": 60,
+     "bezier": [
+      0,
+      0,
+      1,
+      1
+     ]
+    }
+   ]
+  },
+  "easeOutCirc": {
+   "count": 55,
+   "measured": 20,
+   "median_bezier": [
+    0.112,
+    0.766,
+    0.506,
+    0.921
+   ],
+   "sec_median": 0.7,
+   "sec_p25": 0.433,
+   "sec_p75": 1.033,
+   "f30_median": 21.0,
+   "f60_median": 42.0,
+   "examples": [
+    {
+     "ref": "r01",
+     "el": "S3.E15",
+     "prop": "position_y",
+     "frames": 34,
+     "fps": 60,
+     "bezier": [
+      0.0,
+      0.55,
+      0.45,
+      1
+     ]
+    },
+    {
+     "ref": "r02",
+     "el": "S1.E5",
+     "prop": "scale",
+     "frames": 36,
+     "fps": 60,
+     "bezier": [
+      0.077,
+      0.935,
+      1.0,
+      1.001
+     ]
+    },
+    {
+     "ref": "r02",
+     "el": "S2.E1",
+     "prop": "scale",
+     "frames": 40,
+     "fps": 60,
+     "bezier": [
+      0.228,
+      1.0,
+      0.556,
+      0.759
+     ]
+    },
+    {
+     "ref": "r02",
+     "el": "S9.E2",
+     "prop": "position.x (left edge)",
+     "frames": 33,
+     "fps": 60,
+     "bezier": [
+      0.116,
+      0.766,
+      0.631,
+      0.961
+     ]
+    }
+   ]
+  },
+  "ease": {
+   "count": 54,
+   "measured": 18,
+   "median_bezier": [
+    0.386,
+    0.19,
+    0.176,
+    0.956
+   ],
+   "sec_median": 0.325,
+   "sec_p25": 0.167,
+   "sec_p75": 0.6,
+   "f30_median": 9.75,
+   "f60_median": 19.5,
+   "examples": [
+    {
+     "ref": "r01",
+     "el": "S1.E1",
+     "prop": "scale",
+     "frames": 19,
+     "fps": 60,
+     "bezier": [
+      0.396,
+      0.179,
+      0.042,
+      0.721
+     ]
+    },
+    {
+     "ref": "r01",
+     "el": "S1.E2",
+     "prop": "scale",
+     "frames": 19,
+     "fps": 60,
+     "bezier": [
+      0.396,
+      0.179,
+      0.042,
+      0.721
+     ]
+    },
+    {
+     "ref": "r01",
+     "el": "S1.E15",
+     "prop": "position_x",
+     "frames": 32,
+     "fps": 60,
+     "bezier": [
+      0.526,
+      0.231,
+      0.099,
+      0.876
+     ]
+    },
+    {
+     "ref": "r01",
+     "el": "S2.E6",
+     "prop": "unfold_width",
+     "frames": 10,
+     "fps": 60,
+     "bezier": [
+      0.406,
+      0.55,
+      0.497,
+      1.027
+     ]
+    }
+   ]
+  },
+  "hold": {
+   "count": 52,
+   "measured": 0,
+   "median_bezier": null,
+   "sec_median": 0.683,
+   "sec_p25": 0.067,
+   "sec_p75": 3.033,
+   "f30_median": 20.5,
+   "f60_median": 41.01,
+   "examples": []
+  },
+  "easeIn": {
+   "count": 48,
+   "measured": 18,
+   "median_bezier": [
+    0.653,
+    0.101,
+    0.577,
+    0.627
+   ],
+   "sec_median": 0.275,
+   "sec_p25": 0.167,
+   "sec_p75": 0.467,
+   "f30_median": 8.25,
+   "f60_median": 16.5,
+   "examples": [
+    {
+     "ref": "r01",
+     "el": "S3.E22",
+     "prop": "field_area",
+     "frames": 27,
+     "fps": 60,
+     "bezier": [
+      0.498,
+      -0.004,
+      0.457,
+      0.53
+     ]
+    },
+    {
+     "ref": "r02",
+     "el": "S6.E8",
+     "prop": "scale",
+     "frames": 14,
+     "fps": 60,
+     "bezier": [
+      0.633,
+      0.042,
+      0.942,
+      0.989
+     ]
+    },
+    {
+     "ref": "r02",
+     "el": "S8.E1",
+     "prop": "scale",
+     "frames": 12,
+     "fps": 60,
+     "bezier": [
+      0.572,
+      0.03,
+      0.474,
+      0.599
+     ]
+    },
+    {
+     "ref": "r02",
+     "el": "S10.E5",
+     "prop": "position.y",
+     "frames": 17,
+     "fps": 60,
+     "bezier": [
+      0.462,
+      0.262,
+      0.299,
+      0.032
+     ]
+    }
+   ]
+  },
+  "easeOut": {
+   "count": 44,
+   "measured": 32,
+   "median_bezier": [
+    0.214,
+    0.179,
+    0.492,
+    0.903
+   ],
+   "sec_median": 0.267,
+   "sec_p25": 0.2,
+   "sec_p75": 0.5,
+   "f30_median": 8.0,
+   "f60_median": 16.02,
+   "examples": [
+    {
+     "ref": "r01",
+     "el": "S1.E1",
+     "prop": "position_y",
+     "frames": 15,
+     "fps": 60,
+     "bezier": [
+      0.475,
+      0.576,
+      0.506,
+      1.007
+     ]
+    },
+    {
+     "ref": "r01",
+     "el": "S1.E2",
+     "prop": "position_y",
+     "frames": 12,
+     "fps": 60,
+     "bezier": [
+      0.695,
+      1.108,
+      0.693,
+      0.959
+     ]
+    },
+    {
+     "ref": "r01",
+     "el": "S1.E3",
+     "prop": "scale",
+     "frames": 11,
+     "fps": 60,
+     "bezier": [
+      0.474,
+      0.382,
+      0.515,
+      1.015
+     ]
+    },
+    {
+     "ref": "r01",
+     "el": "S1.E3",
+     "prop": "position_y",
+     "frames": 11,
+     "fps": 60,
+     "bezier": [
+      0.351,
+      0.187,
+      0.538,
+      1.046
+     ]
+    }
+   ]
+  },
+  "easeInOut": {
+   "count": 38,
+   "measured": 23,
+   "median_bezier": [
+    0.424,
+    0.088,
+    0.578,
+    1
+   ],
+   "sec_median": 0.408,
+   "sec_p25": 0.333,
+   "sec_p75": 0.667,
+   "f30_median": 12.25,
+   "f60_median": 24.51,
+   "examples": [
+    {
+     "ref": "r01",
+     "el": "S1.E1",
+     "prop": "scale",
+     "frames": 8,
+     "fps": 60,
+     "bezier": [
+      0.306,
+      0.109,
+      0.503,
+      0.826
+     ]
+    },
+    {
+     "ref": "r01",
+     "el": "S1.E5",
+     "prop": "inflate_height",
+     "frames": 14,
+     "fps": 60,
+     "bezier": [
+      0.385,
+      0.133,
+      0.55,
+      1.031
+     ]
+    },
+    {
+     "ref": "r01",
+     "el": "S1.E5",
+     "prop": "inflate_area",
+     "frames": 32,
+     "fps": 60,
+     "bezier": [
+      0.412,
+      -0.013,
+      0.429,
+      0.951
+     ]
+    },
+    {
+     "ref": "r01",
+     "el": "S2.E1",
+     "prop": "camera_scale",
+     "frames": 18,
+     "fps": 60,
+     "bezier": [
+      0.558,
+      0.016,
+      0.657,
+      1.202
+     ]
+    }
+   ]
+  },
+  "easeInCubic": {
+   "count": 20,
+   "measured": 20,
+   "median_bezier": [
+    0.434,
+    0.102,
+    0.786,
+    0.271
+   ],
+   "sec_median": 0.492,
+   "sec_p25": 0.333,
+   "sec_p75": 0.683,
+   "f30_median": 14.75,
+   "f60_median": 29.52,
+   "examples": [
+    {
+     "ref": "r01",
+     "el": "S1.E2",
+     "prop": "position_y",
+     "frames": 10,
+     "fps": 60,
+     "bezier": [
+      0.508,
+      0.273,
+      0.781,
+      0.144
+     ]
+    },
+    {
+     "ref": "r01",
+     "el": "S4.E1",
+     "prop": "scale",
+     "frames": 22,
+     "fps": 60,
+     "bezier": [
+      0.44,
+      0.037,
+      0.875,
+      0.22
+     ]
+    },
+    {
+     "ref": "r02",
+     "el": "S2.E1",
+     "prop": "position.y",
+     "frames": 41,
+     "fps": 60,
+     "bezier": [
+      0.645,
+      0.054,
+      0.772,
+      0.431
+     ]
+    },
+    {
+     "ref": "r02",
+     "el": "S3.E1",
+     "prop": "position.x",
+     "frames": 28,
+     "fps": 60,
+     "bezier": [
+      0.614,
+      0.029,
+      0.755,
+      0.398
+     ]
+    }
+   ]
+  },
+  "easeOutExpo": {
+   "count": 14,
+   "measured": 7,
+   "median_bezier": [
+    0.043,
+    0.773,
+    0.149,
+    0.99
+   ],
+   "sec_median": 0.567,
+   "sec_p25": 0.233,
+   "sec_p75": 1.067,
+   "f30_median": 17.0,
+   "f60_median": 33.99,
+   "examples": [
+    {
+     "ref": "r02",
+     "el": "S1.E1",
+     "prop": "scale",
+     "frames": 73,
+     "fps": 60,
+     "bezier": [
+      0.062,
+      0.878,
+      0.149,
+      0.99
+     ]
+    },
+    {
+     "ref": "r02",
+     "el": "S4.E4",
+     "prop": "scale",
+     "frames": 29,
+     "fps": 60,
+     "bezier": [
+      0.0,
+      0.873,
+      0.637,
+      1.217
+     ]
+    },
+    {
+     "ref": "r03",
+     "el": "S2.E2",
+     "prop": "position.x (line)",
+     "frames": 20,
+     "fps": 30,
+     "bezier": [
+      0.079,
+      0.623,
+      0.101,
+      1.008
+     ]
+    },
+    {
+     "ref": "r03",
+     "el": "S6.E2",
+     "prop": "trim end / tip x",
+     "frames": 59,
+     "fps": 30,
+     "bezier": [
+      0.086,
+      0.773,
+      0.194,
+      0.923
+     ]
+    }
+   ]
+  },
+  "easeOutBack": {
+   "count": 7,
+   "measured": 5,
+   "median_bezier": [
+    0.433,
+    1.466,
+    0.1,
+    1.157
+   ],
+   "sec_median": 0.467,
+   "sec_p25": 0.333,
+   "sec_p75": 0.483,
+   "f30_median": 14.0,
+   "f60_median": 28.02,
+   "examples": [
+    {
+     "ref": "r02",
+     "el": "S4.E3",
+     "prop": "scale",
+     "frames": 29,
+     "fps": 60,
+     "bezier": [
+      0.52,
+      1.576,
+      0.06,
+      1.135
+     ]
+    },
+    {
+     "ref": "r02",
+     "el": "S4.E5",
+     "prop": "scale",
+     "frames": 27,
+     "fps": 60,
+     "bezier": [
+      0.572,
+      1.138,
+      0.1,
+      1.355
+     ]
+    },
+    {
+     "ref": "r02",
+     "el": "S6.E1",
+     "prop": "scale",
+     "frames": 58,
+     "fps": 60,
+     "bezier": [
+      0.407,
+      1.466,
+      0.3,
+      1.157
+     ]
+    },
+    {
+     "ref": "r02",
+     "el": "S6.E2",
+     "prop": "scale",
+     "frames": 28,
+     "fps": 60,
+     "bezier": [
+      0.0,
+      0.594,
+      0.0,
+      1.196
+     ]
+    }
+   ]
+  },
+  "easeInOutCubic": {
+   "count": 7,
+   "measured": 2,
+   "median_bezier": [
+    0.603,
+    -0.044,
+    0.402,
+    0.958
+   ],
+   "sec_median": 0.833,
+   "sec_p25": 0.533,
+   "sec_p75": 1.0,
+   "f30_median": 25.0,
+   "f60_median": 49.98,
+   "examples": [
+    {
+     "ref": "r04",
+     "el": "S1.E7",
+     "prop": "width (grows leftwards from the right end)",
+     "frames": 51,
+     "fps": 60,
+     "bezier": [
+      0.612,
+      0.055,
+      0.272,
+      0.834
+     ]
+    },
+    {
+     "ref": "r06",
+     "el": "S1.E5",
+     "prop": "position.x (group left edge)",
+     "frames": 42,
+     "fps": 60,
+     "bezier": [
+      0.595,
+      -0.143,
+      0.531,
+      1.082
+     ]
+    }
+   ]
+  },
+  "easeInQuart": {
+   "count": 6,
+   "measured": 5,
+   "median_bezier": [
+    0.66,
+    0.001,
+    0.912,
+    0.115
+   ],
+   "sec_median": 0.425,
+   "sec_p25": 0.4,
+   "sec_p75": 0.7,
+   "f30_median": 12.75,
+   "f60_median": 25.5,
+   "examples": [
+    {
+     "ref": "r02",
+     "el": "S9.E9",
+     "prop": "position.x (row 1 right edge)",
+     "frames": 25,
+     "fps": 60,
+     "bezier": [
+      0.427,
+      -0.051,
+      1.0,
+      0.246
+     ]
+    },
+    {
+     "ref": "r03",
+     "el": "S11.E2",
+     "prop": "scale (No visibility.)",
+     "frames": 13,
+     "fps": 30,
+     "bezier": [
+      1.0,
+      -0.007,
+      0.94,
+      1.024
+     ]
+    },
+    {
+     "ref": "r03",
+     "el": "S16.E1",
+     "prop": "position.x exit (line right edge)",
+     "frames": 21,
+     "fps": 30,
+     "bezier": [
+      0.66,
+      0.332,
+      0.889,
+      0.111
+     ]
+    },
+    {
+     "ref": "r03",
+     "el": "S22.E3",
+     "prop": "position.x exit",
+     "frames": 27,
+     "fps": 30,
+     "bezier": [
+      0.674,
+      0.173,
+      0.883,
+      0.115
+     ]
+    }
+   ]
+  },
+  "easeInExpo": {
+   "count": 5,
+   "measured": 4,
+   "median_bezier": [
+    0.845,
+    0.057,
+    0.913,
+    0.192
+   ],
+   "sec_median": 0.633,
+   "sec_p25": 0.167,
+   "sec_p75": 0.667,
+   "f30_median": 19.0,
+   "f60_median": 37.98,
+   "examples": [
+    {
+     "ref": "r01",
+     "el": "S1.E15",
+     "prop": "scale",
+     "frames": 38,
+     "fps": 60,
+     "bezier": [
+      0.885,
+      0.482,
+      0.841,
+      0.117
+     ]
+    },
+    {
+     "ref": "r03",
+     "el": "S3.E4",
+     "prop": "scale (zoom-through)",
+     "frames": 26,
+     "fps": 30,
+     "bezier": [
+      0.826,
+      0.014,
+      0.92,
+      0.299
+     ]
+    },
+    {
+     "ref": "r03",
+     "el": "S35.E1",
+     "prop": "scale out",
+     "frames": 20,
+     "fps": 30,
+     "bezier": [
+      0.7,
+      0.074,
+      0.925,
+      0.161
+     ]
+    },
+    {
+     "ref": "r05",
+     "el": "S11.E3",
+     "prop": "card width (collapse)",
+     "frames": 10,
+     "fps": 60,
+     "bezier": [
+      0.863,
+      0.041,
+      0.906,
+      0.222
+     ]
+    }
+   ]
+  },
+  "easeOutQuart": {
+   "count": 5,
+   "measured": 5,
+   "median_bezier": [
+    0.164,
+    0.454,
+    0.065,
+    0.886
+   ],
+   "sec_median": 0.933,
+   "sec_p25": 0.567,
+   "sec_p75": 1.267,
+   "f30_median": 28.0,
+   "f60_median": 55.98,
+   "examples": [
+    {
+     "ref": "r02",
+     "el": "S1.E1",
+     "prop": "position.x(left edge)",
+     "frames": 34,
+     "fps": 60,
+     "bezier": [
+      0.288,
+      0.874,
+      0.065,
+      0.779
+     ]
+    },
+    {
+     "ref": "r02",
+     "el": "S1.E2",
+     "prop": "position.x",
+     "frames": 33,
+     "fps": 60,
+     "bezier": [
+      0.288,
+      0.874,
+      0.065,
+      0.779
+     ]
+    },
+    {
+     "ref": "r05",
+     "el": "S10.E3",
+     "prop": "position.y (block top edge)",
+     "frames": 76,
+     "fps": 60,
+     "bezier": [
+      0.164,
+      0.454,
+      0.0,
+      0.886
+     ]
+    },
+    {
+     "ref": "r06",
+     "el": "S5.E2",
+     "prop": "position.y (centre)",
+     "frames": 56,
+     "fps": 60,
+     "bezier": [
+      0.0,
+      0.149,
+      0.131,
+      1.097
+     ]
+    }
+   ]
+  },
+  "easeOutQuint": {
+   "count": 4,
+   "measured": 4,
+   "median_bezier": [
+    0.177,
+    0.623,
+    0.024,
+    1.003
+   ],
+   "sec_median": 0.491,
+   "sec_p25": 0.35,
+   "sec_p75": 0.85,
+   "f30_median": 14.75,
+   "f60_median": 29.49,
+   "examples": [
+    {
+     "ref": "r01",
+     "el": "S5.E2",
+     "prop": "position_y",
+     "frames": 21,
+     "fps": 60,
+     "bezier": [
+      0.221,
+      0.838,
+      0.251,
+      1.08
+     ]
+    },
+    {
+     "ref": "r05",
+     "el": "S5.E2",
+     "prop": "width",
+     "frames": 6,
+     "fps": 60,
+     "bezier": [
+      0.302,
+      0.865,
+      0.0,
+      0.948
+     ]
+    },
+    {
+     "ref": "r05",
+     "el": "S11.E3",
+     "prop": "card width (full frame -> card)",
+     "frames": 51,
+     "fps": 60,
+     "bezier": [
+      0.134,
+      0.287,
+      0.0,
+      1.043
+     ]
+    },
+    {
+     "ref": "r06",
+     "el": "S6.E2",
+     "prop": "width at y=1050",
+     "frames": 38,
+     "fps": 60,
+     "bezier": [
+      0.098,
+      0.409,
+      0.048,
+      0.964
+     ]
+    }
+   ]
+  },
+  "easeInOutQuart": {
+   "count": 3,
+   "measured": 3,
+   "median_bezier": [
+    0.776,
+    0.075,
+    0.224,
+    0.928
+   ],
+   "sec_median": 1.067,
+   "sec_p25": 1.067,
+   "sec_p75": 1.067,
+   "f30_median": 32.0,
+   "f60_median": 64.02,
+   "examples": [
+    {
+     "ref": "r03",
+     "el": "S13.E2",
+     "prop": "dot field height (converge to row)",
+     "frames": 32,
+     "fps": 30,
+     "bezier": [
+      0.798,
+      0.09,
+      0.133,
+      0.75
+     ]
+    },
+    {
+     "ref": "r03",
+     "el": "S24.E1",
+     "prop": "position.x (camera push, pie centre)",
+     "frames": 32,
+     "fps": 30,
+     "bezier": [
+      0.776,
+      0.075,
+      0.224,
+      0.928
+     ]
+    },
+    {
+     "ref": "r03",
+     "el": "S24.E1",
+     "prop": "scale",
+     "frames": 32,
+     "fps": 30,
+     "bezier": [
+      0.776,
+      0.075,
+      0.224,
+      0.928
+     ]
+    }
+   ]
+  },
+  "linear, about 8 f each": {
+   "count": 3,
+   "measured": 0,
+   "median_bezier": null,
+   "sec_median": 0.533,
+   "sec_p25": 0.533,
+   "sec_p75": 0.567,
+   "f30_median": 16.0,
+   "f60_median": 31.98,
+   "examples": []
+  },
+  "backOut": {
+   "count": 2,
+   "measured": 2,
+   "median_bezier": [
+    0.624,
+    0.956,
+    0.352,
+    1.135
+   ],
+   "sec_median": 0.317,
+   "sec_p25": 0.283,
+   "sec_p75": 0.35,
+   "f30_median": 9.5,
+   "f60_median": 18.99,
+   "examples": [
+    {
+     "ref": "r01",
+     "el": "S1.E7",
+     "prop": "scale",
+     "frames": 21,
+     "fps": 60,
+     "bezier": [
+      0.41,
+      0.436,
+      0.252,
+      1.221
+     ]
+    },
+    {
+     "ref": "r01",
+     "el": "S4.E1",
+     "prop": "scale",
+     "frames": 17,
+     "fps": 60,
+     "bezier": [
+      0.839,
+      1.475,
+      0.452,
+      1.05
+     ]
+    }
+   ]
+  },
+  "easeOutBack (pop)": {
+   "count": 2,
+   "measured": 1,
+   "median_bezier": [
+    0.173,
+    0.609,
+    0.939,
+    1.37
+   ],
+   "sec_median": 0.083,
+   "sec_p25": 0.083,
+   "sec_p75": 0.083,
+   "f30_median": 2.5,
+   "f60_median": 4.98,
+   "examples": [
+    {
+     "ref": "r07",
+     "el": "S2.E6",
+     "prop": "width (top-right thumb)",
+     "frames": 5,
+     "fps": 60,
+     "bezier": [
+      0.173,
+      0.609,
+      0.939,
+      1.37
+     ]
+    }
+   ]
+  },
+  "easeInOut (asym)": {
+   "count": 1,
+   "measured": 1,
+   "median_bezier": [
+    0.565,
+    0.194,
+    0.051,
+    0.77
+   ],
+   "sec_median": 0.9,
+   "sec_p25": 0.9,
+   "sec_p75": 0.9,
+   "f30_median": 27.0,
+   "f60_median": 54.0,
+   "examples": [
+    {
+     "ref": "r03",
+     "el": "S5.E3",
+     "prop": "scale",
+     "frames": 27,
+     "fps": 30,
+     "bezier": [
+      0.565,
+      0.194,
+      0.051,
+      0.77
+     ]
+    }
+   ]
+  },
+  "custom (hold then snap)": {
+   "count": 1,
+   "measured": 1,
+   "median_bezier": [
+    0.825,
+    0.419,
+    0,
+    0.874
+   ],
+   "sec_median": 1.0,
+   "sec_p25": 1.0,
+   "sec_p75": 1.0,
+   "f30_median": 30.0,
+   "f60_median": 60.0,
+   "examples": [
+    {
+     "ref": "r03",
+     "el": "S11.E2",
+     "prop": "scale (No growth. block width)",
+     "frames": 30,
+     "fps": 30,
+     "bezier": [
+      0.825,
+      0.419,
+      0,
+      0.874
+     ]
+    }
+   ]
+  },
+  "linear-ish": {
+   "count": 1,
+   "measured": 1,
+   "median_bezier": [
+    0.196,
+    0.629,
+    0.897,
+    0.288
+   ],
+   "sec_median": 0.833,
+   "sec_p25": 0.833,
+   "sec_p75": 0.833,
+   "f30_median": 25.0,
+   "f60_median": 49.98,
+   "examples": [
+    {
+     "ref": "r03",
+     "el": "S23.E2",
+     "prop": "scale (push out)",
+     "frames": 25,
+     "fps": 30,
+     "bezier": [
+      0.196,
+      0.629,
+      0.897,
+      0.288
+     ]
+    }
+   ]
+  },
+  "custom": {
+   "count": 1,
+   "measured": 1,
+   "median_bezier": [
+    0.938,
+    0.586,
+    0.955,
+    0.169
+   ],
+   "sec_median": 7.3,
+   "sec_p25": 7.3,
+   "sec_p75": 7.3,
+   "f30_median": 219.0,
+   "f60_median": 438.0,
+   "examples": [
+    {
+     "ref": "r03",
+     "el": "S27.E2",
+     "prop": "scale (slow zoom)",
+     "frames": 219,
+     "fps": 30,
+     "bezier": [
+      0.938,
+      0.586,
+      0.955,
+      0.169
+     ]
+    }
+   ]
+  },
+  "linear (slowing last 4 chars)": {
+   "count": 1,
+   "measured": 0,
+   "median_bezier": null,
+   "sec_median": 0.8,
+   "sec_p25": 0.8,
+   "sec_p75": 0.8,
+   "f30_median": 24.0,
+   "f60_median": 48.0,
+   "examples": []
+  },
+  "easeIn (3-frame whip)": {
+   "count": 1,
+   "measured": 0,
+   "median_bezier": null,
+   "sec_median": 0.05,
+   "sec_p25": 0.05,
+   "sec_p75": 0.05,
+   "f30_median": 1.5,
+   "f60_median": 3.0,
+   "examples": []
+  },
+  "linear (slight ease-in)": {
+   "count": 1,
+   "measured": 1,
+   "median_bezier": [
+    0.461,
+    0.219,
+    0.337,
+    0.367
+   ],
+   "sec_median": 0.217,
+   "sec_p25": 0.217,
+   "sec_p75": 0.217,
+   "f30_median": 6.5,
+   "f60_median": 13.02,
+   "examples": [
+    {
+     "ref": "r04",
+     "el": "S2.E4",
+     "prop": "width (bbox of the loop)",
+     "frames": 13,
+     "fps": 60,
+     "bezier": [
+      0.461,
+      0.219,
+      0.337,
+      0.367
+     ]
+    }
+   ]
+  },
+  "ease (reveal-contaminated)": {
+   "count": 1,
+   "measured": 1,
+   "median_bezier": [
+    0.0,
+    -0.401,
+    0.053,
+    0.871
+   ],
+   "sec_median": 0.233,
+   "sec_p25": 0.233,
+   "sec_p75": 0.233,
+   "f30_median": 7.0,
+   "f60_median": 13.98,
+   "examples": [
+    {
+     "ref": "r04",
+     "el": "S5.E1",
+     "prop": "position.x (slides in from the left)",
+     "frames": 14,
+     "fps": 60,
+     "bezier": [
+      0.0,
+      -0.401,
+      0.053,
+      0.871
+     ]
+    }
+   ]
+  },
+  "easeOut (start clipped by frame edge)": {
+   "count": 1,
+   "measured": 1,
+   "median_bezier": [
+    0.0,
+    -0.347,
+    0.074,
+    0.676
+   ],
+   "sec_median": 0.217,
+   "sec_p25": 0.217,
+   "sec_p75": 0.217,
+   "f30_median": 6.5,
+   "f60_median": 13.02,
+   "examples": [
+    {
+     "ref": "r05",
+     "el": "S1.E3",
+     "prop": "bottom edge y (rises from below frame)",
+     "frames": 13,
+     "fps": 60,
+     "bezier": [
+      0.0,
+      -0.347,
+      0.074,
+      0.676
+     ]
+    }
+   ]
+  },
+  "easeOut (follows camera)": {
+   "count": 1,
+   "measured": 0,
+   "median_bezier": null,
+   "sec_median": 0.5,
+   "sec_p25": 0.5,
+   "sec_p75": 0.5,
+   "f30_median": 15.0,
+   "f60_median": 30.0,
+   "examples": []
+  },
+  "easeOutCubic (est., heavy blur hides it)": {
+   "count": 1,
+   "measured": 0,
+   "median_bezier": null,
+   "sec_median": 0.117,
+   "sec_p25": 0.117,
+   "sec_p75": 0.117,
+   "f30_median": 3.5,
+   "f60_median": 7.02,
+   "examples": []
+  },
+  "linear (about 2.5 frames per char, human jitter 2-5 f)": {
+   "count": 1,
+   "measured": 1,
+   "median_bezier": [
+    0,
+    0,
+    1,
+    1
+   ],
+   "sec_median": 1.217,
+   "sec_p25": 1.217,
+   "sec_p75": 1.217,
+   "f30_median": 36.5,
+   "f60_median": 73.02,
+   "examples": [
+    {
+     "ref": "r06",
+     "el": "S2.E8",
+     "prop": "type-on (chars)",
+     "frames": 73,
+     "fps": 60,
+     "bezier": [
+      0,
+      0,
+      1,
+      1
+     ]
+    }
+   ]
+  },
+  "ease (slight dip first)": {
+   "count": 1,
+   "measured": 1,
+   "median_bezier": [
+    0.211,
+    -0.616,
+    0.086,
+    1.108
+   ],
+   "sec_median": 0.433,
+   "sec_p25": 0.433,
+   "sec_p75": 0.433,
+   "f30_median": 13.0,
+   "f60_median": 25.98,
+   "examples": [
+    {
+     "ref": "r06",
+     "el": "S4.E2",
+     "prop": "card top y0",
+     "frames": 26,
+     "fps": 60,
+     "bezier": [
+      0.211,
+      -0.616,
+      0.086,
+      1.108
+     ]
+    }
+   ]
+  },
+  "easeIn (second half off-frame: true curve likely easeInOut)": {
+   "count": 1,
+   "measured": 1,
+   "median_bezier": [
+    1.0,
+    0.499,
+    0.656,
+    0.874
+   ],
+   "sec_median": 0.5,
+   "sec_p25": 0.5,
+   "sec_p75": 0.5,
+   "f30_median": 15.0,
+   "f60_median": 30.0,
+   "examples": [
+    {
+     "ref": "r06",
+     "el": "S4.E2",
+     "prop": "card top y0 (expand to full frame)",
+     "frames": 30,
+     "fps": 60,
+     "bezier": [
+      1.0,
+      0.499,
+      0.656,
+      0.874
+     ]
+    }
+   ]
+  },
+  "easeOutCubic (tmpl scale, quantized)": {
+   "count": 1,
+   "measured": 0,
+   "median_bezier": null,
+   "sec_median": 0.75,
+   "sec_p25": 0.75,
+   "sec_p75": 0.75,
+   "f30_median": 22.5,
+   "f60_median": 45.0,
+   "examples": []
+  },
+  "hold jumps + scroll": {
+   "count": 1,
+   "measured": 0,
+   "median_bezier": null,
+   "sec_median": 0.9,
+   "sec_p25": 0.9,
+   "sec_p75": 0.9,
+   "f30_median": 27.0,
+   "f60_median": 54.0,
+   "examples": []
+  },
+  "linear, about 1.5 f per char": {
+   "count": 1,
+   "measured": 0,
+   "median_bezier": null,
+   "sec_median": 0.367,
+   "sec_p25": 0.367,
+   "sec_p75": 0.367,
+   "f30_median": 11.0,
+   "f60_median": 22.02,
+   "examples": []
+  },
+  "linear steps": {
+   "count": 1,
+   "measured": 0,
+   "median_bezier": null,
+   "sec_median": 0.367,
+   "sec_p25": 0.367,
+   "sec_p75": 0.367,
+   "f30_median": 11.0,
+   "f60_median": 22.02,
+   "examples": []
+  },
+  "easeIn (near-linear 1.15 deg/f to f440, then spins up)": {
+   "count": 1,
+   "measured": 1,
+   "median_bezier": [
+    0.882,
+    0.387,
+    0.926,
+    0.715
+   ],
+   "sec_median": 1.8,
+   "sec_p25": 1.8,
+   "sec_p75": 1.8,
+   "f30_median": 54.0,
+   "f60_median": 108.0,
+   "examples": [
+    {
+     "ref": "r07",
+     "el": "S4.E1",
+     "prop": "rotation",
+     "frames": 108,
+     "fps": 60,
+     "bezier": [
+      0.882,
+      0.387,
+      0.926,
+      0.715
+     ]
+    }
+   ]
+  },
+  "spring": {
+   "count": 1,
+   "measured": 0,
+   "median_bezier": null,
+   "sec_median": 1.0,
+   "sec_p25": 1.0,
+   "sec_p75": 1.0,
+   "f30_median": 30.0,
+   "f60_median": 60.0,
+   "examples": []
+  },
+  "easeOutBack / spring": {
+   "count": 1,
+   "measured": 1,
+   "median_bezier": [
+    0.538,
+    1.836,
+    0.101,
+    0.774
+   ],
+   "sec_median": 1.0,
+   "sec_p25": 1.0,
+   "sec_p75": 1.0,
+   "f30_median": 30.0,
+   "f60_median": 60.0,
+   "examples": [
+    {
+     "ref": "r07",
+     "el": "S4.E3",
+     "prop": "width",
+     "frames": 60,
+     "fps": 60,
+     "bezier": [
+      0.538,
+      1.836,
+      0.101,
+      0.774
+     ]
+    }
+   ]
+  },
+  "easeInOut (in), ease (out)": {
+   "count": 1,
+   "measured": 1,
+   "median_bezier": [
+    0.352,
+    0.096,
+    0.493,
+    0.99
+   ],
+   "sec_median": 2.167,
+   "sec_p25": 2.167,
+   "sec_p75": 2.167,
+   "f30_median": 65.0,
+   "f60_median": 130.02,
+   "examples": [
+    {
+     "ref": "r07",
+     "el": "S5.E1",
+     "prop": "position.y (toolbar)",
+     "frames": 130,
+     "fps": 60,
+     "bezier": [
+      0.352,
+      0.096,
+      0.493,
+      0.99
+     ]
+    }
+   ]
+  },
+  "linear / procedural": {
+   "count": 1,
+   "measured": 0,
+   "median_bezier": null,
+   "sec_median": 8.867,
+   "sec_p25": 8.867,
+   "sec_p75": 8.867,
+   "f30_median": 266.0,
+   "f60_median": 532.02,
+   "examples": []
+  },
+  "1-frame step": {
+   "count": 1,
+   "measured": 0,
+   "median_bezier": null,
+   "sec_median": 0.017,
+   "sec_p25": 0.017,
+   "sec_p75": 0.017,
+   "f30_median": 0.5,
+   "f60_median": 1.02,
+   "examples": []
+  }
+ },
+ "duration_by_prop_sec": {
+  "scale": {
+   "n": 105,
+   "median": 0.433,
+   "p25": 0.2,
+   "p75": 0.667
+  },
+  "position": {
+   "n": 131,
+   "median": 0.6,
+   "p25": 0.367,
+   "p75": 0.9
+  },
+  "opacity": {
+   "n": 83,
+   "median": 0.267,
+   "p25": 0.1,
+   "p75": 1.933
+  },
+  "size": {
+   "n": 31,
+   "median": 0.333,
+   "p25": 0.167,
+   "p75": 0.633
+  },
+  "other": {
+   "n": 171,
+   "median": 0.433,
+   "p25": 0.25,
+   "p75": 0.817
+  },
+  "rotation": {
+   "n": 29,
+   "median": 0.35,
+   "p25": 0.15,
+   "p75": 0.633
+  }
+ },
+ "overshoot": {
+  "n": 21,
+  "median": 0.028,
+  "p75": 0.089,
+  "examples": [
+   {
+    "ref": "r01",
+    "el": "S1.E7",
+    "prop": "scale",
+    "frames": 21,
+    "fps": 60,
+    "f30": 10.5,
+    "sec": 0.35,
+    "bezier": [
+     0.41,
+     0.436,
+     0.252,
+     1.221
+    ],
+    "measured": true,
+    "overshoot": 0.031
+   },
+   {
+    "ref": "r01",
+    "el": "S2.E1",
+    "prop": "camera_scale",
+    "frames": 18,
+    "fps": 60,
+    "f30": 9.0,
+    "sec": 0.3,
+    "bezier": [
+     0.558,
+     0.016,
+     0.657,
+     1.202
+    ],
+    "measured": true,
+    "overshoot": 0.028
+   },
+   {
+    "ref": "r01",
+    "el": "S2.E6",
+    "prop": "rotationY",
+    "frames": 20,
+    "fps": 60,
+    "f30": 10.0,
+    "sec": 0.333,
+    "bezier": [
+     0.372,
+     -0.061,
+     0.578,
+     1.115
+    ],
+    "measured": true,
+    "overshoot": 0.013
+   },
+   {
+    "ref": "r01",
+    "el": "S2.E7",
+    "prop": "rotationY_and_scale_out",
+    "frames": 20,
+    "fps": 60,
+    "f30": 10.0,
+    "sec": 0.333,
+    "bezier": [
+     0.591,
+     0.564,
+     0.779,
+     1.114
+    ],
+    "measured": true,
+    "overshoot": 0.012
+   },
+   {
+    "ref": "r01",
+    "el": "S4.E1",
+    "prop": "scale",
+    "frames": 17,
+    "fps": 60,
+    "f30": 8.5,
+    "sec": 0.283,
+    "bezier": [
+     0.839,
+     1.475,
+     0.452,
+     1.05
+    ],
+    "measured": true,
+    "overshoot": 0.089
+   },
+   {
+    "ref": "r01",
+    "el": "S5.E2",
+    "prop": "position_y",
+    "frames": 21,
+    "fps": 60,
+    "f30": 10.5,
+    "sec": 0.35,
+    "bezier": [
+     0.221,
+     0.838,
+     0.251,
+     1.08
+    ],
+    "measured": true,
+    "overshoot": 0.017
+   },
+   {
+    "ref": "r02",
+    "el": "S4.E3",
+    "prop": "scale",
+    "frames": 29,
+    "fps": 60,
+    "f30": 14.5,
+    "sec": 0.483,
+    "bezier": [
+     0.52,
+     1.576,
+     0.06,
+     1.135
+    ],
+    "measured": true,
+    "overshoot": 0.156
+   },
+   {
+    "ref": "r02",
+    "el": "S4.E4",
+    "prop": "scale",
+    "frames": 29,
+    "fps": 60,
+    "f30": 14.5,
+    "sec": 0.483,
+    "bezier": [
+     0.0,
+     0.873,
+     0.637,
+     1.217
+    ],
+    "measured": true,
+    "overshoot": 0.061
+   }
+  ]
+ },
+ "stagger_sec": {
+  "n": 138,
+  "median": 0.1,
+  "p25": 0.05,
+  "p75": 0.2
+ },
+ "shot_sec": {
+  "n": 87,
+  "median": 2.03,
+  "p25": 1.43,
+  "p75": 3.18
+ },
+ "transitions": [
+  [
+   "cut",
+   28
+  ],
+  [
+   "push-out",
+   4
+  ],
+  [
+   "fade",
+   3
+  ],
+  [
+   "ring-zoom",
+   3
+  ],
+  [
+   "zoom",
+   2
+  ],
+  [
+   "end",
+   2
+  ],
+  [
+   "white flash",
+   2
+  ],
+  [
+   "gradient-wipe",
+   2
+  ],
+  [
+   "pixel-dissolve",
+   1
+  ],
+  [
+   "staggered-cut",
+   1
+  ],
+  [
+   "scale-down + tilt, then cut",
+   1
+  ],
+  [
+   "staggered peel-off cuts",
+   1
+  ],
+  [
+   "push-down (vertical push, overlapping)",
+   1
+  ],
+  [
+   "whip-pan right",
+   1
+  ],
+  [
+   "whip up (vertical push)",
+   1
+  ],
+  [
+   "fade + blur out",
+   1
+  ],
+  [
+   "zoom-out + cut",
+   1
+  ],
+  [
+   "slide-left + fade, then cut",
+   1
+  ],
+  [
+   "scale-down + cut",
+   1
+  ],
+  [
+   "slide-left + fade",
+   1
+  ],
+  [
+   "move up + cut",
+   1
+  ],
+  [
+   "fade (end)",
+   1
+  ],
+  [
+   "zoom-circle-wipe",
+   1
+  ],
+  [
+   "card-shrink",
+   1
+  ],
+  [
+   "blur-dissolve",
+   1
+  ],
+  [
+   "blur-wipe",
+   1
+  ],
+  [
+   "camera-push",
+   1
+  ],
+  [
+   "pan-cut",
+   1
+  ],
+  [
+   "toggle-flash",
+   1
+  ],
+  [
+   "fade-to-black",
+   1
+  ],
+  [
+   "cut (reframe)",
+   1
+  ],
+  [
+   "cut (smash zoom)",
+   1
+  ],
+  [
+   "glitch smear (cut)",
+   1
+  ],
+  [
+   "cut (zoom blur in)",
+   1
+  ],
+  [
+   "white flash + zoom",
+   1
+  ],
+  [
+   "fade to black",
+   1
+  ],
+  [
+   "crossfade to blurred footage",
+   1
+  ],
+  [
+   "white flash + whip",
+   1
+  ],
+  [
+   "pixel-block transition",
+   1
+  ],
+  [
+   "collapse to a point",
+   1
+  ],
+  [
+   "shape-morph",
+   1
+  ],
+  [
+   "camera-pan",
+   1
+  ],
+  [
+   "morph",
+   1
+  ],
+  [
+   "scale-to-fullframe",
+   1
+  ],
+  [
+   "circle-wipe",
+   1
+  ],
+  [
+   "slide-cut",
+   1
+  ],
+  [
+   "card-flip",
+   1
+  ],
+  [
+   "pixelate",
+   1
+  ],
+  [
+   "zoom-cut",
+   1
+  ]
+ ],
+ "transition_examples": {
+  "zoom": [
+   {
+    "ref": "r01",
+    "shot": "S1",
+    "frames": 11,
+    "sec": 0.183,
+    "notes": "accelerating push-in (easeInExpo-like), hard cut to S2 at f177"
+   },
+   {
+    "ref": "r03",
+    "shot": "S3",
+    "frames": 27,
+    "sec": 0.9,
+    "notes": "push into text, hard cut to dark grid at f284"
+   }
+  ],
+  "pixel-dissolve": [
+   {
+    "ref": "r01",
+    "shot": "S2",
+    "frames": 28,
+    "sec": 0.467,
+    "notes": "words shrink/scatter f290-302, card dissolves in random blocks f300-316, white to f330"
+   }
+  ],
+  "staggered-cut": [
+   {
+    "ref": "r01",
+    "shot": "S3",
+    "frames": 37,
+    "sec": 0.617,
+    "notes": "every collage element lives exactly 180 frames from its own in-frame and cuts off; white hold f579-598"
+   }
+  ],
+  "scale-down + tilt, then cut": [
+   {
+    "ref": "r01",
+    "shot": "S4",
+    "frames": 24,
+    "sec": 0.4,
+    "notes": "card shrinks easeInCubic and tilts back, gone at f718; white f718-724"
+   }
+  ],
+  "staggered peel-off cuts": [
+   {
+    "ref": "r01",
+    "shot": "S5",
+    "frames": 21,
+    "sec": 0.35,
+    "notes": "yellow + IDK off at f879, pink off at f889 (detector cut), HAHAH f891, rest f899 (cut to white)"
+   }
+  ],
+  "cut": [
+   {
+    "ref": "r01",
+    "shot": "S6",
+    "frames": 54,
+    "sec": 0.9,
+    "notes": "end on white (elements gone f1176)"
+   },
+   {
+    "ref": "r02",
+    "shot": "S1",
+    "frames": 1,
+    "sec": 0.017,
+    "notes": "hard cut to the clock scene, which is already zooming (S2.E1)"
+   },
+   {
+    "ref": "r03",
+    "shot": "S4",
+    "frames": 1,
+    "sec": 0.033,
+    "notes": "hard cut on motion to the pill rows"
+   }
+  ],
+  "push-down (vertical push, overlapping)": [
+   {
+    "ref": "r02",
+    "shot": "S2",
+    "frames": 41,
+    "sec": 0.683,
+    "notes": "clock group accelerates down (easeInCubic); S3 group drops in from the top from f161; overlap 161-181; heavy motion blur"
+   }
+  ],
+  "whip-pan right": [
+   {
+    "ref": "r02",
+    "shot": "S3",
+    "frames": 30,
+    "sec": 0.5,
+    "notes": "group accelerates right (easeInCubic, +417 px by f237) and scales up ~111%; heavy horizontal motion blur; 'Trying to' ri"
+   }
+  ],
+  "whip up (vertical push)": [
+   {
+    "ref": "r02",
+    "shot": "S4",
+    "frames": 20,
+    "sec": 0.333,
+    "notes": "content accelerates up (easeInCubic) with heavy vertical motion blur; the counter ring rises from the bottom from f362"
+   }
+  ],
+  "fade + blur out": [
+   {
+    "ref": "r02",
+    "shot": "S5",
+    "frames": 7,
+    "sec": 0.117,
+    "notes": "ring, number and label fade to white with blur; frames 416-421 are blank white"
+   }
+  ],
+  "zoom-out + cut": [
+   {
+    "ref": "r02",
+    "shot": "S6",
+    "frames": 15,
+    "sec": 0.25,
+    "notes": "hex cluster shrinks (easeIn) toward ~(518,915), hard cut to the single green word at f675"
+   }
+  ],
+  "slide-left + fade, then cut": [
+   {
+    "ref": "r02",
+    "shot": "S7",
+    "frames": 31,
+    "sec": 0.517,
+    "notes": "'market.' slides left (easeInCubic) and fades; 'Aren't louder.' starts at f779"
+   }
+  ],
+  "scale-down + cut": [
+   {
+    "ref": "r02",
+    "shot": "S8",
+    "frames": 13,
+    "sec": 0.217,
+    "notes": "text shrinks (easeIn) then hard cut to the pills scene"
+   }
+  ],
+  "slide-left + fade": [
+   {
+    "ref": "r02",
+    "shot": "S9",
+    "frames": 27,
+    "sec": 0.45,
+    "notes": "whole pill block slides left (easeInQuart) and fades out 1271-1278; f1279 blank"
+   }
+  ],
+  "move up + cut": [
+   {
+    "ref": "r02",
+    "shot": "S10",
+    "frames": 19,
+    "sec": 0.317,
+    "notes": "everything moves up (easeIn) then hard cut to the logo"
+   }
+  ],
+  "fade (end)": [
+   {
+    "ref": "r02",
+    "shot": "S11",
+    "frames": 15,
+    "sec": 0.25,
+    "notes": "logo fades towards white, still ~25% visible on the last frame"
+   }
+  ],
+  "zoom-circle-wipe": [
+   {
+    "ref": "r03",
+    "shot": "S1",
+    "frames": 8,
+    "sec": 0.267,
+    "notes": "white circle grows from the text line centre (~950,540) and fills the frame by f27"
+   }
+  ],
+  "fade": [
+   {
+    "ref": "r03",
+    "shot": "S2",
+    "frames": 7,
+    "sec": 0.233,
+    "notes": "blue blurred cards fly past camera, text fades, frame goes white at f165"
+   },
+   {
+    "ref": "r03",
+    "shot": "S10",
+    "frames": 4,
+    "sec": 0.133,
+    "notes": "fade to the dark S11 bg"
+   },
+   {
+    "ref": "r03",
+    "shot": "S11",
+    "frames": 29,
+    "sec": 0.967,
+    "notes": "text fades out 982-988, dark hold to f1011"
+   }
+  ],
+  "card-shrink": [
+   {
+    "ref": "r03",
+    "shot": "S6",
+    "frames": 17,
+    "sec": 0.567,
+    "notes": "the black frame becomes a square card and shrinks, revealing royal blue"
+   }
+  ],
+  "blur-dissolve": [
+   {
+    "ref": "r03",
+    "shot": "S12",
+    "frames": 32,
+    "sec": 1.067,
+    "notes": "logo slides left and blurs, blue bg dissolves to white"
+   }
+  ],
+  "blur-wipe": [
+   {
+    "ref": "r03",
+    "shot": "S13",
+    "frames": 15,
+    "sec": 0.5,
+    "notes": "a blurred blue band sweeps up over the frame"
+   }
+  ],
+  "camera-push": [
+   {
+    "ref": "r03",
+    "shot": "S14",
+    "frames": 19,
+    "sec": 0.633,
+    "notes": "tilt continues into the balls / pills shot"
+   }
+  ],
+  "pan-cut": [
+   {
+    "ref": "r03",
+    "shot": "S16",
+    "frames": 22,
+    "sec": 0.733,
+    "notes": "pan accelerates, cut on the pin line to S17"
+   }
+  ],
+  "ring-zoom": [
+   {
+    "ref": "r03",
+    "shot": "S20",
+    "frames": 3,
+    "sec": 0.1,
+    "notes": "blurred torus ring zooms from centre past the frame"
+   },
+   {
+    "ref": "r03",
+    "shot": "S22",
+    "frames": 4,
+    "sec": 0.133,
+    "notes": "same blurred ring transition into S23"
+   },
+   {
+    "ref": "r03",
+    "shot": "S30",
+    "frames": 6,
+    "sec": 0.2,
+    "notes": "ring vignette transition"
+   }
+  ],
+  "toggle-flash": [
+   {
+    "ref": "r03",
+    "shot": "S26",
+    "frames": 6,
+    "sec": 0.2,
+    "notes": "toggle flips on, bg flashes into the blue vignette"
+   }
+  ],
+  "push-out": [
+   {
+    "ref": "r03",
+    "shot": "S29",
+    "frames": 20,
+    "sec": 0.667,
+    "notes": "text shrinks with ease-in, blank f3182"
+   },
+   {
+    "ref": "r03",
+    "shot": "S32",
+    "frames": 13,
+    "sec": 0.433,
+    "notes": "ease-in shrink, blank f3385"
+   },
+   {
+    "ref": "r03",
+    "shot": "S33",
+    "frames": 12,
+    "sec": 0.4,
+    "notes": "shrink then the logo tile pops at f3430"
+   }
+  ],
+  "fade-to-black": [
+   {
+    "ref": "r03",
+    "shot": "S36",
+    "frames": 42,
+    "sec": 1.4,
+    "notes": "linear fade to black, black from f3689"
+   }
+  ],
+  "cut (reframe)": [
+   {
+    "ref": "r04",
+    "shot": "S3",
+    "frames": 1,
+    "sec": 0.017,
+    "notes": "hard reframe: text jumps smaller and to the left edge, image tiles start entering"
+   }
+  ],
+  "end": [
+   {
+    "ref": "r04",
+    "shot": "S5",
+    "frames": 0,
+    "sec": 0.0,
+    "notes": ""
+   },
+   {
+    "ref": "r05",
+    "shot": "S12",
+    "frames": 0,
+    "sec": 0.0,
+    "notes": "logo rolls back into a dot"
+   }
+  ],
+  "cut (smash zoom)": [
+   {
+    "ref": "r05",
+    "shot": "S1",
+    "frames": 1,
+    "sec": 0.017,
+    "notes": "'my' starts dissolving to smoke at 31, cut to the brain filling the frame (pink-white, zoom blurred)"
+   }
+  ],
+  "glitch smear (cut)": [
+   {
+    "ref": "r05",
+    "shot": "S2",
+    "frames": 1,
+    "sec": 0.017,
+    "notes": "brain smears vertically (59-64) into the next shot"
+   }
+  ],
+  "cut (zoom blur in)": [
+   {
+    "ref": "r05",
+    "shot": "S3",
+    "frames": 1,
+    "sec": 0.017,
+    "notes": "cut to the clouds, radial zoom-blurred"
+   }
+  ],
+  "white flash + zoom": [
+   {
+    "ref": "r05",
+    "shot": "S4",
+    "frames": 2,
+    "sec": 0.033,
+    "notes": "white flash frames 297-299, portal opens from 300"
+   }
+  ],
+  "white flash": [
+   {
+    "ref": "r05",
+    "shot": "S5",
+    "frames": 0,
+    "sec": 0.0,
+    "notes": "single white frame (luma 255)"
+   },
+   {
+    "ref": "r05",
+    "shot": "S9",
+    "frames": 2,
+    "sec": 0.033,
+    "notes": "white frames into the grey bulge shot"
+   }
+  ],
+  "fade to black": [
+   {
+    "ref": "r05",
+    "shot": "S6",
+    "frames": 19,
+    "sec": 0.317,
+    "notes": "linear ramp luma 249 -> 0"
+   }
+  ],
+  "crossfade to blurred footage": [
+   {
+    "ref": "r05",
+    "shot": "S7",
+    "frames": 10,
+    "sec": 0.167,
+    "notes": "blurred backdrop fades in under the text"
+   }
+  ],
+  "white flash + whip": [
+   {
+    "ref": "r05",
+    "shot": "S8",
+    "frames": 2,
+    "sec": 0.033,
+    "notes": "two white frames with a zoom smear"
+   }
+  ],
+  "pixel-block transition": [
+   {
+    "ref": "r05",
+    "shot": "S10",
+    "frames": 3,
+    "sec": 0.05,
+    "notes": "mosaic blocks then 2 inverted frames"
+   }
+  ],
+  "collapse to a point": [
+   {
+    "ref": "r05",
+    "shot": "S11",
+    "frames": 11,
+    "sec": 0.183,
+    "notes": "card shrinks to nothing with blur; a white dot appears at 700"
+   }
+  ],
+  "shape-morph": [
+   {
+    "ref": "r06",
+    "shot": "S1",
+    "frames": 16,
+    "sec": 0.267,
+    "notes": "the black horizon disc squashes into the prompt bar pill while the camera keeps zooming out; continuous, no cut"
+   }
+  ],
+  "camera-pan": [
+   {
+    "ref": "r06",
+    "shot": "S2",
+    "frames": 86,
+    "sec": 1.433,
+    "notes": "continuous camera move into S3"
+   }
+  ],
+  "morph": [
+   {
+    "ref": "r06",
+    "shot": "S3",
+    "frames": 20,
+    "sec": 0.333,
+    "notes": "the clicked button grows into the image card"
+   }
+  ],
+  "scale-to-fullframe": [
+   {
+    "ref": "r06",
+    "shot": "S4",
+    "frames": 32,
+    "sec": 0.533,
+    "notes": "card expands past the frame edges"
+   }
+  ],
+  "gradient-wipe": [
+   {
+    "ref": "r06",
+    "shot": "S5",
+    "frames": 32,
+    "sec": 0.533,
+    "notes": "white -> blue soft band sweeps bottom to top, leaves black (cuts.json split at 471 is mid-wipe, not a cut)"
+   },
+   {
+    "ref": "r07",
+    "shot": "S8",
+    "frames": 8,
+    "sec": 0.133,
+    "notes": "lime recedes downward revealing the carousel"
+   }
+  ],
+  "circle-wipe": [
+   {
+    "ref": "r07",
+    "shot": "S1",
+    "frames": 17,
+    "sec": 0.283,
+    "notes": "lime circle grows from the text centre and covers the frame (accelerating), then a white iris opens in the lime (S2)"
+   }
+  ],
+  "slide-cut": [
+   {
+    "ref": "r07",
+    "shot": "S3",
+    "frames": 29,
+    "sec": 0.483,
+    "notes": "accelerating slide left, hard cut to the sunburst at f369"
+   }
+  ],
+  "card-flip": [
+   {
+    "ref": "r07",
+    "shot": "S6",
+    "frames": 24,
+    "sec": 0.4,
+    "notes": "card swings away in 3D, cut at f763 to the next card swinging in"
+   }
+  ],
+  "pixelate": [
+   {
+    "ref": "r07",
+    "shot": "S7",
+    "frames": 2,
+    "sec": 0.033,
+    "notes": "big-block mosaic (about 120 px blocks) for 2-3 frames"
+   }
+  ],
+  "zoom-cut": [
+   {
+    "ref": "r07",
+    "shot": "S10",
+    "frames": 10,
+    "sec": 0.167,
+    "notes": "hard cut to the next footage at full-bleed scale, blurred, zooming out into a card"
+   }
+  ]
+ },
+ "type": {
+  "n": 142,
+  "pct_short_side_median": 6.3,
+  "pct_p25": 3.89,
+  "pct_p75": 8.8,
+  "pct_max": 27.78,
+  "samples": [
+   {
+    "ref": "r01",
+    "el": "S1.E1",
+    "px": 118,
+    "pct_short_side": 10.93,
+    "font": "Inter SemiBold (nearest)",
+    "content": "H"
+   },
+   {
+    "ref": "r01",
+    "el": "S1.E2",
+    "px": 118,
+    "pct_short_side": 10.93,
+    "font": "Inter SemiBold (nearest)",
+    "content": "i"
+   },
+   {
+    "ref": "r01",
+    "el": "S1.E4",
+    "px": 65,
+    "pct_short_side": 6.02,
+    "font": "Archivo Expanded (nearest); 'Im' Regular, 'yuna.' Bold",
+    "content": "Im yuna."
+   },
+   {
+    "ref": "r01",
+    "el": "S1.E10",
+    "px": 24,
+    "pct_short_side": 2.22,
+    "font": "Archivo Expanded (nearest) SemiBold",
+    "content": "I like making motion"
+   },
+   {
+    "ref": "r01",
+    "el": "S1.E11",
+    "px": 100,
+    "pct_short_side": 9.26,
+    "font": "Archivo Expanded (nearest); 'Motion' ExtraBold, 'Designer.' Medium",
+    "content": "Motion Designer."
+   },
+   {
+    "ref": "r01",
+    "el": "S1.E13",
+    "px": 18,
+    "pct_short_side": 1.67,
+    "font": "Archivo Expanded (nearest)",
+    "content": "decor: tiny outline circles, '<' '>' chevrons, white pill wi"
+   },
+   {
+    "ref": "r01",
+    "el": "S2.E2",
+    "px": 95,
+    "pct_short_side": 8.8,
+    "font": "Archivo Expanded (nearest) ExtraBold",
+    "content": "What"
+   },
+   {
+    "ref": "r01",
+    "el": "S2.E3",
+    "px": 95,
+    "pct_short_side": 8.8,
+    "font": "Archivo Expanded (nearest) ExtraBold",
+    "content": "do"
+   },
+   {
+    "ref": "r01",
+    "el": "S2.E4",
+    "px": 95,
+    "pct_short_side": 8.8,
+    "font": "Archivo Expanded (nearest) ExtraBold",
+    "content": "I (enters slanted like '/', straightens)"
+   },
+   {
+    "ref": "r01",
+    "el": "S2.E5",
+    "px": 95,
+    "pct_short_side": 8.8,
+    "font": "Archivo Expanded (nearest) ExtraBold",
+    "content": "usually"
+   },
+   {
+    "ref": "r01",
+    "el": "S2.E6",
+    "px": 170,
+    "pct_short_side": 15.74,
+    "font": "Unbounded Black (nearest)",
+    "content": "'make' rounded display word, 3D extruded (side in a second h"
+   },
+   {
+    "ref": "r01",
+    "el": "S3.E2",
+    "px": 46,
+    "pct_short_side": 4.26,
+    "font": "Archivo Expanded (nearest) SemiBold",
+    "content": "'I can.. ummm' -> deleted from the left -> 'Yes I can make m"
+   },
+   {
+    "ref": "r01",
+    "el": "S3.E3",
+    "px": 14,
+    "pct_short_side": 1.3,
+    "font": "Archivo Expanded (nearest)",
+    "content": "tiny caption under the field 'What the fuck is this?'"
+   },
+   {
+    "ref": "r01",
+    "el": "S3.E10",
+    "px": 22,
+    "pct_short_side": 2.04,
+    "font": "Archivo Expanded (nearest)",
+    "content": "'Make this video' black pill with grey toggle knob"
+   },
+   {
+    "ref": "r01",
+    "el": "S3.E14",
+    "px": 80,
+    "pct_short_side": 7.41,
+    "font": "Playfair Display Bold (nearest, bundled)",
+    "content": "green '&' glyph"
+   },
+   {
+    "ref": "r01",
+    "el": "S3.E15",
+    "px": 160,
+    "pct_short_side": 14.81,
+    "font": "Archivo Expanded (nearest) Medium",
+    "content": "blue card with white '123' (per-digit squash loop) and a whi"
+   },
+   {
+    "ref": "r01",
+    "el": "S3.E17",
+    "px": 14,
+    "pct_short_side": 1.3,
+    "font": "Archivo Expanded (nearest)",
+    "content": "'* At least' small text"
+   },
+   {
+    "ref": "r01",
+    "el": "S3.E18",
+    "px": 34,
+    "pct_short_side": 3.15,
+    "font": "Archivo Expanded (nearest) Black",
+    "content": "small black 'C' glyph"
+   },
+   {
+    "ref": "r01",
+    "el": "S4.E2",
+    "px": 52,
+    "pct_short_side": 4.81,
+    "font": "Inter Tight Medium (nearest; bundled Inter)",
+    "content": "My work / was deleted. I / forgot to / backup hehe"
+   },
+   {
+    "ref": "r01",
+    "el": "S4.E3",
+    "px": 12,
+    "pct_short_side": 1.11,
+    "font": "Inter",
+    "content": "tiny card labels 'How can' and 'yes'"
+   },
+   {
+    "ref": "r01",
+    "el": "S5.E1",
+    "px": 240,
+    "pct_short_side": 22.22,
+    "font": "VT323 (nearest pixel face)",
+    "content": "404 NOT / FOUND. (pixel font) on a white trapezoid panel wit"
+   },
+   {
+    "ref": "r01",
+    "el": "S5.E2",
+    "px": 20,
+    "pct_short_side": 1.85,
+    "font": "Space Mono (nearest)",
+    "content": "black header bar 'THE DATA? WHERE? OH MY GOD' (white, wide-t"
+   },
+   {
+    "ref": "r01",
+    "el": "S5.E3",
+    "px": 16,
+    "pct_short_side": 1.48,
+    "font": "Archivo Expanded (nearest)",
+    "content": "pink gradient panel with labels '2026 / PORTO ? / DAMN / WHA"
+   },
+   {
+    "ref": "r01",
+    "el": "S5.E4",
+    "px": 200,
+    "pct_short_side": 18.52,
+    "font": "pixel face (nearest VT323)",
+    "content": "yellow panel with stretched black pixel glyphs fading to gre"
+   },
+   {
+    "ref": "r01",
+    "el": "S5.E5",
+    "px": 18,
+    "pct_short_side": 1.67,
+    "font": "Archivo Expanded (nearest)",
+    "content": "IDK"
+   },
+   {
+    "ref": "r01",
+    "el": "S5.E6",
+    "px": 18,
+    "pct_short_side": 1.67,
+    "font": "Archivo Expanded (nearest)",
+    "content": "HAHAH"
+   },
+   {
+    "ref": "r01",
+    "el": "S5.E7",
+    "px": 40,
+    "pct_short_side": 3.7,
+    "font": "pixel face (nearest VT323)",
+    "content": "vertical pixel digit columns '9 0 9 . 0' (left) and the same"
+   },
+   {
+    "ref": "r01",
+    "el": "S5.E8",
+    "px": 300,
+    "pct_short_side": 27.78,
+    "font": "unknown",
+    "content": "ghost background text, very light grey, behind the panels (l"
+   },
+   {
+    "ref": "r01",
+    "el": "S6.E1",
+    "px": 34,
+    "pct_short_side": 3.15,
+    "font": "Archivo Expanded (nearest) Medium",
+    "content": "See you later."
+   },
+   {
+    "ref": "r01",
+    "el": "S6.E5",
+    "px": 40,
+    "pct_short_side": 3.7,
+    "font": "Inter Light",
+    "content": "thin '+'"
+   },
+   {
+    "ref": "r02",
+    "el": "S1.E1",
+    "px": 89,
+    "pct_short_side": 8.24,
+    "font": "Inter Tight (nearest; FlashFX: Inter 400/700)",
+    "content": "Attention"
+   },
+   {
+    "ref": "r02",
+    "el": "S1.E2",
+    "px": 89,
+    "pct_short_side": 8.24,
+    "font": "Inter Tight (nearest; FlashFX: Inter 400/700)",
+    "content": "is expensive ('expensive' green accent)"
+   },
+   {
+    "ref": "r02",
+    "el": "S1.E4",
+    "px": 30,
+    "pct_short_side": 2.78,
+    "font": "Inter Tight (nearest; FlashFX: Inter 400/700)",
+    "content": "3 small '$' signs floating up"
+   },
+   {
+    "ref": "r02",
+    "el": "S2.E6",
+    "px": 22,
+    "pct_short_side": 2.04,
+    "font": "Inter Tight (nearest; FlashFX: Inter 400/700)",
+    "content": "2 rotated grey watermark labels 'divyansh.fx_' on the dial"
+   },
+   {
+    "ref": "r02",
+    "el": "S2.E7",
+    "px": 72,
+    "pct_short_side": 6.67,
+    "font": "Inter Tight (nearest; FlashFX: Inter 400/700)",
+    "content": "Because"
+   },
+   {
+    "ref": "r02",
+    "el": "S2.E8",
+    "px": 100,
+    "pct_short_side": 9.26,
+    "font": "Instrument Serif Italic (nearest)",
+    "content": "every second (italic serif accent, word by word)"
+   },
+   {
+    "ref": "r02",
+    "el": "S2.E9",
+    "px": 24,
+    "pct_short_side": 2.22,
+    "font": "Inter Tight (nearest; FlashFX: Inter 400/700)",
+    "content": "3-line grey body caption 'Because every second your audience"
+   },
+   {
+    "ref": "r02",
+    "el": "S3.E3",
+    "px": 80,
+    "pct_short_side": 7.41,
+    "font": "Inter Tight (nearest; FlashFX: Inter 400/700)",
+    "content": "Your audience (word by word)"
+   },
+   {
+    "ref": "r02",
+    "el": "S3.E4",
+    "px": 92,
+    "pct_short_side": 8.52,
+    "font": "Instrument Serif Italic (nearest)",
+    "content": "spends (italic serif accent)"
+   },
+   {
+    "ref": "r02",
+    "el": "S3.E7",
+    "px": 22,
+    "pct_short_side": 2.04,
+    "font": "Inter Tight (nearest; FlashFX: Inter 400/700)",
+    "content": "2-line caption 'Your audience spends seconds deciding if you"
+   }
+  ]
+ },
+ "motion_blur_elements": {
+  "false": 304,
+  "true": 53
+ }
+}

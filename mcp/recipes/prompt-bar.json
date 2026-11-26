@@ -1,0 +1,796 @@
+{
+  "id": "prompt-bar",
+  "name": "Prompt / search bar that comes alive",
+  "category": "ui",
+  "description": "A rounded bar pops in as a dot, stretches to full width, shows a placeholder with a blinking caret, types a query at a human rate, then a send button pops in and gets pressed. Everything hangs on one group null, so the whole bar can be moved, scaled or faded as one. Pair it with cursor-click (target = returns.sendX / sendY at returns.pressFrame).",
+  "source": [
+    "r06 S2 disc-to-bar morph (outCubic, 20 f at 60), placeholder, typed prompt 24 chars/s, send button pop [0.34, 1.56, 0.64, 1]",
+    "r04 S1 search pill 497x90 r45 on #e4e6e3, blue caret #0988f6, soft blue halo under the pill"
+  ],
+  "taste": [
+    "TASTE.md 2 Easing",
+    "3 Timing",
+    "8 UI mocks"
+  ],
+  "params": {
+    "query": {
+      "type": "string",
+      "description": "What gets typed into the bar."
+    },
+    "placeholder": {
+      "type": "string",
+      "default": "Ask anything",
+      "description": "Grey placeholder shown before typing."
+    },
+    "x": {
+      "type": "number",
+      "default": null,
+      "description": "Bar centre x (default comp centre)."
+    },
+    "y": {
+      "type": "number",
+      "default": null,
+      "description": "Bar centre y (default comp centre)."
+    },
+    "width": {
+      "type": "number",
+      "default": null,
+      "description": "Bar width px (default 76 % of the comp width)."
+    },
+    "height": {
+      "type": "number",
+      "default": null,
+      "description": "Bar height px (default 15 % of the width)."
+    },
+    "theme": {
+      "type": "enum",
+      "enum": [
+        "light",
+        "dark"
+      ],
+      "default": "light",
+      "description": "light = white pill, black text (r04); dark = graphite pill, white text (r06)."
+    },
+    "accent": {
+      "type": "color",
+      "default": "#0988f6",
+      "description": "Caret, halo and send button colour."
+    },
+    "cps": {
+      "type": "number",
+      "default": 24,
+      "min": 2,
+      "max": 120,
+      "description": "Typing speed, characters per second."
+    },
+    "typeDelay": {
+      "type": "number",
+      "default": 30,
+      "min": 18,
+      "description": "Frames at 30 fps from start to the first keystroke (the bar needs about 18 to open)."
+    },
+    "press": {
+      "type": "number",
+      "default": 14,
+      "min": 4,
+      "description": "Frames at 30 fps from the end of typing to the send press."
+    },
+    "halo": {
+      "type": "boolean",
+      "default": true,
+      "description": "Soft blurred accent halo under the bar (light theme look)."
+    },
+    "exit": {
+      "type": "boolean",
+      "default": true,
+      "description": "Bar shrinks slightly and fades, ending on the end frame."
+    },
+    "name": {
+      "type": "string",
+      "default": "Prompt bar",
+      "description": "Name of the group null (children are named after it)."
+    }
+  },
+  "length30": "typeDelay + len(query) * 30 / cps + press + 30",
+  "checkFrames30": [
+    "4",
+    "12",
+    "typeDelay - 4",
+    "typeDelay + len(query) * 15 / cps",
+    "typeDelay + len(query) * 30 / cps + press + 3"
+  ],
+  "lets": {
+    "X": "x == null ? CX : x",
+    "Y": "y == null ? CY : y",
+    "BW": "width == null ? round(W * 0.76) : width",
+    "BH0": "height == null ? round((width == null ? round(W * 0.76) : width) * 0.15) : height",
+    "BH": "round(BH0)",
+    "R": "round(BH0 / 2)",
+    "TS": "round(BH0 * 0.34)",
+    "pill": "theme == 'dark' ? rgba('#1c1d21') : rgba('#fefefe')",
+    "ink": "theme == 'dark' ? rgba('#f4f5f7') : rgba('#0b0b0d')",
+    "ph": "theme == 'dark' ? rgba('#7d7f86') : rgba('#929293')",
+    "left": "-BW / 2 + BH0 * 0.5",
+    "SD": "round(BH0 * 0.68)",
+    "sendLX": "BW / 2 - BH0 / 2",
+    "tY": "round(TS * 0.22)",
+    "typeStart": "start + f(typeDelay)",
+    "typeLen": "max(1, round(len(query) * fps / cps))",
+    "typeEnd": "start + f(typeDelay) + max(1, round(len(query) * fps / cps))",
+    "P": "start + f(typeDelay) + max(1, round(len(query) * fps / cps)) + f(press)"
+  },
+  "steps": [
+    {
+      "id": "g",
+      "action": "editor.addShapeLayer",
+      "args": {
+        "opts": {
+          "type": "rectangle",
+          "x": "{{X - PX}}",
+          "y": "{{Y - PY}}",
+          "width": 2,
+          "height": 2,
+          "fill": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "name": "{{name}}"
+        }
+      },
+      "layer": true,
+      "root": true
+    },
+    {
+      "let": {
+        "G": "@g.result"
+      }
+    },
+    {
+      "when": "halo",
+      "id": "halo",
+      "action": "editor.addShapeLayer",
+      "args": {
+        "opts": {
+          "type": "rectangle",
+          "x": 0,
+          "y": "{{round(BH0 * 0.3)}}",
+          "width": "{{round(BW * 0.84)}}",
+          "height": "{{round(BH0 * 0.7)}}",
+          "radius": "{{round(BH0 * 0.35)}}",
+          "fill": "{{rgba(accent, 0.3)}}",
+          "name": "{{name}} halo"
+        }
+      },
+      "layer": true
+    },
+    {
+      "when": "halo",
+      "action": "editor.setLayerParent",
+      "args": {
+        "childId": "{{@halo.result}}",
+        "parentId": "{{G}}"
+      }
+    },
+    {
+      "when": "halo",
+      "action": "editor.enableLayerEffect",
+      "args": {
+        "layerId": "{{@halo.result}}",
+        "kind": "blur"
+      }
+    },
+    {
+      "when": "halo",
+      "action": "editor.updateLayerProperty",
+      "args": {
+        "layerId": "{{@halo.result}}",
+        "path": "blur.radius",
+        "value": "{{round(BH0 * 0.45)}}"
+      }
+    },
+    {
+      "when": "halo",
+      "action": "editor.setKeyframes",
+      "args": {
+        "layerId": "{{@halo.result}}",
+        "propertyPath": "transform.opacity",
+        "keyframes": [
+          {
+            "frame": "{{t(10)}}",
+            "value": 0,
+            "ease": [
+              0.33,
+              1,
+              0.68,
+              1
+            ]
+          },
+          {
+            "frame": "{{t(24)}}",
+            "value": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "pill",
+      "action": "editor.addShapeLayer",
+      "args": {
+        "opts": {
+          "type": "rectangle",
+          "x": 0,
+          "y": 0,
+          "width": "{{BW}}",
+          "height": "{{BH}}",
+          "radius": "{{R}}",
+          "fill": "{{pill}}",
+          "name": "{{name}} pill"
+        }
+      },
+      "layer": true
+    },
+    {
+      "action": "editor.setLayerParent",
+      "args": {
+        "childId": "{{@pill.result}}",
+        "parentId": "{{G}}"
+      }
+    },
+    {
+      "action": "editor.setKeyframes",
+      "args": {
+        "layerId": "{{@pill.result}}",
+        "propertyPath": "shape.width",
+        "keyframes": [
+          {
+            "frame": "{{t(5)}}",
+            "value": "{{BH}}",
+            "ease": [
+              0.33,
+              1,
+              0.68,
+              1
+            ]
+          },
+          {
+            "frame": "{{t(17)}}",
+            "value": "{{BW}}"
+          }
+        ]
+      }
+    },
+    {
+      "id": "phm",
+      "action": "agent.measureString",
+      "args": {
+        "text": "{{placeholder}}",
+        "fontFamily": "Inter",
+        "fontSize": "{{TS}}",
+        "fontWeight": 400
+      }
+    },
+    {
+      "id": "ph",
+      "action": "editor.createQuickText",
+      "args": {
+        "x": "{{left + @phm.result.width / 2}}",
+        "y": "{{tY}}",
+        "text": "{{placeholder}}"
+      },
+      "layer": true
+    },
+    {
+      "let": {
+        "PH": "@ph.result"
+      }
+    },
+    {
+      "action": "editor.renameLayer",
+      "args": {
+        "id": "{{PH}}",
+        "name": "{{name}} placeholder"
+      }
+    },
+    {
+      "action": "editor.setLayerParent",
+      "args": {
+        "childId": "{{PH}}",
+        "parentId": "{{G}}"
+      }
+    },
+    {
+      "action": "editor.updateLayerProperty",
+      "args": {
+        "layerId": "{{PH}}",
+        "path": "transform.position.defaultValue",
+        "value": "{{[left + @phm.result.width / 2, tY]}}"
+      }
+    },
+    {
+      "action": "editor.updateLayerProperty",
+      "args": {
+        "layerId": "{{PH}}",
+        "path": "animOverrides.fontSize.defaultValue",
+        "value": "{{TS}}"
+      }
+    },
+    {
+      "action": "editor.updateLayerProperty",
+      "args": {
+        "layerId": "{{PH}}",
+        "path": "content.spans.0.style.fontSize",
+        "value": "{{TS}}"
+      }
+    },
+    {
+      "action": "editor.updateLayerProperty",
+      "args": {
+        "layerId": "{{PH}}",
+        "path": "content.spans.0.style.fontFamily",
+        "value": "Inter"
+      }
+    },
+    {
+      "action": "editor.updateLayerProperty",
+      "args": {
+        "layerId": "{{PH}}",
+        "path": "content.spans.0.style.color",
+        "value": "{{ph}}"
+      }
+    },
+    {
+      "action": "editor.setKeyframes",
+      "args": {
+        "layerId": "{{PH}}",
+        "propertyPath": "transform.opacity",
+        "keyframes": [
+          {
+            "frame": "{{start}}",
+            "value": 0,
+            "ease": "hold"
+          },
+          {
+            "frame": "{{t(15)}}",
+            "value": 0,
+            "ease": [
+              0.33,
+              1,
+              0.68,
+              1
+            ]
+          },
+          {
+            "frame": "{{t(21)}}",
+            "value": 1,
+            "ease": "hold"
+          },
+          {
+            "frame": "{{typeStart}}",
+            "value": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "qm",
+      "action": "agent.measureString",
+      "args": {
+        "text": "{{query}}",
+        "fontFamily": "Inter",
+        "fontSize": "{{TS}}",
+        "fontWeight": 400
+      }
+    },
+    {
+      "id": "q",
+      "action": "editor.createQuickText",
+      "args": {
+        "x": "{{left + @qm.result.width / 2}}",
+        "y": "{{tY}}",
+        "text": "{{query}}"
+      },
+      "layer": true
+    },
+    {
+      "let": {
+        "Q": "@q.result"
+      }
+    },
+    {
+      "action": "editor.renameLayer",
+      "args": {
+        "id": "{{Q}}",
+        "name": "{{name}} query"
+      }
+    },
+    {
+      "action": "editor.setLayerParent",
+      "args": {
+        "childId": "{{Q}}",
+        "parentId": "{{G}}"
+      }
+    },
+    {
+      "action": "editor.updateLayerProperty",
+      "args": {
+        "layerId": "{{Q}}",
+        "path": "transform.position.defaultValue",
+        "value": "{{[left + @qm.result.width / 2, tY]}}"
+      }
+    },
+    {
+      "action": "editor.updateLayerProperty",
+      "args": {
+        "layerId": "{{Q}}",
+        "path": "animOverrides.fontSize.defaultValue",
+        "value": "{{TS}}"
+      }
+    },
+    {
+      "action": "editor.updateLayerProperty",
+      "args": {
+        "layerId": "{{Q}}",
+        "path": "content.spans.0.style.fontSize",
+        "value": "{{TS}}"
+      }
+    },
+    {
+      "action": "editor.updateLayerProperty",
+      "args": {
+        "layerId": "{{Q}}",
+        "path": "content.spans.0.style.fontFamily",
+        "value": "Inter"
+      }
+    },
+    {
+      "action": "editor.updateLayerProperty",
+      "args": {
+        "layerId": "{{Q}}",
+        "path": "content.spans.0.style.color",
+        "value": "{{ink}}"
+      }
+    },
+    {
+      "action": "agent.applyTextAnimatorPreset",
+      "args": {
+        "layerId": "{{Q}}",
+        "presetId": "type-on",
+        "startFrame": "{{typeStart}}",
+        "durationFrames": "{{typeLen}}",
+        "replace": true
+      }
+    },
+    {
+      "action": "agent.setTextCaret",
+      "args": {
+        "layerId": "{{Q}}",
+        "caret": {
+          "style": "bar",
+          "color": "{{accent}}",
+          "blinkRate": 1,
+          "startFrame": "{{t(15)}}",
+          "endFrame": "{{P}}"
+        }
+      }
+    },
+    {
+      "id": "send",
+      "action": "editor.addShapeLayer",
+      "args": {
+        "opts": {
+          "type": "circle",
+          "x": "{{sendLX}}",
+          "y": 0,
+          "width": "{{SD}}",
+          "height": "{{SD}}",
+          "fill": "{{accent}}",
+          "name": "{{name}} send button"
+        }
+      },
+      "layer": true
+    },
+    {
+      "action": "editor.setLayerParent",
+      "args": {
+        "childId": "{{@send.result}}",
+        "parentId": "{{G}}"
+      }
+    },
+    {
+      "action": "editor.setKeyframes",
+      "args": {
+        "layerId": "{{@send.result}}",
+        "propertyPath": "transform.scale",
+        "keyframes": [
+          {
+            "frame": "{{typeEnd + f(1)}}",
+            "value": [
+              0,
+              0
+            ],
+            "ease": [
+              0.34,
+              1.56,
+              0.64,
+              1
+            ]
+          },
+          {
+            "frame": "{{typeEnd + f(7)}}",
+            "value": [
+              1,
+              1
+            ],
+            "ease": "hold"
+          },
+          {
+            "frame": "{{P}}",
+            "value": [
+              1,
+              1
+            ],
+            "ease": [
+              0.5,
+              0,
+              0.75,
+              0
+            ]
+          },
+          {
+            "frame": "{{P + f(3)}}",
+            "value": [
+              0.84,
+              0.84
+            ],
+            "ease": [
+              0.34,
+              1.56,
+              0.64,
+              1
+            ]
+          },
+          {
+            "frame": "{{P + f(10)}}",
+            "value": [
+              1,
+              1
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "arstem",
+      "action": "editor.addShapeLayer",
+      "args": {
+        "opts": {
+          "type": "rectangle",
+          "x": 0,
+          "y": 0,
+          "width": "{{round(SD * 0.085)}}",
+          "height": "{{round(SD * 0.40)}}",
+          "radius": "{{round(SD * 0.04)}}",
+          "fill": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "name": "{{name}} arrow stem"
+        }
+      },
+      "layer": true
+    },
+    {
+      "action": "editor.setLayerParent",
+      "args": {
+        "childId": "{{@arstem.result}}",
+        "parentId": "{{@send.result}}"
+      }
+    },
+    {
+      "action": "editor.updateLayerProperty",
+      "args": {
+        "layerId": "{{@arstem.result}}",
+        "path": "transform.position.defaultValue",
+        "value": "{{[0, round(SD * 0.02)]}}"
+      }
+    },
+    {
+      "id": "ararmL",
+      "action": "editor.addShapeLayer",
+      "args": {
+        "opts": {
+          "type": "rectangle",
+          "x": 0,
+          "y": 0,
+          "width": "{{round(SD * 0.085)}}",
+          "height": "{{round(SD * 0.25)}}",
+          "radius": "{{round(SD * 0.04)}}",
+          "fill": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "name": "{{name}} arrow arm L"
+        }
+      },
+      "layer": true
+    },
+    {
+      "action": "editor.setLayerParent",
+      "args": {
+        "childId": "{{@ararmL.result}}",
+        "parentId": "{{@send.result}}"
+      }
+    },
+    {
+      "action": "editor.updateLayerProperty",
+      "args": {
+        "layerId": "{{@ararmL.result}}",
+        "path": "transform.position.defaultValue",
+        "value": "{{[round(-SD * 0.075), round(-SD * 0.095)]}}"
+      }
+    },
+    {
+      "action": "editor.updateLayerProperty",
+      "args": {
+        "layerId": "{{@ararmL.result}}",
+        "path": "transform.rotation.defaultValue",
+        "value": 45
+      }
+    },
+    {
+      "id": "ararmR",
+      "action": "editor.addShapeLayer",
+      "args": {
+        "opts": {
+          "type": "rectangle",
+          "x": 0,
+          "y": 0,
+          "width": "{{round(SD * 0.085)}}",
+          "height": "{{round(SD * 0.25)}}",
+          "radius": "{{round(SD * 0.04)}}",
+          "fill": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "name": "{{name}} arrow arm R"
+        }
+      },
+      "layer": true
+    },
+    {
+      "action": "editor.setLayerParent",
+      "args": {
+        "childId": "{{@ararmR.result}}",
+        "parentId": "{{@send.result}}"
+      }
+    },
+    {
+      "action": "editor.updateLayerProperty",
+      "args": {
+        "layerId": "{{@ararmR.result}}",
+        "path": "transform.position.defaultValue",
+        "value": "{{[round(SD * 0.075), round(-SD * 0.095)]}}"
+      }
+    },
+    {
+      "action": "editor.updateLayerProperty",
+      "args": {
+        "layerId": "{{@ararmR.result}}",
+        "path": "transform.rotation.defaultValue",
+        "value": -45
+      }
+    },
+    {
+      "action": "editor.setKeyframes",
+      "args": {
+        "layerId": "{{G}}",
+        "propertyPath": "transform.scale",
+        "keyframes": [
+          {
+            "frame": "{{start}}",
+            "value": [
+              0.2,
+              0.2
+            ],
+            "ease": [
+              0.34,
+              1.56,
+              0.64,
+              1
+            ]
+          },
+          {
+            "frame": "{{t(8)}}",
+            "value": [
+              1,
+              1
+            ],
+            "ease": "hold"
+          },
+          {
+            "frame": "{{exit ? end - f(8) : end}}",
+            "value": [
+              1,
+              1
+            ],
+            "ease": [
+              0.55,
+              0,
+              1,
+              0.45
+            ]
+          },
+          {
+            "frame": "{{end}}",
+            "value": "{{exit ? [0.94, 0.94] : [1, 1]}}"
+          }
+        ]
+      }
+    },
+    {
+      "action": "editor.setKeyframes",
+      "args": {
+        "layerId": "{{G}}",
+        "propertyPath": "transform.opacity",
+        "keyframes": [
+          {
+            "frame": "{{start}}",
+            "value": 0,
+            "ease": [
+              0.33,
+              1,
+              0.68,
+              1
+            ]
+          },
+          {
+            "frame": "{{t(3)}}",
+            "value": 1,
+            "ease": "hold"
+          },
+          {
+            "frame": "{{exit ? end - f(8) : end}}",
+            "value": 1,
+            "ease": [
+              0.55,
+              0,
+              1,
+              0.45
+            ]
+          },
+          {
+            "frame": "{{end}}",
+            "value": "{{exit ? 0 : 1}}"
+          }
+        ]
+      }
+    }
+  ],
+  "returns": {
+    "groupId": "{{G}}",
+    "pillId": "{{@pill.result}}",
+    "queryId": "{{Q}}",
+    "sendId": "{{@send.result}}",
+    "sendX": "{{X + sendLX}}",
+    "sendY": "{{Y}}",
+    "typedFrame": "{{typeEnd}}",
+    "pressFrame": "{{P}}",
+    "barTop": "{{Y - BH / 2}}",
+    "barBottom": "{{Y + BH / 2}}"
+  },
+  "example": {
+    "params": {
+      "query": "launch title, early access, clean",
+      "theme": "light"
+    },
+    "startFrame": 0
+  }
+}

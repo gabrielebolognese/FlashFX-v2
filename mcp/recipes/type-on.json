@@ -1,0 +1,46 @@
+{
+  "id": "type-on",
+  "name": "Type-on with caret",
+  "category": "text",
+  "description": "Left-anchored text typed character by character at a human rate with a caret riding the head (solid while typing, blinking before and after). For prompts, search queries, code and terminal lines.",
+  "source": ["r06 S2 typed prompt (29 chars in 72 f at 60 = 24 chars/s)", "r04 S1 query type-on with block caret (B35)", "r04 S2 blue caret"],
+  "taste": ["TASTE.md 3 Timing", "8 UI mocks"],
+  "params": {
+    "text": { "type": "string", "description": "What gets typed." },
+    "left": { "type": "number", "default": null, "description": "Left edge x of the text in comp px (default: centred on the comp)." },
+    "y": { "type": "number", "default": null, "description": "Line-box centre y (default comp centre)." },
+    "size": { "type": "number", "default": null, "min": 6, "description": "Font size px (default 4.4 % of the short side)." },
+    "weight": { "type": "number", "default": 400, "description": "Font weight." },
+    "family": { "type": "string", "default": "Inter", "description": "Font family ('Space Mono' for code / terminal)." },
+    "color": { "type": "color", "default": "#0b0b0d", "description": "Text colour." },
+    "cps": { "type": "number", "default": 24, "min": 2, "max": 120, "description": "Characters per second (24 = the references' human typing; 12 = deliberate)." },
+    "delay": { "type": "number", "default": 8, "min": 0, "description": "Frames at 30 fps of blinking caret before the first keystroke." },
+    "caret": { "type": "enum", "enum": ["bar", "block", "underline", "none"], "default": "bar", "description": "Caret style." },
+    "caretColor": { "type": "color", "default": "#0988f6", "description": "Caret colour (r04 blue #0988f6)." },
+    "name": { "type": "string", "default": "Typed text", "description": "Layer name." }
+  },
+  "length30": "delay + len(text) * 30 / cps + 30",
+  "checkFrames30": ["delay / 2", "delay + len(text) * 15 / cps", "delay + len(text) * 30 / cps + 6"],
+  "lets": {
+    "S": "size == null ? round(min(W, H) * 0.044) : size",
+    "Y": "y == null ? CY : y",
+    "s0": "start + f(delay)",
+    "D": "max(1, round(len(text) * fps / cps))"
+  },
+  "steps": [
+    { "id": "ms", "action": "agent.measureString", "args": { "text": "{{text}}", "fontFamily": "{{family}}", "fontSize": "{{S}}", "fontWeight": "{{weight}}" } },
+    { "let": { "X": "left == null ? CX : left + @ms.result.width / 2" } },
+    { "id": "txt", "action": "editor.createQuickText", "args": { "x": "{{X - PX}}", "y": "{{Y - PY}}", "text": "{{text}}" }, "layer": true, "root": true },
+    { "let": { "L": "@txt.result" } },
+    { "action": "editor.renameLayer", "args": { "id": "{{L}}", "name": "{{name}}" } },
+    { "action": "editor.updateLayerProperty", "args": { "layerId": "{{L}}", "path": "animOverrides.fontSize.defaultValue", "value": "{{S}}" } },
+    { "action": "editor.updateLayerProperty", "args": { "layerId": "{{L}}", "path": "content.spans.0.style.fontSize", "value": "{{S}}" } },
+    { "action": "editor.updateLayerProperty", "args": { "layerId": "{{L}}", "path": "content.spans.0.style.fontWeight", "value": "{{weight}}" } },
+    { "action": "editor.updateLayerProperty", "args": { "layerId": "{{L}}", "path": "content.spans.0.style.fontFamily", "value": "{{family}}" } },
+    { "action": "editor.updateLayerProperty", "args": { "layerId": "{{L}}", "path": "content.spans.0.style.color", "value": "{{color}}" } },
+    { "action": "agent.applyTextAnimatorPreset", "args": { "layerId": "{{L}}", "presetId": "type-on", "startFrame": "{{s0}}", "durationFrames": "{{D}}", "replace": true } },
+    { "when": "caret != 'none'", "action": "agent.setTextCaret", "args": { "layerId": "{{L}}", "caret": { "style": "{{caret}}", "color": "{{caretColor}}", "blinkRate": 1, "startFrame": "{{start}}", "endFrame": "{{end}}" } } }
+  ],
+  "returns": { "layerId": "{{L}}", "typedFrame": "{{s0 + D}}", "width": "{{@ms.result.width}}", "right": "{{X + @ms.result.width / 2}}" },
+  "example": { "params": { "text": "make me a launch title", "left": 200 }, "startFrame": 0 }
+}
