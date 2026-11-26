@@ -4217,7 +4217,9 @@ export class WebGPURenderer {
         data[9] = t.opacity;
         this.writeMaskUniforms(data, 10, 12, textLayer.masks);
         writeCard3D(data, TEXT_MVP_FLAG, TEXT_MVP_BASE, textLayer, frame.camera);
-        writeCornerPin(data, TEXT_MVP_FLAG, TEXT_MVP_BASE, textLayer, { cx: 0, cy: 0, w: data[4], h: data[5] }, frame.width, frame.height);
+        // B43: the raster may carry an overhang pad around the measured box; a corner pin maps the BOX
+        // (the pad extrapolates through the same warp, like the shape SDF margin).
+        writeCornerPin(data, TEXT_MVP_FLAG, TEXT_MVP_BASE, textLayer, { cx: 0, cy: 0, w: (rendered.width - 2 * rendered.padX) * t.scaleX, h: (rendered.height - 2 * rendered.padY) * t.scaleY }, frame.width, frame.height);
 
         const gpuTexture = this.getOrCreateTextTexture(gpu, rendered.key, rendered.bitmap, rendered.width, rendered.height);
         if (!gpuTexture) {

@@ -100,6 +100,7 @@
     "gpu:bridge": "node scripts/gpu-bridge.mjs",
     "gpu:text-kinetic": "node scripts/gpu-text-kinetic.mjs",
     "gpu:text-paint": "node scripts/gpu-text-paint.mjs",
+    "gpu:text-bounds": "node scripts/gpu-text-bounds.mjs",
     "gpu:fonts": "node scripts/gpu-fonts.mjs",
     "gpu:ui-kit": "node scripts/gpu-verify-ui-kit.mjs",
     "gpu:camera-cards": "node scripts/gpu-camera-cards.mjs",
