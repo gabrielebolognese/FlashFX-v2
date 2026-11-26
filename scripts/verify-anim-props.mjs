@@ -31,7 +31,11 @@ try {
         export { createComposition, createRectangleLayer, createAdjustmentLayer, uid } from './src/core/factory';
         export { DEFAULT_GLOW, DEFAULT_BLUR, DEFAULT_SHADOW } from './src/core/effectDefaults';
         export * from './src/core/animProps';
-        export { buildKeyframesFromSpecs, CSS_EASES, EASING_NAMES } from './src/core/keyframeSpecs';
+        export { buildKeyframesFromSpecs, CSS_EASES, EASING_NAMES, canonicalEase, easeSpecError, EASY_EASE } from './src/core/keyframeSpecs';
+        export { defaultGlowFor } from './src/core/effectDefaults';
+        export { createTextLayer } from './src/core/factory';
+        export { pathFractionAtAngle } from './src/core/shapeModifiers';
+        export { shapeToPathVertices } from './src/core/pathOps';
         export { applyEasing, cubicBezier } from './src/core/easings';
         export { smoothSelected, wiggleSelected } from './src/core/keyframeAssistants';
         export { ANIM_COLOR_PATHS, ANIM_FX_PATHS } from './src/agent/featureManifest';
@@ -53,6 +57,7 @@ try {
     srgbToLinear, linearToSrgb, sanitizeAnimProps, hasAnimProps, ANIM_PROP_DEFS,
     buildKeyframesFromSpecs, CSS_EASES, EASING_NAMES, applyEasing, cubicBezier, smoothSelected, wiggleSelected,
     ANIM_COLOR_PATHS, ANIM_FX_PATHS,
+    canonicalEase, easeSpecError, EASY_EASE, defaultGlowFor, createTextLayer, pathFractionAtAngle, shapeToPathVertices,
   } = m;
 
   const numProp = (keyframes) => ({ id: 'p', name: 'p', valueType: 'number', defaultValue: 0, keyframes });
@@ -278,6 +283,56 @@ try {
     assert.equal(sanitizeAnimProps({ effectParams: { 'x_y': { keyframes: [] } } }), undefined);
     const fx = sanitizeAnimProps(JSON.parse(JSON.stringify(comp.layers[1].animProps)));
     assert.equal(fx.effectParams['170_0'].keyframes.length, 2);
+  });
+
+  // ---------------------------------------------------------------- B67: replica-friction ergonomics
+  console.log('B67 agent authoring ergonomics');
+  check('breakdown ease names resolve to the same curves as the canonical names', () => {
+    const pairs = [
+      ['easeOutCubic', 'cubicOut'], ['easeInOutCubic', 'cubicInOut'], ['easeInQuad', 'quadIn'], ['easeOutBack', 'backOut'],
+      ['ease-out-expo', 'expoOut'], ['EaseInOutSine', 'sineInOut'], ['easeOutElastic', 'elasticOut'], ['cubic_out', 'cubicOut'],
+      ['easeIn', 'ease-in'], ['easeOut', 'ease-out'], ['easeInOut', 'ease-in-out'], ['Ease In Out', 'ease-in-out'],
+    ];
+    for (const [alias, canon] of pairs) {
+      assert.equal(easeSpecError(alias), null, alias);
+      assert.equal(canonicalEase(alias), canon, alias);
+      const a = buildKeyframesFromSpecs([{ frame: 0, value: 0, ease: alias }, { frame: 30, value: 100 }]);
+      const b = buildKeyframesFromSpecs([{ frame: 0, value: 0, ease: canon }, { frame: 30, value: 100 }]);
+      assert.deepEqual(a, b, alias);
+    }
+    assert.deepEqual(canonicalEase('easyEase'), EASY_EASE);
+    assert.notEqual(easeSpecError('easeSideways'), null);
+    assert.equal(canonicalEase('cubicOut'), 'cubicOut');
+    assert.deepEqual(canonicalEase([0.1, 0.2, 0.3, 1]), [0.1, 0.2, 0.3, 1]);
+  });
+
+  check('first-enable glow on text / shape glows in the layer colour from every pixel', () => {
+    const t = createTextLayer('T', 100, 100, 'go', 60, [0, 0.784, 0.325, 1]); // #00c853
+    const g = defaultGlowFor(t);
+    assert.deepEqual(g.color, [0, 0.784, 0.325, 1]);
+    assert.equal(g.threshold, 0);
+    assert.equal(g.enabled, true);
+    const r = createRectangleLayer('R', 0, 0, 100, 100, [1, 0, 0.5, 1]);
+    assert.deepEqual(defaultGlowFor(r).color, [1, 0, 0.5, 1]);
+    assert.deepEqual(defaultGlowFor(undefined), DEFAULT_GLOW);
+    // the extract pass is smoothstep(threshold, threshold + 0.1, luminance): #00c853 is fully in at 0, fully out at 0.6
+    const lum = 0.7152 * 0.784 + 0.0722 * 0.325;
+    const ss = (e0, e1, x) => { const k = Math.min(1, Math.max(0, (x - e0) / (e1 - e0))); return k * k * (3 - 2 * k); };
+    assert.equal(ss(0, 0.1, lum), 1);
+    assert.equal(ss(0.6, 0.7, lum), 0);
+  });
+
+  check('trim start angle: clock angles map to the right arc-length fraction of a circle path', () => {
+    const P = (v) => ({ id: 'r', name: 'r', valueType: 'number', defaultValue: v, keyframes: [] });
+    const verts = shapeToPathVertices({ type: 'circle', radius: P(100), fillColor: [1, 1, 1, 1], strokeColor: [0, 0, 0, 0], strokeWidth: P(0) }, 0);
+    assert.ok(verts.length >= 4);
+    const wrap = (x) => ((x % 1) + 1) % 1;
+    const f0 = pathFractionAtAngle(verts, true, 0);
+    const d90 = wrap(pathFractionAtAngle(verts, true, 90) - f0);
+    const d180 = wrap(pathFractionAtAngle(verts, true, 180) - f0);
+    assert.ok(Math.abs(Math.min(d90, 1 - d90) - 0.25) < 0.01, `quarter ${d90}`);
+    assert.ok(Math.abs(d180 - 0.5) < 0.01, `half ${d180}`);
+    assert.equal(pathFractionAtAngle(verts, true, 360), f0);
   });
 
   console.log(`\nverify:anim-props - ${passed} checks passed`);

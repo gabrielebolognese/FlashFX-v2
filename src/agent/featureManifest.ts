@@ -39,6 +39,8 @@ export type AgentHelperMethod =
   | 'getLayer'
   | 'measureText'
   | 'measureString'
+  | 'placeText'
+  | 'setTrimStartAngle'
   | 'renderFrame'
   | 'renderStrip'
   | 'configureParticles'
@@ -212,6 +214,18 @@ export const AGENT_ACTIONS: readonly AgentActionSpec[] = [
     returns: '{ frame, center, box {width,height,left,top}, ink {width,height,left,right,top,bottom}, lines, lineWidths, lineHeightPx, fontSize, scale, rotation }',
     description: 'Measure a text layer exactly as the renderer lays it out (comp px), so you can align other layers, size masks and cards, or left-align by centre. ink = the lines (width of the widest line x line count); box = the drawn quad incl. padding. Assumes scale 1 / no rotation for the edges. Read-only.',
     params: [LAYER_ID, { name: 'frame', type: 'number', optional: true, description: 'Default: the playhead.' }] },
+  { id: 'agent.placeText', store: 'agent', method: 'placeText', undoable: true,
+    returns: '{ anchor, moved [dx,dy], position, keyframesShifted, inkTop, inkBottom, baselineY }',
+    description: 'Move a text layer so its visible ink centre (default), its first-line baseline, or its line-box centre lands on (x, y) in comp px, measured in the real face after styling. createQuickText / addText put y on the line-box centre, so mixed-case words sit ~0.15 x size high: style the text first (font, size, weight), then call this. Keyframed position keeps its motion (every key shifts by the same delta). One undo step.',
+    params: [LAYER_ID, { name: 'x', type: 'number', optional: true, description: 'Comp px; null / omitted keeps the current x.' },
+      { name: 'y', type: 'number' },
+      { name: 'anchor', type: 'string', values: ['inkCenter', 'baseline', 'box'], optional: true, description: 'Default inkCenter.' },
+      { name: 'frame', type: 'number', optional: true, description: 'Frame to measure at (default: the playhead).' }] },
+  { id: 'agent.setTrimStartAngle', store: 'agent', method: 'setTrimStartAngle', undoable: true,
+    returns: '{ modifierIndex, angle, pathFraction, offset }',
+    description: 'Make a trim-path draw-on start at a clock angle around the shape (0 = 12 o’clock, 90 = 3 o’clock, clockwise): sets the trim offset (shifting its keys) so start + offset lands where a ray from the shape centre at that angle meets the path. For progress rings: stroked circle > editor.convertShapeToPath > addShapeModifier trim > this > keyframe modifiers.N.end 0 -> 1. One undo step.',
+    params: [LAYER_ID, { name: 'angle', type: 'number', description: 'Degrees, 0 = 12 o’clock, clockwise.' },
+      { name: 'modifierIndex', type: 'number', optional: true, description: 'Default: the first trim modifier.' }] },
   { id: 'agent.renderFrame', store: 'agent', method: 'renderFrame', undoable: false,
     returns: '{ exportId, bytes, frame, width, height, mimeType: "image/png" }; read the PNG with __ffxAgent.readExport(exportId, offset, length)',
     description: 'Render ONE frame of the active composition at full resolution through an offscreen WebGPU renderer, exactly like the MP4 exporter (export-quality motion blur, full-resolution video, no UI overlays, not the scaled preview), as a PNG. For pixel-true checks and side-by-sides with reference frames. Default size = the composition; pass width or height alone to keep the aspect.',
@@ -652,7 +666,7 @@ export const AGENT_FEATURES: readonly AgentFeature[] = [
   { id: 'text.add', area: 'text', name: 'Text layers',
     description: 'Point or paragraph text with per-span font, weight, size, colour, stroke, letter spacing, line height.',
     ui: 'Canvas toolbar > Text (T), click the canvas and type; style in Inspector > Text',
-    actions: ['editor.addText', 'editor.createQuickText', 'agent.setTextContent', 'agent.measureText', 'agent.measureString', 'editor.updateLayerProperty'], status: 'shipped' },
+    actions: ['editor.addText', 'editor.createQuickText', 'agent.setTextContent', 'agent.measureText', 'agent.measureString', 'agent.placeText', 'editor.updateLayerProperty'], status: 'shipped' },
   { id: 'text.animators', area: 'text', name: 'Text animators (range selectors)',
     description: 'After-Effects-style per-character / word / line animators driven by a range selector: type-on, fade, pop, cascade, slide, rise, blur, tumble, scatter, colour wave, delete. Split by character, character excluding spaces, word or line; deltas for position, scale, rotation, 3D rotation, blur, opacity, tracking in em (tracking burst), fill colour, skew and seeded scatter; selector shapes (ramp up/down, triangle, round, smooth, square) with ease high/low, seeded randomize order and keyframable start / end / offset; animators stack. Works on multi-line, wrapped and fixed-box text.',
     ui: 'Select a text layer > Inspector (properties) > Animators section > pick a preset (edit split, deltas incl. Tracking em, selector shape / ease / reveal timing there)',
@@ -698,7 +712,7 @@ export const AGENT_FEATURES: readonly AgentFeature[] = [
     notes: 'Agents: use editor.addShapeLayer (explicit size, fill, radius, name, no default stroke).' },
   { id: 'shapes.modifiers', area: 'shapes', name: 'Path modifiers (Trim Paths, Offset, Roughen, Pucker & Bloat)',
     description: 'Non-destructive outline modifiers; Trim Paths gives line draw-on animation.',
-    ui: 'Select a shape > Inspector > Path Modifiers > add', actions: ['editor.addShapeModifier', 'editor.addKeyframe'], status: 'shipped' },
+    ui: 'Select a shape > Inspector > Path Modifiers > add', actions: ['editor.addShapeModifier', 'editor.addKeyframe', 'agent.setTrimStartAngle'], status: 'shipped' },
   { id: 'shapes.morph', area: 'shapes', name: 'Shape morph',
     description: 'Morph a shape through outlines (rect, rounded rect, ellipse, star, polygon, free points) with an ease per morph and automatic correspondence so outlines do not twist; different vertex counts morph.',
     ui: 'Select a pen path > Inspector > Path Animation > Add Pose at the playhead (poses morph linearly in the UI; eases and parametric poses are agent / MCP: editor.setShapeMorph)',
@@ -883,7 +897,7 @@ export function buildAgentManifest(): AgentManifest {
     conventions: {
       units: 'Positions and sizes are composition pixels, origin top-left, Y down. Time is in frames (see getState().fps).',
       timing: 'New layers are 4-second clips (outPoint = inPoint + 4 s, capped at the comp length), like the UI. In a longer comp set editor.updateLayerProperty(layerId, "outPoint", durationFrames) or the layer disappears after 4 s.',
-      textBox: 'createQuickText / addText make an auto-size text box centred on x (y = the line box centre). An auto box is exactly as wide as the text, so horizontalAlign "left" only takes effect with a fixed box: layoutConfig.boundingBox = { type: "fixedWidth", width } and x = left edge + width / 2.',
+      textBox: 'createQuickText / addText make an auto-size text box centred on x (y = the line box centre; to put the visible ink centre or the baseline on y, style the text then call agent.placeText). Layout ignores leading / trailing spaces, so padding a string with spaces does not move it: use x or a fixed box. An auto box is exactly as wide as the text, so horizontalAlign "left" only takes effect with a fixed box: layoutConfig.boundingBox = { type: "fixedWidth", width } and x = left edge + width / 2.',
       shapes: 'addShapeWithDimensions takes the shape CENTRE. New shapes carry a 1 px grey stroke: set "shape.strokeWidth.defaultValue" to 0 for clean fills.',
       colors: 'RGBA arrays with components 0..1, e.g. [1, 0.8, 0.2, 1].',
       scale: 'Scale is a [sx, sy] multiplier: 1 = 100%.',

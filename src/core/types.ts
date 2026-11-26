@@ -1928,6 +1928,12 @@ export interface ResolvedText {
   runs?: TextStyleRun[];
   /** Horizontal skew in degrees (B36 animator skew on a glyph stamp). Absent/0: unskewed raster. */
   skewX?: number;
+  /**
+   * B64: the box a gradient `fill` spans, in this raster's px (x / y = its top-left, may be negative).
+   * Set on glyph stamps to the whole text's box at the glyph's home slot, so a gradient runs across the
+   * line (and travels with its glyph) instead of restarting in every glyph. Absent: this raster's box.
+   */
+  fillFrame?: { x: number; y: number; width: number; height: number };
   measuredWidth: number;
   measuredHeight: number;
 }

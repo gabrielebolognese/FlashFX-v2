@@ -328,6 +328,12 @@ function resolveTransform(transform: Transform, frame: number): ResolvedTransfor
 
 // Evaluate a shape layer's path-modifier stack (B8a) to plain numbers for the current frame,
 // dropping disabled modifiers. The pure geometry then runs in core/shapeModifiers.ts.
+/** B64 - text stroke width: a keyed or non-zero animOverrides.strokeWidth wins, else the span style's. */
+function textStrokeWidth(override: AnimatableProperty | undefined, styleWidth: number | undefined, frame: number): number {
+  if (override && (override.keyframes.length > 0 || (override.defaultValue as number) !== 0)) return evaluateNumber(override, frame);
+  return typeof styleWidth === 'number' && Number.isFinite(styleWidth) && styleWidth > 0 ? styleWidth : 0;
+}
+
 function resolveShapeModifiers(modifiers: ShapeLayer['modifiers'], frame: number): ResolvedShapeModifier[] {
   if (!modifiers || modifiers.length === 0) return [];
   const out: ResolvedShapeModifier[] = [];
@@ -739,6 +745,13 @@ function expandTextGlyphs(
       stampText.measuredWidth = m.width;
       stampText.measuredHeight = m.height;
       const lineY = slot.lineTop - TEXT_POINT_PADDING + m.height / 2 - canvasHeight / 2;
+      // B64: a gradient fill spans the whole text box (as on the whole-layer raster), placed at this
+      // glyph's home slot so the colour sticks to the glyph while it animates.
+      if (stampText.fill) {
+        const homeX = slot.startX + slot.centerDist;
+        const homeY = slot.lineTop - TEXT_POINT_PADDING + m.height / 2;
+        stampText.fillFrame = { x: m.width / 2 - homeX, y: m.height / 2 - homeY, width: canvasWidth, height: canvasHeight };
+      }
       const transform = composeTransforms(world, childTransform(d, slot.shift, slot, lineY));
       // Per-glyph motion blur: velocity of THIS glyph (animator slide/scale/spin + tracking + the layer's
       // own motion), so a static layer whose letters fly in still streaks. Replaces the layer-level
@@ -818,7 +831,9 @@ function resolveTextLayer(layer: TextLayer, frame: number, getStyle?: StyleLooku
     // B33: keyed text colour tracks replace the static (style-linked) colours.
     fillColor: evalAnimColor(layer.animProps?.textColor, resolveStyleColor(layer.fillStyleId, style.color, getStyle), frame),
     strokeColor: evalAnimColor(layer.animProps?.textStrokeColor, resolveStyleColor(layer.strokeStyleId, style.strokeColor, getStyle), frame),
-    strokeWidth: evaluateNumber(layer.animOverrides.strokeWidth, frame),
+    // B64: the span style's strokeWidth (what agents and the style panel write) applies unless the
+    // animated override is keyed or non-zero; before this it was ignored and outline text drew nothing.
+    strokeWidth: textStrokeWidth(layer.animOverrides.strokeWidth, style.strokeWidth, frame),
     textAlign: layer.layoutConfig.horizontalAlign,
     underline: style.underline,
     strikethrough: style.strikethrough,

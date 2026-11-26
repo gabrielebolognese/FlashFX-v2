@@ -15,7 +15,7 @@ import { createComposition, createRectangleLayer, createCircleLayer, createStarL
 import { outlineText, canOutlineFont } from '../text/outlineText';
 import { computeBatchNames, type RenamePattern } from '../core/batchRename';
 import { detachStyleValue, type SharedStyle } from '../core/styles';
-import { DEFAULT_SHADOW, DEFAULT_GLOW, DEFAULT_BLUR } from '../core/effectDefaults';
+import { DEFAULT_SHADOW, DEFAULT_BLUR, defaultGlowFor } from '../core/effectDefaults';
 import type { AlignResult, LayerBounds } from '../core/align';
 import { getLayerBounds, computeTidyUp } from '../core/align';
 import { shapeToPathVertices, reversePathVertices, simplifyPathVertices, booleanLayers, booleanLayersWithHoles, type BooleanOp } from '../core/pathOps';
@@ -47,7 +47,7 @@ import {
 } from '../core/keyframeOps';
 import { smoothSelected, wiggleSelected, exponentialScaleSelected } from '../core/keyframeAssistants';
 import { cloneValue } from '../core/keyframeValue';
-import { buildKeyframesFromSpecs, easeSpecError, CSS_EASES, type KeyframeSpec, type KeyframeEaseSpec, type ValueShape } from '../core/keyframeSpecs';
+import { buildKeyframesFromSpecs, canonicalEase, easeSpecError, CSS_EASES, type KeyframeSpec, type KeyframeEaseSpec, type ValueShape } from '../core/keyframeSpecs';
 import { planCameraMove, type CameraMoveTarget } from '../core/cameraMove';
 import { CORNER_PIN_KEYS, isConvexQuad } from '../core/cornerPin';
 import type { CornerPin } from '../core/types';
@@ -3451,7 +3451,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     if (!layer) return;
     const current = (layer as unknown as Record<'shadow' | 'glow' | 'blur', { enabled?: boolean } | undefined>)[kind];
     if (current?.enabled) return; // already on - keep the user's existing params
-    const def = kind === 'shadow' ? DEFAULT_SHADOW : kind === 'glow' ? DEFAULT_GLOW : DEFAULT_BLUR;
+    const def = kind === 'shadow' ? DEFAULT_SHADOW : kind === 'glow' ? defaultGlowFor(layer) : DEFAULT_BLUR;
     // updateLayerProperty is itself undoable.
     get().updateLayerProperty(layerId, kind, current ? { ...current, enabled: true } : def);
   },
@@ -4473,10 +4473,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       if (!p || typeof p !== 'object' || typeof p.frame !== 'number' || !Number.isFinite(p.frame)) throw new Error(`poses[${i}].frame must be a number`);
       const err = easeSpecError(p.ease);
       if (err) throw new Error(`poses[${i}].ease: ${err}`);
-      if (p.ease === 'spring') throw new Error(`poses[${i}].ease: "spring" is not supported for morphs; use backOut / elasticOut`);
+      const e = canonicalEase(p.ease);
+      if (e === 'spring') throw new Error(`poses[${i}].ease: "spring" is not supported for morphs; use backOut / elasticOut`);
       const { vertices, closed } = outlineFromSpec(p.shape);
       const kf: PathKeyframe = { frame: Math.round(p.frame), vertices, closed };
-      const e = p.ease;
       if (e === 'hold') kf.interpolation = 'hold';
       else if (Array.isArray(e)) kf.ease = [e[0], e[1], e[2], e[3]];
       else if (typeof e === 'string' && e in CSS_EASES) { const q = CSS_EASES[e as keyof typeof CSS_EASES]; kf.ease = [q[0], q[1], q[2], q[3]]; }
