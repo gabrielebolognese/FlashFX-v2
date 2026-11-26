@@ -365,8 +365,14 @@ window.__adjGpu = async () => {
     const m = createMask('ellipse', 160, 90, 200, 120); m.feather.defaultValue = 5;
     await same('image + effect stack + feathered mask', [Object.assign(img(), { effects: [{ type: EFFECT_TYPE.invert, enabled: true, params: [0.5] }, { type: EFFECT_TYPE.pixelate, enabled: true, params: [4] }], masks: [m] })]);
     await same('shape with image glow + drop shadow (multipass)', [img(), rect(160, 120, { glow: { ...DEFAULT_GLOW, threshold: 0.3, radius: 10 }, shadow: { ...DEFAULT_SHADOW } })]);
-    await same('outer glow + inner glow shapes', [rect(90, 80, { glow: { ...DEFAULT_GLOW, mode: 'outer', color: [0, 0.6, 1, 1] } }), Object.assign(createCircleLayer('c', 240, 90, 40, [0.2, 1, 0.3, 1], 30), { glow: { ...DEFAULT_GLOW, mode: 'inner', color: [1, 0, 1, 1] } })]);
-    await same('track matte (alpha)', [Object.assign(rect(160, 200), { trackMatte: 'alpha' }), createCircleLayer('src', 160, 90, 50, [1, 1, 1, 1], 30)]);
+    // B63 intentionally changed how SDF circles draw (true radius instead of the old 1.1x quad margin), so the
+    // pinned pre-batch renderer cannot be byte-identical on a circle any more. These two cases test the glow /
+    // track-matte paths, not circle geometry: their second shape is a fully rounded (radius = half the side), unstroked
+    // rectangle, which B63 keeps byte-identical (gpu:shape-render regression frame) and which still exercises the
+    // inner glow and the matte source on a round, anti-aliased edge.
+    const roundSq = (name, x, size, color) => { const l = createRectangleLayer(name, x, 90, size, size, color, 30); l.shape.borderRadius.defaultValue = size / 2; return l; };
+    await same('outer glow + inner glow shapes', [rect(90, 80, { glow: { ...DEFAULT_GLOW, mode: 'outer', color: [0, 0.6, 1, 1] } }), Object.assign(roundSq('c', 240, 80, [0.2, 1, 0.3, 1]), { glow: { ...DEFAULT_GLOW, mode: 'inner', color: [1, 0, 1, 1] } })]);
+    await same('track matte (alpha)', [Object.assign(rect(160, 200), { trackMatte: 'alpha' }), roundSq('src', 160, 100, [1, 1, 1, 1])]);
     await same('empty (no-op) adjustment over content', [img(), adj()]);
     await same('blur-only adjustment with effects preview off', [img(), adj({ blur: { ...DEFAULT_BLUR, radius: 8 } })], (x) => x.setEffectsPreviewDisabled(true));
   }
