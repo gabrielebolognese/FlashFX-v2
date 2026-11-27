@@ -1,0 +1,115 @@
+{
+  "id": "liquid-melt",
+  "name": "Liquid melt: text melts into drips that pool on the floor",
+  "category": "text",
+  "description": "A word (or any layer) melts: liquid drips of different lengths run down from the bottom of every letter in the letter's colour, then bend and spread along a floor line. Readable throughout (drips only fall from the lowest ink). The glow option gives neon drips.",
+  "source": [
+    "r05 S3 f110-210 'ideas' melts into rainbow neon drips that run down and flow across the floor (measured melt ease 0.376, 0.12, 0.234, 0.97)"
+  ],
+  "taste": [
+    "TASTE.md 2 Easing",
+    "3 Timing"
+  ],
+  "params": {
+    "layerId": {
+      "type": "layerId",
+      "description": "The text / shape / image layer to melt (text is nested in a precomp first, it stays editable)."
+    },
+    "length": {
+      "type": "number",
+      "default": null,
+      "description": "Drip length px (default: the comp height)."
+    },
+    "floorY": {
+      "type": "number",
+      "default": null,
+      "description": "Floor line, comp px (default 97 % of the height)."
+    },
+    "spacing": {
+      "type": "number",
+      "default": 14,
+      "min": 2,
+      "description": "Px between separate drips, about one stroke width."
+    },
+    "sway": {
+      "type": "number",
+      "default": 6,
+      "description": "Sideways wobble px (4-10 keeps the drips parallel)."
+    },
+    "variance": {
+      "type": "number",
+      "default": 0.9,
+      "min": 0,
+      "max": 1,
+      "description": "How much drip lengths differ; near 1 = separate drips with gaps."
+    },
+    "seed": {
+      "type": "integer",
+      "default": 5,
+      "description": "Change for different drips."
+    },
+    "glow": {
+      "type": "boolean",
+      "default": true,
+      "description": "Neon glow on the melting layer."
+    }
+  },
+  "length30": "40",
+  "checkFrames30": [
+    "10",
+    "20",
+    "40"
+  ],
+  "lets": {
+    "LEN": "length == null ? H : length",
+    "FLOOR": "floorY == null ? H * 0.97 : floorY"
+  },
+  "steps": [
+    {
+      "id": "melt",
+      "action": "agent.liquidDrip",
+      "args": {
+        "layerId": "{{layerId}}",
+        "options": {
+          "length": "{{LEN}}",
+          "startFrame": "{{start}}",
+          "endFrame": "{{end}}",
+          "floorY": "{{FLOOR}}",
+          "spacing": "{{spacing}}",
+          "sway": "{{sway}}",
+          "variance": "{{variance}}",
+          "seed": "{{seed}}"
+        }
+      }
+    },
+    {
+      "id": "glowOn",
+      "when": "glow",
+      "action": "editor.enableLayerEffect",
+      "args": {
+        "layerId": "{{@melt.result.layerId}}",
+        "kind": "glow"
+      }
+    },
+    {
+      "id": "glowRadius",
+      "when": "glow",
+      "action": "editor.updateLayerProperty",
+      "args": {
+        "layerId": "{{@melt.result.layerId}}",
+        "path": "glow.radius",
+        "value": 18
+      }
+    }
+  ],
+  "returns": {
+    "layerId": "{{@melt.result.layerId}}",
+    "keyPath": "{{@melt.result.keyPath}}"
+  },
+  "example": {
+    "params": {
+      "layerId": "LAYER"
+    },
+    "startFrame": 10
+  }
+}

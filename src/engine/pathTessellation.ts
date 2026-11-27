@@ -1,6 +1,6 @@
 import earcut from 'earcut';
 import type { PathVertex, Vec2, Vec4, LineCap, LineJoin, ResolvedFill } from '../core/types';
-import { dashPath } from '../core/shapeModifiers';
+import { contourDepths, dashPath, pointInRing } from '../core/shapeModifiers';
 import { sampleResolvedFill } from '../core/fillSampler';
 import { LruCache } from './cache/lruCache';
 
@@ -202,6 +202,32 @@ function earClip(polygon: Vec2[]): Vec2[] {
 // Fill a contour with holes (glyph counters) via earcut - the standard robust triangulator,
 // which carves any number of holes correctly (our hand-rolled keyhole ear-clip only survived a
 // single hole). Returns a flat triangle-vertex list, matching earClip's shape.
+/**
+ * B83: even-odd fill of an outer contour plus extra contours that may be holes OR islands (the dot of
+ * an outlined "i", a second logo part, a ring inside a hole). Each contour's nesting depth decides:
+ * even = filled, odd = hole; every filled contour is ear-cut with its direct children as holes. The
+ * common case (every extra contour inside the outer, none nested) is exactly the old single earcut
+ * call, so glyph counters tessellate byte-identically.
+ */
+function contourFill(outer: Vec2[], holes: Vec2[][]): Vec2[] {
+  const rings = [outer, ...holes];
+  const depth = contourDepths(rings);
+  if (depth[0] === 0 && depth.every((d, i) => i === 0 || d === 1) && holes.every((h) => h.length > 0 && pointInRing(h[0], outer))) {
+    return earcutFill(outer, holes);
+  }
+  const out: Vec2[] = [];
+  for (let i = 0; i < rings.length; i++) {
+    if (depth[i] % 2 !== 0 || rings[i].length < 3) continue;
+    const kids: Vec2[][] = [];
+    for (let j = 0; j < rings.length; j++) {
+      if (j !== i && depth[j] === depth[i] + 1 && rings[j].length >= 3 && pointInRing(rings[j][0], rings[i])) kids.push(rings[j]);
+    }
+    const tris = kids.length > 0 ? earcutFill(rings[i], kids) : earClip(cleanFillRing(rings[i]));
+    for (const t of tris) out.push(t);
+  }
+  return out;
+}
+
 function earcutFill(outer: Vec2[], holes: Vec2[][]): Vec2[] {
   const coords: number[] = [];
   for (const p of outer) coords.push(p[0], p[1]);
@@ -404,7 +430,7 @@ export function tessellatePath(opts: TessellateOptions): TessellatedPath {
   // Fill (only for closed paths with a visible fill). Holes are bridged into the outer contour
   // so the ear-clipper carves out the counters.
   if (opts.closed && pts.length >= 3 && (opts.fillColor[3] > 0 || opts.fillGradient)) {
-    const tris = holePolys.length > 0 ? earcutFill(pts, holePolys) : earClip(cleanFillRing(pts));
+    const tris = holePolys.length > 0 ? contourFill(pts, holePolys) : earClip(cleanFillRing(pts));
     const fc = opts.fillGradient ? FILL_GRADIENT_MARKER : opts.fillColor;
     for (let i = 0; i < tris.length; i += 3) {
       pushTri(out, tris[i], tris[i + 1], tris[i + 2], fc);

@@ -429,12 +429,14 @@ function resolveShapeLayer(layer: ShapeLayer, frame: number, getStyle?: StyleLoo
     case 'polygon': {
       let verts = shape.vertices;
       let closedFlag = shape.closed;
+      let holes = shape.holes;
       // Shape morph (B8b): if the outline is animated, evaluate the pose at this frame FIRST - at/beyond
       // a pose this returns the original bezier vertices (byte-identical); between poses, a morph.
       if (shape.pathKeyframes && shape.pathKeyframes.length > 0) {
         const p = evalPathKeyframes(shape.pathKeyframes, frame);
         verts = p.vertices;
         closedFlag = p.closed;
+        if (p.holes) holes = p.holes; // B83: poses with contours drive the holes / islands
       }
       // Path modifier stack (B8a/B8b): trim / offset / roughen / puckerBloat, in order, at resolve
       // time. Absent → vertices untouched (byte-identical). Holes pass through unmodified in v1.
@@ -448,7 +450,7 @@ function resolveShapeLayer(layer: ShapeLayer, frame: number, getStyle?: StyleLoo
       base.closed = closedFlag;
       base.lineCap = shape.lineCap ?? 'butt';
       base.lineJoin = shape.lineJoin ?? 'miter';
-      if (shape.holes && shape.holes.length > 0) base.holes = shape.holes; // M17 glyph counters
+      if (holes && holes.length > 0) base.holes = holes; // M17 glyph counters (B83: or the morphing pose contours)
       // Dashed stroke (B8c): carry the pattern + the (animatable) offset for this frame.
       if (shape.strokeDash && shape.strokeDash.length > 0) {
         base.dashArray = shape.strokeDash;

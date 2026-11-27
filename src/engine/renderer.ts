@@ -1,3 +1,4 @@
+import { LIQUID_DRIP_WGSL } from '../core/effects/liquidDrip';
 import type { RenderFrame, ResolvedLayer, ResolvedMask, ResolvedFill, ResolvedPattern, ResolvedEffect, ResolvedVideo, ResolvedBlur, Background } from '../core/types';
 import { MAX_PRECOMP_DEPTH } from '../core/precomp';
 // 2.5D (M2): per-3D-layer MVP + painter's depth sort. cardMVP/cameraSpaceDepth are pure and
@@ -2017,6 +2018,7 @@ fn applyWarpEffect(uv: vec2f, a: vec4f, b: vec4f, aspect: f32, time: f32) -> vec
 // disc. Neighbour reads come from the raw texture (composing multiple spatial ops
 // needs an RTT ping-pong, a later batch). type ids match effectRegistry.EFFECT_TYPE.
 // texel = 1 uv per screen pixel; effects are identity at their default param (0).
+${LIQUID_DRIP_WGSL}
 fn applySpatialEffect(color: vec4f, a: vec4f, b: vec4f, uv: vec2f, texel: vec2f, time: f32) -> vec4f {
   let t = i32(a.x);
   let p0 = a.y;
@@ -2336,6 +2338,12 @@ fn applySpatialEffect(color: vec4f, a: vec4f, b: vec4f, uv: vec2f, texel: vec2f,
       let off = vec2f(cos(ang), sin(ang)) * mag;
       let gate = step(1.0 - amt, hg);
       c = mix(c, sampleTex(uv + off), gate);
+    }
+    // B61 liquid drip / melt: upstream walk along the drip flow field (core/effects/liquidDrip.ts).
+    case ${EFFECT_TYPE.liquidDrip}: {
+      let dr = liquidDripFx(vec4f(c, alpha), uv, texel, a, b);
+      c = dr.rgb;
+      alpha = dr.a;
     }
 
     default: {}

@@ -121,7 +121,7 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | B58 | Refs: gradient-blob field generator (soft animated blurred colour blobs, lumpy cloud floor; seeded, frame-pure) (ref gap #13: r06) | ✅ (headless-GPU verified) | medium |
 | B59 | Refs: script / logo write-on - stroke-order centreline trim reveal for filled glyphs and logos (ref gap #14: r03) | ⬜ | medium |
 | B60 | Refs: cloner per-instance sources - render `ResolvedCloner.instanceSources` so each copy can be a different image (photo rings / grids) (ref gap #15: r04) | ✅ (headless-GPU verified) | medium |
-| B61 | Refs: liquid drip / melt text (letters melt into glowing drips that run down and pool; seeded, frame-pure) (ref gap #21: r05, low priority) | ⬜ (browser) | **heavy** |
+| B61 | Refs: liquid drip / melt text (letters melt into glowing drips that run down and pool; seeded, frame-pure) (ref gap #21: r05, low priority) | ✅ (headless-GPU verified) | **heavy** |
 | B62 | Refs / F2: agent shape morph - `editor.setShapeMorph` (parametric poses: rounded rect / ellipse / star / polygon / points, per-pose ease incl. overshoot, auto start-point + winding alignment) + fix: path fill dropped half the polygon when the ring had a collinear point | ✅ | medium |
 | B63 | Replicas: shape render correctness - SDF stroke clipped at the shape bounds (rings get flat sides), rounded rect wider than ~2048 px draws lens ends, circle ignores non-uniform scale (no ellipse), setShapeMorph ellipse pose with w != h has wrong geometry, borderRadius not clamped to min(w,h)/2, shape materialConfig radial gradient renders nothing, setShapeMorph with one pose (or a hold first pose) renders nothing, addShapeLayer polygon has no sides (found replicating r02 r04 r06 r07) | ✅ (Nov 2026, headless-GPU verified, `gpu:shape-render` 18/18) | medium |
 | B64 | Replicas: text paint - stroke-only text (transparent fill + stroke) renders nothing; vertical linear gradient fill (angle 180) drops horizontal strokes (T / f crossbars), angle 90 shows no top-to-bottom ramp (found replicating r02 r04) | ✅ (Nov 2026, engine session 26 Nov, headless-GPU verified) | light |
@@ -140,9 +140,10 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | B77 | Refs: text style keyframes - hold-keyed font family / weight / style switches on one text layer (type-style switcher) (r10) | ✅ (headless-GPU verified) | light |
 | B78 | Refs: soft freeform matte - a blurred / feathered shape used as a track matte keeps its blur (flower-shaped soft reveal) (r10) | ⬜ (browser) | medium |
 | B79 | Refs: person matte on footage (AI roto) - creator pops out over a divider (r09); fallback a pre-keyed stand-in clip | ⬜ (browser) | **heavy** |
-| B80 | Refs: outline text robustness - `editor.outlineTextLayer` on imported fonts, and glyphs with separate parts (i, j, !, :) keep the dot / second contour (r11, read in the code) | ⬜ | light |
+| B80 | Refs: outline text robustness - `editor.outlineTextLayer` on imported fonts, and glyphs with separate parts (i, j, !, :) keep the dot / second contour (r11, read in the code) | 🟡 multi-part glyphs fixed by B83 (even-odd contour fill); imported fonts still refused | light |
 | B81 | Refs: 3D card swarm - one call builds ~16 flat UI cards + ~12 prompt pills as 3D layers at different depths under one cluster whose yaw orbits them (true 3D parenting), seeded no-overlap layout, placeholder UI cards or image / layer sources; pairs with a camera dolly / tilt (r10 S10, S9.E2) | ✅ (headless-GPU verified) | medium |
 | B82 | Refs: typing prompt box - one-call editable prompt / search box (`agent.addPromptBox`): per-character typing schedule (cps / duration / explicit frames, eased rate), arrival colour (new glyphs pink -> white), gradient caret, send press + flash, chip row, slide-in / pop, centred typing, autoGrow, password mask (r10 S3 / S4 / S7 / S11 / S12, r06, r04) | ✅ (headless-GPU verified) | medium |
+| B83 | Refs: arbitrary shape morph - SVG path poses, bezier point poses, layer-outline poses, morphs between outlines with different numbers of contours (holes / islands pair up or shrink / grow), even-odd contour fill (r10 blob -> logo morphs, r11 letter edits, F2 heavy morphs) | ✅ (headless-GPU verified) | medium |
 | PB1 | Playback: decoded-frame LRU on the mediabunny path (backward/oscillating scrubs hit the cache instead of re-walking the GOP) | ✅ | medium |
 | PB2a | Playback: keyframe-snap-then-refine on far seeks (kills the scrub freeze) | ✅ | medium |
 | PB2b | Playback: real half-res proxy decode (cuts 4K upload/convert cost during scrub) | ✅ | heavy |
@@ -1023,13 +1024,26 @@ Source: the frame-by-frame breakdowns of the 7 motion references the owner sent 
   `gpu:cloner-sources` 8/8 (the 4 above + random order renders the returned picks, a 240 px photo scaled 0.5 draws at the
   120 px photo's size (110 / 110 / 110 / 110 px), data rows [I, WWWW] render per copy, one undo removes the binding).
 
-## B61 - Liquid drip / melt text ⬜ (browser, low priority)
-- **Delivers:** letters that melt into glowing drips running down and pooling, as a seeded drip-path generator (per-glyph drip origins, gravity curve, pool) rendered as stroked pen paths with glow.
-- **Source beats:** r05 f110-210 ("ideas" melts into rainbow neon drips).
-- **Depends on:** B50 / B47 for animated glow.
-- **Perf weight:** **heavy**.
-- **Likely files:** `src/core/textOutline.ts`, `src/core/shapeModifiers.ts`, `src/procedural/`.
-- **Verification:** gates + `scripts/verify-drip.mjs` (seeded drip paths, frame-pure) + headless render.
+## B61 - Liquid drip / melt text ✅ (headless-GPU verified, Nov 2026, step "r08-r11 heavy gaps")
+- **Delivered (different from the plan above, which proposed stroked pen paths):** a texture-aware effect `liquidDrip`
+  (type 315, spatial stage of the image shader) plus `agent.liquidDrip`. Every output pixel walks UPSTREAM along a
+  drip flow field (down with a smooth sideways wobble, bending sideways near an optional floor) in fixed steps; the
+  first opaque source pixel is the stream origin, taken at full opacity in its straight colour if the walked distance
+  is within that column's seeded drip length (head fades over the last 20 %). Drips only fall from the lowest ink of a
+  column, so counters stay open and the word stays readable. Frame-pure (the animation is the keyed length).
+  Params `[length px, floor V, spacing, sway, seed, flow, variance]`; CPU twin + WGSL generated from one module
+  (`src/core/effects/liquidDrip.ts`). Text / shape layers go through the B57 comp-sized precomp wrap.
+- **Fix found on the way (pre-existing, B57):** `validation.ensureBackground` turned a precompose's explicitly empty
+  background into an opaque default solid on load, so after reopening a project every wrapped effect (glitch, bulge,
+  drip) drew an opaque navy box over everything below. An empty `layers: []` now stays empty.
+- **Evidence:** `verify:liquid-drip` 13/13 (identity at length 0, drips only downward and only from the lowest ink,
+  head fade, per-column variance with gaps, floor flow outward / one-sided, opaque streams from hairlines, compositing,
+  exact u32 PCG vs BigInt, purity, registry / WGSL / parser agree, empty background survives save / load);
+  `gpu:liquid-text` 10/10 through the MCP (WebGPU == CPU twin on 277,200 px, mean |diff| 0.002 / 255; the bar
+  itself byte-identical; coverage grows every step; f30 twice byte-identical; floor flow both sides; length 0
+  byte-identical to no effect; undo / redo; export + import byte-identical) + the r05-style "ideas" melt
+  (`engine/wave2/liquid-text/ld-ideas-contact-sheet.png`). Recipe `liquid-melt`, AUTHORING section 18.
+- **Limits:** reads the layer's own pixels only; flat-coloured streams (no liquid shading); up to 2 x 192 taps per pixel.
 
 ## B62 - Agent shape morph ✅ (Nov 2026, wave 1A; owner's F2 format: heavy morphs)
 **Delivered:** `PathKeyframe.ease` (named ease or cubic-bezier quad, overshoot allowed) and `PathKeyframe.align: 'auto'` (re-index the next pose to the start point + winding with the least squared travel, so rect -> circle does not twist); absent = the B8b linear index-0 morph, byte-identical. `core/shapeOutline.ts` builds bezier outlines (rounded rect, ellipse in 4 kappa arcs, star, regular polygon, free points), all starting at the top and running clockwise. Store action `setShapeMorph(layerId, poses, align?)` converts any shape layer to a path with the morph in one undo step (fill, stroke, materials, transform kept); agent action + `shapes.morph` feature; persistence of ease / align in `validation.ts`. **Bug fixed on the way:** `pathTessellation.earClip` stalled on rings with a collinear vertex (its inclusive point-in-triangle test blocks every ear) and filled only one triangle - a square starting at its top-middle filled half; resampled morph rings carry many collinear points. `cleanFillRing` drops the duplicated closing point, duplicates and collinear points before ear clipping (same filled region). **Verify:** `verify:shape-morph` (13 checks: outline geometry, legacy byte-identity, eases incl. overshoot, hold, alignment recovers shifted / reversed rings, frame purity, full fill area of every morph frame) + `gpu:anim-props` (morph renders byte-identically to static-path twins; square corner -> star tip -> circle on screen; one undo step).
@@ -1267,10 +1281,28 @@ footage-person-matte = B79, outline-imported-fonts = B80.
 - **Delivers:** an AI person segmentation matte on a video layer. Out of wave 2 scope; fallback a pre-keyed stand-in clip.
 - **Source beats:** r09 f256-296.
 
-## B80 - Outline text robustness ⬜
+## B80 - Outline text robustness 🟡 (multi-part glyphs fixed by B83)
 - **Delivers:** `editor.outlineTextLayer` works on imported fonts and keeps every contour of multi-part glyphs (i, j, !, :).
 - **Source beats:** r11 (all letter edits).
 - **Verification:** gates + `verify:*` harness on the outline contours.
+- **Status:** the second part of a glyph (the dot of an "i") was stored in `holes` and passed to ONE earcut call as a
+  hole lying outside the outer contour, so it was dropped (repro in `verify:shape-contours`: area 1600 of 2000). B83's
+  even-odd contour fill fixes it (`gpu:shape-contours`: the outlined "i" shows stem + dot, ink within 2.3 % of the
+  live text). Imported fonts are still refused by `canOutlineFont` (open).
+
+## B83 - Arbitrary shape morph ✅ (headless-GPU verified, Nov 2026, step "r08-r11 heavy gaps")
+- **Delivers:** `editor.setShapeMorph` poses of any outline: `{ type: "svg", d, width?, height?, fit? }` (SVG path data,
+  pure parser `src/core/svgPath.ts`: M L H V C S Q T A Z, relative, packed arc flags, Q raised exactly, arcs as <= 90
+  degree cubics), `{ type: "path", points: [[x, y] | { x, y, in?, out? }], holes? }` and `{ type: "layer", layerId,
+  frame? }` (another shape layer's outline with its contours). `PathKeyframe.holes` (per-pose extra contours,
+  persisted); `evalPathHoles` pairs contours between poses (same kind only: hole with hole, island with island; cost =
+  centre distance + area ratio) and shrinks / grows unpaired ones about their centre; the tessellator fills contours
+  even-odd by nesting depth (`contourFill`; the common counters-inside case is the old single earcut call,
+  byte-identical). Morphs without contoured poses keep the static holes (old projects unchanged).
+- **Evidence:** `verify:shape-contours` 18/18; `gpu:shape-contours` 10/10 (SVG ring hole within 0.1 % of its area;
+  unpaired hole at exactly 25.0 % area mid-morph; heart notch / tip; three islands; outlined "i" keeps its dot; layer
+  pose lands on the glyph pixel-exact (9891 vs 9891 px); undo / redo / export + import byte-identical). Contact sheet
+  `engine/wave2/shape-contours/sc-contact-sheet.png`. AUTHORING section 6.
 
 ## B81 - 3D card swarm ✅ (headless-GPU verified)
 - **Delivers:** `agent.addCardSwarm`: the r10 S10 "wall of UI in space" in one call and one undo step - about 16 flat UI

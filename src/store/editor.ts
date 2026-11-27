@@ -53,7 +53,8 @@ import { planCameraMove, type CameraMoveTarget } from '../core/cameraMove';
 import { CORNER_PIN_KEYS, isConvexQuad } from '../core/cornerPin';
 import { applyShapeGlassInput, type ShapeGlassInput } from '../core/effects/glass';
 import type { CornerPin } from '../core/types';
-import { outlineFromSpec, polygonOutline, type OutlineSpec } from '../core/shapeOutline';
+import { outlineFromSpec, polygonOutline, type OutlineResult, type OutlineSpec } from '../core/shapeOutline';
+import { evalPathKeyframes } from '../core/shapeModifiers';
 import { animPropTarget, canonicalKeyframePath, createAnimProp, staticValueFor } from '../core/animProps';
 import { identityRemapSeconds } from '../core/timeRemap';
 import { generatePresetKeyframes, getPresetById, type PresetContext } from '../core/animationPresets';
@@ -135,9 +136,34 @@ let textEditPreSel: SelectionState | null = null;
 /** One pose of `setShapeMorph`. */
 export interface MorphPoseSpec {
   frame: number;
-  shape: OutlineSpec;
+  /** An outline spec, or (B83) { type: 'layer', layerId, frame? }: another shape layer's outline with its
+   *  holes / islands, in that layer's own local space (its transform is not applied). */
+  shape: OutlineSpec | { type: 'layer'; layerId: string; frame?: number };
   /** Ease of the morph from this pose to the next (default linear). "spring" is not supported here. */
   ease?: KeyframeEaseSpec;
+}
+
+/** B83: resolve a morph pose spec (an outline spec or another shape layer's outline) to vertices + contours. */
+function poseOutline(composition: Composition, spec: MorphPoseSpec['shape'], i: number): OutlineResult {
+  if (spec && typeof spec === 'object' && (spec as { type?: unknown }).type === 'layer') {
+    const ref = spec as { type: 'layer'; layerId: string; frame?: number };
+    const src = composition.layers.find((l) => l.id === ref.layerId);
+    if (!src) throw new Error(`poses[${i}].shape.layerId: no layer with id "${ref.layerId}"`);
+    if (src.type !== 'shape') throw new Error(`poses[${i}].shape.layerId: layer "${ref.layerId}" is a ${src.type}, not a shape layer (outline text first with editor.outlineTextLayer)`);
+    const f = typeof ref.frame === 'number' && Number.isFinite(ref.frame) ? ref.frame : 0;
+    const sh = src.shape;
+    const clone = (vs: PathVertex[]): PathVertex[] => vs.map((v) => ({ position: [v.position[0], v.position[1]], handleIn: [v.handleIn[0], v.handleIn[1]], handleOut: [v.handleOut[0], v.handleOut[1]], vertexType: v.vertexType }));
+    if (sh.type === 'polygon') {
+      if (sh.pathKeyframes && sh.pathKeyframes.length > 0) {
+        const e = evalPathKeyframes(sh.pathKeyframes, f);
+        const hs = e.holes ?? sh.holes;
+        return { vertices: clone(e.vertices), closed: e.closed, ...(hs && hs.length ? { holes: hs.map(clone) } : {}) };
+      }
+      return { vertices: clone(sh.vertices), closed: sh.closed, ...(sh.holes && sh.holes.length ? { holes: sh.holes.map(clone) } : {}) };
+    }
+    return { vertices: clone(shapeToPathVertices(sh, f)), closed: true };
+  }
+  return outlineFromSpec(spec as OutlineSpec);
 }
 
 /** B53 corner pin corners for `setCornerPin` (comp px). */
@@ -4620,8 +4646,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       if (err) throw new Error(`poses[${i}].ease: ${err}`);
       const e = canonicalEase(p.ease);
       if (e === 'spring') throw new Error(`poses[${i}].ease: "spring" is not supported for morphs; use backOut / elasticOut`);
-      const { vertices, closed } = outlineFromSpec(p.shape);
+      const { vertices, closed, holes } = poseOutline(composition, p.shape, i);
       const kf: PathKeyframe = { frame: Math.round(p.frame), vertices, closed };
+      if (holes && holes.length > 0) kf.holes = holes;
       if (e === 'hold') kf.interpolation = 'hold';
       else if (Array.isArray(e)) kf.ease = [e[0], e[1], e[2], e[3]];
       else if (typeof e === 'string' && e in CSS_EASES) { const q = CSS_EASES[e as keyof typeof CSS_EASES]; kf.ease = [q[0], q[1], q[2], q[3]]; }
@@ -4631,6 +4658,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       byFrame.set(kf.frame, kf);
     });
     const pathKeyframes = [...byFrame.values()].sort((a, b) => a.frame - b.frame);
+    // B83: when any pose has extra contours, the poses own the contours (a pose without them has none)
+    // and the static holes follow the first pose; otherwise the layer's static holes are kept (old rule).
+    const contoured = pathKeyframes.some((k) => k.holes && k.holes.length > 0);
+    if (contoured) for (const k of pathKeyframes) if (!k.holes) k.holes = [];
     const prev = layer.shape;
     const poly: PolygonShape = {
       ...(prev.type === 'polygon' ? prev : {}),
@@ -4641,6 +4672,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       strokeColor: prev.strokeColor,
       strokeWidth: prev.strokeWidth,
       ...(pathKeyframes.length > 1 ? { pathKeyframes } : { pathKeyframes: undefined }),
+      ...(contoured
+        ? (pathKeyframes[0].holes && pathKeyframes[0].holes.length > 0
+          ? { holes: pathKeyframes[0].holes, fillRule: 'evenodd' as const }
+          : { holes: undefined })
+        : {}),
     };
     const oldComp = composition;
     const newComp = { ...composition, layers: composition.layers.map((l) => (l.id === layerId ? { ...l, shape: poly } as Layer : l)) };

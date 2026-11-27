@@ -63,6 +63,7 @@ export type AgentHelperMethod =
   | 'pixelBlockReveal'
   | 'pixelSparkle'
   | 'applyLayerEffects'
+  | 'liquidDrip'
   | 'setClonerSources'
   | 'setClonerData'
   | 'setTextCounter'
@@ -443,7 +444,7 @@ export const AGENT_ACTIONS: readonly AgentActionSpec[] = [
     description: 'Add a shape with an explicit position and size (comp px).',
     params: [{ name: 'shapeType', type: 'string', values: SHAPE_TYPES }, { name: 'x', type: 'number' }, { name: 'y', type: 'number' }, { name: 'width', type: 'number' }, { name: 'height', type: 'number' }] },
   { id: 'editor.setShapeMorph', store: 'editor', method: 'setShapeMorph', undoable: true,
-    description: 'Shape morph in one undo step: the shape layer becomes a path whose outline morphs through the poses (square -> circle -> star -> pill ...). Each pose: { frame, shape, ease } where shape is { type: "rectangle", width, height, radius? } | { type: "ellipse", width, height } | { type: "star", width, height, points?, innerRatio? } | { type: "polygon", width, height, sides? } | { type: "path", points: [[x, y], ...], closed? } (layer-local px, centred on the layer position) and ease shapes the morph to the NEXT pose (named ease / CSS keyword / cubic-bezier quad / "hold"; backOut overshoots the shape). align (default true) matches start point and winding so nothing twists. Fill, stroke, gradients and transform are kept.',
+    description: 'Shape morph in one undo step: the shape layer becomes a path whose outline morphs through the poses (square -> circle -> star -> pill ...). Each pose: { frame, shape, ease } where shape is { type: "rectangle", width, height, radius? } | { type: "ellipse", width, height } | { type: "star", width, height, points?, innerRatio? } | { type: "polygon", width, height, sides? } | { type: "path", points: [[x, y] | { x, y, in?: [dx, dy], out?: [dx, dy] }, ...], closed?, holes?: [[points], ...] } | { type: "svg", d: "<SVG path data>", width?, height?, fit?: "contain" | "stretch" | "none" } (any logo / icon / glyph: subpaths become holes or islands, the drawing is centred and fitted) | { type: "layer", layerId, frame? } (the outline of another shape layer with its holes, e.g. an outlined letter) (layer-local px, centred on the layer position). Poses may have different contour counts (B83): contours pair up by position and size (holes with holes, islands with islands), an unpaired one shrinks into / grows out of its centre, all filled even-odd and ease shapes the morph to the NEXT pose (named ease / CSS keyword / cubic-bezier quad / "hold"; backOut overshoots the shape). align (default true) matches start point and winding so nothing twists. Fill, stroke, gradients and transform are kept.',
     params: [LAYER_ID,
       { name: 'poses', type: 'Array<{ frame: number; shape: OutlineSpec; ease?: string | [number, number, number, number] }>' },
       { name: 'align', type: 'boolean | "vertices"', optional: true, description: 'Default true (best start point + winding per pose pair). "vertices" (B76): poses with the same vertex count morph vertex for vertex (each anchor and its handles move straight to the same-index anchor, like an After Effects path keyframe): use it for anchor drags and letter edits; different counts fall back to the matched morph.' }] },
@@ -661,6 +662,11 @@ export const AGENT_ACTIONS: readonly AgentActionSpec[] = [
       { name: 'mode', type: 'string', optional: true, values: ['replace', 'append'], description: 'replace (default) or append to the existing stack.' }] },
 
   // ----- B54 pixel-block dissolve / build-on + 8-bit sparkle (core/pixelBlocks.ts, animation-templates/pixelSparkle.ts) -----
+  { id: 'agent.liquidDrip', store: 'agent', method: 'liquidDrip', undoable: true,
+    returns: '{ layerId, wrapped, effectType, params, keyPath, keys }',
+    description: 'Liquid drip / melt (B61, r05 "ideas" melting into neon drips): the layer melts into liquid streams that run down from every bottom edge with a sideways wobble and, given a floor, bend and flow along it. Drip lengths differ per column (seeded), each drip head fades out; the streams take the colour of the letter above them and draw UNDER the original. A text / shape / video / lottie layer is first nested in a comp-sized precomp (B57, stays editable inside); image and precomp layers take it directly. With startFrame / endFrame the drip length is keyed 0 -> length on the ease (default the r05 measured melt [0.376, 0.12, 0.234, 0.97]); re-key it with editor.setKeyframes on the returned layerId, path keyPath ("effect.315.0"). Glow on the returned precomp layer gives the neon look. Undo: 1 step (2 when it wraps). Re-running replaces the drip.',
+    params: [LAYER_ID, { name: 'options', type: '{ length: number; startFrame?: number; endFrame?: number; ease?: string | [number, number, number, number]; floorY?: number; floor?: number; spacing?: number; sway?: number; seed?: number; flow?: number; variance?: number }',
+      description: 'length: drip length in comp px (required). floorY: floor line in comp px (or floor: 0..1 of the height; none = drips just fall). spacing: px between independent drips, about a stroke width (default 14). sway: sideways wobble px (default 6). seed (default 1). flow: along the floor, > 0 right, < 0 left (0..1 how hard it turns), 0 = outward from the frame centre (default). variance: 0..1 how much drip lengths differ; near 1 a wide bottom edge splits into separate drips with gaps (default 0.9).' }] },
   { id: 'agent.pixelBlockReveal', store: 'agent', method: 'pixelBlockReveal', undoable: true,
     returns: '{ maskId, maskIndex, region, blockSize, order, direction, keys }',
     description: 'Pixel-block dissolve ("out") or build-on ("in") on a masked layer (shape, text, image, video, lottieIcon): appends ONE intersect mask whose rectangle is the block grid region and whose keyed "blocks.progress" (0 -> 1) shows or hides whole seeded squares, rendered per pixel on the GPU. Frame-pure (seeded hash, scrubbing is identical). Edit later with editor.updateMaskProperty (path "blocks.size", "blocks.seed", "blocks.order", "blocks.angle", "blocks.jitter", "blocks.direction"; re-time by setting "blocks.progress" or calling this again on a fresh layer). One undo step.',
@@ -919,10 +925,10 @@ export const AGENT_FEATURES: readonly AgentFeature[] = [
     description: 'Non-destructive outline modifiers; Trim Paths gives line draw-on animation.',
     ui: 'Select a shape > Inspector > Path Modifiers > add', actions: ['editor.addShapeModifier', 'editor.addKeyframe', 'agent.setTrimStartAngle'], status: 'shipped' },
   { id: 'shapes.morph', area: 'shapes', name: 'Shape morph',
-    description: 'Morph a shape through outlines (rect, rounded rect, ellipse, star, polygon, free points) with an ease per morph and automatic correspondence so outlines do not twist; different vertex counts morph.',
+    description: 'Morph a shape through outlines (rect, rounded rect, ellipse, star, polygon, free points with bezier handles, SVG path data, another shape layer such as an outlined letter) with an ease per morph and automatic correspondence so outlines do not twist; different vertex counts AND different contour counts (holes, islands: logo to letter to heart) morph.',
     ui: 'Select a pen path > Inspector > Path Animation > Add Pose at the playhead (poses morph linearly in the UI; eases and parametric poses are agent / MCP: editor.setShapeMorph)',
     actions: ['editor.setShapeMorph'], status: 'shipped',
-    notes: 'Pixel-proven headless by npm run gpu:anim-props. Combine with transform keys (scale / rotation) and colour keys (shape.fillColor) for the heavy-morph look.' },
+    notes: 'Pixel-proven headless by npm run gpu:anim-props and (B83 contours, SVG poses, layer poses) npm run gpu:shape-contours. Combine with transform keys (scale / rotation) and colour keys (shape.fillColor) for the heavy-morph look.' },
   { id: 'shapes.repeater', area: 'shapes', name: 'Shape repeater',
     description: 'Copies of a shape with accumulating offset / rotation / scale (radial arrays, spirals).',
     ui: 'Inspector (shape) > Repeater toggle', actions: ['editor.toggleShapeRepeater'], status: 'shipped' },
@@ -1031,6 +1037,11 @@ export const AGENT_FEATURES: readonly AgentFeature[] = [
     description: 'Glass on any shape: backdrop blur of everything below inside the outline, brighten / saturate, a refracting rim and an edge highlight with a keyframable light angle. For frosted pills, glass cards and Apple-style liquid glass over photos or video.',
     ui: 'Agent / MCP only (editor.setShapeGlass)', actions: ['editor.setShapeGlass', 'editor.setKeyframes'], status: 'browser-gated',
     notes: 'The renderer runs the glass as an adjustment pass right below the shape (scene copy + gaussian blur per glass layer: keep it to a few glass layers per frame). Keyframe paths: glass.blur, glass.refraction, glass.highlight, glass.lightAngle. Pixel-proven headless by npm run gpu:glass.' },
+  { id: 'effects.liquid-drip', area: 'effects', name: 'Liquid drip / melt (B61)',
+    description: 'Text or any layer melts into liquid streams: drips of different lengths run down from every bottom edge with a wobble, take the colour of the letter above, fade at the head and, with a floor, turn and flow along it. Keyframe the length to melt over time; add a glow for neon drips.',
+    ui: 'Effects > Stylized Motion Graphics > Liquid Drip (melt) slider (length); every param via agent.liquidDrip',
+    actions: ['agent.liquidDrip', 'editor.setKeyframes', 'editor.setLayerEffectParam'], status: 'browser-gated',
+    notes: 'A texture-aware effect in the image shader (upstream walk along the drip flow field, at most 192 taps per pixel). CPU twin and WGSL live in src/core/effects/liquidDrip.ts. Pixel-proven headless by npm run gpu:liquid-text; maths by npm run verify:liquid-drip.' },
   { id: 'effects.beam', area: 'effects', name: 'Light beams', description: 'Laser / light beam layer.',
     ui: 'Right-click the canvas > New Beam / Lightning', actions: ['editor.addBeamLayer'], status: 'browser-gated' },
   { id: 'adjustment.layer', area: 'adjustment', name: 'Adjustment layers',

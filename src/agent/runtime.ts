@@ -38,7 +38,7 @@ import { planAgentMotionPath } from '../core/agentMotionPath';
 import { uid } from '../core/factory';
 import { ensureCompositionFonts, ensureFontFace } from '../engine/fonts';
 import { MAX_FONT_BYTES, hydrateCustomFonts, useCustomFontStore } from '../engine/customFonts';
-import type { FontWeight, Layer, ParticleLayer, ResolvedText, TextLayer, Vec2, Vec4 } from '../core/types';
+import type { FontWeight, Layer, LayerAnimProps, ParticleLayer, ResolvedText, TextLayer, Vec2, Vec4 } from '../core/types';
 import {
   AGENT_ACTIONS,
   AGENT_MANIFEST_SCHEMA_VERSION,
@@ -61,10 +61,12 @@ import { buildPixelBlockMask } from '../animation-templates/pixelBlockReveal';
 import { buildPixelSparkle } from '../animation-templates/pixelSparkle';
 import { isPixelBlockOrder } from '../core/pixelBlocks';
 import { layerEffectsRoute, parseAgentEffects } from '../core/effects/layerEffects';
+import { LIQUID_DRIP_DEFAULTS } from '../core/effects/liquidDrip';
 import { normalizeTextCounter, counterTextAt } from '../core/textCounter';
 import { normalizeTextStyleKeys } from '../core/textStyleKeys';
 import { EASINGS } from '../core/easings';
-import { getEffectDefByType } from '../core/effects/effectRegistry';
+import { EFFECT_TYPE, getEffectDefByType } from '../core/effects/effectRegistry';
+import { buildKeyframesFromSpecs, easeSpecError } from '../core/keyframeSpecs';
 import type { KeyframeEaseSpec, KeyframeSpec } from '../core/keyframeSpecs';
 import { layoutCardSwarm, swarmWorldPoint, type SwarmVec3, type SwarmVolume } from '../core/cardSwarm';
 import { planCardSwarm, SWARM_PILL_LABELS, type SwarmSource } from '../animation-templates/cardSwarm';
@@ -1827,6 +1829,76 @@ const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
       wrapped: route === 'wrap',
       compositionId: target.type === 'precomp' ? target.compositionId : undefined,
       effects: next.map((e) => ({ effect: getEffectDefByType(e.type)?.id, type: e.type, params: e.params })),
+    };
+  },
+
+  // ----- B61 liquid drip / melt (core/effects/liquidDrip.ts), through the B57 precomp wrap -----
+  liquidDrip: (layerId, options) => {
+    const layer = requireLayer(layerId);
+    const route = layerEffectsRoute(layer.type);
+    if (!route) throw new Error(`layer "${String(layerId)}" is a ${layer.type}: liquid drip goes on text, shape, image, video, lottieIcon or precomp layers`);
+    const o = options === undefined || options === null ? {} : pbObject(options, 'options');
+    const known = new Set(['length', 'startFrame', 'endFrame', 'ease', 'floorY', 'floor', 'spacing', 'sway', 'seed', 'flow', 'variance']);
+    const unknown = Object.keys(o).filter((k) => !known.has(k));
+    if (unknown.length) throw new Error(`unknown option(s) ${unknown.join(', ')}; options are ${[...known].join(', ')}`);
+    const length = pbNum(o.length, 'options.length');
+    if (length <= 0) throw new Error('"options.length" must be > 0 (drip length in comp px)');
+    const startFrame = pbOptNum(o.startFrame, 'options.startFrame');
+    const endFrame = pbOptNum(o.endFrame, 'options.endFrame');
+    if ((startFrame === undefined) !== (endFrame === undefined)) throw new Error('give both "options.startFrame" and "options.endFrame" (the melt), or neither (a static drip)');
+    if (startFrame !== undefined && endFrame !== undefined && endFrame <= startFrame) throw new Error('"options.endFrame" must be after "options.startFrame"');
+    const ease = o.ease === undefined ? [0.376, 0.12, 0.234, 0.97] : o.ease;
+    const easeErr = easeSpecError(ease);
+    if (easeErr) throw new Error(`options.ease: ${easeErr}`);
+    // Wrap first (text / shape / video / lottie go into a comp-sized precomp, B57) so the drip can run anywhere in the frame.
+    const ed = useEditorStore.getState();
+    let targetId = layer.id;
+    if (route === 'wrap') {
+      ed._setSelection({ selectedIds: [layer.id], activeId: layer.id, selectedKeyframes: [], selectedCurvePoints: [] });
+      ed.precomposeSelection();
+      const after = useEditorStore.getState();
+      const pre = after.composition.layers.find((l) => l.id === after.selection.activeId);
+      if (!pre || pre.type !== 'precomp') throw new Error('precompose failed: no precomp layer was created');
+      targetId = pre.id;
+    }
+    const target = requireLayer(targetId);
+    const st = useEditorStore.getState();
+    const texH = target.type === 'precomp'
+      ? (st.compositions[target.compositionId]?.settings.height ?? st.composition.settings.height)
+      : st.composition.settings.height;
+    const floorV = o.floor !== undefined && o.floor !== null ? pbNum(o.floor, 'options.floor')
+      : o.floorY !== undefined && o.floorY !== null ? pbNum(o.floorY, 'options.floorY') / texH : 0;
+    const params = [
+      startFrame !== undefined ? 0 : length,
+      floorV,
+      pbOptNum(o.spacing, 'options.spacing') ?? LIQUID_DRIP_DEFAULTS[2],
+      pbOptNum(o.sway, 'options.sway') ?? LIQUID_DRIP_DEFAULTS[3],
+      pbOptNum(o.seed, 'options.seed') ?? LIQUID_DRIP_DEFAULTS[4],
+      pbOptNum(o.flow, 'options.flow') ?? LIQUID_DRIP_DEFAULTS[5],
+      pbOptNum(o.variance, 'options.variance') ?? LIQUID_DRIP_DEFAULTS[6],
+    ];
+    const type = EFFECT_TYPE.liquidDrip;
+    const existing = 'effects' in target && Array.isArray(target.effects) ? target.effects.filter((e) => e.type !== type) : [];
+    const effects = [...existing, { type, enabled: true, params }];
+    let next = { ...target, effects } as Layer;
+    let keys: { frame: number; value: number }[] = [];
+    const anim = (target as { animProps?: LayerAnimProps }).animProps ?? {};
+    const effectParams = { ...(anim.effectParams ?? {}) };
+    delete effectParams[`${type}_0`];
+    if (startFrame !== undefined && endFrame !== undefined) {
+      const kfs = buildKeyframesFromSpecs([{ frame: startFrame, value: 0, ease: ease as KeyframeEaseSpec }, { frame: endFrame, value: length }], { expected: 'number' });
+      effectParams[`${type}_0`] = { id: uid(), name: `Effect ${type} param 0`, valueType: 'number', defaultValue: 0, keyframes: kfs };
+      keys = kfs.map((k) => ({ frame: k.frame, value: k.value as number }));
+    }
+    next = { ...next, animProps: { ...anim, effectParams } } as Layer;
+    useEditorStore.getState().applyLayerEdits('Liquid drip', { update: [next] });
+    return {
+      layerId: targetId,
+      wrapped: route === 'wrap',
+      effectType: type,
+      params,
+      keyPath: `effect.${type}.0`,
+      keys,
     };
   },
 

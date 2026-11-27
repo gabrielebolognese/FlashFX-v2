@@ -355,6 +355,29 @@ Never leave real motion on linear (the default for `addKeyframe`), except progre
   opacity: 100, position: 0 }, { color: "#33389a", opacity: 0, position: 100 }] }` (no gaussian blur needed).
 - Self-touching outlines fill correctly (B63): a sunburst of wedges that all return to one centre point works
   as a single `setShapeMorph` path pose (no second dummy pose).
+- **Arbitrary morphs: any outline, any number of parts (B83).** Three more pose shapes:
+  `{ type: "svg", d: "<SVG path data>", width?, height?, fit?: "contain" | "stretch" | "none" }` (any logo, icon
+  or glyph you can write as path data: M L H V C S Q T A Z, relative too; centred on the layer and fitted into
+  width x height), `{ type: "path", points: [[x, y] | { x, y, in?: [dx, dy], out?: [dx, dy] }], holes?: [[...]] }`
+  (bezier handles relative to the point, extra contours) and `{ type: "layer", layerId, frame? }` (the outline of
+  another shape layer, holes included, e.g. a glyph from `editor.outlineTextLayer`; its own local space, its
+  transform is not applied: hide or delete the source afterwards). Subpaths become extra contours filled
+  even-odd: inside another contour = a hole (a ring, the counter of an "o"), outside = an island (the dot of an
+  "i", the parts of a logo). Poses may have DIFFERENT contour counts: contours pair by position and size (a
+  hole only with a hole, an island only with an island, so the fill never flips), an unpaired one shrinks into
+  (or grows out of) its own centre on the pose ease. Among equal-size subpaths the centre-most is the main
+  contour. Ring -> heart -> outlined letter in one call:
+
+```json
+{ "actionId": "editor.setShapeMorph", "args": { "layerId": "<id>", "poses": [
+  { "frame": 0,  "shape": { "type": "svg", "d": "M0 50 A50 50 0 1 1 100 50 A50 50 0 1 1 0 50 Z M30 50 A20 20 0 1 0 70 50 A20 20 0 1 0 30 50 Z", "width": 400, "height": 400 } },
+  { "frame": 12, "shape": { "type": "svg", "d": "M50 95 C20 70 0 52 0 30 C0 12 13 0 28 0 C38 0 46 6 50 14 C54 6 62 0 72 0 C87 0 100 12 100 30 C100 52 80 70 50 95 Z", "width": 400, "height": 400 }, "ease": "cubicInOut" },
+  { "frame": 24, "shape": { "type": "layer", "layerId": "<outlined glyph id>" } } ] } }
+```
+
+  A morph without any contoured pose keeps the layer's static holes exactly as before. Outlined glyphs with
+  separate parts (i, j, !, :, %) now keep every part (the second part used to be cut out as a hole and vanish).
+  Proofs: `npm run verify:shape-contours`, `npm run gpu:shape-contours`.
 
 ## 7. Masks
 
@@ -831,3 +854,31 @@ the whole box as editable layers in a group (one undo step, stacked under any cu
   `agent.setTextTyping` after moving the clip.
 - One call from a brief: `apply_recipe { id: 'prompt-box', params: { text, theme, press } }`.
 - Proofs: `npm run verify:prompt-box` and `npm run gpu:prompt-box`.
+## 18. Liquid drip / melt (B61)
+
+r05's "ideas" melting into neon drips: the layer melts into liquid streams that run down from the LOWEST ink of
+every column (counters and gaps stay open, so the word stays readable), wobble slightly, take the colour of the
+letter above at full opacity, fade at the head and, given a floor, bend and flow along it (outward from the frame
+centre by default). Streams draw under the original.
+
+- `agent.liquidDrip { layerId, options: { length, startFrame?, endFrame?, ease?, floorY?, spacing?, sway?, seed?,
+  flow?, variance? } }`. Text / shape / video / lottie layers are nested in a comp-sized precomp first (B57; the
+  returned `layerId` is the precomp, the original stays editable inside), image and precomp layers take it
+  directly. With `startFrame` / `endFrame` the drip length is keyed 0 -> length (default ease: r05's measured melt
+  `[0.376, 0.12, 0.234, 0.97]`); re-key with `editor.setKeyframes` on `keyPath` (`"effect.315.0"`).
+- Look: `spacing` about one stroke width (default 14) and `variance` near 1 (default 0.9) split wide bottom edges
+  into separate drips with gaps; `sway` 4-10 px keeps streams near-parallel (large values smear them into
+  ribbons); `length` past the floor makes pools that spread along it. Glow on the returned precomp layer gives
+  the neon look. r05 at 1080 x 1080 / 60 fps, Playfair 165 px, five letter colours:
+  `{ length: 1150, startFrame: 110, endFrame: 190, floorY: 1050, spacing: 14, sway: 6, seed: 5, variance: 1 }`.
+- One call: `apply_recipe { id: 'liquid-melt', params: { layerId } }`.
+- The effect is `liquidDrip` (type 315) in the effect stack, so `agent.applyLayerEffects` and the Effects panel
+  (Stylized Motion Graphics > Liquid Drip) reach it too: params `[length px, floor 0..1 of the height, spacing,
+  sway, seed, flow (> 0 right, < 0 left, 0 outward), variance]`.
+- Limits: it reads the layer's own pixels only (nothing behind it), streams are flat-coloured (no shading or
+  highlights: add glow or a second layer for that), and each pixel walks up to 2 x 192 texture taps per frame.
+- Save / load (fixed with B61): a precompose's transparent background used to come back as an opaque default box
+  after reopening a project, hiding everything under every wrapped effect (glitch, bulge, drip). It now stays
+  transparent.
+- Proofs: `npm run verify:liquid-drip` (the CPU twin) and `npm run gpu:liquid-text` (WebGPU == twin, save / load).
+

@@ -324,6 +324,11 @@ export interface PathKeyframe {
    *  handles) straight to the same-index vertex of the next pose, like an After Effects path keyframe: an
    *  anchor drag stays a drag (no arc-length resampling, corners stay sharp, the vertex count is kept). */
   align?: 'auto' | 'vertices';
+  /** B83: extra closed contours of this pose (holes and islands, filled even-odd with `vertices`).
+   *  When ANY pose of a layer carries them, the poses drive the layer's contours and the static
+   *  `PolygonShape.holes` is ignored; contours are paired between poses, an unpaired one shrinks to /
+   *  grows from its own centre. Absent on every pose = the static holes (old projects, unchanged). */
+  holes?: PathVertex[][];
 }
 
 export interface PolygonShape {

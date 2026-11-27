@@ -267,6 +267,9 @@ function ensureShapeGeometry(val: unknown): ShapeGeometry | null {
                 ...(interp ? { interpolation: interp } : {}),
                 ...ease,
                 ...(k.align === 'auto' ? { align: 'auto' as const } : k.align === 'vertices' ? { align: 'vertices' as const } : {}),
+                // B83: per-pose extra contours (holes / islands); kept even when empty (a contour-less pose
+                // of a contoured morph means "no contours here", not "use the static holes").
+                ...(Array.isArray(k.holes) ? { holes: (k.holes as unknown[]).filter((h): h is PathVertex[] => Array.isArray(h)) } : {}),
               };
             })
         : undefined;
@@ -917,6 +920,10 @@ function ensureBackgroundLayer(val: unknown): BackgroundLayer | null {
 function ensureBackground(val: unknown): Background {
   if (isObject(val) && Array.isArray((val as Record<string, unknown>).layers)) {
     const rawLayers = (val as Record<string, unknown>).layers as unknown[];
+    // B57 / B61: an EXPLICITLY empty background is a precompose's transparent background (core/precompose.ts;
+    // the UI never removes a composition's last background layer). Keep it, or a reloaded precomp gains an
+    // opaque default box that hides everything below it and turns every pixel of an effect's input opaque.
+    if (rawLayers.length === 0) return { layers: [] };
     const layers = rawLayers.map(ensureBackgroundLayer).filter((l): l is BackgroundLayer => l !== null);
     if (layers.length > 0) return { layers };
   }

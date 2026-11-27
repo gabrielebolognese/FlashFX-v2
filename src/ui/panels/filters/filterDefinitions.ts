@@ -272,6 +272,7 @@ export const FILTER_CATEGORIES: FilterCategory[] = [
       { id: 'digitalGlitch', label: 'Digital Glitch', type: 'slider', min: 0, max: 1, step: 0.01, defaultValue: 0 },
       { id: 'pixelSorting', label: 'Pixel Sorting', type: 'slider', min: 0, max: 1, step: 0.01, defaultValue: 0 },
       { id: 'datamosh', label: 'Datamosh Simulation', type: 'slider', min: 0, max: 1, step: 0.01, defaultValue: 0 },
+      { id: 'liquidDrip', label: 'Liquid Drip (melt)', type: 'slider', min: 0, max: 1500, step: 1, defaultValue: 0 },
       { id: 'ghosting', label: 'Ghosting', type: 'slider', min: 0, max: 1, step: 0.01, defaultValue: 0 },
       { id: 'echo', label: 'Echo', type: 'slider', min: 0, max: 1, step: 0.01, defaultValue: 0 },
       { id: 'frameDelay', label: 'Frame Delay', type: 'slider', min: 0, max: 10, step: 1, defaultValue: 0 },
