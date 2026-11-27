@@ -144,12 +144,12 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | B81 | Refs: 3D card swarm - one call builds ~16 flat UI cards + ~12 prompt pills as 3D layers at different depths under one cluster whose yaw orbits them (true 3D parenting), seeded no-overlap layout, placeholder UI cards or image / layer sources; pairs with a camera dolly / tilt (r10 S10, S9.E2) | ✅ (headless-GPU verified) | medium |
 | B82 | Refs: typing prompt box - one-call editable prompt / search box (`agent.addPromptBox`): per-character typing schedule (cps / duration / explicit frames, eased rate), arrival colour (new glyphs pink -> white), gradient caret, send press + flash, chip row, slide-in / pop, centred typing, autoGrow, password mask (r10 S3 / S4 / S7 / S11 / S12, r06, r04) | ✅ (headless-GPU verified) | medium |
 | B83 | Refs: arbitrary shape morph - SVG path poses, bezier point poses, layer-outline poses, morphs between outlines with different numbers of contours (holes / islands pair up or shrink / grow), even-odd contour fill (r10 blob -> logo morphs, r11 letter edits, F2 heavy morphs) | ✅ (headless-GPU verified) | medium |
-| B84 | Replicas wave 3: track placement - a new layer (agent.addCardSwarm, agent.addPromptBox, a late import, a 1-frame layer) takes the top-most EXISTING track with room at its time range, so it can draw under layers created after it or under a shot's full-frame ground (r06 cursor, r07 clips, r09 alpha clip, r10 swarm + prompt box); workaround `agent.bringToFront` right after creating it | ⬜ | medium |
+| B84 | Replicas wave 3: track placement - a new layer (agent.addCardSwarm, agent.addPromptBox, a late import, a 1-frame layer) takes the top-most EXISTING track with room at its time range, so it can draw under layers created after it or under a shot's full-frame ground (r06 cursor, r07 clips, r09 alpha clip, r10 swarm + prompt box); workaround `agent.bringToFront` right after creating it | ✅ (Nov 2026, engine session 27 Nov, headless-GPU verified: new layers land above every clip visible in their range, agent.setClipTiming re-drops a clip that jumps; the kits already stacked on top) | medium |
 | B85 | Replicas wave 3: precomp-wrap robustness - `agent.applyLayerEffects` on a layer whose in / out are already set or that starts after frame 0 hides it or plays its contents late by that start and drops its parent; bulge sign flips on a wrapped layer; faint comb pattern on liquid-drip stream edges (r01, r05, r09); workaround: wrap while the layer starts at 0, then re-time the precomp | ⬜ | medium |
 | B86 | Replicas wave 3: cloner on a tilted orbit - the cloner applies scale before rotation (a squashed rotating cloner spins a rigid ellipse), the radial start angle is not keyframable, and addMask / setTrackMatte on a cloner do nothing (r08 24 chips on a tilted ring, back half behind the statue); fallback hand-keyed 3D chip cards | ⬜ | medium |
 | B87 | Replicas wave 3: design-kit units and targets - agent.addReadout shows comp px (the reference shows artboard units on a zoomed canvas) and clips longer values; addSelectionBox / addReadout reject text layers; a selection box is 10 layers and anchor squares one layer per vertex (r11); see B80 for outlineTextLayer on imported fonts | ⬜ | light |
 | B88 | Replicas wave 3: small API / render defects - setTextCounter drops a label's prefix / suffix when the number span merges back (r08); trim paths no-op on circle layers (r01); setShapeDash no-op on rectangles (r09); a named track matte breaks after a later import lands on the matted clip's track (r07); radial gradient position 100 = bbox corner, so a circle shows a disc edge (r08); MCP responses garble non-ASCII text (U+00B7 read back as U+00C2 U+00B7) (r08); thermalVision / gradientMap / duotone palettes not parameterised (r09); agent.addPromptBox is single-line (r10); agent.addCursor pre-scales its group by size / 20 (r10) | ⬜ | light |
-| B89 | Replicas wave 3: exporter colour on gradient grounds - export_mp4 renders blue radial / linear gradient background layers with a visibly violet, banded centre that render_frame did not show (r03 S1 / S7 / S10 / S11 / S21, fg 0.81 -> 0.73 on S7 with no build change; evidence artifacts/replicas/r03/w3diag/s7.png); also cloner copies ignore motionBlur (r04 photo ring) | ⬜ | medium |
+| B89 | Replicas wave 3: exporter colour on gradient grounds - export_mp4 renders blue radial / linear gradient background layers with a visibly violet, banded centre that render_frame did not show (r03 S1 / S7 / S10 / S11 / S21, fg 0.81 -> 0.73 on S7 with no build change; evidence artifacts/replicas/r03/w3diag/s7.png); also cloner copies ignore motionBlur (r04 photo ring) | ✅ (Nov 2026, engine session 27 Nov: the tint was a BT.601 decode of BT.709 video in the compare tooling, not the exporter (fixed in compare_replica.py stills + the reference extractor); cloner copies now streak along their own paths, headless-GPU verified) | medium |
 | PB1 | Playback: decoded-frame LRU on the mediabunny path (backward/oscillating scrubs hit the cache instead of re-walking the GOP) | ✅ | medium |
 | PB2a | Playback: keyframe-snap-then-refine on far seeks (kills the scrub freeze) | ✅ | medium |
 | PB2b | Playback: real half-res proxy decode (cuts 4K upload/convert cost during scrub) | ✅ | heavy |
@@ -1384,3 +1384,38 @@ footage-person-matte = B79, outline-imported-fonts = B80.
   reference needs a wider box or a smaller font). Typing frames are absolute (re-run `agent.setTextTyping` after moving the
   clip). The kit is baked: retime the keys or re-run it.
 
+
+## B84 - Track placement: new and re-timed layers land on top ✅ (Nov 2026, engine session 27 Nov, headless-GPU verified)
+- **Bug:** a new layer took the top-most free track of its type at its time range (`ensureLayerHasTrack` first fit), which
+  can sit under a newer track holding that shot's ground. A clip timed with `agent.setClipTiming` kept its track, so an
+  import at f0 timed to f478 joined an old track under everything built since (r07 recording / poster / selfie, r09 alpha
+  clip, r06 / r10 cursor). Replicas worked around it with `agent.bringToFront` after every such call.
+- **Fix:** `core/trackPlacement.ts:findStackFit`: a new visual layer reuses a free accepted track only ABOVE every track
+  holding a clip that overlaps its range (the lowest such track, so sequential shots still pack into the same tracks),
+  else the store creates a new top track. Audio keeps the old first fit. `pinClipToTime(..., { restackOnJump })`, used by
+  `agent.setClipTiming` only: a clip moved to a range disjoint from its old one is re-dropped the same way (returns
+  `restacked: true`); a trim / nudge keeps the track, and the UI timeline drag is unchanged. The design kits (prompt box,
+  card swarm, readouts) already stacked on top through `applyLayerEdits({ stack: top })`.
+- **Verified:** `verify:track-stack` 11/11 (old first-fit repro, ceiling rule, sequential packing, type segregation, audio,
+  restack on jump / nudge byte-identical / magnetic track left absolute); `gpu:track-stack` 4/4 through the MCP (shot-2
+  text over the shot-2 ground at f175: 20 989 ink px, the unchanged engine renders 0; restacked flag; one undo; export +
+  import pixel-identical). Evidence: `artifacts/engine/session-2026-11-27/track-stack/{before,after}`.
+- **Not covered:** the named-matte half of B88 (a later import landing on the matted clip's track) is a separate pairing
+  issue; it is less likely now (imports avoid low tracks) but not fixed.
+
+## B89 - Exporter colour on gradient grounds + cloner motion blur ✅ (Nov 2026, engine session 27 Nov)
+- **Colour:** not an exporter bug. Every FlashFX export is H.264 tagged BT.709 and decodes within ~2 / 255 of render_frame
+  as BT.709 (r03 f560: mean |d| 1.4-1.6). ffmpeg's default YUV -> RGB conversion uses BT.601 even on bt709-tagged
+  streams, so the compare stills showed blues violet ([37, 45, 191] instead of [34, 53, 197]). The same decode made the
+  JPEG reference frames (`refs/*/frames`, the colour source for every replica) BT.601: true [32, 59, 206] read as
+  [36, 54, 199]. Fixed: `mcp/lib/compare_replica.py` stills decode with the stream's matrix (`yuv_matrix`), the artifact
+  reference extractor writes BT.709-correct JPEGs (`refs/_tools/extract.py`, for new references; old frames keep the
+  cast), AUTHORING / TASTE document it. Luma SSIM is unaffected (it reads the Y plane).
+- **Cloner motion blur:** a copy carried its SOURCE's resolved blur, measured at the source's own (usually static) spot,
+  so a spinning ring or a moving cloner rendered sharp copies. `ResolvedCloner.instanceBlur` (cloner world transform +
+  instance transforms one frame earlier, only when the cloner's or the source's switch is on and the shutter is open)
+  gives each stamp its own `motionBlurBetween`. Blur-off projects resolve byte-identically to the base resolver.
+- **Verified:** `verify:cloner-blur` 9/9 (tangential speed 2 pi R / period within 2 %, omega, moving cloner, source switch,
+  static / frame 0 / closed shutter sharp, comp shutter, base byte-identity); `gpu:cloner-blur` 5/5 (tangential sigma
+  20.07 -> 20.63 vs 20.58 predicted, radial unchanged, light conserved, source switch identical, rest frame identical,
+  export_mp4 smears too). Evidence: `artifacts/engine/session-2026-11-27/{cloner-blur,colour}`.

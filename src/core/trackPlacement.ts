@@ -159,6 +159,9 @@ export interface PinResult {
   movedToNewTrack: boolean;
   /** The clip's track was magnetic and is now absolute. */
   unpinnedTrack: boolean;
+  /** B84 (restackOnJump): the clip jumped to a time range disjoint from its old one and was re-dropped on
+   *  top of what is visible there (a free track above every overlapping clip, or a new top track). */
+  restacked?: boolean;
 }
 
 /**
@@ -174,9 +177,40 @@ export function pinClipToTime(
   outPoint: number,
   makeTrack: TrackFactory,
   trackTypeOf: (layer: Layer) => TrackType,
+  opts: { restackOnJump?: boolean } = {},
 ): PinResult | null {
   const layer = comp.layers.find((l) => l.id === layerId);
   if (!layer) return null;
+  // B84: a clip that JUMPS (new range disjoint from the old one) has no stacking context left at its new time.
+  // agent.setClipTiming re-drops it like a new layer there: on top of every clip visible in the new range.
+  // Before, it kept its old track, which could sit under everything built since (import at f0 -> timed to
+  // f478 under that shot's ground: r07, r09). A trim / nudge (ranges overlap) keeps the track as before.
+  if (opts.restackOnJump && layer.trackId && !(inPoint < layer.outPoint && layer.inPoint < outPoint)) {
+    const type = trackTypeOf(layer);
+    const audio = type === 'audio';
+    const fit = findStackFit(comp.layers, comp.tracks, { inPoint, outPoint, excludeLayerId: layerId, audio },
+      (t) => t.type === type || (t.type === 'mixed' && !audio));
+    const tracks = comp.tracks.map((t) => (t.id === fit && isTrackCompressed(t) ? { ...t, compressed: false } : t));
+    let trackId = fit;
+    if (!trackId) {
+      const same = comp.tracks.filter((t) => (t.type === 'audio') === audio);
+      const order = audio
+        ? comp.tracks.reduce((m, t) => Math.max(m, t.order), -1) + 1
+        : same.reduce((m, t) => Math.min(m, t.order), 0) - 1;
+      const own: Track = { ...makeTrack(`${layer.type} track`, type, order), compressed: false };
+      tracks.push(own);
+      trackId = own.id;
+    }
+    // The track the clip leaves turns absolute, so a magnetic track does not re-pack the clips that stay. Both flags
+    // read from the ORIGINAL tracks: the fit may be the clip's own track (already un-magnetised in `tracks`).
+    const oldIdx = tracks.findIndex((t) => t.id === layer.trackId);
+    const oldWasMagnetic = comp.tracks.some((t) => t.id === layer.trackId && isTrackCompressed(t));
+    const fitWasMagnetic = !!fit && comp.tracks.some((t) => t.id === fit && isTrackCompressed(t));
+    if (oldWasMagnetic && oldIdx >= 0) tracks[oldIdx] = { ...tracks[oldIdx], compressed: false };
+    const unpinnedTrack = oldWasMagnetic || fitWasMagnetic;
+    const layers = comp.layers.map((l) => (l.id === layerId ? ({ ...l, inPoint, outPoint, trackId } as Layer) : l));
+    return { comp: { ...comp, tracks, layers }, trackId, movedToNewTrack: trackId !== layer.trackId, unpinnedTrack, restacked: true };
+  }
   const tracks = comp.tracks.slice();
   let trackId = layer.trackId;
   let unpinnedTrack = false;
@@ -344,4 +378,47 @@ export function planClipTiming(layer: Layer, compFps: number, spec: ClipTimingSp
 
 function round3(n: number): number {
   return Math.round(n * 1000) / 1000;
+}
+
+/**
+ * B84: the existing track a NEW layer may reuse, or null (the caller creates a new top track).
+ *
+ * Render order follows track order (lower `order` = drawn on top), so a new layer must land ABOVE every track
+ * that holds a clip overlapping its time range - a new layer draws on top, as in After Effects. The old first
+ * fit took the top-most free track, which could sit under a shot's full-frame ground, so late layers (a cursor,
+ * a card swarm, a prompt box, a late import) rendered behind it. Among the free accepted tracks above that line
+ * it takes the LOWEST one (largest order), so sequential shots still pack into the same tracks instead of
+ * growing the stack. Only clips on visual tracks raise the ceiling; audio clips (which never draw) keep the old
+ * first fit on audio tracks. Tracks above the ceiling hold no overlapping clip by construction, so every
+ * candidate is free.
+ */
+export function findStackFit(
+  layers: Layer[],
+  tracks: Track[],
+  clip: { inPoint: number; outPoint: number; excludeLayerId?: string; audio: boolean },
+  accepts: (track: Track) => boolean,
+): string | null {
+  const overlaps = (l: Layer): boolean => clip.inPoint < l.outPoint && clip.outPoint > l.inPoint;
+  if (clip.audio) {
+    // Audio does not draw, so stacking means nothing there: the old first fit (top-most free audio track).
+    const free = tracks
+      .filter((tr) => tr.type === 'audio' && accepts(tr))
+      .filter((tr) => !layers.some((l) => l.id !== clip.excludeLayerId && l.trackId === tr.id && overlaps(l)))
+      .sort((a, b) => a.order - b.order);
+    return free.length ? free[0].id : null;
+  }
+  const orderOf = new Map(tracks.filter((tr) => tr.type !== 'audio').map((tr) => [tr.id, tr.order]));
+  let ceiling = Infinity; // the top-most (smallest) order holding a clip visible in [inPoint, outPoint)
+  for (const l of layers) {
+    if (l.id === clip.excludeLayerId || !l.trackId) continue;
+    if (!overlaps(l)) continue;
+    const o = orderOf.get(l.trackId);
+    if (o !== undefined && o < ceiling) ceiling = o;
+  }
+  let best: Track | null = null;
+  for (const tr of tracks) {
+    if (!orderOf.has(tr.id) || tr.order >= ceiling || !accepts(tr)) continue;
+    if (!best || tr.order > best.order) best = tr;
+  }
+  return best ? best.id : null;
 }

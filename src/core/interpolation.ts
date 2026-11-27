@@ -52,7 +52,7 @@ import { adjustmentHasWork, resolveAdjustmentFilters } from './effects/adjustmen
 import { resolveShapeGlass } from './effects/glass';
 import { evaluateMotionPathAtFrame } from './motionPath';
 import { computeInstanceTransforms, selectClonerRenderPath, buildDataBoundSources, pickSourceSlot, settledFrame, relativeSourceTransform, isIdentityRelative } from '../cloner';
-import type { ClonerLayer } from '../cloner/types';
+import type { ClonerLayer, InstanceTransform } from '../cloner/types';
 import { rasterizeField, type FieldGrid } from '../field-sampling/fields';
 import { precompLocalFrame, MAX_PRECOMP_DEPTH } from './precomp';
 import type { ResolveContext } from './precomp';
@@ -1314,6 +1314,36 @@ export function measureLayerPreferredSize(layer: Layer, frame: number): { width:
   return { width: 100, height: 100 };
 }
 
+// B89: what per-copy cloner motion blur needs - the cloner's world transform and its instance transforms one
+// frame earlier. Null when neither the cloner's nor its source's motion-blur switch is on, the shutter is
+// closed or there is no earlier frame (comp frame 0), so projects without blur resolve exactly as before.
+function clonerInstanceBlur(
+  cloner: ClonerLayer,
+  source: Layer | undefined,
+  opts: Parameters<typeof computeInstanceTransforms>[2],
+  layers: Layer[],
+  motionPaths: MotionPath[],
+  frame: number,
+  compShutterAngle?: number,
+  compShutterPhase?: number,
+): ResolvedCloner['instanceBlur'] | null {
+  const own = getMotionBlur(cloner as unknown as Layer);
+  const viaSource = !own && !!source && getMotionBlur(source);
+  if (!own && !viaSource) return null;
+  const shutter = effectiveShutterAngle(compShutterAngle, own ? cloner.motionBlurShutter : source!.motionBlurShutter);
+  if (shutter <= 0) return null;
+  const prevFrame = Math.max(frame - 1, 0);
+  if (prevFrame === frame) return null;
+  const prevInstances: Record<number, InstanceTransform> = {};
+  for (const pi of computeInstanceTransforms(cloner, prevFrame, opts)) prevInstances[pi.index] = pi;
+  return {
+    shutter,
+    phase: shutterPhaseFraction(compShutterPhase, shutter),
+    prevTransform: worldTransformAt(cloner as unknown as Layer, layers, motionPaths, prevFrame),
+    prevInstances,
+  };
+}
+
 // Resolve a cloner field ref → an already-sampled FieldGrid, reusing the procedural
 // field engine's rasterizer. Cached by the field's configJSON so it is NOT re-
 // rasterized every frame (field data is treated as static; keeps instance placement
@@ -1946,7 +1976,7 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
         const renderPath = selectClonerRenderPath({ layerType: source?.type ?? 'image', isSdfShape: isSdf, isDataBound });
         // Per-instance source animation reuses the EXISTING transform evaluator at
         // each instance's staggered local frame - no keyframe re-implementation.
-        const instances = computeInstanceTransforms(cloner, frame, {
+        const instanceOpts: Parameters<typeof computeInstanceTransforms>[2] = {
           fps: settings.frameRate,
           getMotionPath: (id) => motionPaths.find((p) => p.id === id),
           getField: (ref) => resolveClonerField(ref, layers),
@@ -1961,7 +1991,9 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
                 };
               }
             : undefined,
-        });
+        };
+        const instances = computeInstanceTransforms(cloner, frame, instanceOpts);
+        const instanceBlur = clonerInstanceBlur(cloner, source, instanceOpts, layers, motionPaths, frame, settings.shutterAngle, settings.shutterPhase);
         // Data-bound source: apply the instance-override mechanism (core/overrides,
         // via buildDataBoundSources) to produce one content-overridden source per
         // instance - the inputs the full per-instance render path renders.
@@ -1978,7 +2010,7 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
           visible: true,
           blendMode: layer.blendMode,
           transform: worldTransform,
-          cloner: { renderPath, sourceLayerId, instances, instanceSources, ...sourcesField, ...(instanceContent ? { instanceContent } : {}) },
+          cloner: { renderPath, sourceLayerId, instances, instanceSources, ...sourcesField, ...(instanceContent ? { instanceContent } : {}), ...(instanceBlur ? { instanceBlur } : {}) },
           layerType: 'cloner',
         });
       } else if (layer.type === 'precomp') {
@@ -2200,15 +2232,31 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
             opacity: inst.opacity * (rel ? rel.opacity : 1),
             positionZ: 0, rotationX: 0, rotationY: 0,
           };
+          const stampTransform = composeTransforms(cl.transform, child);
           const stamp: ResolvedLayer = {
             ...instSrc,
             id: `${cl.id}#${inst.index}`,
-            transform: composeTransforms(cl.transform, child),
+            transform: stampTransform,
             // instances don't inherit the source's masks (mask coords are absolute - they'd
             // pin every clone to the source's spot). Default sources have none anyway.
             mask: undefined,
             masks: undefined,
           };
+          // B89: each copy streaks along its own path (the cloner's motion + its instance motion). Without
+          // this a copy carried the SOURCE's blur, measured at the source's own (usually static) spot.
+          const ib = cl.cloner.instanceBlur;
+          if (ib) {
+            const pi = ib.prevInstances[inst.index];
+            const prevChild: ResolvedTransform | undefined = pi && {
+              positionX: pi.position.x, positionY: pi.position.y,
+              rotation: pi.rotationDegrees.z + (rel ? rel.rotation : 0),
+              scaleX: pi.scale.x * (rel ? rel.scaleX : 1), scaleY: pi.scale.y * (rel ? rel.scaleY : 1),
+              anchorX: 0, anchorY: 0, opacity: pi.opacity, positionZ: 0, rotationX: 0, rotationY: 0,
+            };
+            stamp.motionBlur = prevChild
+              ? motionBlurBetween(stampTransform, composeTransforms(ib.prevTransform, prevChild), ib.shutter, ib.phase)
+              : undefined;
+          }
           // Multiplicative colour tint on shape fills (effectors can drive it; identity = no-op).
           const t = inst.colorTint;
           if (instSrc.shape && (t.r !== 1 || t.g !== 1 || t.b !== 1)) {

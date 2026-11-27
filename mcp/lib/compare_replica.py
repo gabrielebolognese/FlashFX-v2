@@ -179,10 +179,37 @@ def main():
     print(json.dumps({k: report[k] for k in ('offset_frames', 'ssim_mean', 'ssim_median', 'ssim_min', 'ssim_fg_mean', 'fg_iou_mean', 'frames_compared')}))
 
 
+_MATRIX = {}
+
+
+def yuv_matrix(path):
+    """(colour matrix, range) for ffmpeg's scale filter, read from the stream tags. ffmpeg's default YUV -> RGB
+    conversion uses BT.601 even when the stream says bt709, which draws BT.709 video (every FlashFX export, every phone
+    or screen recording in HD) with a magenta / violet cast on blues (B89). Untagged streams follow the usual rule:
+    HD and up = bt709, SD = bt601."""
+    if path not in _MATRIX:
+        out = subprocess.run(
+            ['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=height,color_space,color_range',
+             '-of', 'json', path], capture_output=True, text=True, check=True).stdout
+        s = json.loads(out)['streams'][0]
+        cs = s.get('color_space', 'unknown')
+        if cs in ('bt709',):
+            m = 'bt709'
+        elif cs in ('smpte170m', 'bt470bg'):
+            m = 'bt601'
+        elif cs in ('bt2020nc', 'bt2020c'):
+            m = 'bt2020'
+        else:
+            m = 'bt709' if int(s.get('height', 0)) >= 720 else 'bt601'
+        _MATRIX[path] = (m, 'pc' if s.get('color_range') == 'pc' else 'tv')
+    return _MATRIX[path]
+
+
 def full_frame(path, idx, fps, w, h):
     t = idx / fps
-    cmd = ['ffmpeg', '-v', 'error', '-ss', f'{max(0.0, t):.6f}', '-i', path, '-frames:v', '1', '-vf', f'scale={w}:{h}',
-           '-f', 'rawvideo', '-pix_fmt', 'bgr24', '-']
+    m, rng = yuv_matrix(path)
+    cmd = ['ffmpeg', '-v', 'error', '-ss', f'{max(0.0, t):.6f}', '-i', path, '-frames:v', '1', '-vf',
+           f'scale={w}:{h}:in_color_matrix={m}:in_range={rng}', '-f', 'rawvideo', '-pix_fmt', 'bgr24', '-']
     raw = subprocess.run(cmd, capture_output=True, check=True).stdout
     if len(raw) < w * h * 3:
         return np.zeros((h, w, 3), np.uint8)

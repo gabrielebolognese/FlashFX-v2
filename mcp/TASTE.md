@@ -349,8 +349,8 @@ four through this MCP (`artifacts/replicas/r08`-`r11`). Numbers are f30.
 
 ### 14.5 Gotchas found by the rebuilds (work around them until they are fixed)
 
-- `agent.addCardSwarm`, `agent.addPromptBox` and any late-added 1-frame layer drop onto the lowest free track and can
-  draw UNDER an earlier full-frame ground: call `agent.bringToFront` on the new group right away (r09, r10).
+- (Fixed 27 Nov, B84: new layers and clips moved by `agent.setClipTiming` now land on top of whatever is visible in
+  their range, and the kits stack on top. `agent.bringToFront` is only needed to lift layers built EARLIER.)
 - A radial gradient's position 100 is the bounding-box corner, so a 0 -> 100 fade on a circle still shows a disc edge
   at about 30 % opacity: put the transparent stop at 70 (r08).
 - `agent.setTextCounter` on a label: give the number its own span (`styleTextRange` with a slightly different colour,
@@ -370,5 +370,7 @@ four through this MCP (`artifacts/replicas/r08`-`r11`). Numbers are f30.
 - A named track matte breaks when another clip later lands on the matted clip's track: set the matte after the last
   import (r07).
 - Judge blurred gradients (domes, wipes) on the exported MP4: `render_frame` / compareFrames grids score them
-  differently from the real exporter (r06); the exporter currently tints blue gradient grounds violet in the centre
-  (B89, r03): check gradient grounds on the MP4 before delivering.
+  differently from the real exporter (r06). The "violet tint" on blue grounds (B89, r03) was the decode, not the
+  exporter: the MP4 is BT.709-tagged and matches render_frame within 2 / 255 when decoded as BT.709; ffmpeg's default
+  RGB conversion and the old JPEG reference frames read BT.709 as BT.601. Sample reference colours from a BT.709
+  decode (blues read about [+4, -6, -7] off otherwise).
