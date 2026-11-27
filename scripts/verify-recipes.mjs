@@ -21,6 +21,8 @@ const E = (e) => evaluate(e, scope);
 ok(E('x * 2 + 1') === 7, 'arithmetic');
 ok(E('f(12)') === 24 && E('t(6)') === 22, 'f() scales 30 fps frames to the comp fps, t() adds start');
 ok(E('len(words(text))') === 3 && E('chars(text)') === 13, 'words / chars');
+ok(E("len(letters('MO M'))") === 4 && E("pick(letters('MO M'), 2)") === ' ', 'letters keeps spaces');
+ok(E("slice('Hello', 0, 2)") === 'He' && E('slice(arr, 1, 3)').join() === '2,3', 'slice on strings and arrays');
 ok(E('@a.result.masks[-1].id') === 'm2', 'step refs with negative index');
 ok(E('@missing.result') === undefined, 'a skipped step reads as undefined');
 ok(E("x > 2 ? 'big' : 'small'") === 'big', 'ternary');

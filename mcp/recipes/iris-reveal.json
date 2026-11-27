@@ -1,0 +1,213 @@
+{
+  "id": "iris-reveal",
+  "name": "Iris reveal (match-cut disc that opens the next world)",
+  "category": "transition",
+  "description": "A disc in the next section's ground colour opens from a point that matters (a chip, the centre of a wheel, a button) and covers the frame in about 8 frames, accelerating (ease-in) so the cut lands on the full cover. Optionally the centre rides from the start point to a second point while it opens (r08's disc rides the flying chip). Build the next section's layers AFTER this recipe (creation order is stacking order) and start them on its coverFrame: the disc becomes their ground. This replaces a hard cut with a match cut: nothing in r08 ever hard-cuts.",
+  "source": [
+    "r08 S1.E8 navy iris from the hero chip f140-149: radius 35 -> 1150 px, easeIn [0.391, 0.048, 1.0, 0.917], centre rides the chip (552, 1545) -> (480, 1120)",
+    "r08 S2.E14 dark iris from the wheel centre f522-529 (radius 140 -> 1500 px) and S3.E13 cream iris f762-770 (64 -> 1478 px, easeIn [0.679, 0.283, 0.883, 1.105], rms 0.002)",
+    "r08 replica (artifacts/replicas/r08/build.mjs) builds the same beat with one circle per world"
+  ],
+  "taste": [
+    "TASTE.md 10 Transitions",
+    "2 Easing (ease-in into a cut)",
+    "1.5 Cut on the beat"
+  ],
+  "params": {
+    "x": {
+      "type": "number",
+      "default": null,
+      "description": "Start centre x (default comp centre): the element the iris grows out of."
+    },
+    "y": {
+      "type": "number",
+      "default": null,
+      "description": "Start centre y (default comp centre)."
+    },
+    "toX": {
+      "type": "number",
+      "default": null,
+      "description": "Optional end centre x (the disc rides there while it opens). Default: stays at x."
+    },
+    "toY": {
+      "type": "number",
+      "default": null,
+      "description": "Optional end centre y. Default: stays at y."
+    },
+    "startSize": {
+      "type": "number",
+      "default": null,
+      "description": "Start diameter px (default 5 % of the short side, about the size of the element it opens from)."
+    },
+    "color": {
+      "type": "color",
+      "default": "#0e2a4a",
+      "description": "The next section's ground colour."
+    },
+    "delay": {
+      "type": "number",
+      "default": 0,
+      "min": 0,
+      "description": "Frames at 30 fps before it starts opening."
+    },
+    "open": {
+      "type": "number",
+      "default": 8,
+      "min": 3,
+      "description": "Opening length, frames at 30 fps (r08: 8-9 f)."
+    },
+    "ease": {
+      "type": "ease",
+      "default": [
+        0.679,
+        0.283,
+        0.883,
+        1.105
+      ],
+      "description": "Opening ease (measured r08 S3.E13 easeIn, accelerating into the cover)."
+    },
+    "rideEase": {
+      "type": "ease",
+      "default": [
+        0.42,
+        0,
+        0.58,
+        1
+      ],
+      "description": "Ease of the centre ride (only when toX / toY are set)."
+    },
+    "name": {
+      "type": "string",
+      "default": "Iris",
+      "description": "Layer name (name it after the world it opens, e.g. 'S2 ground iris')."
+    }
+  },
+  "length30": "delay + open + 30",
+  "checkFrames30": [
+    "delay + open * 0.5",
+    "delay + open * 0.8",
+    "delay + open"
+  ],
+  "lets": {
+    "X0": "x == null ? CX : x",
+    "Y0": "y == null ? CY : y",
+    "X1": "toX == null ? (x == null ? CX : x) : toX",
+    "Y1": "toY == null ? (y == null ? CY : y) : toY",
+    "s0": "start + f(delay)",
+    "cF": "start + f(delay) + f(open)"
+  },
+  "steps": [
+    {
+      "let": {
+        "DX": "max(X1, W - X1)",
+        "DY": "max(Y1, H - Y1)"
+      }
+    },
+    {
+      "let": {
+        "D": "ceil(sqrt(DX * DX + DY * DY) * 2 + 8)",
+        "S0": "startSize == null ? round(min(W, H) * 0.05) : startSize"
+      }
+    },
+    {
+      "id": "disc",
+      "action": "editor.addShapeLayer",
+      "args": {
+        "opts": {
+          "type": "circle",
+          "x": "{{X0 - PX}}",
+          "y": "{{Y0 - PY}}",
+          "width": "{{D}}",
+          "height": "{{D}}",
+          "radius": "{{round(D / 2)}}",
+          "fill": "{{color}}",
+          "name": "{{name}}"
+        }
+      },
+      "layer": true,
+      "root": true
+    },
+    {
+      "let": {
+        "L": "@disc.result",
+        "K0": "S0 / D"
+      }
+    },
+    {
+      "action": "editor.setKeyframes",
+      "args": {
+        "layerId": "{{L}}",
+        "propertyPath": "transform.scale",
+        "keyframes": [
+          {
+            "frame": "{{s0}}",
+            "value": "{{[K0, K0]}}",
+            "ease": "{{ease}}"
+          },
+          {
+            "frame": "{{cF}}",
+            "value": [
+              1,
+              1
+            ],
+            "ease": "hold"
+          }
+        ]
+      }
+    },
+    {
+      "when": "delay > 0",
+      "action": "editor.setKeyframes",
+      "args": {
+        "layerId": "{{L}}",
+        "propertyPath": "transform.opacity",
+        "keyframes": [
+          {
+            "frame": "{{s0 - 1}}",
+            "value": 0,
+            "ease": "hold"
+          },
+          {
+            "frame": "{{s0}}",
+            "value": 1,
+            "ease": "hold"
+          }
+        ]
+      }
+    },
+    {
+      "when": "toX != null || toY != null",
+      "action": "editor.setKeyframes",
+      "args": {
+        "layerId": "{{L}}",
+        "propertyPath": "transform.position",
+        "keyframes": [
+          {
+            "frame": "{{s0}}",
+            "value": "{{[X0 - PX, Y0 - PY]}}",
+            "ease": "{{rideEase}}"
+          },
+          {
+            "frame": "{{cF}}",
+            "value": "{{[X1 - PX, Y1 - PY]}}",
+            "ease": "hold"
+          }
+        ]
+      }
+    }
+  ],
+  "returns": {
+    "layerId": "{{L}}",
+    "coverFrame": "{{cF}}",
+    "centerX": "{{X1}}",
+    "centerY": "{{Y1}}"
+  },
+  "example": {
+    "params": {
+      "x": 820,
+      "y": 300,
+      "color": "#111613"
+    },
+    "startFrame": 20
+  }
+}

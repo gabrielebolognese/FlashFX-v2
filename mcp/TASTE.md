@@ -4,6 +4,9 @@ How clean, professional motion design is timed, eased, set and coloured, written
 into `editor.setKeyframes` / `apply_recipe`. Every number below was measured on the owner's 7 reference
 videos (frame-by-frame breakdowns: 87 shots, 357 elements, 550 keyed animations with fitted cubic-bezier
 eases) and checked by rebuilding 4 of them through this MCP (r02, r04, r06, r07, all at timing offset 0).
+The second batch (r08-r11: 57 shots, 284 elements, 167 more fitted eases) and the rebuilds of all 11
+references through this MCP add section 14 (match cuts, morph continuity, sound-driven word hits, design-app
+edits) and the recipes `iris-reveal`, `highlight-title`, `card-emerge`, `morph-reveal`, `word-hit`, `glyph-edit`.
 
 - Measurements: `mcp/taste/taste-stats.json` (aggregated by `mcp/taste/taste_stats.py` from the
   per-reference timing sheets `refs/rNN/timeline.json`).
@@ -198,6 +201,9 @@ pixelate, whip-pan, blur-dissolve).
 | White flash | 2 f60 up, 4-6 down | an impact, a "boom" moment, a hard style change (r05) |
 | Morph (one shape becomes the next layout) | 16-20 f60 | when two shots share an object (r06 disc becomes the prompt bar) |
 | Fade / fade to black | 7-30 f30 | the ending only, or a mood change (r03 end fade 42 f30) |
+| Iris match cut (a disc of the next ground opens from an element) | 8-9 f30, ease-in | sections of one continuous canvas: open from the object both shots share (r08 every section: wheel centre, flying chip; recipe `iris-reveal`) |
+| Zoom-through morph (a shape grows until it is the next ground) | 9 f30, ease-in | a dot or mark blooms into the next scene (r10 S1 dot -> flower 1 % -> 1500 %; recipe `morph-reveal` zoomThrough) |
+| Settle, then whip (camera pan in two parts) | 20 f30 out + 13 f30 in | the camera lands on a detail, rests, then accelerates into the cut (r10 S7 easeOutCubic f226-246, easeInCubic f246-259) |
 
 Do: pick one transition language per piece (cuts + one signature wipe). Don't: put a wipe between every
 shot, or fade between beats that should cut.
@@ -244,3 +250,124 @@ they reproduce other creators' work).
 | `transition` | section 10 band wipe / white flash |
 | `cursor-click` | measured cursor ease and click timing |
 | `end-card` | section 11 lockup |
+| `blob-field` | section 7 grounds that flow (B58 mesh gradient, cloud floor) |
+| `glass-pill` | frosted / liquid glass UI over a photo (B38) |
+| `count-up` | section 14.1 counters (r08 view counts on a styled text layer, B75) |
+| `prompt-box` | sections 8 and 14.2: typed prompt box with the gradient caret (r10, B82) |
+| `card-swarm` | section 9 camera through a 2.5D swarm of UI cards (r10 S10, B81) |
+| `design-chrome` | section 14.4 design-app chrome around an edit (r11, B76) |
+| `pixel-dissolve` / `pixel-sparkle` | 8-bit build-on / dissolve and block sparkle on twos (r01, r07, B54) |
+| `glitch-burst` | a short slice / RGB glitch hit on text (r01, B57) |
+| `liquid-melt` | a word melts into drips (r05, B61) |
+| `iris-reveal` | section 14.1 match cut: a disc of the next ground opens from an element, ease-in, 8 f30 |
+| `highlight-title` | section 14.1 words blur in while a marker box wipes in behind the line |
+| `card-emerge` | section 14.1 card slides out from behind an anchor, then tucks into a slot |
+| `morph-reveal` | section 14.2 blurred blob sharpens into a mark (any SVG path), optional zoom-through |
+| `word-hit` | section 14.3 words land on the audio onsets: magenta 2 f, yellow 2 f, final colour |
+| `glyph-edit` | section 14.4 one glyph of a word rotates / flips / slides on easeInOutCubic (the pun edit) |
+
+## 14. What the second batch adds (r08-r11)
+
+Measured on the frame-by-frame breakdowns (`refs/r08`-`r11`, 167 fitted eases at 30 fps) and checked by rebuilding all
+four through this MCP (`artifacts/replicas/r08`-`r11`). Numbers are f30.
+
+### 14.1 Continuity instead of cuts (r08)
+
+- **No hard cuts at all.** r08 is one canvas: eight beats joined by match transitions. A chip flies up and becomes the
+  next card while a disc of the next world opens from it; every later section is an iris from the colour wheel's centre.
+  When two beats share an object, use it as the hinge (`iris-reveal`, `card-emerge`), not a cut.
+- **Iris:** start at the element's size (35-140 px), cover the frame in **8-9 f** with an ease-in
+  `[0.679, 0.283, 0.883, 1.105]` (rms 0.002) or `[0.391, 0.048, 1.0, 0.917]`; the old world blurs and fades for 3-8 f
+  underneath; the centre may ride the object (`[0.42, 0, 0.58, 1]`).
+- **Card emerge:** a card is born behind the element it belongs to and slides out down-right in **13-16 f** while it
+  widens from 0 and fades up: `[0.585, 1.093, 0.748, 0.984]` (soft 2-3 % overshoot) or easeOutQuart
+  `[0.306, 1.198, 0.589, 0.975]`. It leaves by **tucking** into a slot: slide + shrink to 0.79 in 12 f on
+  `[0.981, 0.135, 0.655, 1.265]` (hard acceleration, locks on).
+- **Highlight title:** words blur in 1-2 f apart (6-7 f each) while a marker box wipes in behind the line from its left
+  edge over **20 f** on `[0.33, 0.951, 0.667, 1.001]`; every section re-uses it with a new box colour.
+- **Pops:** pills 8.8 %, the colour wheel 13.8 % (`[0.319, 1.79, 0.555, 0.88]`): inside the 3-16 % band of rule 7.
+- Big repositioning moves (a card and wheel parking in the corners) are easeInOutCubic over **21-22 f**.
+- Thumbnails slide in easeOutCubic in **12-16 f** (`[0.249, 0.529, 0.351, 0.991]`), fading 30 -> 100 % in 6 f.
+- Replica numbers (r08 rebuild): pills pop 0 -> 1.07 in 7 f, settle in 3 f, 4-5 f apart; the hero save pill 15 f at
+  8.8 % (`[0.335, 1.442, 0.666, 1.058]`); count-ups run 19-25 f easeOutCubic with one decimal, starting 3 f after the
+  label fades in; ranking-ladder bars grow 13-15 f on `[0.298, 1.058, 0.693, 0.958]`, 7-8 f apart, each 8 % of the
+  frame width shorter than the last. The iris masks only the new world's ground layers; the old content blurs out.
+
+### 14.2 Shape continuity and morphs (r10)
+
+- **Every beat inherits a shape from the previous one** (a dot becomes a flower that swallows the frame; a blurred
+  flower sharpens into the heart logo; a button's heart opens as a flower-shaped matte onto a website). One shape layer
+  with `editor.setShapeMorph` poses (B83 handles different contour counts) plus keyframed blur and a gradient fill.
+- **Zoom-through:** scale 1 % -> 1500 % in **9 f** on easeInCubic `[1.0, 0.147, 0.831, 0.933]` (rms 0.003), rotation
+  -30 -> 0 on the way; the dot -> flower morph itself takes 2 f. Where the shape passes, type inverts (a white copy matted
+  by the shape).
+- **Blob -> mark:** blur 80 -> 0 px and flower -> heart in **5-6 f** easeOutCubic; the mark then rises 6 f easeOut and
+  shrinks to icon size with an ease-in into the lockup.
+- **Timing:** 11 hard cuts in 30 s, every one hidden inside a motion (punch-in, flood, zoom-through). Entrances are
+  fast ease-outs (6-14 f), floods and exits ease-in. Nothing holds longer than about 1.5 s except the end card.
+- **Typing as rhythm:** 1-2 characters per frame with a pink caret; deletions are choreographed too (highlight block,
+  backspace retype). One gradient family (blue `#6175ce`, lilac `#ab79d9`, magenta `#e458b0`, coral `#ef7b75`) for
+  blobs, logo, cursor rim and buttons, on cream `#f6eee8` or black `#010204`.
+- **Punch-in cut** (r10 S6-S8): one scene under a 2D camera null, cut by hold keys from scale 1 to 2.8 to 5.7; each
+  framing settles over 20 f on `[0.07, 0.802, 1, 1.019]`, then whips into the next cut over 13 f on
+  `[0, 0.034, 0.769, 0.083]`. A zoom-through about a point (the cursor tip): camera x3 in 6 f on
+  `[1, -0.028, 0.242, 0.114]`.
+- **Soft shape reveal** (r10 S14): a blurred flower precomp is the alpha track matte of the next shot, scale 0.1 -> 4.2
+  over 7 f on `[0.017, 0.659, 1, 1.11]`; the page content builds in at +5 / +7 / +9 / +13 / +16 f.
+
+### 14.3 Sound is the edit (r09)
+
+- 42 of 60 visual events land within 2 frames of an audio onset (26 within 1 frame, 10 on the exact frame). Put the
+  hits on the onsets first, then animate between them. Every cut is a sound.
+- **Word-landing grammar:** each word lands on its hit with 2 f magenta `#e702fc` + glow, 2 f yellow `#fee802` + glow,
+  then its final colour, rising 15 px (at 90 px type) easeOutCubic in 4 f (`word-hit`, pass the onsets as `hits`).
+  One accent word ends in orange with a soft glow.
+- 1-frame flashes (a colour-remap or gradient-map frame) and a 9-frame hue sweep act as risers and impacts between
+  sections. Captions and waveform bars step on twos (values repeat in pairs) for a hand-made feel against 30 fps footage.
+- Replica numbers (r09 rebuild): a hand-held object pops 58 % -> 103 % -> 100 % in 8 f (`[0.496, 1.24, 0.128, 1.182]`,
+  about 7 % overshoot) and its cards burst 61 % -> 103 % in 3 f, tilted -14 to +13 deg; a bloom hit = 2 f tint, peak
+  at +2 f, 6 f decay (`[0, -0.026, 0.759, 0.888]`); dotted guide lines close onto the title cap lines in 6 f
+  (`[0.186, 0.557, 0.376, 0.992]`) and reopen 32 px in 4 f; waveform = about 40 pills (7 px at a 12.5 px pitch, up to
+  19 % of the frame height) stepping on twos, recoloured on the hits.
+
+### 14.4 Edits dressed as a design app (r11)
+
+- **One edit, one idea:** each word gets exactly one transformation of one glyph (rotate, drag an anchor, mirror, add a
+  shape) and the pun lands when the edit settles; 2.0-3.8 s per word, hard cuts, no camera.
+- **Every drag is a 4-10 f easeInOutCubic** (the live readout of a 90 deg turn reads 0.36, 2.88, 9.72, 23.04, 45.00 deg:
+  textbook easeInOutCubic); a few easeInOutQuart. Anchor drags morph vertex for vertex (`setShapeMorph` align
+  `"vertices"`), so corners stay sharp mid-move (`glyph-edit` for turns / mirrors / slides; `design-chrome` on a shape: the
+  outlined glyph or a transparent proxy rectangle parented to the letter, since the kit rejects text layers).
+- **Cursor choreography:** the pointer pops in at the lower right about 6 f after each cut, crosses the screen in 5-7 f
+  on `[0.43, 0.24, 0.29, 1.05]` (fitted on four entrances), pauses 1 f, then settles onto the glyph with a short
+  easeInOutCubic; the dragged object rides the same curve.
+- Restraint: one flat grey `#e8e8e8`, one ink `#383838`, one geometric family; the only colour is the app chrome (blue
+  selection, magenta smart-guide words).
+- Replica numbers (r11 rebuild): each edit is followed by a 7-12 f hold before the next; the word fills about 85 % of
+  the frame width on the vertical centre line; readouts sit about +28 / +36 px from the cursor tip in 20 px type with
+  comma decimals.
+
+### 14.5 Gotchas found by the rebuilds (work around them until they are fixed)
+
+- `agent.addCardSwarm`, `agent.addPromptBox` and any late-added 1-frame layer drop onto the lowest free track and can
+  draw UNDER an earlier full-frame ground: call `agent.bringToFront` on the new group right away (r09, r10).
+- A radial gradient's position 100 is the bounding-box corner, so a 0 -> 100 fade on a circle still shows a disc edge
+  at about 30 % opacity: put the transparent stop at 70 (r08).
+- `agent.setTextCounter` on a label: give the number its own span (`styleTextRange` with a slightly different colour,
+  e.g. alpha 0.996), or identical spans merge back and the prefix / suffix vanish (r08).
+- `agent.applyLayerEffects` (precomp wrap) on a text layer whose in / out points are already set hides it: leave the
+  text full length, wrap it, then span the precomp (r09).
+- `editor.setShapeDash` only dashes path shapes: draw a dotted line as an open 2-point path (r09).
+- The design kit (`design-chrome`, `addSelectionBox`, `addReadout`) rejects text layers and readouts show comp px:
+  target an outlined glyph or a transparent proxy rectangle (r11).
+- The B60 cloner cannot orbit copies on a TILTED ring (scale applies before rotation): hand-key the copies as 3D cards
+  or use `card-swarm` (r08).
+- `agent.addCursor` scales its group by size / 20: a custom arrow parented to the rig must be divided by that (r10).
+- Wrapping a layer in a precomp (`agent.applyLayerEffects`: glitch, melt, bulge) while it starts later than frame 0
+  plays its contents late by that start and can drop its parent: wrap first while the layer starts at 0, then
+  re-time / re-parent the precomp (r01, r05).
+- Trim paths do nothing on circle layers: `editor.convertShapeToPath` first (r01).
+- A named track matte breaks when another clip later lands on the matted clip's track: set the matte after the last
+  import (r07).
+- Judge blurred gradients (domes, wipes) on the exported MP4: `render_frame` / compareFrames grids score them
+  differently from the real exporter (r06).

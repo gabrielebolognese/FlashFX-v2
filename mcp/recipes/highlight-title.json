@@ -1,0 +1,185 @@
+{
+  "id": "highlight-title",
+  "name": "Highlight title (words blur in while a marker box wipes in behind them)",
+  "category": "text",
+  "description": "A title line whose words resolve from a blur one after another (with a small rise) while a solid marker box wipes in behind the line from its left edge, like a highlighter pen that lands just after the words. The creative text entrance of r08's section headers: every section re-uses it with a new box colour. The box is its own layer (recolour or re-time it freely) and sits behind the text.",
+  "source": [
+    "r08 S1 title 'uses every color at once.': words blur in f27-33 while the yellow box wipes in behind line 2 f28-48 (scale.x from the left, cubic-bezier(0.33, 0.951, 0.667, 1.001))",
+    "r08 S2 / S3 / S4 headers: orange, white and red title boxes blur in f148-155, f529-537, f770-777",
+    "r08 replica (artifacts/replicas/r08/build.mjs)"
+  ],
+  "taste": [
+    "TASTE.md 4 Stagger (words 2-4 f30)",
+    "5 Typography",
+    "6 Effects (blur-in)",
+    "7 Colour (one accent)"
+  ],
+  "params": {
+    "text": { "type": "string", "description": "The line (one line)." },
+    "x": { "type": "number", "default": null, "description": "Centre x (default comp centre)." },
+    "y": { "type": "number", "default": null, "description": "Centre y (default comp centre)." },
+    "size": { "type": "number", "default": null, "description": "Font size px (default 6.3 % of the short side, the measured median); shrunk to fit 84 % of the width." },
+    "weight": { "type": "number", "default": 800, "description": "Font weight." },
+    "family": { "type": "string", "default": "Inter", "description": "Font family (r08 uses a heavy serif: 'Playfair Display' 700 is bundled)." },
+    "color": { "type": "color", "default": "#0b0b0d", "description": "Text colour." },
+    "box": { "type": "color", "default": "#ffd43b", "description": "Marker box colour (the section's accent)." },
+    "padX": { "type": "number", "default": 0.35, "min": 0, "description": "Box padding left / right as a fraction of the font size." },
+    "boxHeight": { "type": "number", "default": 1.2, "min": 0.5, "description": "Box height as a multiple of the font size." },
+    "radius": { "type": "number", "default": 0, "min": 0, "description": "Box corner radius px (r08: square)." },
+    "tracking": { "type": "number", "default": -10, "description": "Tracking in 1/1000 em." },
+    "delay": { "type": "number", "default": 0, "min": 0, "description": "Frames at 30 fps before the first word." },
+    "wordIn": { "type": "number", "default": 6, "min": 2, "description": "Per-word blur-in length, frames at 30 fps (r08: 6-7)." },
+    "stagger": { "type": "number", "default": 2, "min": 0, "description": "Frames at 30 fps between word starts (r08 S1: about 1-2)." },
+    "boxDelay": { "type": "number", "default": 1, "description": "Frames at 30 fps after the first word before the box starts wiping." },
+    "wipe": { "type": "number", "default": 20, "min": 3, "description": "Box wipe length, frames at 30 fps (r08: 20)." },
+    "wipeEase": { "type": "ease", "default": [0.33, 0.951, 0.667, 1.001], "description": "Box wipe ease (measured r08 S1 highlight, an ease-out)." },
+    "exit": { "type": "boolean", "default": true, "description": "Blur out and fade (text and box) ending on the end frame." },
+    "exitFrames": { "type": "number", "default": 7, "min": 2, "description": "Exit length, frames at 30 fps." },
+    "name": { "type": "string", "default": "Title", "description": "Layer name (the box is '<name> box')." }
+  },
+  "length30": "delay + max(wordIn + stagger * (len(words(text)) - 1), boxDelay + wipe) + 40 + (exit ? exitFrames : 0)",
+  "checkFrames30": [
+    "delay + 3",
+    "delay + boxDelay + wipe * 0.4",
+    "delay + max(wordIn + stagger * (len(words(text)) - 1), boxDelay + wipe)"
+  ],
+  "lets": {
+    "X": "x == null ? CX : x",
+    "Y": "y == null ? CY : y",
+    "n": "len(words(text))",
+    "E": "f(wordIn)",
+    "G": "max(1, stagger * fps / 30)",
+    "s0": "start + f(delay)",
+    "S0": "size == null ? round(min(W, H) * 0.063) : size"
+  },
+  "steps": [
+    {
+      "id": "fit",
+      "action": "agent.measureString",
+      "args": { "text": "{{text}}", "fontFamily": "{{family}}", "fontSize": "{{S0}}", "fontWeight": "{{weight}}", "letterSpacing": "{{round(S0 * tracking / 1000, 2)}}" }
+    },
+    {
+      "let": {
+        "S": "round(min(S0, S0 * W * 0.84 / max(1, @fit.result.width)))"
+      }
+    },
+    {
+      "let": {
+        "TW": "round(@fit.result.width * S / S0)",
+        "w": "n > 1 ? E / (G * (n - 1)) : 1",
+        "D": "n > 1 ? round(E + G * (n - 1)) : E",
+        "b0": "s0 + f(boxDelay)",
+        "e0": "end - f(exitFrames)"
+      }
+    },
+    {
+      "let": {
+        "BW": "round(TW + S * padX * 2)",
+        "BH": "round(S * boxHeight)"
+      }
+    },
+    {
+      "id": "bx",
+      "action": "editor.addShapeLayer",
+      "args": {
+        "opts": { "type": "rectangle", "x": "{{X - PX}}", "y": "{{Y - PY}}", "width": "{{BW}}", "height": "{{BH}}", "radius": "{{radius}}", "fill": "{{box}}", "name": "{{name}} box" }
+      },
+      "layer": true,
+      "root": true
+    },
+    {
+      "action": "editor.setKeyframes",
+      "args": {
+        "layerId": "{{@bx.result}}",
+        "propertyPath": "shape.width",
+        "keyframes": [
+          { "frame": "{{b0}}", "value": 0, "ease": "{{wipeEase}}" },
+          { "frame": "{{b0 + f(wipe)}}", "value": "{{BW}}", "ease": "hold" }
+        ]
+      }
+    },
+    {
+      "action": "editor.setKeyframes",
+      "args": {
+        "layerId": "{{@bx.result}}",
+        "propertyPath": "transform.position",
+        "keyframes": [
+          { "frame": "{{b0}}", "value": "{{[X - BW / 2 - PX, Y - PY]}}", "ease": "{{wipeEase}}" },
+          { "frame": "{{b0 + f(wipe)}}", "value": "{{[X - PX, Y - PY]}}", "ease": "hold" }
+        ]
+      }
+    },
+    {
+      "when": "exit",
+      "action": "editor.setKeyframes",
+      "args": {
+        "layerId": "{{@bx.result}}",
+        "propertyPath": "transform.opacity",
+        "keyframes": [
+          { "frame": "{{e0}}", "value": 1, "ease": [0.55, 0, 1, 0.45] },
+          { "frame": "{{end}}", "value": 0 }
+        ]
+      }
+    },
+    {
+      "id": "txt",
+      "action": "editor.createQuickText",
+      "args": { "x": "{{X - PX}}", "y": "{{Y - PY}}", "text": "{{text}}" },
+      "layer": true,
+      "root": true
+    },
+    { "let": { "L": "@txt.result" } },
+    { "action": "editor.renameLayer", "args": { "id": "{{L}}", "name": "{{name}}" } },
+    { "action": "editor.updateLayerProperty", "args": { "layerId": "{{L}}", "path": "animOverrides.fontSize.defaultValue", "value": "{{S}}" } },
+    { "action": "editor.updateLayerProperty", "args": { "layerId": "{{L}}", "path": "content.spans.0.style.fontSize", "value": "{{S}}" } },
+    { "action": "editor.updateLayerProperty", "args": { "layerId": "{{L}}", "path": "content.spans.0.style.fontWeight", "value": "{{weight}}" } },
+    { "action": "editor.updateLayerProperty", "args": { "layerId": "{{L}}", "path": "content.spans.0.style.fontFamily", "value": "{{family}}" } },
+    { "action": "editor.updateLayerProperty", "args": { "layerId": "{{L}}", "path": "content.spans.0.style.color", "value": "{{color}}" } },
+    { "action": "editor.updateLayerProperty", "args": { "layerId": "{{L}}", "path": "animOverrides.letterSpacing.defaultValue", "value": "{{round(S * tracking / 1000, 2)}}" } },
+    {
+      "action": "agent.applyTextAnimatorPreset",
+      "args": { "layerId": "{{L}}", "presetId": "rise-fade-word", "startFrame": "{{s0}}", "durationFrames": "{{D}}", "replace": true }
+    },
+    {
+      "action": "editor.updateLayerProperty",
+      "args": { "layerId": "{{L}}", "path": "animators.0.delta", "value": { "opacity": -1, "blur": "{{round(S * 0.35)}}", "position": "{{[0, round(S * 0.25)]}}" } }
+    },
+    { "action": "editor.updateLayerProperty", "args": { "layerId": "{{L}}", "path": "animators.0.selector.end", "value": "{{w}}" } },
+    { "action": "editor.updateLayerProperty", "args": { "layerId": "{{L}}", "path": "animators.0.selector.easeLow", "value": 1 } },
+    { "action": "editor.updateLayerProperty", "args": { "layerId": "{{L}}", "path": "animators.0.selector.easeHigh", "value": 0 } },
+    {
+      "action": "editor.setKeyframes",
+      "args": {
+        "layerId": "{{L}}",
+        "propertyPath": "animators.0.offset",
+        "keyframes": [
+          { "frame": "{{s0}}", "value": "{{-w}}", "ease": "linear" },
+          { "frame": "{{s0 + D}}", "value": "{{n > 1 ? 1 : 0}}" }
+        ]
+      }
+    },
+    {
+      "when": "exit",
+      "action": "editor.setKeyframes",
+      "args": {
+        "layerId": "{{L}}",
+        "propertyPath": "transform.opacity",
+        "keyframes": [
+          { "frame": "{{e0}}", "value": 1, "ease": [0.55, 0, 1, 0.45] },
+          { "frame": "{{end}}", "value": 0 }
+        ]
+      }
+    }
+  ],
+  "returns": {
+    "layerId": "{{L}}",
+    "boxId": "{{@bx.result}}",
+    "boxWidth": "{{BW}}",
+    "boxHeight": "{{BH}}",
+    "settledFrame": "{{max(s0 + D, b0 + f(wipe))}}"
+  },
+  "example": {
+    "params": { "text": "uses every color at once.", "family": "Playfair Display", "weight": 700 },
+    "startFrame": 10
+  }
+}

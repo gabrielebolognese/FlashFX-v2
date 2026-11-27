@@ -711,7 +711,11 @@ does the plumbing; the build stays plain MCP calls, so Claude can repeat it.
 endFrame?, parentId?, dryRun? }` builds one. Apply back to front (background, `scene-camera`, content,
 `cursor-click`, `transition` last). Chain `returns` between recipes (a title's `inkBottom` places its underline,
 the prompt bar's `sendX` / `sendY` / `pressFrame` drive `cursor-click`, a transition's `cutFrame` is where the
-shots change). Recipe time params are frames at 30 fps, scaled to the comp fps. Everything a recipe creates is
+shots change). Recipes learned from r08-r11: `iris-reveal` (match cut from an element), `highlight-title` (words blur in over
+a marker box), `card-emerge` (a card slides out from behind an anchor, then tucks into a slot), `morph-reveal` (blurred
+blob sharpens into any SVG mark, optional zoom-through), `word-hit` (words land on audio onsets), `glyph-edit` (one letter
+turns / flips / slides); `iris-reveal` / `morph-reveal` return `coverFrame`, `glyph-edit` returns `glyphX` / `glyphY` /
+`editFrame` for a `cursor-click`. Recipe time params are frames at 30 fps, scaled to the comp fps. Everything a recipe creates is
 ordinary named layers and keyframes, so the sections above apply when you retouch it. The full workflow is the
 Claude Code skill `mcp/skill/flashfx-motion/SKILL.md`; the numbers behind the recipes are in `TASTE.md`.
 

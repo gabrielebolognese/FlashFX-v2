@@ -1,0 +1,399 @@
+{
+  "id": "word-hit",
+  "name": "Word hits (each word lands on a sound: magenta flash, yellow flash, final colour)",
+  "category": "text",
+  "description": "A caption whose words land one by one on the beats (pass the audio onset frames as hits). Each word appears on its hit with 2 frames of hot magenta and a magenta glow, 2 frames of yellow with a yellow glow, then settles to its final colour while it rises a few px into place. It is the visual version of a sound effect: plain captions feel like SFX. One text layer per word (named '<name> 1 <word>' ...), so any word can be re-timed, recoloured (an accent word in orange) or scaled.",
+  "source": [
+    "r09 S10.E1 'I generated all of them with Claude' f208-255: each word magenta #e702fc 2 f -> yellow #fee802 2 f -> final #0c0604, rising 15 px easeOutCubic over 4 f; 42 of 60 visual events within 2 frames of an audio onset",
+    "r09 S10.E1 accent word 'Claude' ends orange #f8980a with an orange glow",
+    "r09 'animated on twos' captions (values repeat in pairs)"
+  ],
+  "taste": [
+    "TASTE.md 4 Stagger",
+    "5 Typography",
+    "6 Effects (glow)",
+    "7 Colour"
+  ],
+  "params": {
+    "text": {
+      "type": "string",
+      "description": "The caption (one line; words split on spaces)."
+    },
+    "x": {
+      "type": "number",
+      "default": null,
+      "description": "Line centre x (default comp centre)."
+    },
+    "y": {
+      "type": "number",
+      "default": null,
+      "description": "Line centre y (default comp centre)."
+    },
+    "size": {
+      "type": "number",
+      "default": null,
+      "description": "Font size px (default 6.3 % of the short side); shrunk to fit 84 % of the width."
+    },
+    "weight": {
+      "type": "number",
+      "default": 700,
+      "description": "Font weight."
+    },
+    "family": {
+      "type": "string",
+      "default": "Inter Tight",
+      "description": "Font family."
+    },
+    "color": {
+      "type": "color",
+      "default": "#0c0604",
+      "description": "Final word colour (white on a dark ground)."
+    },
+    "flash1": {
+      "type": "color",
+      "default": "#e702fc",
+      "description": "First flash colour (2 frames)."
+    },
+    "flash2": {
+      "type": "color",
+      "default": "#fee802",
+      "description": "Second flash colour (2 frames)."
+    },
+    "accentWord": {
+      "type": "number",
+      "default": -1,
+      "description": "0-based index of a word that ends in the accent colour with a glow (-1 = none)."
+    },
+    "accent": {
+      "type": "color",
+      "default": "#f8980a",
+      "description": "Accent word final colour."
+    },
+    "hits": {
+      "type": "array",
+      "items": "number",
+      "default": [],
+      "description": "Frame offsets at 30 fps (from startFrame) where each word lands: the audio onsets. Missing entries continue at 'gap'."
+    },
+    "gap": {
+      "type": "number",
+      "default": 4,
+      "min": 1,
+      "description": "Frames at 30 fps between words when hits are not given."
+    },
+    "flash": {
+      "type": "number",
+      "default": 2,
+      "min": 1,
+      "description": "Frames at 30 fps per flash colour (r09: 2)."
+    },
+    "rise": {
+      "type": "number",
+      "default": null,
+      "description": "Rise px into place (default 17 % of the font size, r09: 15 px at 90 px)."
+    },
+    "glow": {
+      "type": "number",
+      "default": 1.2,
+      "min": 0,
+      "description": "Flash glow intensity (0 = no glow)."
+    },
+    "exit": {
+      "type": "boolean",
+      "default": true,
+      "description": "Hard-cut the caption off on the end frame (r09 cuts on the next sound)."
+    },
+    "name": {
+      "type": "string",
+      "default": "Caption",
+      "description": "Layer name prefix."
+    }
+  },
+  "length30": "(len(hits) >= len(words(text)) ? max(0, pick(hits, len(words(text)) - 1)) : gap * (len(words(text)) - 1)) + flash * 2 + 40",
+  "checkFrames30": [
+    "len(hits) > 0 ? pick(hits, 0) : 0",
+    "(len(hits) > 0 ? pick(hits, 0) : 0) + flash",
+    "(len(hits) > 0 ? pick(hits, 0) : 0) + flash * 2",
+    "(len(hits) >= len(words(text)) ? pick(hits, len(words(text)) - 1) : gap * (len(words(text)) - 1)) + flash * 2 + 2"
+  ],
+  "lets": {
+    "X": "x == null ? CX : x",
+    "Y": "y == null ? CY : y",
+    "WD": "words(text)",
+    "N": "len(words(text))",
+    "S0": "size == null ? round(min(W, H) * 0.063) : size"
+  },
+  "steps": [
+    {
+      "id": "fit",
+      "action": "agent.measureString",
+      "args": {
+        "text": "{{text}}",
+        "fontFamily": "{{family}}",
+        "fontSize": "{{S0}}",
+        "fontWeight": "{{weight}}"
+      }
+    },
+    {
+      "let": {
+        "S": "round(min(S0, S0 * W * 0.84 / max(1, @fit.result.width)))"
+      }
+    },
+    {
+      "let": {
+        "R": "rise == null ? round(S * 0.17) : rise",
+        "SP": "round(S * 0.27)",
+        "WS": "[]",
+        "TOT": "0"
+      }
+    },
+    {
+      "forEach": "WD",
+      "as": "wd",
+      "index": "i",
+      "steps": [
+        {
+          "id": "wm",
+          "action": "agent.measureString",
+          "args": {
+            "text": "{{wd}}",
+            "fontFamily": "{{family}}",
+            "fontSize": "{{S}}",
+            "fontWeight": "{{weight}}"
+          }
+        },
+        {
+          "let": {
+            "WS": "append(WS, @wm.result.width)",
+            "TOT": "TOT + @wm.result.width + (i > 0 ? SP : 0)"
+          }
+        }
+      ]
+    },
+    {
+      "let": {
+        "CUR": "X - TOT / 2",
+        "IDS": "[]"
+      }
+    },
+    {
+      "forEach": "WD",
+      "as": "wd",
+      "index": "i",
+      "steps": [
+        {
+          "let": {
+            "ww": "pick(WS, i)",
+            "h0": "start + f(i < len(hits) ? pick(hits, i) : (len(hits) > 0 ? pick(hits, len(hits) - 1) + gap * (i - len(hits) + 1) : gap * i))",
+            "fin": "i == accentWord ? accent : color"
+          }
+        },
+        {
+          "let": {
+            "wx": "CUR + ww / 2"
+          }
+        },
+        {
+          "id": "w",
+          "action": "editor.createQuickText",
+          "args": {
+            "x": "{{wx - PX}}",
+            "y": "{{Y - PY}}",
+            "text": "{{wd}}"
+          },
+          "layer": true,
+          "root": true
+        },
+        {
+          "let": {
+            "L": "@w.result",
+            "IDS": "append(IDS, @w.result)"
+          }
+        },
+        {
+          "action": "editor.renameLayer",
+          "args": {
+            "id": "{{L}}",
+            "name": "{{name}} {{i + 1}} {{wd}}"
+          }
+        },
+        {
+          "action": "editor.updateLayerProperty",
+          "args": {
+            "layerId": "{{L}}",
+            "path": "animOverrides.fontSize.defaultValue",
+            "value": "{{S}}"
+          }
+        },
+        {
+          "action": "editor.updateLayerProperty",
+          "args": {
+            "layerId": "{{L}}",
+            "path": "content.spans.0.style.fontSize",
+            "value": "{{S}}"
+          }
+        },
+        {
+          "action": "editor.updateLayerProperty",
+          "args": {
+            "layerId": "{{L}}",
+            "path": "content.spans.0.style.fontWeight",
+            "value": "{{weight}}"
+          }
+        },
+        {
+          "action": "editor.updateLayerProperty",
+          "args": {
+            "layerId": "{{L}}",
+            "path": "content.spans.0.style.fontFamily",
+            "value": "{{family}}"
+          }
+        },
+        {
+          "action": "editor.updateLayerProperty",
+          "args": {
+            "layerId": "{{L}}",
+            "path": "content.spans.0.style.color",
+            "value": "{{fin}}"
+          }
+        },
+        {
+          "action": "editor.setKeyframes",
+          "args": {
+            "layerId": "{{L}}",
+            "propertyPath": "text.color",
+            "keyframes": [
+              {
+                "frame": "{{h0}}",
+                "value": "{{flash1}}",
+                "ease": "hold"
+              },
+              {
+                "frame": "{{h0 + f(flash)}}",
+                "value": "{{flash2}}",
+                "ease": "hold"
+              },
+              {
+                "frame": "{{h0 + f(flash) * 2}}",
+                "value": "{{fin}}",
+                "ease": "hold"
+              }
+            ]
+          }
+        },
+        {
+          "action": "editor.setKeyframes",
+          "args": {
+            "layerId": "{{L}}",
+            "propertyPath": "transform.opacity",
+            "keyframes": "{{append(h0 > start ? [obj('frame', h0 - 1, 'value', 0, 'ease', 'hold')] : [], obj('frame', h0, 'value', 1, 'ease', 'hold'), obj('frame', exit ? max(h0 + 1, end - 1) : max(h0 + 1, end), 'value', 1, 'ease', 'hold'), obj('frame', exit ? max(h0 + 2, end) : max(h0 + 2, end + 1), 'value', exit ? 0 : 1))}}"
+          }
+        },
+        {
+          "action": "editor.setKeyframes",
+          "args": {
+            "layerId": "{{L}}",
+            "propertyPath": "transform.position",
+            "keyframes": [
+              {
+                "frame": "{{h0}}",
+                "value": "{{[wx - PX, Y - PY + R]}}",
+                "ease": [
+                  0.33,
+                  1,
+                  0.68,
+                  1
+                ]
+              },
+              {
+                "frame": "{{h0 + f(flash) * 2}}",
+                "value": "{{[wx - PX, Y - PY]}}",
+                "ease": "hold"
+              }
+            ]
+          }
+        },
+        {
+          "when": "glow > 0",
+          "action": "editor.enableLayerEffect",
+          "args": {
+            "layerId": "{{L}}",
+            "kind": "glow"
+          }
+        },
+        {
+          "when": "glow > 0",
+          "action": "editor.setKeyframes",
+          "args": {
+            "layerId": "{{L}}",
+            "propertyPath": "glow.color",
+            "keyframes": [
+              {
+                "frame": "{{h0}}",
+                "value": "{{flash1}}",
+                "ease": "hold"
+              },
+              {
+                "frame": "{{h0 + f(flash)}}",
+                "value": "{{flash2}}",
+                "ease": "hold"
+              },
+              {
+                "frame": "{{h0 + f(flash) * 2}}",
+                "value": "{{fin}}",
+                "ease": "hold"
+              }
+            ]
+          }
+        },
+        {
+          "when": "glow > 0",
+          "action": "editor.setKeyframes",
+          "args": {
+            "layerId": "{{L}}",
+            "propertyPath": "glow.intensity",
+            "keyframes": [
+              {
+                "frame": "{{h0}}",
+                "value": "{{glow}}",
+                "ease": "hold"
+              },
+              {
+                "frame": "{{h0 + f(flash) * 2}}",
+                "value": "{{i == accentWord ? glow * 0.5 : 0}}",
+                "ease": "hold"
+              }
+            ]
+          }
+        },
+        {
+          "let": {
+            "CUR": "CUR + ww + SP"
+          }
+        }
+      ]
+    }
+  ],
+  "returns": {
+    "layerIds": "{{IDS}}",
+    "fontSize": "{{S}}",
+    "lineWidth": "{{TOT}}",
+    "lastLandFrame": "{{start + f(N - 1 < len(hits) ? pick(hits, N - 1) : (len(hits) > 0 ? pick(hits, len(hits) - 1) + gap * (N - len(hits)) : gap * (N - 1))) + f(flash) * 2}}"
+  },
+  "example": {
+    "params": {
+      "text": "I generated all of them with Claude",
+      "hits": [
+        0,
+        2,
+        7,
+        11,
+        17,
+        26,
+        31
+      ],
+      "accentWord": 6
+    },
+    "startFrame": 4
+  }
+}

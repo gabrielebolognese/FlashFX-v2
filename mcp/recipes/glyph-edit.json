@@ -1,0 +1,406 @@
+{
+  "id": "glyph-edit",
+  "name": "Glyph edit (one letter of a word turns, flips or slides: the pun edit)",
+  "category": "text",
+  "description": "A word set as one text layer per letter (laid out by the measured advances, so it reads as one word) where exactly one glyph gets one transformation: a turn (an 'i' rotating 90 deg, an 'M' turning 180 to a 'W'), a mirror (b <-> d), a slide or a resize, on a 4-10 frame easeInOutCubic around its own ink centre, and the pun lands when the edit settles. Pair it with `cursor-click` (aim at the returned glyph centre, click on editFrame) for r11's design-app look; for anchor drags outline the glyph and use setShapeMorph align 'vertices'. `design-chrome` needs a shape target (an outlined glyph, or a transparent proxy rectangle parented to the letter): the design kit rejects text layers.",
+  "source": [
+    "r11 every word: one glyph, one transformation, 4-10 f easeInOutCubic (the 'i' rotation readout 0.36, 2.88, 9.72, 23.04, 45.00 deg = 90 deg on easeInOutCubic)",
+    "r11 cursor entrance [0.43, 0.24, 0.29, 1.05] 5-7 f, 1 f pause, then the edit rides the cursor",
+    "r11 replica (artifacts/replicas/r11/build.mjs)"
+  ],
+  "taste": [
+    "TASTE.md 14.4 Edits dressed as a design app",
+    "2 Easing (easeInOut between two rests)",
+    "4 Hold to read"
+  ],
+  "params": {
+    "text": {
+      "type": "string",
+      "description": "The word (one line; spaces allowed)."
+    },
+    "glyph": {
+      "type": "number",
+      "default": 0,
+      "min": 0,
+      "description": "0-based index of the letter to edit (spaces count)."
+    },
+    "x": {
+      "type": "number",
+      "default": null,
+      "description": "Word centre x (default comp centre)."
+    },
+    "y": {
+      "type": "number",
+      "default": null,
+      "description": "Word centre y (default comp centre)."
+    },
+    "size": {
+      "type": "number",
+      "default": null,
+      "description": "Font size px (default 18 % of the short side, r11's hero words); shrunk to fit 84 % of the width."
+    },
+    "weight": {
+      "type": "number",
+      "default": 500,
+      "description": "Font weight."
+    },
+    "family": {
+      "type": "string",
+      "default": "Inter",
+      "description": "Font family (r11: one geometric sans)."
+    },
+    "color": {
+      "type": "color",
+      "default": "#383838",
+      "description": "Ink (r11 #383838 on #e8e8e8)."
+    },
+    "tracking": {
+      "type": "number",
+      "default": 0,
+      "description": "Extra space between letters, in 1/1000 em."
+    },
+    "rotate": {
+      "type": "number",
+      "default": 0,
+      "description": "Degrees the glyph turns (90, 180, -45 ...)."
+    },
+    "flipX": {
+      "type": "boolean",
+      "default": false,
+      "description": "Mirror horizontally (b -> d)."
+    },
+    "flipY": {
+      "type": "boolean",
+      "default": false,
+      "description": "Mirror vertically (b -> p)."
+    },
+    "dx": {
+      "type": "number",
+      "default": 0,
+      "description": "Slide px in x."
+    },
+    "dy": {
+      "type": "number",
+      "default": 0,
+      "description": "Slide px in y."
+    },
+    "scale": {
+      "type": "number",
+      "default": 1,
+      "min": 0.05,
+      "description": "Final scale of the glyph."
+    },
+    "delay": {
+      "type": "number",
+      "default": 20,
+      "min": 0,
+      "description": "Frames at 30 fps the word rests before the edit (r11: the cursor arrives first)."
+    },
+    "edit": {
+      "type": "number",
+      "default": 8,
+      "min": 2,
+      "description": "Edit length, frames at 30 fps (r11: 4-10)."
+    },
+    "ease": {
+      "type": "ease",
+      "default": [
+        0.65,
+        0,
+        0.35,
+        1
+      ],
+      "description": "Edit ease (easeInOutCubic)."
+    },
+    "name": {
+      "type": "string",
+      "default": "Word",
+      "description": "Layer name prefix (letters are '<name> 1 W' ...)."
+    }
+  },
+  "length30": "delay + edit + 45",
+  "checkFrames30": [
+    "delay",
+    "delay + edit * 0.5",
+    "delay + edit",
+    "delay + edit + 30"
+  ],
+  "lets": {
+    "X": "x == null ? CX : x",
+    "Y": "y == null ? CY : y",
+    "S0": "size == null ? round(min(W, H) * 0.18) : size",
+    "e0": "start + f(delay)",
+    "e1": "start + f(delay) + f(edit)"
+  },
+  "steps": [
+    {
+      "id": "fit",
+      "action": "agent.measureString",
+      "args": {
+        "text": "{{text}}",
+        "fontFamily": "{{family}}",
+        "fontSize": "{{S0}}",
+        "fontWeight": "{{weight}}"
+      }
+    },
+    {
+      "let": {
+        "S": "round(min(S0, S0 * W * 0.84 / max(1, @fit.result.width)))"
+      }
+    },
+    {
+      "let": {
+        "TR": "S * tracking / 1000",
+        "CH": "[]",
+        "ADV": "[]",
+        "TOT": "0"
+      }
+    },
+    {
+      "forEach": "range(len(letters(text)))",
+      "as": "k",
+      "index": "i",
+      "steps": [
+        {
+          "id": "pre",
+          "action": "agent.measureString",
+          "args": {
+            "text": "{{slice(text, 0, i + 1)}}",
+            "fontFamily": "{{family}}",
+            "fontSize": "{{S}}",
+            "fontWeight": "{{weight}}"
+          }
+        },
+        {
+          "let": {
+            "ADV": "append(ADV, @pre.result.width)"
+          }
+        }
+      ]
+    },
+    {
+      "let": {
+        "TOT": "pick(ADV, len(letters(text)) - 1) + TR * (len(letters(text)) - 1)",
+        "IDS": "[]",
+        "GID": "''",
+        "GX": "0",
+        "prev": "0",
+        "GY": "0"
+      }
+    },
+    {
+      "forEach": "range(len(letters(text)))",
+      "as": "k",
+      "index": "i",
+      "steps": [
+        {
+          "let": {
+            "ch": "pick(letters(text), i)",
+            "a1": "pick(ADV, i)"
+          }
+        },
+        {
+          "let": {
+            "cx": "X - TOT / 2 + (prev + a1) / 2 + TR * i"
+          }
+        },
+        {
+          "when": "ch != ' '",
+          "id": "g",
+          "action": "editor.createQuickText",
+          "args": {
+            "x": "{{cx - PX}}",
+            "y": "{{Y - PY}}",
+            "text": "{{ch}}"
+          },
+          "layer": true,
+          "root": true
+        },
+        {
+          "when": "ch != ' '",
+          "let": {
+            "L": "@g.result",
+            "IDS": "append(IDS, @g.result)"
+          }
+        },
+        {
+          "when": "ch != ' '",
+          "action": "editor.renameLayer",
+          "args": {
+            "id": "{{L}}",
+            "name": "{{name}} {{i + 1}} {{ch}}"
+          }
+        },
+        {
+          "when": "ch != ' '",
+          "action": "editor.updateLayerProperty",
+          "args": {
+            "layerId": "{{L}}",
+            "path": "animOverrides.fontSize.defaultValue",
+            "value": "{{S}}"
+          }
+        },
+        {
+          "when": "ch != ' '",
+          "action": "editor.updateLayerProperty",
+          "args": {
+            "layerId": "{{L}}",
+            "path": "content.spans.0.style.fontSize",
+            "value": "{{S}}"
+          }
+        },
+        {
+          "when": "ch != ' '",
+          "action": "editor.updateLayerProperty",
+          "args": {
+            "layerId": "{{L}}",
+            "path": "content.spans.0.style.fontWeight",
+            "value": "{{weight}}"
+          }
+        },
+        {
+          "when": "ch != ' '",
+          "action": "editor.updateLayerProperty",
+          "args": {
+            "layerId": "{{L}}",
+            "path": "content.spans.0.style.fontFamily",
+            "value": "{{family}}"
+          }
+        },
+        {
+          "when": "ch != ' '",
+          "action": "editor.updateLayerProperty",
+          "args": {
+            "layerId": "{{L}}",
+            "path": "content.spans.0.style.color",
+            "value": "{{color}}"
+          }
+        },
+        {
+          "when": "i == glyph && ch != ' '",
+          "let": {
+            "GID": "L",
+            "GX": "cx"
+          }
+        },
+        {
+          "let": {
+            "prev": "a1"
+          }
+        }
+      ]
+    },
+    {
+      "when": "GID != ''",
+      "id": "ink",
+      "action": "agent.measureText",
+      "args": {
+        "layerId": "{{GID}}",
+        "frame": "{{start}}"
+      }
+    },
+    {
+      "when": "GID != ''",
+      "let": {
+        "ICX": "len(@ink.result.glyphInk) == 0 ? GX : @ink.result.glyphInk.centerX",
+        "ICY": "len(@ink.result.glyphInk) == 0 ? Y : @ink.result.glyphInk.centerY"
+      }
+    },
+    {
+      "when": "GID != ''",
+      "action": "editor.setLayerAnchor",
+      "args": {
+        "id": "{{GID}}",
+        "anchor": "{{[ICX - GX, ICY - Y]}}",
+        "frame": "{{start}}"
+      }
+    },
+    {
+      "when": "GID != ''",
+      "let": {
+        "GX": "ICX",
+        "GY": "ICY"
+      }
+    },
+    {
+      "when": "GID != '' && rotate != 0",
+      "action": "editor.setKeyframes",
+      "args": {
+        "layerId": "{{GID}}",
+        "propertyPath": "transform.rotation",
+        "keyframes": [
+          {
+            "frame": "{{e0}}",
+            "value": 0,
+            "ease": "{{ease}}"
+          },
+          {
+            "frame": "{{e1}}",
+            "value": "{{rotate}}",
+            "ease": "hold"
+          }
+        ]
+      }
+    },
+    {
+      "when": "GID != '' && (flipX || flipY || scale != 1)",
+      "action": "editor.setKeyframes",
+      "args": {
+        "layerId": "{{GID}}",
+        "propertyPath": "transform.scale",
+        "keyframes": [
+          {
+            "frame": "{{e0}}",
+            "value": [
+              1,
+              1
+            ],
+            "ease": "{{ease}}"
+          },
+          {
+            "frame": "{{e1}}",
+            "value": "{{[(flipX ? -1 : 1) * scale, (flipY ? -1 : 1) * scale]}}",
+            "ease": "hold"
+          }
+        ]
+      }
+    },
+    {
+      "when": "GID != '' && (dx != 0 || dy != 0)",
+      "action": "editor.setKeyframes",
+      "args": {
+        "layerId": "{{GID}}",
+        "propertyPath": "transform.position",
+        "keyframes": [
+          {
+            "frame": "{{e0}}",
+            "value": "{{[GX - PX, GY - PY]}}",
+            "ease": "{{ease}}"
+          },
+          {
+            "frame": "{{e1}}",
+            "value": "{{[GX + dx - PX, GY + dy - PY]}}",
+            "ease": "hold"
+          }
+        ]
+      }
+    }
+  ],
+  "returns": {
+    "layerIds": "{{IDS}}",
+    "glyphId": "{{GID}}",
+    "glyphX": "{{GX + dx}}",
+    "glyphY": "{{GY + dy}}",
+    "editFrame": "{{e0}}",
+    "settledFrame": "{{e1}}",
+    "fontSize": "{{S}}"
+  },
+  "example": {
+    "params": {
+      "text": "MOM",
+      "glyph": 2,
+      "rotate": 180
+    },
+    "startFrame": 0
+  }
+}
