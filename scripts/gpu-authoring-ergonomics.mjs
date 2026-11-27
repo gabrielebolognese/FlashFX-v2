@@ -4,8 +4,8 @@
 //            loudly (it returned ok and changed nothing before), a layer NAME passed as an id names the id.
 //   B72      a span lineHeight write changes the rendered line spacing; measure_text glyphInk hugs the rendered
 //            VT323 letters while `ink` stays the (taller) line box.
-//   B70      agent.addCursor added after a later shot's ground draws ABOVE it (placement "fit", the old drop,
-//            lands under it); renamed icons keep working; the hand's fingertip is the hotspot; the click
+//   B70      agent.addCursor added after a later shot's ground draws ABOVE it (placement "fit", a timeline drop,
+//            too since B84; bringToFront lifts a rig under a LATER overlay); renamed icons keep working; the hand's fingertip is the hotspot; the click
 //            ripple stacks under the cursor.
 //   stack    agent.bringToFront raises a buried layer in one undo step (editor.reorderLayers does not).
 //   path     agent.setMotionPath moves a layer through its nodes on time (start / middle / end frames).
@@ -118,7 +118,7 @@ try {
   const ground = await render('04-shot2-ground', 80);
   const blue = [ground.px[0], ground.px[1], ground.px[2]];
   const cursorAt = async (x, y, opts) => (await mcp.action('agent.addCursor', { x, y, frame: 60, size: 72, ...opts })).result;
-  await check('B70: a cursor added after shot 2 draws above its ground; placement "fit" (the old drop) lands under it', async () => {
+  await check('B70: a cursor added after shot 2 draws above its ground; placement "fit" (a timeline drop) lands above it too since B84', async () => {
     const top = await cursorAt(600, 540, { name: 'Top cursor' });
     const fit = await cursorAt(1300, 540, { name: 'Fit cursor', placement: 'fit' });
     const img = await render('05-cursor-top-vs-fit', 80);
@@ -126,13 +126,24 @@ try {
     const fitInk = ink(img, { x: 1260, y: 500, width: 120, height: 140 }, blue);
     assert.equal(top.placement, 'top');
     assert.ok(topInk.n > 300, `top cursor visible: ${topInk.n} px`);
-    assert.equal(fitInk.n, 0, `fit cursor hidden under shot 2's ground (the B70 bug, kept as the opt-in old behaviour): ${fitInk.n} px`);
+    // B84: a "fit" drop reuses a free track only above every clip visible at its time, so it no longer hides under
+    // shot 2's ground (before B84 this asserted 0 px: the B70 bug kept as the opt-in old behaviour).
+    assert.ok(fitInk.n > 300, `fit cursor above shot 2's ground: ${fitInk.n} px`);
+    assert.equal(fit.placement, 'fit');
+    // agent.bringToFront still lifts a rig built EARLIER: a later full-frame overlay covers the fit cursor, the
+    // raise brings the whole rig back above it, one undo puts it under again.
+    const over = await rect(960, 540, W, H, [0.8, 0.3, 0.2, 1], 'Shot 2 overlay'); await span(over, 60, 120);
+    const covered = await render('06-fit-cursor-covered', 80);
+    const red = [covered.px[0], covered.px[1], covered.px[2]];
+    const fitBox = { x: 1260, y: 500, width: 120, height: 140 };
+    assert.equal(ink(covered, fitBox, red).n, 0, 'the later overlay covers the fit cursor');
     await mcp.action('agent.bringToFront', { layerIds: [fit.cursorId] });
-    const raised = ink(await render('06-fit-cursor-raised', 80), { x: 1260, y: 500, width: 120, height: 140 }, blue);
+    const raised = ink(await render('06-fit-cursor-raised', 80), fitBox, red);
     assert.ok(raised.n > 300, `agent.bringToFront lifts the whole rig: ${raised.n} px`);
     await mcp.call('run_action', { actionId: 'history.undo' });
-    const undone = ink(await render('07-raise-undone', 80), { x: 1260, y: 500, width: 120, height: 140 }, blue);
+    const undone = ink(await render('07-raise-undone', 80), fitBox, red);
     assert.equal(undone.n, 0, 'one undo step puts it back');
+    await set(over, 'visible', false);
     globalThis.topCursor = top;
     return { topPx: topInk.n, fitPx: fitInk.n, raisedPx: raised.n };
   });

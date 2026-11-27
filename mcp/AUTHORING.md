@@ -54,9 +54,11 @@ await call('run_actions', { actions: st.layers.map((l) => ({ actionId: 'editor.u
 - `renameLayer` every layer with its role: `Title line 1`, `Card`, `Accent bar`, `Avatar`,
   `Spark burst`. The owner edits by name; a timeline of `Text 1`, `Rectangle 3` is not editable in
   practice.
-- **Create back to front.** The renderer stacks by timeline track: a new layer drops onto the
-  top-most track that has room at its time range, else onto a new track on top. Plan the order:
-  background shapes first, then text, then foreground accents. `editor.reorderLayers` only reorders
+- **Create back to front.** The renderer stacks by timeline track. A new layer always lands on top of
+  every layer visible during its time range (it reuses a free track above them, else a new top track),
+  and `agent.setClipTiming` that moves a clip to a range disjoint from its old one (import at f0, then
+  time it to f478) re-drops it on top of what is visible there (`restacked: true`); a trim or nudge
+  keeps its track. Plan the order: background shapes first, then text, then foreground accents. `editor.reorderLayers` only reorders
   the layer LIST and does NOT change what draws on top. To lift layers built earlier above everything
   (a title, a flash, a cursor after the next shot's ground), use `agent.bringToFront { layerIds }`:
   each goes onto its own new top track, in their current order, one undo step, no timing change.
@@ -430,6 +432,13 @@ Never leave real motion on linear (the default for `addKeyframe`), except progre
   on the null. A layer that enters while its rig is already moving smears on its first frame. For a
   longer smear raise `editor.setCompositionSetting("shutterAngle", 270-360)` or the layer's
   `motionBlurShutter` (180 = neutral); expression-driven motion itself (wiggle, time * n) does not blur.
+  Cloners: turn `motionBlur` on the cloner (or its source) and every copy streaks along its OWN path
+  (a spinning photo ring smears tangentially, a moving cloner smears every copy with it).
+- Sampling colours from a reference video: decode it with its own matrix. Phone, screen and FlashFX
+  videos are BT.709; ffmpeg's default RGB conversion (and JPEG frames extracted without
+  `in_color_matrix=bt709`) reads them as BT.601, which shifts blues toward violet (true [32, 59, 206]
+  reads [36, 54, 199]). Use `scale=...:in_color_matrix=bt709:in_range=tv` (mcp/lib/compare_replica.py
+  does this for its stills).
 - Glow: `editor.enableLayerEffect { kind: "glow" }`, then `glow.color`, `glow.radius`,
   `glow.intensity`, `glow.threshold`. On text and shapes the first glow is the layer's own colour at
   threshold 0 (B67: the old white glow at 0.6 vanished on saturated colours); images and video keep

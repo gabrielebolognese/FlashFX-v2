@@ -1272,9 +1272,10 @@ const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
       name: typeof name === 'string' && name.trim() ? name.trim() : undefined,
       rim: dkColor(rimColor, 'rimColor'),
     });
-    if (placement !== undefined && placement !== null && placement !== 'top' && placement !== 'fit') throw new Error('"placement" must be "top" (default: above every layer) or "fit" (the first free track, like a timeline drop)');
-    // B70: a pointer belongs above the shot it clicks in. 'fit' (the old behaviour) drops it onto the first
-    // track with free space at that time, which can be under later shots' backgrounds.
+    if (placement !== undefined && placement !== null && placement !== 'top' && placement !== 'fit') throw new Error('"placement" must be "top" (default: above every layer) or "fit" (a free track above the layers visible at that time, like a timeline drop)');
+    // B70: a pointer belongs above the shot it clicks in ('top': above every layer). 'fit' drops it like any new
+    // layer: since B84 onto a free track above everything visible at that time (before, it could land under a
+    // later shot's ground).
     const onTop = placement !== 'fit';
     useEditorStore.getState().applyLayerEdits('Add cursor', { add: layers, ...(onTop ? { stack: { ids: layers.map((l) => l.id), top: true as const } } : {}) });
     const icons: Record<string, string> = {};
@@ -1695,6 +1696,7 @@ const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
     if (res.keyframeShift) out.keyframesShiftedBy = res.keyframeShift;
     if (res.unpinnedTrack) out.trackNowAbsolute = true;
     if (res.movedToNewTrack) out.movedToNewTrack = true;
+    if (res.restacked) out.restacked = true;
     if (res.warnings.length) out.warnings = res.warnings;
     return out;
   },

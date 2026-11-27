@@ -2258,6 +2258,10 @@ export interface ResolvedCloner {
   /** B60 follow-up: the data-bound per-instance content (instanceSources resolved at this frame);
    *  instanceContent[j] <-> instances[j]. Used for stamps when no `sourceLayerIds` are set. */
   instanceContent?: ResolvedLayer[];
+  /** B89: per-copy motion blur. Present only when the cloner's (or its source's) motion-blur switch is on
+   *  and the shutter is open: the cloner's world transform and every instance transform one frame earlier
+   *  (keyed by instance index), so each stamp streaks along its OWN path (ring spin, effector push). */
+  instanceBlur?: { shutter: number; phase: number; prevTransform: ResolvedTransform; prevInstances: Record<number, InstanceTransform> };
 }
 
 export interface ResolvedLayer {

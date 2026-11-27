@@ -93,7 +93,7 @@ import { canParentTo } from '../core/layerSwitches';
 import { recomputeCompositionDuration, withMinimumDuration, getMinimumDuration } from '../core/compositionDuration';
 import { reflowCompressedTracks, isTrackCompressed } from '../core/trackCompression';
 import { mirrorSpanLineHeight } from '../core/textLineHeight';
-import { pinClipToTime, placeMatteAbove, placeOnNewTracks, planClipTiming, shiftLayerKeyframes, withTrackCompression, type ClipTimingSpec, type ClipTimingPlan, type NewTrackSpot } from '../core/trackPlacement';
+import { findStackFit, pinClipToTime, placeMatteAbove, placeOnNewTracks, planClipTiming, shiftLayerKeyframes, withTrackCompression, type ClipTimingSpec, type ClipTimingPlan, type NewTrackSpot } from '../core/trackPlacement';
 import { clampGroupResizeDelta, applyResizeDelta, type ResizeEdge } from '../core/clipResize';
 import { buildCaptionLayers, deoverlapCaptionLayers, type CaptionSegment, type CaptionOptions } from '../core/captions';
 import { computeExplodeElements, type SplitMode } from '../core/textExplode';
@@ -878,7 +878,7 @@ interface EditorState {
    */
   moveClipInTime: (layerId: string, newInPoint: number, placement?: 'exact' | 'timeline') => void;
   /** B65: set a clip's in / out, source range, speed and direction in one undo step (exact placement). */
-  applyClipTiming: (layerId: string, spec: ClipTimingSpec) => (ClipTimingPlan & { trackId: string | null; movedToNewTrack: boolean; unpinnedTrack: boolean }) | null;
+  applyClipTiming: (layerId: string, spec: ClipTimingSpec) => (ClipTimingPlan & { trackId: string | null; movedToNewTrack: boolean; unpinnedTrack: boolean; restacked?: boolean }) | null;
   moveClipToTrack: (layerId: string, targetTrackId: string, newInPoint?: number) => void;
   reorderClipToTrackPosition: (layerId: string, targetOrder: number, newInPoint?: number) => void;
   resizeClips: (layerIds: string[], edge: ResizeEdge, delta: number) => void;
@@ -1108,15 +1108,15 @@ function ensureLayerHasTrack(composition: Composition, layer: Layer): Compositio
   if (layer.trackId) return composition;
   const trackType = layerTypeToTrackType(layer.type);
 
-  // Premiere-style: try to drop the new clip onto an existing same-type track
-  // first; only create a new track when none has open space at this time range.
-  const fitId = findFirstFit(
+  // Reuse an existing same-type track when one has open space at this time range AND sits above every
+  // clip already visible then (B84: a new layer draws on top, as in After Effects; the old first fit took the
+  // top-most free track, which could be under a shot's ground, so late layers rendered behind it). Only
+  // when no such track exists is a new top track created.
+  const fitId = findStackFit(
     composition.layers,
     composition.tracks,
-    layer.type,
-    layer.inPoint,
-    layer.outPoint,
-    layer.id,
+    { inPoint: layer.inPoint, outPoint: layer.outPoint, excludeLayerId: layer.id, audio: trackType === 'audio' },
+    (t) => trackAcceptsLayerType(t.type, layer.type),
   );
   if (fitId) {
     return {
@@ -7228,7 +7228,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       next = { ...next, audio: { ...next.audio, startOffset: plan.startOffset } };
     }
     const withLayer = { ...composition, layers: composition.layers.map((l) => (l.id === layerId ? next : l)) };
-    const pinned = pinClipToTime(withLayer, layerId, plan.inPoint, plan.outPoint, createTrack, (l) => layerTypeToTrackType(l.type));
+    const pinned = pinClipToTime(withLayer, layerId, plan.inPoint, plan.outPoint, createTrack, (l) => layerTypeToTrackType(l.type), { restackOnJump: true });
     if (!pinned) return null;
     const oldComp = composition;
     const newComp = settleComposition(pinned.comp);
@@ -7238,7 +7238,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       undo: () => { set({ composition: oldComp }); },
     });
     const placed = newComp.layers.find((l) => l.id === layerId);
-    return { ...plan, inPoint: placed?.inPoint ?? plan.inPoint, outPoint: placed?.outPoint ?? plan.outPoint, trackId: placed?.trackId ?? pinned.trackId, movedToNewTrack: pinned.movedToNewTrack, unpinnedTrack: pinned.unpinnedTrack };
+    return { ...plan, inPoint: placed?.inPoint ?? plan.inPoint, outPoint: placed?.outPoint ?? plan.outPoint, trackId: placed?.trackId ?? pinned.trackId, movedToNewTrack: pinned.movedToNewTrack, unpinnedTrack: pinned.unpinnedTrack, ...(pinned.restacked ? { restacked: true } : {}) };
   },
 
   moveClipToTrack: (layerId, targetTrackId, newInPoint) => {
