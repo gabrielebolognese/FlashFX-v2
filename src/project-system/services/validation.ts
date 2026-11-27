@@ -525,6 +525,9 @@ function validateLayer(raw: unknown): Layer | null {
     ...(typeof r.labelColor === 'string' ? { labelColor: r.labelColor } : {}),
     // B76 rig role marker (design-kit parts): preserved so it survives save / load.
     ...(typeof r.rigRole === 'string' && r.rigRole ? { rigRole: r.rigRole.slice(0, 80) } : {}),
+    // B81 true 3D parenting (card-swarm cluster) + card decals: preserved so they survive save / load.
+    ...(r.orbitChildren === true ? { orbitChildren: true } : {}),
+    ...(r.sortWithParent === true ? { sortWithParent: true } : {}),
     // M14 reframe constraints - preserve through the round-trip (else stripped on save/load,
     // the same data-loss class that bit cloner/precomp).
     ...(isObject(r.constraints) ? { constraints: r.constraints as unknown as LayerConstraints } : {}),

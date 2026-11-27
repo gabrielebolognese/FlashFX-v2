@@ -72,7 +72,8 @@ export type AgentHelperMethod =
   | 'addAnchorSquares'
   | 'addReadout'
   | 'addGuideLabel'
-  | 'addGuideLine';
+  | 'addGuideLine'
+  | 'addCardSwarm';
 
 export type FeatureStatus = 'shipped' | 'browser-gated' | 'partial';
 
@@ -721,6 +722,22 @@ export const AGENT_ACTIONS: readonly AgentActionSpec[] = [
     params: [{ name: 'startFrame', type: 'number', optional: true }, { name: 'endFrame', type: 'number', optional: true, description: 'Exclusive; default the comp end.' },
       { name: 'options', type: '{ from: [x, y] | { layerId: string; point?: "center" | "top" | "bottom" | number }; to: [x, y] | { layerId: string; point?: "center" | "top" | "bottom" | number }; extend?: number; color?: [r, g, b, a]; width?: number; name?: string }',
         description: 'extend: px past both ends (0). color default design blue [0.2, 0.52, 1, 1] (smart guides: magenta [0.86, 0.16, 0.82, 1]); width 1 px.' }] },
+  // ----- B81 3D card swarm (core/cardSwarm.ts + animation-templates/cardSwarm.ts) -----
+  { id: 'agent.addCardSwarm', store: 'agent', method: 'addCardSwarm', undoable: true,
+    returns: '{ clusterId, cardIds, items: [{ id, kind: "card" | "pill", index, partIds, source?, position (local [x, y, z]), world, rotation [rx, ry, rz], width, height, variant }], layerCount, hiddenSourceIds, layout: { minSpacing, minDistance, relaxed }, volume, startFrame, endFrame, cluster: { yawKeys, yawAtStart, yawAtEnd } }',
+    description: '2.5D card swarm in ONE call and ONE undo step (B81, r10 S10): about 16 flat UI cards + 12 prompt pills scattered at different depths inside a volume, all 3D layers parented to one 3D cluster group whose yaw ORBITS them about the volume centre (true 3D parenting: near and far cards slide in opposite directions, the painter depth order follows the turn). The layout is seeded and pure (same seed = identical swarm, no overlaps closer than minSpacing, every centre inside the volume, camera-facing planes with a small random tilt). Cards cycle through `sources` (image / shape / precomp / text layer ids are duplicated, image asset ids become image layers; source layers are hidden), or with no sources become placeholder UI cards (light #f7f5f5 / dark #1c1c1e rounded rects with an accent chip, a title bar and a content block printed on them). Pills are violet rounded pills with the r10 prompt labels. Everything stays ordinary editable layers: retime the cluster with setKeyframes "transform.rotationY" on clusterId, move a card with updateLayerProperty "transform.position" / "transform.positionZ" on its id. Add a camera (editor.addCameraLayer + editor.cameraMove) for the dolly / tilt. Stacked under any cursor rig.',
+    params: [
+      { name: 'count', type: 'number', optional: true, description: 'UI cards (default 16; pills come on top of this, options.pills).' },
+      { name: 'seed', type: 'number', optional: true, description: 'Layout seed (default 1). Same seed + same params = byte-identical swarm.' },
+      { name: 'sources', type: 'string[]', optional: true, description: 'Layer ids and / or image asset ids (agent.importImage) the cards cycle through, sized to the card width keeping their aspect. Omit for placeholder UI cards.' },
+      { name: 'volume', type: '{ center?: [x, y, z]; size?: [width, height, depth]; shape?: "box" | "ellipsoid" }', optional: true,
+        description: 'Comp px; z + = away from the camera. Default: centre (W/2, H/2, 540), size (1.1 W, 1.05 H, 1080), box: every card at or behind the z = 0 plane (1:1 under the default camera).' },
+      { name: 'cluster', type: '{ yawFrom?: number; yawTo?: number; startFrame?: number; endFrame?: number; ease?: string | [number, number, number, number]; yawKeys?: { frame: number; value: number; ease?: string | [number, number, number, number] }[]; yaw?: number; pitch?: number; pitchKeys?: { frame: number; value: number; ease?: string | [number, number, number, number] }[] }', optional: true,
+        description: 'Cluster orbit (degrees). yawFrom -> yawTo between startFrame and endFrame (default the swarm clip) with ease (default easeInOut [0.42, 0, 0.58, 1]); r10 S10: { yawFrom: -20, yawTo: 15, startFrame: 0, endFrame: 31 }. yawKeys = full control (setKeyframes specs). yaw = static yaw, pitch = static tilt about X (pitchKeys to animate it). Omitted = static, facing the camera.' },
+      { name: 'options', type: '{ pills?: number; labels?: string[] | false; minSpacing?: number; tilt?: number; cardWidth?: [min, max]; cardAspect?: [min, max]; pillWidth?: [min, max]; pillHeight?: number; cardDepth?: [a, b]; pillDepth?: [a, b]; lightShare?: number; detail?: "full" | "plain"; startFrame?: number; endFrame?: number; hideSources?: boolean; labelFontFamily?: string; maxAttempts?: number; name?: string }', optional: true,
+        description: 'pills: default 0.75 x count without sources (12 for 16 cards), 0 with sources. labels: pill texts, cycled (default the r10 prompts; false = bare pills). minSpacing: min centre distance px (default 0.55 x the cube root of volume / items). tilt: max random out-of-plane tilt deg (default 8). cardWidth [300, 440] px, cardAspect (height / width) [0.6, 0.78], pillWidth [300, 420] (grown to fit the label), pillHeight 58 (sizes scale with the comp). cardDepth / pillDepth: depth band as fractions of the volume depth, 0 = near face (pills default [0, 0.55]: in front, as in r10). lightShare: share of light cards (0.5). detail "plain" = one layer per card (no printed bars / labels). startFrame / endFrame: the clip (default the whole comp). hideSources (default true) hides the source layers. maxAttempts: placement candidates per card (80).' },
+      { name: 'name', type: 'string', optional: true, description: 'Cluster name (default "Card swarm"); cards are "<name> card N" / "<name> pill N".' },
+    ] },
   { id: 'agent.addGuideLabel', store: 'agent', method: 'addGuideLabel', undoable: true,
     returns: '{ labelId, lineId, startFrame, endFrame, position }',
     description: 'Smart-guide label (B76, r11): a small magenta word ("anchor", "center", "Line Extension", "Shift+X") above a point, optionally with a 1 px pin line to it. Static at (x, y), or following a target\'s centre / top edge / one vertex on every frame. Editable text (+ line) layers. One undo step.',
@@ -1037,6 +1054,11 @@ export const AGENT_FEATURES: readonly AgentFeature[] = [
     ui: 'Agent / MCP only (the recursive-editor template uses the same rig)',
     actions: ['agent.addCursor', 'agent.cursorMoveTo', 'agent.cursorClick', 'agent.cursorIcon'], status: 'shipped',
     notes: 'Everything lands as ordinary editable layers and keys: the cursor is a group ("transform.position" = hotspot, "transform.scale" = click squash), the icons are polygon children, each ripple is its own circle layer. Author moves / clicks in time order: a move starts from where the cursor is at its start frame.' },
+  { id: 'camera.card-swarm', area: 'camera-2.5d', name: '3D card swarm',
+    description: 'A 2.5D swarm of flat UI cards and prompt pills at different depths that orbit as one cluster (B81, r10 S10): one call builds about 28 3D layers parented to a 3D cluster group, a seeded no-overlap layout inside a box or ellipsoid volume, and the cluster yaw keys. Pair it with a camera dolly / tilt (editor.cameraMove).',
+    ui: 'Agent / MCP only (lands as ordinary editable 3D layers under one cluster group)',
+    actions: ['agent.addCardSwarm', 'editor.addCameraLayer', 'editor.cameraMove', 'editor.setKeyframes'], status: 'shipped',
+    notes: 'Render proven on the real WebGPU renderer (gpu:card-swarm): cards land on their true 3D projection while the cluster yaws (near and far cards move in opposite directions), near cards occlude far ones, depth shows as size, export / import renders byte-identically. The cluster group carries orbitChildren (true 3D parenting: its X / Y rotation and depth orbit the 3D children) and card decals carry sortWithParent (they depth-sort with their card); both are opt-in layer flags, so other projects resolve as before. Layer motion blur does not see the orbit (it reads the 2D transform): keep it off on swarm cards. Per-glyph animated 3D text under the cluster is not orbit-composed (plain labels are).' },
   { id: 'templates.design-kit', area: 'templates', name: 'Design-tool UI kit',
     description: 'The chrome of a vector design app around an edit (B76): pen / crosshair / rotate / direct-select cursors on the cursor rig, a selection box with handles that follows a layer, anchor squares on path points, live dX / dY / W / H / Angle readout tooltips that count with the move, and magenta smart-guide labels. For "animation dressed as a screen capture" edits (letter puns, logo builds, UI walkthroughs).',
     ui: 'Agent / MCP only (lands as ordinary editable layers)',

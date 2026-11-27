@@ -1600,6 +1600,16 @@ export interface LayerDecorations {
   /** B76: stable role of a layer inside an agent-built rig ("design.selection.handle.TL", "design.readout"...).
    *  Marks the part for helpers and the reader; absent on ordinary layers. */
   rigRole?: string;
+  /** B81 true 3D parenting: when set on a 3D layer (typically a 3D group / null, the card-swarm cluster), its 3D
+   *  descendants compose through its FULL 3D transform like After Effects parenting: rotating it in X / Y orbits
+   *  the children about its anchor and its depth moves them (the renderer draws them with the resolved
+   *  `cardMatrix`). Absent = the legacy additive 2.5D compose (a parent's X / Y rotation only turns each child in
+   *  place), so existing projects render unchanged. */
+  orbitChildren?: boolean;
+  /** B81 decal: a flagged 3D layer depth-sorts at its PARENT's camera depth (drawn right after it, in stack
+   *  order) instead of its own: the bars / labels printed on a 3D card never slip behind or in front of other
+   *  cards. Absent = sorted by its own depth (unchanged). */
+  sortWithParent?: boolean;
 }
 
 /** B53 - AE-style Corner Pin. Each corner is a keyframable vec2 in COMP px; while set, the four pins ARE
@@ -2259,6 +2269,11 @@ export interface ResolvedLayer {
   // 2.5D (M1): world model matrix for 3D layers (`is3D`), for the M2 MVP path. Absent on 2D
   // layers, which keep the cheap affine transform above.
   worldMatrix?: Mat4;
+  // B81: present only under an `orbitChildren` ancestor - the card matrix the renderer multiplies the local
+  // (already-scaled) quad corner by instead of cardMVP: worldMatrix . diag(1 / scaleX, 1 / scaleY, 1, 1).
+  cardMatrix?: Mat4;
+  // B81: present only on a `sortWithParent` decal - the parent's world matrix, used for the painter depth.
+  sortMatrix?: Mat4;
   // 2.5D (M2): true when the source layer's 3D switch is on - the renderer projects it through
   // the frame camera (MVP) and depth-sorts it. Absent/false → the untouched 2D path.
   is3D?: boolean;

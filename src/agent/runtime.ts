@@ -31,7 +31,7 @@ import { WebGPURenderer } from '../engine/renderer';
 import { EXPORT_MOTION_BLUR_SAMPLES } from '../store/preview';
 import { ExportFrameSource } from '../engine/video/exportFrameSource';
 import { PARTICLE_PRESETS } from '../particles/presets';
-import { evaluateVec2, resolveFrame } from '../core/interpolation';
+import { evaluateNumber, evaluateVec2, resolveFrame } from '../core/interpolation';
 import { getTextInkMetrics, getTextLayout, measureStringWidth } from '../engine/textAtlas';
 import { evalPathAnchors, pathFractionAtAngle } from '../core/shapeModifiers';
 import { planAgentMotionPath } from '../core/agentMotionPath';
@@ -65,7 +65,9 @@ import { normalizeTextCounter, counterTextAt } from '../core/textCounter';
 import { normalizeTextStyleKeys } from '../core/textStyleKeys';
 import { EASINGS } from '../core/easings';
 import { getEffectDefByType } from '../core/effects/effectRegistry';
-import type { KeyframeEaseSpec } from '../core/keyframeSpecs';
+import type { KeyframeEaseSpec, KeyframeSpec } from '../core/keyframeSpecs';
+import { layoutCardSwarm, swarmWorldPoint, type SwarmVec3, type SwarmVolume } from '../core/cardSwarm';
+import { planCardSwarm, SWARM_PILL_LABELS, type SwarmSource } from '../animation-templates/cardSwarm';
 import { normalizeTextCaret } from '../core/textCaret';
 import { pickSourceSlot } from '../cloner/sources';
 
@@ -694,6 +696,87 @@ function commitDesignKit(label: string, layers: Layer[]): void {
   }
   const ids = layers.map((l) => l.id);
   ed.applyLayerEdits(label, { add: layers, stack: cursorIds.length ? { ids, belowLayerIds: cursorIds } : { ids, top: true as const } });
+}
+
+// ----- B81 3D card swarm: argument checks + source resolution for agent.addCardSwarm -----
+function swRange(v: unknown, label: string, fallback: [number, number]): [number, number] {
+  if (v === undefined || v === null) return fallback;
+  if (typeof v === 'number' && Number.isFinite(v) && v > 0) return [v, v];
+  if (!(Array.isArray(v) && v.length === 2 && v.every((n) => typeof n === 'number' && Number.isFinite(n)) && v[0] > 0 && v[1] >= v[0])) throw new Error(`"${label}" must be [min, max] with 0 < min <= max (or one positive number)`);
+  return [v[0], v[1]];
+}
+function swUnitRange(v: unknown, label: string): [number, number] {
+  if (!(Array.isArray(v) && v.length === 2 && v.every((n) => typeof n === 'number' && Number.isFinite(n)) && v[0] >= 0 && v[1] <= 1 && v[1] >= v[0])) throw new Error(`"${label}" must be [a, b] with 0 <= a <= b <= 1 (0 = the near face of the volume, 1 = the far face)`);
+  return [v[0], v[1]];
+}
+function swVec3(v: unknown, label: string): SwarmVec3 | undefined {
+  if (v === undefined || v === null) return undefined;
+  if (!(Array.isArray(v) && (v.length === 3 || v.length === 2) && v.every((n) => typeof n === 'number' && Number.isFinite(n)))) throw new Error(`"${label}" must be [x, y, z] (comp px)`);
+  return [v[0], v[1], v.length === 3 ? v[2] : 0];
+}
+function swKeys(v: unknown, label: string): KeyframeSpec[] {
+  if (v === undefined || v === null) return [];
+  if (!Array.isArray(v) || v.length === 0) throw new Error(`"${label}" must be a non-empty array of { frame, value (degrees), ease? }`);
+  return v.map((k, i) => {
+    if (!k || typeof k !== 'object') throw new Error(`${label}[${i}] must be { frame, value, ease? }`);
+    const r = k as Record<string, unknown>;
+    if (typeof r.frame !== 'number' || !Number.isFinite(r.frame)) throw new Error(`${label}[${i}].frame must be a number`);
+    if (typeof r.value !== 'number' || !Number.isFinite(r.value)) throw new Error(`${label}[${i}].value must be a number (degrees)`);
+    return { frame: r.frame, value: r.value, ...(r.ease !== undefined ? { ease: r.ease as KeyframeEaseSpec } : {}) };
+  });
+}
+/** Natural (unscaled) size of a layer used as a card source. */
+function swNaturalSize(l: Layer): { w: number; h: number } {
+  const ed = useEditorStore.getState();
+  if (l.type === 'image') return { w: l.image.sourceWidth, h: l.image.sourceHeight };
+  if (l.type === 'video') return { w: l.video.sourceWidth, h: l.video.sourceHeight };
+  if (l.type === 'precomp') { const c = ed.getComposition(l.compositionId); return { w: c?.settings.width ?? 1920, h: c?.settings.height ?? 1080 }; }
+  if (l.type === 'shape') {
+    const g = l.shape;
+    if (g.type === 'rectangle') return { w: evaluateNumber(g.width, 0), h: evaluateNumber(g.height, 0) };
+    if (g.type === 'star') { const d = evaluateNumber(g.outerRadius, 0) * 2; return { w: d, h: d }; }
+    if (g.type === 'circle') { const rx = evaluateNumber(g.radius, 0); return { w: rx * 2, h: (g.radiusY ? evaluateNumber(g.radiusY, 0) : rx) * 2 }; }
+    const xs = g.vertices.map((p) => p.position[0]), ys = g.vertices.map((p) => p.position[1]);
+    return { w: Math.max(1, Math.max(...xs) - Math.min(...xs)), h: Math.max(1, Math.max(...ys) - Math.min(...ys)) };
+  }
+  if (l.type === 'text') {
+    const r = resolveFrame(ed.composition, l.inPoint, { getComposition: ed.getComposition }).layers.find((x) => x.id === l.id);
+    return { w: r?.text?.measuredWidth || 400, h: r?.text?.measuredHeight || 100 };
+  }
+  return { w: 400, h: 300 };
+}
+async function swResolveSources(v: unknown): Promise<SwarmSource[]> {
+  if (v === undefined || v === null) return [];
+  if (!Array.isArray(v) || !v.every((s) => typeof s === 'string' && s)) throw new Error('"sources" must be an array of layer ids or image asset ids');
+  const layers = useEditorStore.getState().composition.layers;
+  const out: SwarmSource[] = [];
+  for (const id of v as string[]) {
+    const layer = layers.find((l) => l.id === id);
+    if (layer) {
+      if (layer.type === 'group' || layer.type === 'camera' || layer.type === 'audio' || layer.type === 'adjustment') throw new Error(`source "${id}" is a ${layer.type} layer: a card must draw (image, shape, text, video or precomp)`);
+      const { w, h } = swNaturalSize(layer);
+      out.push({ kind: 'layer', layer, naturalWidth: w, naturalHeight: h });
+      continue;
+    }
+    const meta = mediaAssetManager.getImageMetadata(id) ?? (await mediaAssetManager.ensureImageMetadata(id));
+    if (!meta) throw new Error(`source "${id}" is neither a layer of this composition nor an imported image asset (agent.importImage returns an assetId)`);
+    const name = mediaAssetManager.getAsset(id)?.name?.replace(/\.[^.]+$/, '') || 'Image';
+    out.push({ kind: 'image', assetId: id, name, width: meta.width, height: meta.height, format: meta.format, fileSize: meta.fileSize });
+  }
+  return out;
+}
+/** Every layer of every cursor rig in the comp (new swarm layers stack UNDER the pointer). */
+function cursorRigLayerIds(): string[] {
+  const ed = useEditorStore.getState();
+  const ids: string[] = [];
+  for (const l of ed.composition.layers) {
+    if (l.type !== 'group') continue;
+    try {
+      const rig = findCursorRig(ed.composition.layers, l.id);
+      ids.push(rig.group.id, ...Object.values(rig.icons).flatMap((i) => (i ? [i.id] : [])));
+    } catch { /* not a cursor rig */ }
+  }
+  return ids;
 }
 
 const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
@@ -1341,6 +1424,99 @@ const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
     });
     commitDesignKit('Add guide label', plan.layers);
     return { labelId: plan.labelId, lineId: plan.lineId, startFrame: start, endFrame: end, position: positions[0] };
+  },
+
+  // ----- B81 3D card swarm (core/cardSwarm.ts layout + animation-templates/cardSwarm.ts): ONE undo step -----
+  addCardSwarm: async (count, seed, sources, volume, cluster, options, name) => {
+    const o = dkOptions(options);
+    const c = dkOptions(cluster);
+    const v = dkOptions(volume);
+    const comp = useEditorStore.getState().composition;
+    const W = comp.settings.width, H = comp.settings.height;
+    const k = Math.min(W, H) / 1080;
+    const srcs = await swResolveSources(sources);
+    const nCards = Math.round(dkNum(count, 'count') ?? 16);
+    const nPills = Math.round(dkNum(o.pills, 'pills') ?? (srcs.length === 0 ? Math.round(nCards * 0.75) : 0));
+    if (nCards < 0 || nPills < 0 || nCards + nPills === 0) throw new Error('"count" (cards) and options.pills must be >= 0 and not both 0');
+    const shape = v.shape === undefined ? 'box' : v.shape;
+    if (shape !== 'box' && shape !== 'ellipsoid') throw new Error('volume.shape must be "box" or "ellipsoid"');
+    const vol: SwarmVolume = {
+      center: swVec3(v.center, 'volume.center') ?? [W / 2, H / 2, 540 * k],
+      size: swVec3(v.size, 'volume.size') ?? [W * 1.1, H * 1.05, 1080 * k],
+      shape,
+    };
+    const start = Math.round(dkNum(o.startFrame, 'startFrame') ?? 0);
+    const end = Math.round(dkNum(o.endFrame, 'endFrame') ?? comp.settings.durationFrames);
+    if (!(end > start)) throw new Error('"endFrame" must be after "startFrame"');
+    const detail = o.detail === undefined ? 'full' : o.detail;
+    if (detail !== 'full' && detail !== 'plain') throw new Error('"detail" must be "full" or "plain"');
+    const pillH = dkNum(o.pillHeight, 'pillHeight') ?? 58 * k;
+    const layout = layoutCardSwarm({
+      seed: dkNum(seed, 'seed') ?? 1,
+      volume: vol,
+      kinds: [
+        { kind: 'card', count: nCards, width: swRange(o.cardWidth, 'cardWidth', [300 * k, 440 * k]), aspect: swRange(o.cardAspect, 'cardAspect', [0.6, 0.78]),
+          depthRange: o.cardDepth === undefined ? [0, 1] : swUnitRange(o.cardDepth, 'cardDepth'), lightShare: dkNum(o.lightShare, 'lightShare') ?? 0.5 },
+        { kind: 'pill', count: nPills, width: swRange(o.pillWidth, 'pillWidth', [300 * k, 420 * k]), height: pillH,
+          depthRange: o.pillDepth === undefined ? [0, 0.55] : swUnitRange(o.pillDepth, 'pillDepth') },
+      ],
+      minSpacing: dkNum(o.minSpacing, 'minSpacing'),
+      tilt: dkNum(o.tilt, 'tilt'),
+      maxAttempts: dkNum(o.maxAttempts, 'maxAttempts'),
+    });
+    // Cluster animation: explicit yaw keys, or yawFrom -> yawTo (r10: -20 -> 15 deg, easeInOut), or a static yaw.
+    let yawKeys = swKeys(c.yawKeys, 'cluster.yawKeys');
+    const yawFrom = dkNum(c.yawFrom, 'cluster.yawFrom'), yawTo = dkNum(c.yawTo, 'cluster.yawTo');
+    if (yawKeys.length === 0 && (yawFrom !== undefined || yawTo !== undefined)) {
+      const a = Math.round(dkNum(c.startFrame, 'cluster.startFrame') ?? start);
+      const b = Math.round(dkNum(c.endFrame, 'cluster.endFrame') ?? end - 1);
+      if (!(b > a)) throw new Error('cluster.endFrame must be after cluster.startFrame');
+      yawKeys = [{ frame: a, value: yawFrom ?? 0, ease: (c.ease ?? [0.42, 0, 0.58, 1]) as KeyframeEaseSpec }, { frame: b, value: yawTo ?? 0 }];
+    }
+    const pitchKeys = swKeys(c.pitchKeys, 'cluster.pitchKeys');
+    // Pill labels: r10 prompts by default, false = none; measured in the real face so each pill hugs its text.
+    let labels: string[] | null = SWARM_PILL_LABELS.slice();
+    if (o.labels === false || o.labels === null) labels = null;
+    else if (o.labels !== undefined) {
+      if (!Array.isArray(o.labels) || o.labels.length === 0 || !o.labels.every((s) => typeof s === 'string')) throw new Error('"labels" must be a non-empty array of strings, or false');
+      labels = (o.labels as string[]).map((s) => s.slice(0, 80));
+    }
+    const fontFamily = typeof o.labelFontFamily === 'string' && o.labelFontFamily ? o.labelFontFamily : 'Inter';
+    const labelSize = Math.round(pillH * 0.34 * 100) / 100;
+    const pillWidths: number[] = [];
+    if (labels && detail === 'full') {
+      for (let i = 0; i < nPills; i++) pillWidths.push(Math.ceil((await measureWidest([labels[i % labels.length]], fontFamily, labelSize)) + pillH * 1.1));
+    }
+    const pitch = dkNum(c.pitch, 'cluster.pitch') ?? 0;
+    const plan = planCardSwarm({
+      layout, center: vol.center, startFrame: start, endFrame: end,
+      cluster: { yawKeys, yaw: dkNum(c.yaw, 'cluster.yaw') ?? 0, pitchKeys, pitch },
+      sources: srcs, labels, pillWidths, labelFontSize: labelSize, labelFontFamily: fontFamily, detail,
+      name: dkName(name) ?? dkName(o.name),
+    });
+    const hide = o.hideSources !== false
+      ? srcs.flatMap((s) => (s.kind === 'layer' && s.layer.visible ? [{ ...s.layer, visible: false } as Layer] : []))
+      : [];
+    const ids = plan.layers.map((l) => l.id);
+    const below = cursorRigLayerIds();
+    useEditorStore.getState().applyLayerEdits('Add card swarm', {
+      add: plan.layers, update: hide,
+      stack: below.length ? { ids, belowLayerIds: below } : { ids, top: true as const },
+    });
+    const group = useEditorStore.getState().composition.layers.find((l) => l.id === plan.clusterId);
+    const yawAt = (f: number): number => (group?.transform.rotationY ? evaluateNumber(group.transform.rotationY, f) : 0);
+    const pitchAt = (f: number): number => (group?.transform.rotationX ? evaluateNumber(group.transform.rotationX, f) : 0);
+    const r1 = (n: number): number => Math.round(n * 10) / 10;
+    return {
+      clusterId: plan.clusterId,
+      cardIds: plan.items.map((i) => i.id),
+      items: plan.items.map((i) => ({ ...i, world: swarmWorldPoint(vol.center, i.position, yawAt(start), pitchAt(start)).map(r1) })),
+      layerCount: plan.layers.length,
+      hiddenSourceIds: hide.map((l) => l.id),
+      layout: { minSpacing: r1(layout.minSpacing), minDistance: r1(layout.minDistance), relaxed: layout.relaxed },
+      volume: vol, startFrame: start, endFrame: end,
+      cluster: { yawKeys: yawKeys.map((y) => ({ frame: y.frame, value: y.value })), yawAtStart: r1(yawAt(start)), yawAtEnd: r1(yawAt(end - 1)) },
+    };
   },
 
   // ----- B67 follow-up (B70): raise layers to the top of the RENDER stack (tracks), in one undo step -----

@@ -749,3 +749,43 @@ cursor rig.
   pointer: `color: [0, 0, 0, 1], rimColor: [1, 1, 1, 1]`.
 - One call: `apply_recipe { id: 'design-chrome', params: { layerId, readout: 'angle', guide: 'center' } }`.
 - Proofs: `npm run verify:design-kit` (box / squares / readout == target every frame) and `npm run gpu:design-kit`.
+
+## 16. 3D card swarm (B81)
+
+For the "wall of UI floating in space" shot (r10 S10: about 16 dashboard cards and 12 prompt pills at different
+depths, the cluster turning slowly while the camera flies in). One call builds it; everything lands as ordinary
+editable 3D layers (one undo step), stacked under any cursor rig.
+
+- `agent.addCardSwarm { count?, seed?, sources?, volume?, cluster?, options?, name? }` returns `{ clusterId,
+  cardIds, items: [{ id, kind: "card" | "pill", partIds, position, world, rotation, width, height, variant }],
+  layout: { minSpacing, minDistance, relaxed }, ... }`.
+  - Layout: seeded and pure (same seed = the same swarm), centres inside `volume` (`{ center: [x, y, z], size:
+    [w, h, d], shape: "box" | "ellipsoid" }`, default centre (W/2, H/2, 540), size (1.1 W, 1.05 H, 1080), so every
+    card is at or behind the z = 0 plane), no two centres closer than `options.minSpacing`, camera-facing with a
+    small random tilt (`options.tilt`, default 8 deg). Pills sit in the front 55 % of the depth (`pillDepth`).
+  - Sources: `sources: [assetId | layerId, ...]` are cycled by the cards (images from `import_image { place:
+    false }` become image cards; shape / text / precomp layers are duplicated, the originals hidden). Without
+    sources: placeholder UI cards (light #f7f5f5 / dark #1c1c1e, accent chip, title bar, content block) and
+    violet pills labelled with r10's prompts (`options.labels: [...]` or `false`). `options.detail: "plain"` =
+    one layer per card.
+  - Cluster turn: `cluster: { yawFrom: -20, yawTo: 15, startFrame: 0, endFrame: 31, ease? }` (default ease
+    easeInOut [0.42, 0, 0.58, 1]), or `yawKeys: [{ frame, value, ease? }, ...]`, `pitch` / `pitchKeys` for a tilt.
+    The cluster is a 3D group flagged `orbitChildren`: rotating it ORBITS the cards about the volume centre (true
+    3D parenting), so near cards slide one way and far cards the other, and the depth order follows the turn.
+    Retime it with `editor.setKeyframes { layerId: clusterId, propertyPath: "transform.rotationY" }`.
+- Move a card: `editor.updateLayerProperty` on its id, `transform.position.defaultValue` (x, y relative to the
+  volume centre) and `transform.positionZ.defaultValue` (+ = farther). Its printed bars / label are children
+  flagged `sortWithParent` (they depth-sort with the card and stay on it).
+- Camera fly-through: `editor.addCameraLayer`, then `editor.cameraMove` beats (r10: dolly in from f26 over 27 f
+  with the measured `[0.61, 0.076, 0, 0.809]`, then tilt down + push with `pointOfInterest` lower and an
+  easeInCubic). A fresh camera has zoom 50 * W / 36 at z = -zoom.
+- S9 to S10 (card shrinking into the swarm): keep the hero card 2D on top and key its scale down with the
+  measured easeIn while the swarm and camera start; or use it as one of the `sources`.
+- Limits: layer motion blur does not see the orbit (it reads the 2D transform): leave it off on swarm cards;
+  per-glyph animated text under the cluster is not orbit-composed (plain labels are); the canvas selection
+  outline of an orbiting card shows its un-orbited 2D box.
+- One call with the camera: `apply_recipe { id: 'card-swarm', params: { count: 16, pills: 12, seed: 10 } }`.
+- Proofs: `npm run verify:card-swarm` (layout determinism / spacing / volume, the action on the real stores,
+  one-step undo, the resolver's true orbit) and `npm run gpu:card-swarm` (true 3D projection within 1.5 px,
+  opposite parallax, near-over-far occlusion that flips with the orbit, decals and labels on their card,
+  byte-identical export / import).

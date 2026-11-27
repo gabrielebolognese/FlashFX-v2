@@ -4,6 +4,7 @@ import { MAX_PRECOMP_DEPTH } from '../core/precomp';
 // harness-verified (verify:camera3d); the renderer just packs the matrix + reorders draws.
 import { cardMVP, cameraSpaceDepth, painterOrder, cocRadius, type ResolvedCamera } from '../core/camera3d';
 import { cornerPinMatrix, cornerPinSourceQuad } from '../core/cornerPin';
+import { multiply as multiplyMat4 } from '../core/mat4';
 
 /** Options for a recursive precomp render into an offscreen target texture. */
 interface PrecompRenderOpts {
@@ -2488,7 +2489,11 @@ function writeRefineEdge(data: Float32Array, layer: ResolvedLayer): void {
 function writeCard3D(data: Float32Array, flagIdx: number, mvpIdx: number, layer: ResolvedLayer, camera: ResolvedCamera | undefined): void {
   if (!layer.is3D || !camera) return;
   const t = layer.transform;
-  const m = cardMVP(camera, [t.positionX, t.positionY, t.positionZ], [t.anchorX, t.anchorY], [t.rotationX, t.rotationY, t.rotation]);
+  // B81: under a true-3D (orbitChildren) parent the resolver hands the full card matrix (parent yaw / pitch
+  // orbit the card); every other 3D layer keeps the cardMVP of its 2.5D transform (byte-identical).
+  const m = layer.cardMatrix
+    ? multiplyMat4(camera.viewProjection, layer.cardMatrix)
+    : cardMVP(camera, [t.positionX, t.positionY, t.positionZ], [t.anchorX, t.anchorY], [t.rotationX, t.rotationY, t.rotation]);
   data[flagIdx] = 1;
   for (let k = 0; k < 16; k++) data[mvpIdx + k] = m[k];
 }
@@ -5011,7 +5016,8 @@ export class WebGPURenderer {
         const drawStart = draws.length;
         const rl3d = expandedLayers[i];
         const is3DLayer = !!rl3d.is3D;
-        const layerDepth = is3DLayer && frame.camera && rl3d.worldMatrix ? cameraSpaceDepth(frame.camera, rl3d.worldMatrix) : 0;
+        // B81: a card decal (sortWithParent) sorts at its card's depth, so it stays glued on top of its card.
+        const layerDepth = is3DLayer && frame.camera && rl3d.worldMatrix ? cameraSpaceDepth(frame.camera, rl3d.sortMatrix ?? rl3d.worldMatrix) : 0;
         // 2.5D DOF: a 3D layer off the camera's focus plane gets a camera depth-of-field blur,
         // synthesized as a per-layer gaussian from the circle-of-confusion radius and pushed
         // through the existing blur pipeline. Only when the layer has no blur of its own. The

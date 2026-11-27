@@ -1,0 +1,43 @@
+{
+  "id": "card-swarm",
+  "name": "3D card swarm with a camera fly-through",
+  "category": "camera",
+  "description": "A 2.5D swarm of flat UI dashboard cards and prompt pills at different depths that orbits as one cluster (yaw), seen through a camera that dollies in and then tilts down through it. One agent.addCardSwarm call (seeded, no overlaps, every card an editable 3D layer under one cluster group) plus an optional camera with two editor.cameraMove beats. With no sources the cards are placeholder UI cards (light and dark, accent chip, title bar, content block) and the pills carry r10's prompts; pass image asset ids / layer ids as sources for real screenshots. Put a dark background under it; add the violet arrow cursors and the gradient bleed separately.",
+  "source": [
+    "r10 S10 f339-425: about 16 UI cards + 12 prompt pills at different depths, cluster yaw -20 -> 15 deg f339-370 easeInOut",
+    "r10 S10.E4 dolly in: cluster left edge 619 -> 276 f365-392, measured easeOut [0.61, 0.076, 0.0, 0.809]; tilt down + push f392-425 easeInCubic",
+    "r10 S9.E2 the dashboard card shrinks into the swarm (pull-back, no cut)"
+  ],
+  "taste": ["TASTE.md 9 Camera"],
+  "params": {
+    "count": { "type": "number", "default": 16, "min": 1, "description": "UI cards in the swarm." },
+    "pills": { "type": "number", "default": 12, "min": 0, "description": "Prompt pills (placed in the front half of the volume)." },
+    "seed": { "type": "number", "default": 1, "description": "Layout seed: same seed = same swarm." },
+    "yawFrom": { "type": "number", "default": -20, "description": "Cluster yaw at the start, degrees." },
+    "yawTo": { "type": "number", "default": 15, "description": "Cluster yaw at the end of the turn, degrees." },
+    "yawFrames": { "type": "number", "default": 31, "min": 1, "description": "Length of the turn, frames at 30 fps (r10: 31)." },
+    "camera": { "type": "boolean", "default": true, "description": "Add a camera that dollies in (from 26 f) and then tilts down through the swarm (from 53 f)." },
+    "detail": { "type": "enum", "enum": ["full", "plain"], "default": "full", "description": "full = cards with printed bars and labelled pills; plain = one layer per card (faster)." },
+    "name": { "type": "string", "default": "Card swarm", "description": "Cluster name." }
+  },
+  "length30": 87,
+  "clip": false,
+  "checkFrames30": [0, 31, 53, 86],
+  "lets": {
+    "Z": "50 * W / 36",
+    "K": "min(W, H) / 1080"
+  },
+  "steps": [
+    { "id": "swarm", "action": "agent.addCardSwarm", "args": {
+      "count": "{{count}}", "seed": "{{seed}}",
+      "cluster": { "yawFrom": "{{yawFrom}}", "yawTo": "{{yawTo}}", "startFrame": "{{start}}", "endFrame": "{{min(end, start + max(1, f(yawFrames)))}}", "ease": [0.42, 0, 0.58, 1] },
+      "options": { "pills": "{{pills}}", "detail": "{{detail}}", "startFrame": "{{start}}", "endFrame": "{{end}}" },
+      "name": "{{name}}" } },
+    { "when": "camera", "id": "cam", "action": "editor.addCameraLayer", "args": {}, "layer": true },
+    { "let": { "C": "@cam.activeLayerId" } },
+    { "when": "camera", "action": "editor.cameraMove", "args": { "cameraLayerId": "{{C}}", "frame": "{{min(end - 2, t(26))}}", "to": { "position": "{{[CX, CY, -Z * 0.66]}}" }, "durationFrames": "{{max(1, min(f(27), end - 2 - t(26)))}}", "ease": [0.61, 0.076, 0, 0.809] } },
+    { "when": "camera && end - t(53) > 2", "action": "editor.cameraMove", "args": { "cameraLayerId": "{{C}}", "frame": "{{t(53)}}", "to": { "position": "{{[CX, CY - 180 * K, -Z * 0.47]}}", "pointOfInterest": "{{[CX, CY + 240 * K, 600 * K]}}" }, "durationFrames": "{{max(1, min(f(33), end - 1 - t(53)))}}", "ease": [0.32, 0, 0.67, 0] } }
+  ],
+  "returns": { "clusterId": "{{@swarm.result.clusterId}}", "cardIds": "{{@swarm.result.cardIds}}", "cameraId": "{{camera ? C : null}}" },
+  "example": { "params": { "count": 16, "pills": 12, "seed": 10 }, "startFrame": 0, "endFrame": 87 }
+}

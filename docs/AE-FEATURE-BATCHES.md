@@ -141,6 +141,7 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | B78 | Refs: soft freeform matte - a blurred / feathered shape used as a track matte keeps its blur (flower-shaped soft reveal) (r10) | ⬜ (browser) | medium |
 | B79 | Refs: person matte on footage (AI roto) - creator pops out over a divider (r09); fallback a pre-keyed stand-in clip | ⬜ (browser) | **heavy** |
 | B80 | Refs: outline text robustness - `editor.outlineTextLayer` on imported fonts, and glyphs with separate parts (i, j, !, :) keep the dot / second contour (r11, read in the code) | ⬜ | light |
+| B81 | Refs: 3D card swarm - one call builds ~16 flat UI cards + ~12 prompt pills as 3D layers at different depths under one cluster whose yaw orbits them (true 3D parenting), seeded no-overlap layout, placeholder UI cards or image / layer sources; pairs with a camera dolly / tilt (r10 S10, S9.E2) | ✅ (headless-GPU verified) | medium |
 | PB1 | Playback: decoded-frame LRU on the mediabunny path (backward/oscillating scrubs hit the cache instead of re-walking the GOP) | ✅ | medium |
 | PB2a | Playback: keyframe-snap-then-refine on far seeks (kills the scrub freeze) | ✅ | medium |
 | PB2b | Playback: real half-res proxy decode (cuts 4K upload/convert cost during scrub) | ✅ | heavy |
@@ -1270,3 +1271,44 @@ footage-person-matte = B79, outline-imported-fonts = B80.
 - **Source beats:** r11 (all letter edits).
 - **Verification:** gates + `verify:*` harness on the outline contours.
 
+## B81 - 3D card swarm ✅ (headless-GPU verified)
+- **Delivers:** `agent.addCardSwarm`: the r10 S10 "wall of UI in space" in one call and one undo step - about 16 flat UI
+  cards and 12 prompt pills as ordinary editable 3D layers at different depths, parented to one 3D cluster group whose
+  yaw keys orbit them; a seeded, frame-independent layout (no Math.random) inside a box / ellipsoid volume with a min
+  spacing; placeholder UI cards (light / dark, printed accent chip, title bar, content block; violet labelled pills) or
+  image asset / layer sources cycled as cards. Pairs with `editor.addCameraLayer` + `editor.cameraMove` for the dolly /
+  tilt.
+- **Source beats:** r10 S10 f339-425 (S10.E2 cards, S10.E3 pills, S10.E4 camera), S9.E2 (the card shrinking into the swarm).
+- **Verification:** gates + `verify:*` harness (determinism, count, volume, spacing, undo, 3D + parenting, yaw keys) +
+  headless pixel check through the MCP (depth sizes, near-over-far occlusion, parallax consistent with a rotation,
+  export / import byte-identical).
+- **Built (wave 2, Nov 2026):** pure layout `core/cardSwarm.ts` (`layoutCardSwarm`: mulberry32 streams for placement and
+  style, rejection sampling with a bounded attempt count and a best-candidate fallback counted in `relaxed`, per-kind
+  size / aspect / depth band / light share, camera-facing tilt); pure builder `animation-templates/cardSwarm.ts`
+  (`planCardSwarm`); `agent.addCardSwarm` in `agent/runtime.ts` (argument checks, pill labels measured in the real face,
+  sources resolved, one `applyLayerEdits`, stacked under cursor rigs). Engine (opt-in, absent = unchanged): this
+  engine's parenting composed 3D additively (a parent's rotationY only turned each child in place, while the painter
+  depth already used the true world matrix), so yawing a group could not orbit cards. New `LayerDecorations.orbitChildren`
+  on a 3D layer makes `resolveFrame` hand its 3D descendants a `cardMatrix` (the RAW world chain divided by the resolved
+  scale, which the quad pipelines already bake into `local`) that `writeCard3D` uses instead of `cardMVP`; new
+  `sortWithParent` gives a decal its parent's world matrix (`sortMatrix`) for the painter depth, so printed bars and
+  labels stay on their card. Both persisted by validation. Feature `camera.card-swarm`, recipe `card-swarm` (swarm + camera
+  beats), AUTHORING 16.
+- **Verified:** `verify:card-swarm` 20/20 (layout byte-identical per seed and different across seeds with Math.random
+  trapped, 16 + 12 count, box and ellipsoid containment, pairwise spacing, bounded attempts, the action on the real
+  editor + history stores through `window.__ffxAgent`: 89 layers, 3D cards parented to the orbitChildren cluster, decals
+  above their card with sortWithParent, yaw keys -20 -> 15 at f0 / f31 with the easeInOut, one undo step byte-identical,
+  redo, layer sources cycled / scaled / hidden and restored by undo, bad arguments change nothing, persistence, resolver:
+  card world centre = the yaw orbit of its layout point and cardMatrix corners = world corners at f0 / f15 / f31, no
+  matrices without the flags); `gpu:card-swarm` 14/14 through the MCP (r10 swarm 1920 x 1080 with camera dolly + tilt on
+  screen in 6 frames, yaw / dolly / tilt all move it, export + import byte-identical; controlled swarm with two shape
+  sources + an imported image: card boxes within 0.8 px of the true 3D projection at yaw -20 and 15, near card -150 px /
+  far card +171.5 px (opposite, within 0.4 px of expected), near / far width ratio 1.836 vs 1.843, the near card covers
+  the far one over 20005 / 11984 overlap px although the far one is higher in the stack and the overlap flips to the far
+  card when the orbit swings it to the front (15421 px); decals stay printed under a 35 deg yaw (501 / 501 chip px, 0 / 501
+  in the control without sortWithParent); pill label ink within 1.8 px of its projected glyph box). Regressions: gpu:mcp,
+  gpu:camera-cards green.
+- **Limits:** layer motion blur reads the 2D transform, so it does not see the orbit (leave it off on swarm cards);
+  per-glyph animated 3D text under an orbit cluster is not orbit-composed (plain labels are); a parent's layout offset /
+  motion path is not part of the true-3D chain; the canvas selection outline of an orbiting card shows its un-orbited
+  2D box; the arrow cursors (S10.E5) and the gradient bleed (S10.E6) are separate layers.

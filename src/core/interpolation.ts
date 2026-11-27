@@ -57,6 +57,7 @@ import { precompLocalFrame, MAX_PRECOMP_DEPTH } from './precomp';
 import type { ResolveContext } from './precomp';
 import { applyPivotCompensation } from './anchor';
 import type { Mat4, Vec3 } from './mat4';
+import { multiply as multiplyMat4, scale as scaleMat4 } from './mat4';
 import type { CameraLayer } from './types';
 import { defaultCamera, cameraFromParams, localModelMatrix, composeWorldMatrix, forwardVector, cubicBezierVec3, type ResolvedCamera } from './camera3d';
 import { resolveStyleColor, type StyleLookup } from './styles';
@@ -1422,6 +1423,18 @@ function resolveActiveCamera(composition: Composition, sortedLayers: Layer[], fr
 // 2.5D (M1) - a 3D layer's world model matrix: compose local model matrices down the parent
 // chain (root→leaf). Uses the module-level `_layerById` populated by resolveFrame. Dormant
 // until the M3 `is3D` UI + M2 renderer consume it; harness-tested via camera3d directly.
+/** B81: true when some ancestor of `layer` is a 3D layer flagged `orbitChildren` (true 3D parenting). */
+function hasOrbitAncestor(layer: Layer): boolean {
+  const guard = new Set<string>([layer.id]);
+  let cur: Layer | undefined = layer.parentId ? _layerById.get(layer.parentId) : undefined;
+  while (cur && !guard.has(cur.id)) {
+    if (cur.orbitChildren && cur.is3D) return true;
+    guard.add(cur.id);
+    cur = cur.parentId ? _layerById.get(cur.parentId) : undefined;
+  }
+  return false;
+}
+
 function worldMatrixFor(layerId: string, frame: number): Mat4 {
   const chain: Layer[] = [];
   const guard = new Set<string>();
@@ -2233,6 +2246,23 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
     for (const rl of resolvedLayers) {
       const src = _layerById.get(rl.id);
       if (src?.is3D) { rl.worldMatrix = worldMatrixFor(rl.id, frame); rl.is3D = true; }
+    }
+    // B81 true 3D parenting + card decals. Only layers under an `orbitChildren` ancestor / flagged
+    // `sortWithParent` get the extra matrices, so every other 3D layer resolves exactly as before.
+    for (const rl of resolvedLayers) {
+      const src = _layerById.get(rl.id);
+      if (!src?.is3D || !rl.worldMatrix) continue;
+      if (hasOrbitAncestor(src)) {
+        const sx = rl.transform.scaleX, sy = rl.transform.scaleY;
+        // The pipelines feed `local` = the quad corner already scaled by the resolved scale, so undo it here
+        // and let the RAW world chain (composeModel: anchor pivot, then scale) place the corner. A zero scale
+        // draws nothing either way: leave the cardMVP path in charge.
+        if (sx !== 0 && sy !== 0) rl.cardMatrix = multiplyMat4(rl.worldMatrix, scaleMat4(1 / sx, 1 / sy, 1));
+      }
+      if (src.sortWithParent && src.parentId) {
+        const parent = _layerById.get(src.parentId);
+        if (parent?.is3D) rl.sortMatrix = worldMatrixFor(parent.id, frame);
+      }
     }
   }
 
