@@ -370,4 +370,5 @@ four through this MCP (`artifacts/replicas/r08`-`r11`). Numbers are f30.
 - A named track matte breaks when another clip later lands on the matted clip's track: set the matte after the last
   import (r07).
 - Judge blurred gradients (domes, wipes) on the exported MP4: `render_frame` / compareFrames grids score them
-  differently from the real exporter (r06).
+  differently from the real exporter (r06); the exporter currently tints blue gradient grounds violet in the centre
+  (B89, r03): check gradient grounds on the MP4 before delivering.
