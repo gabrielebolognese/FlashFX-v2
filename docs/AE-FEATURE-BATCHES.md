@@ -142,6 +142,7 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | B79 | Refs: person matte on footage (AI roto) - creator pops out over a divider (r09); fallback a pre-keyed stand-in clip | ⬜ (browser) | **heavy** |
 | B80 | Refs: outline text robustness - `editor.outlineTextLayer` on imported fonts, and glyphs with separate parts (i, j, !, :) keep the dot / second contour (r11, read in the code) | ⬜ | light |
 | B81 | Refs: 3D card swarm - one call builds ~16 flat UI cards + ~12 prompt pills as 3D layers at different depths under one cluster whose yaw orbits them (true 3D parenting), seeded no-overlap layout, placeholder UI cards or image / layer sources; pairs with a camera dolly / tilt (r10 S10, S9.E2) | ✅ (headless-GPU verified) | medium |
+| B82 | Refs: typing prompt box - one-call editable prompt / search box (`agent.addPromptBox`): per-character typing schedule (cps / duration / explicit frames, eased rate), arrival colour (new glyphs pink -> white), gradient caret, send press + flash, chip row, slide-in / pop, centred typing, autoGrow, password mask (r10 S3 / S4 / S7 / S11 / S12, r06, r04) | ✅ (headless-GPU verified) | medium |
 | PB1 | Playback: decoded-frame LRU on the mediabunny path (backward/oscillating scrubs hit the cache instead of re-walking the GOP) | ✅ | medium |
 | PB2a | Playback: keyframe-snap-then-refine on far seeks (kills the scrub freeze) | ✅ | medium |
 | PB2b | Playback: real half-res proxy decode (cuts 4K upload/convert cost during scrub) | ✅ | heavy |
@@ -1312,3 +1313,36 @@ footage-person-matte = B79, outline-imported-fonts = B80.
   per-glyph animated 3D text under an orbit cluster is not orbit-composed (plain labels are); a parent's layout offset /
   motion path is not part of the true-3D chain; the canvas selection outline of an orbiting card shows its un-orbited
   2D box; the arrow cursors (S10.E5) and the gradient bleed (S10.E6) are separate layers.
+## B82 - Typing prompt box ✅ (headless-GPU verified)
+- **Delivers:** a one-call, editable, undoable prompt / search box kit (`agent.addPromptBox`) plus the three engine pieces it
+  needed: a per-character typing schedule with an eased rate or explicit frames, a per-character arrival colour, and a
+  gradient caret; the caret keeps riding the type-on head.
+- **Source beats:** r10 S3.E3 (gradient caret), S4.E1 (centred typing, eased rate), S7.E3 (light card, 31 chars f227-245, chip
+  row), S11 (dark #241e21 r36 box slides in and widens, 45 chars in 25 f, pink -> white arrival, send f462, flash + wipe),
+  S12.E5 (password asterisks); r06 S2 (human keystroke rhythm), r04 S1 (search pill).
+- **Built (wave 2, Nov 2026):** `TextLayer.typing` (`core/textTyping.ts`: `frames` = absolute arrival frame per character,
+  non-decreasing; `arrivalColor` + `arrivalFrames`); `typingFrames` builds a schedule from cps / durationFrames / explicit
+  frames with an ease on the typing RATE. At resolve time the schedule becomes frame-resolved animators with explicit
+  per-character weights (`ResolvedTextAnimator.weights`, never persisted: an opacity hide + a linear-light fill mix), so it
+  rides the existing per-glyph stamp path and the B35 caret head with zero renderer changes. `TextCaret.gradient` [top, bottom]
+  draws the caret stamp with a linear top -> bottom fill (`caretGradientFill`). With a typing schedule the caret blink restarts
+  ON at the last keystroke, and on a `reflowHidden` layer the caret is measured on the visible glyphs (a centred line grows
+  both ways); both are gated on `typing`, so old projects (incl. reflow + caret) resolve byte-identically. Persisted through
+  validation; templates rebase the frames. Kit `animation-templates/promptBox.ts` (`planPromptBox`): group + box + flash
+  overlay + refill wipe + placeholder + typed text + chip row + send button / arrow, themes dark / light, entrances pop /
+  slideFromRight (widens 62 -> 100 % as it lands), align left / center, autoGrow (baked width keys), mask, sendFrame squash
+  100 -> 85 -> 100 %. Actions `agent.addPromptBox` (returns ids, final box rect, sendCenter, typing frames, caretPath) and
+  `agent.setTextTyping` (any text layer); `agent.setTextCaret` takes `gradient`. Feature `templates.prompt-box`, recipe
+  `prompt-box`, AUTHORING 17.
+- **Verified:** `verify:prompt-box` 24/24 (schedule math for explicit / cps / eased; visible glyphs per frame == schedule;
+  newest glyph == arrivalColor on its arrival frame and == the text colour 4 frames later; caret left == head within 1e-6 px,
+  also on a centred growing line; gradient stamp; caretPath / sendCenter == resolved; slide-in widening keeps the text padding;
+  send squash / flash / wipe; ONE undo byte-identical + redo; save / load; old projects resolve byte-identically to the base
+  commit 2c1e99f's resolver over 50 frames); `gpu:prompt-box` 15/15 through the MCP (S11 + S7 builds: box rect and rounded
+  corners, widening entrance, ink width per frame == measured prefix within 2.6 px, newest glyphs pink / 4-frame-old glyphs
+  white, caret top blue / bottom pink, caret 1-2 px right of the ink edge and within 0.4 px of the resolver, send squash
+  ratio 0.73, flash + wipe, undo / redo byte-identical, export + import byte-identical, recipe live).
+- **Limits:** the typed text is single-line (the B35 caret and the reveal work on one line; a 2-line wrap like the r10 S11
+  reference needs a wider box or a smaller font). Typing frames are absolute (re-run `agent.setTextTyping` after moving the
+  clip). The kit is baked: retime the keys or re-run it.
+

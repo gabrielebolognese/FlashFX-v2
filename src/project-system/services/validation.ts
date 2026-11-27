@@ -45,6 +45,7 @@ import type {
 } from '../../core/types';
 import { DEFAULT_DECODE_CHARSET } from '../../core/textDecode';
 import { normalizeTextCaret } from '../../core/textCaret';
+import { normalizeTextTyping } from '../../core/textTyping';
 import { normalizeTextCounter } from '../../core/textCounter';
 import { normalizeTextStyleKeys } from '../../core/textStyleKeys';
 import { isMaskMode } from '../../core/maskCoverage';
@@ -610,6 +611,7 @@ function validateLayer(raw: unknown): Layer | null {
       const decode = ensureTextDecode(r.decode);
       const textPath = ensureTextPath(r.textPath);
       const caret = normalizeTextCaret(r.caret);
+      const typing = normalizeTextTyping(r.typing);
       const counter = normalizeTextCounter(r.counter);
       const firstStyle = textContent.spans[0]?.style;
       const styleKeys = firstStyle ? normalizeTextStyleKeys(r.styleKeys, firstStyle) : null;
@@ -629,6 +631,7 @@ function validateLayer(raw: unknown): Layer | null {
         ...(textPath ? { textPath } : {}),
         ...(r.reflowHidden === true ? { reflowHidden: true } : {}),
         ...(caret ? { caret } : {}),
+        ...(typing ? { typing } : {}),
       } as TextLayer;
     }
     case 'group': {

@@ -73,7 +73,9 @@ export type AgentHelperMethod =
   | 'addReadout'
   | 'addGuideLabel'
   | 'addGuideLine'
-  | 'addCardSwarm';
+  | 'addCardSwarm'
+  | 'setTextTyping'
+  | 'addPromptBox';
 
 export type FeatureStatus = 'shipped' | 'browser-gated' | 'partial';
 
@@ -405,8 +407,13 @@ export const AGENT_ACTIONS: readonly AgentActionSpec[] = [
   { id: 'agent.setTextCaret', store: 'agent', method: 'setTextCaret', undoable: true,
     returns: 'the caret now on the layer (TextCaret), or null',
     description: 'Typing caret (B35): a bar, block or underline drawn right after the last revealed glyph, so it rides a type-on (agent.applyTextAnimatorPreset "type-on") frame by frame. Fields merge into the current caret; null turns it off. Solid while typing, blinking before / after (blinkRate cycles per second, 0 = solid). Single-line text. One undo step (updateLayerProperty "caret"; tweak one field later with "caret.<field>").',
-    params: [LAYER_ID, { name: 'caret', type: '{ style?: "bar" | "block" | "underline"; color?: [r, g, b, a]; width?: number; height?: number; gap?: number; offsetY?: number; radius?: number; blinkRate?: number; solidWhileTyping?: boolean; startFrame?: number; endFrame?: number } | null', optional: true,
-      description: 'Defaults: style bar, colour = text colour, bar 6% / block 55% of the font size wide, height = font size, blinkRate 1.' }] },
+    params: [LAYER_ID, { name: 'caret', type: '{ style?: "bar" | "block" | "underline"; color?: [r, g, b, a]; gradient?: [[r, g, b, a], [r, g, b, a]]; width?: number; height?: number; gap?: number; offsetY?: number; radius?: number; blinkRate?: number; solidWhileTyping?: boolean; startFrame?: number; endFrame?: number } | null', optional: true,
+      description: 'Defaults: style bar, colour = text colour, bar 6% / block 55% of the font size wide, height = font size, blinkRate 1. B82 gradient: [top, bottom] colours of a vertical gradient caret (r10 blue -> pink: [[0.38, 0.46, 0.81, 1], [0.91, 0.35, 0.63, 1]]).' }] },
+  { id: 'agent.setTextTyping', store: 'agent', method: 'setTextTyping', undoable: true,
+    returns: '{ typing: { enabled, frames, arrivalColor?, arrivalFrames? }, count, startFrame, endFrame } or { typing: null }',
+    description: 'Per-character typing schedule on a text layer (B82): character i (spaces included) appears on frames[i], so a type-on can follow ANY timing: an even rate (startFrame + cps or durationFrames), an EASED typing rate (ease: slow start, fast middle, like r10 S4 easeInOutCubic) or explicit measured keystrokes (frames: one absolute frame per character, r06 human rhythm). Optional arrivalColor: each new character is drawn in that colour on its arrival frame and mixes to the text colour over arrivalFrames (default 4; r10 S11 pink -> white). The B35 caret (agent.setTextCaret) rides the head exactly; on a reflowHidden centred layer the line grows both ways and the caret follows. Frame-pure, persisted, editable later with updateLayerProperty "typing.frames" / "typing.arrivalColor". Use it INSTEAD of a type-on animator (they stack: an animator still hides glyphs). null removes it. One undo step.',
+    params: [LAYER_ID, { name: 'typing', type: '{ startFrame?: number; cps?: number; durationFrames?: number; frames?: number[]; ease?: string | [x1, y1, x2, y2]; arrivalColor?: [r, g, b, a] | "#rrggbb"; arrivalFrames?: number; enabled?: boolean } | null',
+      description: 'frames wins over startFrame + durationFrames (first char on startFrame, last on startFrame + durationFrames - 1), which wins over cps (default 24 chars / s). ease = any easing name or cubic-bezier quad, applied to the typing rate.' }] },
   { id: 'editor.styleTextRange', store: 'editor', method: 'styleTextRange', undoable: true,
     description: 'Mixed styles: give characters [start, end) of a text layer their own face / weight / italic / colour (raw-text indices).',
     params: [LAYER_ID, { name: 'start', type: 'number' }, { name: 'end', type: 'number' },
@@ -744,6 +751,43 @@ export const AGENT_ACTIONS: readonly AgentActionSpec[] = [
     params: [{ name: 'text', type: 'string' }, { name: 'startFrame', type: 'number', optional: true }, { name: 'endFrame', type: 'number', optional: true },
       { name: 'options', type: '{ targetId?: string; point?: "center" | "top" | number; x?: number; y?: number; offset?: [dx, dy]; line?: boolean; color?: [r, g, b, a]; fontSize?: number; fontFamily?: string; name?: string }', optional: true,
         description: 'Without targetId the label sits at (x, y) + offset (default the comp centre). offset default [0, -16] (above). color magenta [0.86, 0.16, 0.82, 1], fontSize 13, Inter medium.' }] },
+  // ----- B82 typing prompt box (animation-templates/promptBox.ts) -----
+  { id: 'agent.addPromptBox', store: 'agent', method: 'addPromptBox', undoable: true,
+    returns: '{ groupId, boxId, textId, placeholderId, sendId, sendArrowId, rowIds, flashId, refillId, content, typing: { startFrame, endFrame, frames }, box: { x, y, width, height, left, top, right, bottom, radius }, sendCenter: [x, y], sendFrame, fontSize, caretPath: [{ frame, x, y, left }], warnings? }: aim agent.cursorMoveTo / cursorClick at sendCenter on sendFrame',
+    description: 'Typing prompt / search box in ONE call (B82; r10 S7 / S11 / S12, r06 S2, r04 S1): a rounded box (theme dark #241e21 / light white, or explicit colours), a placeholder that shows until the first keystroke, the typed text with a per-character typing schedule (cps, durationFrames or explicit frames, with an eased typing RATE), an optional arrival colour (each new character arrives pink and turns white over arrivalFrames), a caret riding the type-on head (solid or a vertical gradient, blinking before / after), a round send button with an up arrow (press squash 100 -> 85 -> 100 % on sendFrame), an optional chip row ("+", "Attach", "Themes"), an optional send flash (gradient overlay, then the fill wipes back from the left) and an entrance (pop, or slideFromRight: slides in from the right and widens as it lands, r10 S11). align "center" types centred so the line grows both ways; autoGrow makes the box width follow the typed line; mask makes a password field (asterisks). Lands as ordinary editable layers in a group (retime keys in the timeline, recolour with updateLayerProperty, retype with agent.setTextContent + agent.setTextTyping). Stacked under any cursor rig. One undo step.',
+    params: [
+      { name: 'x', type: 'number', optional: true, description: 'Box centre x (default comp centre; with autoGrow + left align the left edge stays put).' },
+      { name: 'y', type: 'number', optional: true, description: 'Box centre y (default comp centre).' },
+      { name: 'width', type: 'number', optional: true, description: 'Box width px (default half the comp width; with autoGrow the minimum).' },
+      { name: 'height', type: 'number', optional: true, description: 'Default 2.6 x fontSize (4.8 x with a chip row).' },
+      { name: 'radius', type: 'number', optional: true, description: 'Corner radius px (default a pill: height / 2; r10 S11 uses 36).' },
+      { name: 'theme', type: 'string', optional: true, values: ['light', 'dark'], description: 'light (default) = white box, hairline border, #111 text; dark = #241e21 box, #f3eeed text.' },
+      { name: 'fill', type: '[r, g, b, a] | "#rrggbb"', optional: true, description: 'Box colour (overrides the theme).' },
+      { name: 'textColor', type: '[r, g, b, a] | "#rrggbb"', optional: true },
+      { name: 'placeholderColor', type: '[r, g, b, a] | "#rrggbb"', optional: true },
+      { name: 'placeholder', type: 'string', optional: true, description: 'Grey hint shown until the first keystroke.' },
+      { name: 'text', type: 'string', description: 'What gets typed.' },
+      { name: 'startFrame', type: 'number', optional: true, description: 'Frame the box appears / its entrance starts (default 0).' },
+      { name: 'endFrame', type: 'number', optional: true, description: 'Clip end, exclusive (default the comp end).' },
+      { name: 'typing', type: '{ startFrame?: number; cps?: number; durationFrames?: number; frames?: number[]; ease?: string | [x1, y1, x2, y2] }', optional: true,
+        description: 'Default: starts after the entrance (startFrame + entranceFrames, or + 6 without one) at 24 chars / s. durationFrames: first char on startFrame, last on startFrame + durationFrames - 1. frames: one absolute frame per character. ease shapes the typing RATE.' },
+      { name: 'caret', type: '{ color?: [r, g, b, a] | "#hex"; gradient?: [top, bottom]; blink?: number | boolean; shape?: "bar" | "block" | "underline"; width?: number; height?: number; gap?: number } | false', optional: true,
+        description: 'Default a bar in the text colour, 8% of the font size wide, 1.12 x tall, right on the head (gap 0 px), 1 blink / s before and after typing (solid while typing; the blink restarts ON at the last keystroke). gradient [top, bottom] = r10 blue -> pink ["#6175ce", "#e85aa0"]. false = no caret.' },
+      { name: 'arrivalColor', type: '[r, g, b, a] | "#rrggbb"', optional: true, description: 'Each new character arrives in this colour and fades to textColor (r10 S11: "#e780f6").' },
+      { name: 'arrivalFrames', type: 'number', optional: true, description: 'Frames of that fade (default 4).' },
+      { name: 'autoGrow', type: 'boolean | { maxWidth?: number }', optional: true, description: 'The box width follows the typed line (baked keys), never below width.' },
+      { name: 'buttons', type: '{ send?: boolean; row?: string[] }', optional: true, description: 'send (default true): round button with an up arrow at the right; row: chip labels under the text, e.g. ["+", "Attach", "Themes"] (r10 S7).' },
+      { name: 'sendFrame', type: 'number', optional: true, description: 'Send press: the button squashes to 85 % on sendFrame + 1, back by + 4 (r10 S11 f462). Click the cursor on this frame.' },
+      { name: 'flash', type: 'boolean | { colors?: ([r, g, b, a] | "#hex")[] }', optional: true, description: 'With sendFrame: a gradient overlay (default blue / violet / orange) fades in over 2 frames, then the box fill wipes back from the left (sendFrame + 9 .. + 21).' },
+      { name: 'entrance', type: 'string', optional: true, values: ['none', 'pop', 'slideFromRight'], description: 'pop = scale 0.82 -> 1 backOut + fade; slideFromRight = slides in from the right (0.55 x width) and widens 62 -> 100 % as it lands, easeOutCubic, fading in over 6 frames (r10 S11).' },
+      { name: 'entranceFrames', type: 'number', optional: true, description: 'Default 18 (slideFromRight) / 10 (pop).' },
+      { name: 'mask', type: 'boolean | string', optional: true, description: 'Password field: true = one "*" per character, or the mask character.' },
+      { name: 'align', type: 'string', optional: true, values: ['left', 'center'], description: 'left (default) or center: centred typing grows both ways (r10 S4).' },
+      { name: 'fontSize', type: 'number', optional: true, description: 'Default 30 px.' },
+      { name: 'fontFamily', type: 'string', optional: true, catalog: 'fontFamilies', description: 'Default Inter.' },
+      { name: 'fontWeight', type: 'number', optional: true, description: 'Default 400.' },
+      { name: 'name', type: 'string', optional: true, description: 'Group name (default "Prompt box"); parts are named after it.' },
+    ] },
   // ----- B38 glass material -----
   { id: 'editor.setShapeGlass', store: 'editor', method: 'setShapeGlass', undoable: true,
     description: 'Frosted / liquid glass on a shape layer (rectangle, rounded rect, circle, star or path): the composite BELOW the shape is brightened / saturated, blurred and mixed back inside the shape outline (corners follow the radius), the rim bends the backdrop outward like a lens edge and catches a highlight from lightAngle. The shape still draws on top: give it a low-alpha fill as the tint (e.g. [1, 1, 1, 0.08] or [0, 0, 0, 0.1]) and a 1 px light stroke as the hairline edge, or fill alpha 0 for pure glass. A partial patch over the current glass (or the defaults); numbers for blur / refraction / highlight / lightAngle set their base value and keep their keys: animate them with setKeyframes "glass.blur" / "glass.refraction" / "glass.highlight" / "glass.lightAngle" (a rotating lightAngle sweeps the edge light). null removes the glass. One undo step. Not on 3D, corner-pinned or matte layers.',
@@ -1064,6 +1108,11 @@ export const AGENT_FEATURES: readonly AgentFeature[] = [
     ui: 'Agent / MCP only (lands as ordinary editable layers)',
     actions: ['agent.addSelectionBox', 'agent.addAnchorSquares', 'agent.addReadout', 'agent.addGuideLabel', 'agent.addGuideLine', 'agent.cursorIcon'], status: 'shipped',
     notes: 'Author the edit first (the glyph rotation, the anchor drag), then add the kit over the same frames: the box / squares / tooltip are SAMPLED from the resolved target, so they are exact but baked (re-run after re-timing). Readout values are counter samples: edit them with agent.setTextCounter. Kit layers stack under any cursor rig.' },
+  { id: 'templates.prompt-box', area: 'templates', name: 'Typing prompt box',
+    description: 'A prompt / search box that types in one call (B82): dark or light rounded box, placeholder, per-character typing (even, eased or measured rhythm), new characters arriving in an accent colour, a solid or gradient caret riding the head, send button press, "+ / Attach / Themes" chips, a send flash with a wipe back, pop / slide-in entrances, centred typing that grows both ways, auto-growing width and password masking.',
+    ui: 'Agent / MCP only (lands as ordinary editable layers)',
+    actions: ['agent.addPromptBox', 'agent.setTextTyping', 'agent.setTextCaret'], status: 'shipped',
+    notes: 'The typed text carries layer.typing (TextTyping in src/core/types.ts: frames per character + arrivalColor / arrivalFrames, core/textTyping.ts), resolved through the per-glyph stamp path like an animator; the caret gradient is TextCaret.gradient. Single-line typed text (the caret limit). Absolute frames: re-run setTextTyping after moving the clip. Aim the cursor with the returned sendCenter / caretPath.' },
   { id: 'templates.items', area: 'templates', name: 'Animation items',
     description: 'Ready-made animated elements.', ui: 'Canvas toolbar > Animation Item', actions: ['editor.addAnimationItem'], status: 'shipped' },
 

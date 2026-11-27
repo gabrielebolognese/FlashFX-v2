@@ -37,6 +37,7 @@ import { accumulateGlyphDeltas, trackingShifts, type GlyphDelta, type ResolvedTe
 import { decodeCharAt } from './textDecode';
 import { withTextCounter } from './textCounter';
 import { withTextStyleKeys } from './textStyleKeys';
+import { typingAnimatorsAt } from './textTyping';
 import { resolveTextCaretStamp } from './textCaret';
 import { textRunsFromSpans, runAt } from './textRuns';
 import { totalPathLength, pointAndAngleAt, glyphPathFraction, type TextPathNode } from './textPath';
@@ -624,6 +625,13 @@ function resolveTextAnimatorsAt(active: TextAnimator[], frame: number): Resolved
   }));
 }
 
+/** The layer's animators at one frame plus its B82 typing schedule (explicit-weight animators over `content`). */
+function textAnimatorsWithTypingAt(layer: TextLayer, active: TextAnimator[], content: string, frame: number): ResolvedTextAnimator[] {
+  const base = resolveTextAnimatorsAt(active, frame);
+  if (!layer.typing?.enabled) return base;
+  return [...base, ...typingAnimatorsAt(layer.typing, content, frame)];
+}
+
 /** Where one glyph sits in the layer raster (see expandTextGlyphs): its line's left edge, its centre's
  *  distance along that line, the line's top and its tracking shifts (this frame / the previous one). */
 interface GlyphSlot {
@@ -660,7 +668,9 @@ function expandTextGlyphs(
   // Mixed styles (accent word): per-character face + fill runs. Drawn as glyph stamps even with no
   // animator, since the whole-layer raster draws one style.
   const runs = baseText.runs && baseText.runs.length > 1 ? baseText.runs : null;
-  if ((active.length === 0 && !decode && !onPath && !runs) || !content) return null;
+  // B82: a typing schedule reveals (and tints) glyphs like an animator.
+  const typing = layer.typing?.enabled ? layer.typing : null;
+  if ((active.length === 0 && !decode && !onPath && !runs && !typing) || !content) return null;
 
   const layout = getTextLayout(baseText);
   const singleLine = layout.lines.length === 1 && !content.includes('\n') && layout.lines[0] === content;
@@ -678,10 +688,10 @@ function expandTextGlyphs(
   // Text-on-path (B9b): total arc length, computed once (glyph fractions map into it below).
   const pathLen = onPath ? totalPathLength(onPath.nodes, onPath.closed) : 0;
 
-  const deltas = accumulateGlyphDeltas(content, resolveTextAnimatorsAt(active, frame));
+  const deltas = accumulateGlyphDeltas(content, textAnimatorsWithTypingAt(layer, active, content, frame));
   // Per-glyph motion blur: the same glyph one frame earlier (animator deltas + tracking at prevFrame,
   // under the layer's previous world transform). Only when the layer has motion blur on.
-  const prevDeltas = glyphBlur && active.length > 0 ? accumulateGlyphDeltas(content, resolveTextAnimatorsAt(active, glyphBlur.prevFrame)) : null;
+  const prevDeltas = glyphBlur && (active.length > 0 || typing) ? accumulateGlyphDeltas(content, textAnimatorsWithTypingAt(layer, active, content, glyphBlur.prevFrame)) : null;
 
   // Stamps draw plain run-less text; a run's stamps take that run's face + fill.
   const plainText: ResolvedText = { ...baseText };
@@ -1638,7 +1648,7 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
         }
         // B35 typing caret: one rectangle stamp after the type-on head (core/textCaret.ts).
         if (layer.caret?.enabled) {
-          const caretStamp = resolveTextCaretStamp(layer, resolvedText, worldTransform, resolveTextAnimatorsAt((layer.animators ?? []).filter((a) => a.enabled), frame), frame, settings.frameRate, common, composeTransforms);
+          const caretStamp = resolveTextCaretStamp(layer, resolvedText, worldTransform, textAnimatorsWithTypingAt(layer, (layer.animators ?? []).filter((a) => a.enabled), resolvedText.content, frame), frame, settings.frameRate, common, composeTransforms);
           if (caretStamp) resolvedLayers.push({ ...caretStamp, mask: resolveMask(layer.masks, frame), masks: resolveMasks(layer.masks, frame) });
         }
       } else if (layer.type === 'video') {

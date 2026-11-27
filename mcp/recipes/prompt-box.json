@@ -1,0 +1,54 @@
+{
+  "id": "prompt-box",
+  "name": "Typing prompt box (one call)",
+  "category": "ui",
+  "description": "An AI-app prompt box built by ONE agent.addPromptBox call: the box slides in from the right and widens as it lands (or pops), the prompt types in at a set length with an optional eased rate, each new character arrives in an accent colour and turns white, a blue -> pink gradient caret rides the head, and the send button is pressed (squash) with a gradient flash that wipes back from the left. Everything stays editable layers in one group. Aim cursor-click at returns.sendX / sendY on returns.pressFrame. Lighter-weight sibling of prompt-bar (which builds the bar step by step).",
+  "source": [
+    "r10 S11 f426-483: dark #241e21 radius 36 box slides in (easeOutCubic 18 f), 45 chars in 25 f, pink #e780f6 -> white over 4 f, send click f462, gradient flash + wipe back f471-483",
+    "r10 S7 f227-245 light card, gradient caret, + / Attach / Themes row; r10 S4 eased typing rate"
+  ],
+  "taste": ["TASTE.md 3 Timing", "8 UI mocks"],
+  "params": {
+    "text": { "type": "string", "default": "Add user authentication with login and signup", "description": "What gets typed." },
+    "placeholder": { "type": "string", "default": "", "description": "Grey hint before the first keystroke ('' = none)." },
+    "theme": { "type": "enum", "enum": ["dark", "light"], "default": "dark", "description": "dark = #241e21 box, light text (r10 S11); light = white card, dark text (r10 S7)." },
+    "x": { "type": "number", "default": null, "description": "Box centre x (default comp centre)." },
+    "y": { "type": "number", "default": null, "description": "Box centre y (default comp centre)." },
+    "width": { "type": "number", "default": null, "description": "Box width px (default 45 % of the comp width)." },
+    "fontSize": { "type": "number", "default": null, "description": "Text size px (default 2.8 % of the comp height: 30 px at 1080)." },
+    "radius": { "type": "number", "default": 36, "min": 0, "description": "Corner radius px." },
+    "typeFrames": { "type": "number", "default": 25, "min": 2, "description": "Typing length, frames at 30 fps (first to last character)." },
+    "typeEase": { "type": "ease", "default": "linear", "description": "Typing RATE ease (r10 S4: cubicInOut = slow start, fast middle)." },
+    "arrival": { "type": "boolean", "default": true, "description": "New characters arrive in arrivalColor and turn to the text colour over 4 frames." },
+    "arrivalColor": { "type": "color", "default": "#e780f6", "description": "Arrival colour (r10 S11 pink)." },
+    "gradientCaret": { "type": "boolean", "default": true, "description": "Blue -> pink vertical gradient caret (else the text colour)." },
+    "entrance": { "type": "enum", "enum": ["slideFromRight", "pop", "none"], "default": "slideFromRight", "description": "How the box arrives." },
+    "align": { "type": "enum", "enum": ["left", "center"], "default": "left", "description": "center = the typed line grows both ways." },
+    "press": { "type": "boolean", "default": true, "description": "Press send 5 frames after typing, with the gradient flash + wipe back." }
+  },
+  "length30": "5 + typeFrames + (press ? 32 : 15)",
+  "checkFrames30": ["3", "5 + typeFrames * 0.5", "5 + typeFrames", "press ? 5 + typeFrames + 7 : 5 + typeFrames + 10", "press ? 5 + typeFrames + 20 : 5 + typeFrames + 14"],
+  "lets": {
+    "BX": "x == null ? CX : x",
+    "BY": "y == null ? CY : y",
+    "BW": "width == null ? round(W * 0.45) : width",
+    "FS": "fontSize == null ? round(H * 0.028) : fontSize",
+    "P": "t(5 + typeFrames + 5)"
+  },
+  "steps": [
+    { "id": "box", "action": "agent.addPromptBox", "layer": true, "root": true, "args": {
+      "x": "{{BX - PX}}", "y": "{{BY - PY}}", "width": "{{BW}}", "radius": "{{radius}}", "theme": "{{theme}}", "text": "{{text}}",
+      "placeholder": "{{placeholder == '' ? null : placeholder}}", "fontSize": "{{FS}}", "startFrame": "{{start}}", "endFrame": "{{end}}",
+      "typing": { "startFrame": "{{t(5)}}", "durationFrames": "{{f(typeFrames)}}", "ease": "{{typeEase}}" },
+      "arrivalColor": "{{arrival ? arrivalColor : null}}", "arrivalFrames": 4,
+      "caret": "{{gradientCaret ? obj('gradient', [rgba('#6175ce'), rgba('#e85aa0')], 'width', max(3, round(FS * 0.1))) : obj('width', max(2, round(FS * 0.08)))}}",
+      "sendFrame": "{{press ? P : null}}", "flash": "{{press}}", "entrance": "{{entrance}}", "align": "{{align}}"
+    } }
+  ],
+  "returns": {
+    "groupId": "{{@box.result.groupId}}", "textId": "{{@box.result.textId}}", "sendId": "{{@box.result.sendId}}",
+    "sendX": "{{@box.result.sendCenter[0]}}", "sendY": "{{@box.result.sendCenter[1]}}", "pressFrame": "{{press ? P : null}}",
+    "typingEnd": "{{@box.result.typing.endFrame}}"
+  },
+  "example": { "params": { "text": "Add user authentication with login and signup", "theme": "dark" }, "startFrame": 0 }
+}

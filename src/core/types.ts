@@ -831,6 +831,26 @@ export interface TextCaret {
   startFrame?: number;
   /** Absolute frame the caret is gone from (default: the clip end). */
   endFrame?: number;
+  /** B82: a vertical two-colour gradient [top, bottom] (RGBA 0..1) instead of the solid colour (r10's blue -> pink caret). */
+  gradient?: [Vec4, Vec4];
+}
+
+/**
+ * B82 - a per-character typing schedule on a text layer (core/textTyping.ts): character i (an index into
+ * the full content, spaces included) is hidden before `frames[i]` and shown from it on, so the reveal can
+ * follow any timing (an even rate, an eased rate, a human rhythm). With `arrivalColor` each new character
+ * is drawn in that colour on its arrival frame and mixes to its own fill over `arrivalFrames` (r10's
+ * "each new character arrives pink and turns white"). Frame-pure; resolved through the per-glyph stamp
+ * path like an animator, so the B35 caret rides the head. Absent / disabled = unchanged path.
+ */
+export interface TextTyping {
+  enabled: boolean;
+  /** Absolute frame each character appears on (non-decreasing integers). Characters past the end show from the last frame. */
+  frames: number[];
+  /** RGBA 0..1 a character has on its arrival frame. */
+  arrivalColor?: Vec4;
+  /** Frames from arrivalColor to the text colour (linear-light mix; 0 / absent = no arrival colour). */
+  arrivalFrames?: number;
 }
 
 /** Text-on-a-path binding (B9b): which MotionPath to flow glyphs along + orientation/margin. */
@@ -885,6 +905,8 @@ export interface TextLayer {
   reflowHidden?: boolean;
   /** B35 typing caret after the last revealed glyph (core/textCaret.ts). Absent/disabled → unchanged path. */
   caret?: TextCaret;
+  /** B82 per-character typing schedule + arrival colour (core/textTyping.ts). Absent/disabled → unchanged path. */
+  typing?: TextTyping;
   /** M21 - linked color styles for text fill/stroke. */
   fillStyleId?: string;
   strokeStyleId?: string;

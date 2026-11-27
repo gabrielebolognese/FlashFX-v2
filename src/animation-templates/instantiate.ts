@@ -47,6 +47,8 @@ export function instantiateTemplate(tpl: AnimationTemplate, opts: InstantiateOpt
       if (layer.caret.startFrame !== undefined) layer.caret.startFrame = rebase(layer.caret.startFrame);
       if (layer.caret.endFrame !== undefined) layer.caret.endFrame = rebase(layer.caret.endFrame);
     }
+    // B82: so is a typing schedule.
+    if (layer.type === 'text' && layer.typing) layer.typing = { ...layer.typing, frames: layer.typing.frames.map(rebase) };
   }
   return layers;
 }

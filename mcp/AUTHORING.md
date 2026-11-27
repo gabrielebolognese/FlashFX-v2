@@ -526,7 +526,10 @@ Never leave real motion on linear (the default for `addKeyframe`), except progre
   `solidWhileTyping` (default true), `startFrame` / `endFrame` (absolute; the blink starts ON at
   `startFrame`). Later tweaks: `updateLayerProperty(id, "caret.color", [...])`; `caret: null` turns it
   off. Single-line text only. The reveal presets hide every glyph, the first included, until their
-  start frame (B45), so an empty field blinks its caret until the first keystroke.
+  start frame (B45), so an empty field blinks its caret until the first keystroke. B82: `gradient:
+  [top, bottom]` draws a vertical two-colour caret (r10 blue -> pink); for exact keystroke timing, an
+  eased typing rate or new characters arriving in an accent colour use `agent.setTextTyping` (or the
+  whole box: `agent.addPromptBox`, section 17).
 - **Cursor.** One call adds it, then script it in time order; every call is one undo step and lands
   as ordinary keys (the group `transform.position` is the hotspot, `transform.scale` the squash):
 
@@ -789,3 +792,42 @@ editable 3D layers (one undo step), stacked under any cursor rig.
   one-step undo, the resolver's true orbit) and `npm run gpu:card-swarm` (true 3D projection within 1.5 px,
   opposite parallax, near-over-far occlusion that flips with the orbit, decals and labels on their card,
   byte-identical export / import).
+## 17. Typing prompt box (B82)
+
+For AI-app prompt boxes, search bars and form fields that type (r10 S7 / S11 / S12, r06 S2, r04 S1). ONE call builds
+the whole box as editable layers in a group (one undo step, stacked under any cursor rig):
+
+```json
+{ "actionId": "agent.addPromptBox", "args": { "x": 960, "y": 540, "width": 872, "height": 96, "radius": 36, "theme": "dark",
+  "text": "Add user authentication with login and signup", "startFrame": 427, "endFrame": 490,
+  "typing": { "startFrame": 432, "durationFrames": 25 }, "arrivalColor": "#e780f6", "arrivalFrames": 4,
+  "caret": { "gradient": ["#6175ce", "#e85aa0"], "width": 4 }, "sendFrame": 462, "flash": true, "entrance": "slideFromRight" } }
+```
+
+- Timing: `typing.durationFrames` (first character on `typing.startFrame`, last on start + duration - 1), or `cps`, or
+  `frames` (one absolute frame per character, spaces included: a measured human rhythm). `ease` shapes the typing RATE
+  (r10 S4: `"cubicInOut"` = slow start, fast middle). Default: after the entrance at 24 chars / s.
+- `arrivalColor` + `arrivalFrames`: each new character is drawn in that colour on its arrival frame and mixes (linear light)
+  to the text colour over N frames.
+- `caret`: `{ color | gradient: [top, bottom], blink (cycles / s, false = solid), shape: bar | block | underline, width,
+  height, gap }`; it sits right on the head (gap 0), solid while typing, and the blink restarts ON at the last keystroke.
+  `caret: false` = none.
+- Layout: `theme` dark (#241e21 / #f3eeed) or light (white + hairline / #111), or `fill` / `textColor` /
+  `placeholderColor`; `placeholder` shows until the first keystroke; `buttons: { send: true, row: ["+", "Attach",
+  "Themes"] }` (a row makes a taller card: text on top, chips + send below); `align: "center"` types centred so the line
+  grows both ways; `autoGrow` (or `{ maxWidth }`) makes the box follow the typed line; `mask: true` types asterisks.
+- `entrance`: `pop` or `slideFromRight` (slides in from 0.55 x width to the right and widens 62 -> 100 % as it lands,
+  easeOutCubic over `entranceFrames` = 18, fading in over 6 frames).
+- `sendFrame`: the send button squashes 100 -> 85 -> 100 % (+1 / +4 frames); `flash: true` (or `{ colors }`) fades in a
+  blue / violet / orange gradient over 2 frames, then the box fill wipes back from the left (sendFrame + 9 .. + 21).
+- Returns `sendCenter` (aim `agent.cursorMoveTo` there and `agent.cursorClick` on `sendFrame`), the final `box` rect,
+  `typing.frames` and `caretPath` (the caret centre / left edge on every keystroke frame, comp px). `warnings` flags a line
+  wider than the box.
+- Any text layer: `agent.setTextTyping { layerId, typing: { startFrame, durationFrames | cps | frames, ease, arrivalColor,
+  arrivalFrames } }` adds the same schedule (use it instead of a type-on animator); `agent.setTextCaret { caret: { gradient:
+  [top, bottom] } }` gives any caret the gradient. Edit later with `updateLayerProperty` `typing.frames` /
+  `typing.arrivalColor` / `caret.gradient`.
+- Limits: the typed text is one line (wrap = widen the box or lower `fontSize`); typing frames are absolute, so re-run
+  `agent.setTextTyping` after moving the clip.
+- One call from a brief: `apply_recipe { id: 'prompt-box', params: { text, theme, press } }`.
+- Proofs: `npm run verify:prompt-box` and `npm run gpu:prompt-box`.

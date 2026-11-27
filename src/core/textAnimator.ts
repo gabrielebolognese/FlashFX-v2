@@ -38,6 +38,8 @@ export interface ResolvedTextAnimator {
   splitMode: TextAnimatorSplitMode;
   selector: RangeSelectorConfig;
   delta: TextAnimatorDelta;
+  /** B82: explicit per-unit weights (a typing schedule) used instead of the selector. Never persisted. */
+  weights?: readonly number[];
 }
 
 const identity = (): GlyphDelta => ({ tx: 0, ty: 0, sx: 1, sy: 1, rotation: 0, opacity: 1, rx: 0, ry: 0, blur: 0, tracking: 0, skew: 0 });
@@ -108,7 +110,7 @@ export function accumulateGlyphDeltas(content: string, animators: ResolvedTextAn
   const out: GlyphDelta[] = Array.from({ length: content.length }, identity);
   for (const anim of animators) {
     const { unitOf, unitCount } = splitTextUnits(content, anim.splitMode);
-    const weights = selectorWeights(unitCount, anim.selector);
+    const weights = anim.weights ?? selectorWeights(unitCount, anim.selector);
     const d = anim.delta;
     for (let i = 0; i < content.length; i++) {
       const w = weights[unitOf[i]] ?? 0;

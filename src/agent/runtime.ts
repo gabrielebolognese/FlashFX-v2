@@ -38,7 +38,7 @@ import { planAgentMotionPath } from '../core/agentMotionPath';
 import { uid } from '../core/factory';
 import { ensureCompositionFonts, ensureFontFace } from '../engine/fonts';
 import { MAX_FONT_BYTES, hydrateCustomFonts, useCustomFontStore } from '../engine/customFonts';
-import type { Layer, ParticleLayer, ResolvedText, TextLayer, Vec2 } from '../core/types';
+import type { FontWeight, Layer, ParticleLayer, ResolvedText, TextLayer, Vec2, Vec4 } from '../core/types';
 import {
   AGENT_ACTIONS,
   AGENT_MANIFEST_SCHEMA_VERSION,
@@ -69,6 +69,8 @@ import type { KeyframeEaseSpec, KeyframeSpec } from '../core/keyframeSpecs';
 import { layoutCardSwarm, swarmWorldPoint, type SwarmVec3, type SwarmVolume } from '../core/cardSwarm';
 import { planCardSwarm, SWARM_PILL_LABELS, type SwarmSource } from '../animation-templates/cardSwarm';
 import { normalizeTextCaret } from '../core/textCaret';
+import { normalizeTextTyping, typingFrames, type TypingEase } from '../core/textTyping';
+import { planPromptBox, type PromptBoxSpec } from '../animation-templates/promptBox';
 import { pickSourceSlot } from '../cloner/sources';
 
 export interface AgentLayerSummary {
@@ -779,6 +781,47 @@ function cursorRigLayerIds(): string[] {
   return ids;
 }
 
+// ----- B82 typing prompt box: argument readers -----
+/** RGBA 0..1 or a hex string (#rgb, #rrggbb, #rrggbbaa). */
+function pbColor(v: unknown, label: string): Vec4 | undefined {
+  if (v === undefined || v === null) return undefined;
+  if (typeof v === 'string') {
+    const m = /^#?([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.exec(v.trim());
+    if (!m) throw new Error(`"${label}" must be a hex colour ("#e780f6") or [r, g, b, a] (0..1)`);
+    const h = m[1].length === 3 ? m[1].split('').map((c) => c + c).join('') : m[1];
+    const c = (i: number): number => parseInt(h.slice(i, i + 2), 16) / 255;
+    return [c(0), c(2), c(4), h.length === 8 ? c(6) : 1];
+  }
+  return dkColor(v, label);
+}
+function pbEase(v: unknown, label: string): TypingEase | undefined {
+  if (v === undefined || v === null) return undefined;
+  if (typeof v === 'string') {
+    if (!(v in EASINGS)) throw new Error(`"${label}": unknown easing "${v}" (one of ${Object.keys(EASINGS).join(', ')}, or a cubic-bezier [x1, y1, x2, y2])`);
+    return v;
+  }
+  if (Array.isArray(v) && v.length === 4 && v.every((n) => typeof n === 'number' && Number.isFinite(n))) return [v[0], v[1], v[2], v[3]];
+  throw new Error(`"${label}" must be an easing name or a cubic-bezier [x1, y1, x2, y2]`);
+}
+function pbFrames(v: unknown, label: string): number[] | undefined {
+  if (v === undefined || v === null) return undefined;
+  if (!Array.isArray(v) || v.length === 0 || !v.every((n) => typeof n === 'number' && Number.isFinite(n))) throw new Error(`"${label}" must be a non-empty array of frame numbers (one per character)`);
+  return v as number[];
+}
+/** The typing timing object shared by agent.addPromptBox and agent.setTextTyping. */
+function pbTyping(v: unknown, extra: readonly string[] = []): { startFrame?: number; cps?: number; durationFrames?: number; frames?: number[]; ease?: TypingEase } {
+  if (v === undefined || v === null) return {};
+  const o = pbObject(v, 'typing');
+  const known = new Set(['startFrame', 'cps', 'durationFrames', 'frames', 'ease', ...extra]);
+  const unknown = Object.keys(o).filter((k) => !known.has(k));
+  if (unknown.length) throw new Error(`unknown typing field(s): ${unknown.join(', ')} (accepted: ${[...known].join(', ')})`);
+  const cps = pbOptNum(o.cps, 'typing.cps');
+  if (cps !== undefined && !(cps > 0)) throw new Error('"typing.cps" must be positive');
+  const dur = pbOptNum(o.durationFrames, 'typing.durationFrames');
+  if (dur !== undefined && !(dur >= 1)) throw new Error('"typing.durationFrames" must be at least 1');
+  return { startFrame: pbOptNum(o.startFrame, 'typing.startFrame'), cps, durationFrames: dur, frames: pbFrames(o.frames, 'typing.frames'), ease: pbEase(o.ease, 'typing.ease') };
+}
+
 const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
   setTextContent: (layerId, text) => {
     const layer = requireTextLayer(layerId);
@@ -974,7 +1017,7 @@ const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
     const fullText = layer.content.spans.map((sp) => sp.text).join('');
     const first = layer.content.spans[0];
     const content = first ? { ...layer.content, spans: [{ ...first, text: fullText }] } : layer.content;
-    const probe = { ...layer, content, animators: [], decode: undefined, masks: [], textPath: undefined, inPoint: Math.min(layer.inPoint, f), outPoint: Math.max(layer.outPoint, f + 1) };
+    const probe = { ...layer, content, animators: [], decode: undefined, typing: undefined, masks: [], textPath: undefined, inPoint: Math.min(layer.inPoint, f), outPoint: Math.max(layer.outPoint, f + 1) };
     const comp = { ...ed.composition, layers: ed.composition.layers.map((l) => (l.id === layer.id ? probe : l)) };
     const resolved = resolveFrame(comp, f, { getComposition: ed.getComposition }).layers.find((l) => l.id === layer.id);
     if (!resolved?.text) throw new Error('the text did not resolve at this frame');
@@ -1580,7 +1623,7 @@ const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
     await ensureCompositionFonts(layer);
     const ed = useEditorStore.getState();
     const f = typeof frame === 'number' && Number.isFinite(frame) ? Math.round(frame) : useTimelineStore.getState().currentFrame;
-    const probe = { ...layer, animators: [], decode: undefined, masks: [], textPath: undefined, inPoint: Math.min(layer.inPoint, f), outPoint: Math.max(layer.outPoint, f + 1) };
+    const probe = { ...layer, animators: [], decode: undefined, typing: undefined, masks: [], textPath: undefined, inPoint: Math.min(layer.inPoint, f), outPoint: Math.max(layer.outPoint, f + 1) };
     const fullText = layer.content.spans.map((sp) => sp.text).join('');
     const first = layer.content.spans[0];
     if (first) probe.content = { ...layer.content, spans: [{ ...first, text: fullText }] };
@@ -1863,6 +1906,132 @@ const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
     if (!next) throw new Error('invalid caret');
     useEditorStore.getState().updateLayerProperty(layer.id, 'caret', next);
     return next;
+  },
+
+  // ----- B82 per-character typing schedule + arrival colour (core/textTyping.ts) -----
+  setTextTyping: (layerId, typing) => {
+    const layer = requireTextLayer(layerId);
+    if (typing === null) {
+      if (!layer.typing) return { typing: null };
+      useEditorStore.getState().applyLayerEdits('Remove typing', { update: [{ ...layer, typing: undefined }] });
+      return { typing: null };
+    }
+    const o = pbObject(typing, 'typing');
+    const t = pbTyping(o, ['arrivalColor', 'arrivalFrames', 'enabled']);
+    const content = layer.content.spans.map((sp) => sp.text).join('');
+    if (content.length === 0) throw new Error('the text layer is empty: set its text first (agent.setTextContent)');
+    if (!t.frames && t.startFrame === undefined) throw new Error('"typing" needs "frames" (one absolute frame per character) or "startFrame" with "cps" / "durationFrames"');
+    const ed = useEditorStore.getState();
+    const frames = typingFrames({ count: content.length, startFrame: t.startFrame ?? 0, fps: ed.composition.settings.frameRate, cps: t.cps, durationFrames: t.durationFrames, frames: t.frames, ease: t.ease });
+    const arrivalColor = pbColor(o.arrivalColor, 'typing.arrivalColor');
+    const arrivalFrames = pbOptNum(o.arrivalFrames, 'typing.arrivalFrames');
+    if (arrivalFrames !== undefined && !(arrivalFrames >= 0)) throw new Error('"typing.arrivalFrames" must be >= 0');
+    const next = normalizeTextTyping({ enabled: o.enabled !== false, frames, ...(arrivalColor ? { arrivalColor, arrivalFrames: arrivalFrames ?? 4 } : {}) });
+    if (!next) throw new Error('no usable typing frames');
+    ed.applyLayerEdits('Text typing', { update: [{ ...layer, typing: next }] });
+    return { typing: next, count: content.length, startFrame: frames[0], endFrame: frames[frames.length - 1] };
+  },
+
+  // ----- B82 typing prompt box (animation-templates/promptBox.ts): ONE undo step -----
+  addPromptBox: async (x, y, width, height, radius, theme, fill, textColor, placeholderColor, placeholder, text, startFrame, endFrame, typing, caret, arrivalColor, arrivalFrames,
+    autoGrow, buttons, sendFrame, flash, entrance, entranceFrames, mask, align, fontSize, fontFamily, fontWeight, name) => {
+    const ed = useEditorStore.getState();
+    const cs = ed.composition.settings;
+    if (typeof text !== 'string') throw new Error('"text" must be a string (what gets typed)');
+    if (text.length > 2000) throw new Error('"text" is longer than 2000 characters');
+    if (theme !== undefined && theme !== null && theme !== 'light' && theme !== 'dark') throw new Error('"theme" must be "light" or "dark"');
+    if (align !== undefined && align !== null && align !== 'left' && align !== 'center') throw new Error('"align" must be "left" or "center"');
+    if (entrance !== undefined && entrance !== null && entrance !== 'none' && entrance !== 'pop' && entrance !== 'slideFromRight') throw new Error('"entrance" must be "none", "pop" or "slideFromRight"');
+    const W = dkNum(width, 'width') ?? Math.round(cs.width * 0.5);
+    if (!(W > 0)) throw new Error('"width" must be positive');
+    const start = Math.round(dkNum(startFrame, 'startFrame') ?? 0);
+    const end = Math.round(dkNum(endFrame, 'endFrame') ?? cs.durationFrames);
+    if (!(end > start)) throw new Error('"endFrame" must be after "startFrame"');
+    let caretSpec: PromptBoxSpec['caret'];
+    if (caret === false) caretSpec = false;
+    else if (caret !== undefined && caret !== null) {
+      const c = pbObject(caret, 'caret');
+      const known = new Set(['color', 'gradient', 'blink', 'shape', 'width', 'height', 'gap']);
+      const unknown = Object.keys(c).filter((k) => !known.has(k));
+      if (unknown.length) throw new Error(`unknown caret field(s): ${unknown.join(', ')} (accepted: ${[...known].join(', ')})`);
+      if (c.shape !== undefined && c.shape !== 'bar' && c.shape !== 'block' && c.shape !== 'underline') throw new Error('"caret.shape" must be "bar", "block" or "underline"');
+      if (c.blink !== undefined && typeof c.blink !== 'boolean' && (typeof c.blink !== 'number' || !(c.blink >= 0))) throw new Error('"caret.blink" must be a boolean or blink cycles per second (0 = solid)');
+      let gradient: [Vec4, Vec4] | undefined;
+      if (c.gradient !== undefined && c.gradient !== null) {
+        if (!Array.isArray(c.gradient) || c.gradient.length !== 2) throw new Error('"caret.gradient" must be [topColour, bottomColour]');
+        const top = pbColor(c.gradient[0], 'caret.gradient[0]'), bottom = pbColor(c.gradient[1], 'caret.gradient[1]');
+        if (!top || !bottom) throw new Error('"caret.gradient" must be [topColour, bottomColour]');
+        gradient = [top, bottom];
+      }
+      caretSpec = {
+        color: pbColor(c.color, 'caret.color'), gradient, blink: c.blink as number | boolean | undefined, shape: c.shape as 'bar' | 'block' | 'underline' | undefined,
+        width: dkNum(c.width, 'caret.width'), height: dkNum(c.height, 'caret.height'), gap: dkNum(c.gap, 'caret.gap'),
+      };
+    }
+    let btns: PromptBoxSpec['buttons'];
+    if (buttons !== undefined && buttons !== null) {
+      const b = pbObject(buttons, 'buttons');
+      if (b.row !== undefined && (!Array.isArray(b.row) || !b.row.every((s) => typeof s === 'string'))) throw new Error('"buttons.row" must be an array of chip labels, e.g. ["+", "Attach", "Themes"]');
+      if (b.send !== undefined && typeof b.send !== 'boolean') throw new Error('"buttons.send" must be a boolean');
+      btns = { send: b.send as boolean | undefined, row: b.row as string[] | undefined };
+    }
+    let flashSpec: PromptBoxSpec['flash'];
+    if (flash === true) flashSpec = true;
+    else if (flash !== undefined && flash !== null && flash !== false) {
+      const fo = pbObject(flash, 'flash');
+      if (fo.colors !== undefined && (!Array.isArray(fo.colors) || fo.colors.length < 2)) throw new Error('"flash.colors" must hold at least 2 colours');
+      flashSpec = { colors: Array.isArray(fo.colors) ? fo.colors.map((c, i) => pbColor(c, `flash.colors[${i}]`) ?? [1, 1, 1, 1]) : undefined };
+    }
+    let grow: PromptBoxSpec['autoGrow'];
+    if (autoGrow === true) grow = true;
+    else if (autoGrow !== undefined && autoGrow !== null && autoGrow !== false) {
+      const g = pbObject(autoGrow, 'autoGrow');
+      grow = { maxWidth: dkNum(g.maxWidth, 'autoGrow.maxWidth') };
+    }
+    if (mask !== undefined && mask !== null && typeof mask !== 'boolean' && typeof mask !== 'string') throw new Error('"mask" must be true (asterisks) or the mask character');
+    const fw = dkNum(fontWeight, 'fontWeight');
+    const family = typeof fontFamily === 'string' && fontFamily.trim() ? fontFamily.trim() : 'Inter';
+    const weight = (fw === undefined ? 400 : Math.min(900, Math.max(100, Math.round(fw / 100) * 100))) as FontWeight;
+    // B52: measure in the real (lazy-loaded) faces.
+    const loads = [ensureFontFace(family, weight, 'normal'), ensureFontFace(family, 500, 'normal')].filter((p): p is Promise<void> => !!p);
+    await Promise.allSettled(loads);
+    const arrivalFramesN = dkNum(arrivalFrames, 'arrivalFrames');
+    if (arrivalFramesN !== undefined && !(arrivalFramesN >= 0)) throw new Error('"arrivalFrames" must be >= 0');
+    const spec: PromptBoxSpec = {
+      x: dkNum(x, 'x') ?? cs.width / 2, y: dkNum(y, 'y') ?? cs.height / 2, width: W,
+      height: dkNum(height, 'height'), radius: dkNum(radius, 'radius'), theme: (theme ?? undefined) as PromptBoxSpec['theme'],
+      fill: pbColor(fill, 'fill'), textColor: pbColor(textColor, 'textColor'), placeholderColor: pbColor(placeholderColor, 'placeholderColor'),
+      placeholder: typeof placeholder === 'string' ? placeholder.slice(0, 200) : undefined, text,
+      fontSize: dkNum(fontSize, 'fontSize'), fontFamily: family, fontWeight: weight,
+      startFrame: start, endFrame: end, fps: cs.frameRate, typing: pbTyping(typing), caret: caretSpec,
+      arrivalColor: pbColor(arrivalColor, 'arrivalColor'), arrivalFrames: arrivalFramesN, autoGrow: grow, buttons: btns,
+      sendFrame: dkNum(sendFrame, 'sendFrame'), flash: flashSpec, entrance: (entrance ?? undefined) as PromptBoxSpec['entrance'],
+      entranceFrames: dkNum(entranceFrames, 'entranceFrames'), mask: (mask ?? undefined) as boolean | string | undefined,
+      align: (align ?? undefined) as PromptBoxSpec['align'], name: dkName(name),
+    };
+    const plan = planPromptBox(spec);
+    const warnings = [...plan.warnings];
+    if (plan.typing.frames.length && plan.typing.endFrame >= end) warnings.push(`typing ends at f${plan.typing.endFrame}, after the clip end f${end}: raise endFrame`);
+    if (plan.sendFrame !== null && plan.sendFrame >= end) warnings.push(`sendFrame ${plan.sendFrame} is past the clip end f${end}`);
+    commitDesignKit('Add prompt box', plan.layers);
+    // Caret path: where the caret is (comp px) on each keystroke frame, resolved like the renderer.
+    const after = useEditorStore.getState();
+    const caretFrames = [...new Set([start, ...plan.typing.frames, plan.typing.endFrame + 1])].filter((f) => f >= start && f < end).slice(0, 240);
+    const caretPath: { frame: number; x: number; y: number; left: number }[] = [];
+    if (spec.caret !== false) {
+      const r2 = (n: number): number => Math.round(n * 100) / 100;
+      for (const f of caretFrames) {
+        const st = resolveFrame(after.composition, f, { getComposition: after.getComposition }).layers.find((l) => l.id === `${plan.textId}#caret`);
+        if (!st || !st.shape) continue;
+        caretPath.push({ frame: f, x: r2(st.transform.positionX), y: r2(st.transform.positionY), left: r2(st.transform.positionX - (st.shape.width * st.transform.scaleX) / 2) });
+      }
+    }
+    return {
+      groupId: plan.groupId, boxId: plan.boxId, textId: plan.textId, placeholderId: plan.placeholderId, sendId: plan.sendId, sendArrowId: plan.sendArrowId,
+      rowIds: plan.rowIds, flashId: plan.flashId, refillId: plan.refillId, content: plan.content, typing: plan.typing, box: plan.box,
+      sendCenter: plan.sendCenter, sendFrame: plan.sendFrame, fontSize: plan.fontSize, caretPath,
+      ...(warnings.length ? { warnings } : {}),
+    };
   },
 };
 
