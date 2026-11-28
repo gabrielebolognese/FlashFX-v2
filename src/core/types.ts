@@ -1,6 +1,8 @@
 // The cloner is a first-class layer; its data-model types live in the feature
 // module (src/cloner) and are imported type-only here (erased at runtime - no
 // runtime dependency of core on the feature module).
+import type { TextCounter } from './textCounter';
+import type { TextStyleKeys } from './textStyleKeys';
 import type { ClonerLayer, InstanceTransform } from '../cloner/types';
 import type { SharedStyle } from './styles'; // M21 - type-only (erased; no runtime cycle)
 import type { ClonerRenderPath } from '../cloner/renderPath';
@@ -267,6 +269,11 @@ export interface RectangleShape {
 export interface CircleShape {
   type: 'circle';
   radius: AnimatableProperty;
+  /**
+   * B63: vertical radius of an ellipse (keyframable as "shape.radiusY"); `radius` is then the horizontal
+   * one. Absent = a circle (radiusY = radius), so every older project is unchanged.
+   */
+  radiusY?: AnimatableProperty;
   fillColor: Vec4;
   strokeColor: Vec4;
   strokeWidth: AnimatableProperty;
@@ -312,8 +319,16 @@ export interface PathKeyframe {
    *  cubic-bezier quad [x1, y1, x2, y2]. Absent = linear (the B8b behaviour). */
   ease?: EasingName | [number, number, number, number];
   /** B62: 'auto' = match the next pose's start point and winding to this one before morphing (no
-   *  twisting rect -> circle). Absent = index-0 correspondence (B8b, unchanged). */
-  align?: 'auto';
+   *  twisting rect -> circle). Absent = index-0 correspondence (B8b, unchanged).
+   *  B76: 'vertices' = when the next pose has the same vertex count, move each vertex (and its bezier
+   *  handles) straight to the same-index vertex of the next pose, like an After Effects path keyframe: an
+   *  anchor drag stays a drag (no arc-length resampling, corners stay sharp, the vertex count is kept). */
+  align?: 'auto' | 'vertices';
+  /** B83: extra closed contours of this pose (holes and islands, filled even-odd with `vertices`).
+   *  When ANY pose of a layer carries them, the poses drive the layer's contours and the static
+   *  `PolygonShape.holes` is ignored; contours are paired between poses, an unpaired one shrinks to /
+   *  grows from its own centre. Absent on every pose = the static holes (old projects, unchanged). */
+  holes?: PathVertex[][];
 }
 
 export interface PolygonShape {
@@ -345,7 +360,8 @@ export type ShapeGeometry = RectangleShape | CircleShape | StarShape | PolygonSh
 
 // ─── Material Fill System (multi-layer gradient) ───
 
-export type MaterialGradientType = 'linear' | 'radial';
+/** B74: 'conic' = an angular sweep around a centre (hue wheels, progress rings). */
+export type MaterialGradientType = 'linear' | 'radial' | 'conic';
 
 export type MaterialLinearDirection =
   | 'top-to-bottom' | 'bottom-to-top'
@@ -374,7 +390,11 @@ export interface MaterialFillLayer {
   colorStops: MaterialColorStop[];
   direction?: MaterialLinearDirection;
   radialType?: MaterialRadialType;
+  /** Linear: direction in degrees. Conic (B74): start angle in degrees (0 = 12 o'clock, clockwise). */
   angle?: number;
+  /** B74: conic / radial centre in the shape box (0..1); overrides radialType when both are set. */
+  centerX?: number;
+  centerY?: number;
   blendMode: MaterialBlendMode;
   opacity: number;
 }
@@ -428,6 +448,44 @@ export interface RefineEdge {
   decontaminate: number;
 }
 
+/**
+ * Pixel-block dissolve / build-on (B54). A mask carrying `blocks` is a seeded block pattern instead of
+ * an analytic shape: its rectangle (position / size / rotation) is the block grid's region (the grid
+ * starts at the region's top-left corner, blocks are `size` px squares in comp space and the grid
+ * continues past the region, so nothing outside it is clipped). Each block gets a threshold in [0, 1)
+ * from its order (seeded random, directional sweep or centre-out, `jitter` mixes randomness into the
+ * last two); at `progress` p a block is shown when threshold < p ('in' = build-on) or hidden ('out' =
+ * dissolve). Evaluated per pixel in the mask WGSL (core/maskCoverage.ts is the CPU twin), so it works
+ * on every masked pipeline. Frame-pure: an integer hash of (seed, block index), no Math.random.
+ */
+export type PixelBlockOrder = 'random' | 'directional' | 'center';
+
+export interface MaskBlocks {
+  /** Block edge in comp px (>= 1). */
+  size: number;
+  /** Integer seed (0 .. 2^24 - 1) of the block thresholds. */
+  seed: number;
+  order: PixelBlockOrder;
+  /** Directional order: sweep direction in degrees (0 = left to right, 90 = top to bottom). */
+  angle: number;
+  /** 0..1 randomness mixed into the directional / centre order (ignored by random). */
+  jitter: number;
+  /** 'in' = blocks appear as progress goes 0 -> 1 (build-on); 'out' = they disappear (dissolve). */
+  direction: 'in' | 'out';
+  /** 0..1, keyframable (agent.pixelBlockReveal keys it). */
+  progress: AnimatableProperty;
+}
+
+export interface ResolvedMaskBlocks {
+  size: number;
+  seed: number;
+  order: PixelBlockOrder;
+  angle: number;
+  jitter: number;
+  direction: 'in' | 'out';
+  progress: number;
+}
+
 export interface Mask {
   id: string;
   name: string;
@@ -454,6 +512,9 @@ export interface Mask {
   mode?: MaskMode;
   // B10e: grow (+) or choke (-) the edge in px without redrawing the outline (AE Mask Expansion).
   expansion?: AnimatableProperty;
+  // B54: pixel-block dissolve / build-on. When present the mask is the seeded block pattern (the
+  // rectangle is its region; feather / expansion / vertices are ignored). Absent = an ordinary mask.
+  blocks?: MaskBlocks;
 }
 
 export interface ResolvedMask {
@@ -475,6 +536,8 @@ export interface ResolvedMask {
   // B10e: combine mode (absent = 'intersect') and the evaluated edge expansion in px (absent = 0).
   mode?: MaskMode;
   expansion?: number;
+  // B54: the evaluated pixel-block pattern (present only on a blocks mask).
+  blocks?: ResolvedMaskBlocks;
 }
 
 // A keyframeable 2.5D projected shadow. The shadow is rendered as a separate
@@ -622,8 +685,48 @@ export interface ShapeLayer {
   /** M21 - linked color styles for fill/stroke (resolve reads through the style). */
   fillStyleId?: string;
   strokeStyleId?: string;
+  /** B38 frosted / liquid glass: blur (+ bend, brighten, highlight) the composite below, clipped to
+   *  the shape's outline (core/effects/glass.ts). Absent = an ordinary shape. */
+  glass?: ShapeGlass;
   inPoint: number;
   outPoint: number;
+}
+
+/**
+ * B38 glass material on a shape layer. The renderer runs it as an adjustment pass just below the shape:
+ * the composite under the shape is brightened / saturated, blurred, bent near the edge and given a
+ * rim highlight, then mixed back inside the shape outline (core/effects/glass.ts builds the pass from
+ * the resolved shape). The shape itself draws on top as usual, so its fill is the glass tint and its
+ * stroke the light edge.
+ */
+export interface ShapeGlass {
+  enabled: boolean;
+  /** Backdrop blur radius, px (keyframable). */
+  blur: AnimatableProperty;
+  /** Edge bend of the backdrop, px (0 = none; keyframable). Positive pulls the scene from just outside
+   *  the edge inward, like the rim of a lens. */
+  refraction: AnimatableProperty;
+  /** Rim highlight strength 0..1 (keyframable). */
+  highlight: AnimatableProperty;
+  /** Direction the light comes from, degrees (screen, Y down: -90 = from the top; keyframable: a
+   *  rotating angle sweeps the highlight around the rim). */
+  lightAngle: AnimatableProperty;
+  /** Width of the bent / highlighted rim band inside the edge, px. */
+  edgeWidth: number;
+  /** Basic filters on the backdrop before the blur (-1..1, 0 = unchanged). */
+  brightness: number;
+  saturation: number;
+}
+
+/** B38: a shape's glass resolved for one frame (numbers only). */
+export interface ResolvedGlass {
+  blur: number;
+  refraction: number;
+  highlight: number;
+  lightAngle: number;
+  edgeWidth: number;
+  brightness: number;
+  saturation: number;
 }
 
 export type TextSplitMode = 'character' | 'word' | 'line';
@@ -733,6 +836,26 @@ export interface TextCaret {
   startFrame?: number;
   /** Absolute frame the caret is gone from (default: the clip end). */
   endFrame?: number;
+  /** B82: a vertical two-colour gradient [top, bottom] (RGBA 0..1) instead of the solid colour (r10's blue -> pink caret). */
+  gradient?: [Vec4, Vec4];
+}
+
+/**
+ * B82 - a per-character typing schedule on a text layer (core/textTyping.ts): character i (an index into
+ * the full content, spaces included) is hidden before `frames[i]` and shown from it on, so the reveal can
+ * follow any timing (an even rate, an eased rate, a human rhythm). With `arrivalColor` each new character
+ * is drawn in that colour on its arrival frame and mixes to its own fill over `arrivalFrames` (r10's
+ * "each new character arrives pink and turns white"). Frame-pure; resolved through the per-glyph stamp
+ * path like an animator, so the B35 caret rides the head. Absent / disabled = unchanged path.
+ */
+export interface TextTyping {
+  enabled: boolean;
+  /** Absolute frame each character appears on (non-decreasing integers). Characters past the end show from the last frame. */
+  frames: number[];
+  /** RGBA 0..1 a character has on its arrival frame. */
+  arrivalColor?: Vec4;
+  /** Frames from arrivalColor to the text colour (linear-light mix; 0 / absent = no arrival colour). */
+  arrivalFrames?: number;
 }
 
 /** Text-on-a-path binding (B9b): which MotionPath to flow glyphs along + orientation/margin. */
@@ -772,6 +895,10 @@ export interface TextLayer {
   animators?: TextAnimator[];
   /** Text Decode / scramble reveal (B9). Absent/disabled → unchanged path. */
   decode?: TextDecode;
+  /** B75: styled number counter - rewrites one span's text per frame (core/textCounter.ts). Absent = plain text. */
+  counter?: TextCounter;
+  /** B77: hold keyframes on the face (family / weight / style) - core/textStyleKeys.ts. Absent = stored style. */
+  styleKeys?: TextStyleKeys;
   /** Text on a path (B9b): flow glyphs along a referenced MotionPath (interpreted in layer space).
    *  Absent/disabled → normal linear layout. */
   textPath?: TextPathBinding;
@@ -783,6 +910,8 @@ export interface TextLayer {
   reflowHidden?: boolean;
   /** B35 typing caret after the last revealed glyph (core/textCaret.ts). Absent/disabled → unchanged path. */
   caret?: TextCaret;
+  /** B82 per-character typing schedule + arrival colour (core/textTyping.ts). Absent/disabled → unchanged path. */
+  typing?: TextTyping;
   /** M21 - linked color styles for text fill/stroke. */
   fillStyleId?: string;
   strokeStyleId?: string;
@@ -1390,6 +1519,10 @@ export interface PrecompLayer {
   /** Registry key of the referenced sub-composition. */
   compositionId: string;
   timeRemap?: PrecompTimeRemap;
+  /** B57: effect stack applied to the precomp's rendered texture (warp / spatial / colour slots, like an
+   *  image layer). Text / shape layers get effects by being nested in a precomp (agent.applyLayerEffects).
+   *  Absent = the texture composites as-is (old projects unchanged). */
+  effects?: LayerEffect[];
 }
 
 /**
@@ -1491,6 +1624,19 @@ export interface LayerDecorations {
   constraints?: LayerConstraints;
   /** B53 corner pin: warp the layer onto four comp-space points (keyframable vec2s). */
   cornerPin?: CornerPin;
+  /** B76: stable role of a layer inside an agent-built rig ("design.selection.handle.TL", "design.readout"...).
+   *  Marks the part for helpers and the reader; absent on ordinary layers. */
+  rigRole?: string;
+  /** B81 true 3D parenting: when set on a 3D layer (typically a 3D group / null, the card-swarm cluster), its 3D
+   *  descendants compose through its FULL 3D transform like After Effects parenting: rotating it in X / Y orbits
+   *  the children about its anchor and its depth moves them (the renderer draws them with the resolved
+   *  `cardMatrix`). Absent = the legacy additive 2.5D compose (a parent's X / Y rotation only turns each child in
+   *  place), so existing projects render unchanged. */
+  orbitChildren?: boolean;
+  /** B81 decal: a flagged 3D layer depth-sorts at its PARENT's camera depth (drawn right after it, in stack
+   *  order) instead of its own: the bars / labels printed on a 3D card never slip behind or in front of other
+   *  cards. Absent = sorted by its own depth (unchanged). */
+  sortWithParent?: boolean;
 }
 
 /** B53 - AE-style Corner Pin. Each corner is a keyframable vec2 in COMP px; while set, the four pins ARE
@@ -1837,7 +1983,7 @@ export interface ResolvedFillStop {
 }
 
 export interface ResolvedFillLayer {
-  gradientType: number; // 0 linear, 1 radial
+  gradientType: number; // 0 linear, 1 radial, 2 conic (B74)
   angle: number;        // radians, CSS convention (0 = toward top)
   centerX: number;      // 0..1 in the shape box (radial)
   centerY: number;      // 0..1 in the shape box (radial)
@@ -1928,6 +2074,12 @@ export interface ResolvedText {
   runs?: TextStyleRun[];
   /** Horizontal skew in degrees (B36 animator skew on a glyph stamp). Absent/0: unskewed raster. */
   skewX?: number;
+  /**
+   * B64: the box a gradient `fill` spans, in this raster's px (x / y = its top-left, may be negative).
+   * Set on glyph stamps to the whole text's box at the glyph's home slot, so a gradient runs across the
+   * line (and travels with its glyph) instead of restarting in every glyph. Absent: this raster's box.
+   */
+  fillFrame?: { x: number; y: number; width: number; height: number };
   measuredWidth: number;
   measuredHeight: number;
 }
@@ -2095,6 +2247,21 @@ export interface ResolvedCloner {
    *  instance-override mechanism (core/overrides) applied to the source. Present
    *  only on the `per-instance` render path; instanceSources[i] ↔ instances[i]. */
   instanceSources?: Layer[];
+  /** B60: per-instance source layer ids (cloner.sources); stamp i uses sourceLayerIds[i mod n]. */
+  sourceLayerIds?: string[];
+  /** B60 follow-up: 'random' = seeded pick per instance (sourceSeed); absent = cycle (i mod n). */
+  sourceOrder?: 'cycle' | 'random';
+  sourceSeed?: number;
+  /** B60 follow-up: extra sources' scale / rotation / opacity relative to the main source's settled
+   *  transform, keyed by source layer id (absent id = identity). */
+  sourceRelative?: Record<string, { scaleX: number; scaleY: number; rotation: number; opacity: number }>;
+  /** B60 follow-up: the data-bound per-instance content (instanceSources resolved at this frame);
+   *  instanceContent[j] <-> instances[j]. Used for stamps when no `sourceLayerIds` are set. */
+  instanceContent?: ResolvedLayer[];
+  /** B89: per-copy motion blur. Present only when the cloner's (or its source's) motion-blur switch is on
+   *  and the shutter is open: the cloner's world transform and every instance transform one frame earlier
+   *  (keyed by instance index), so each stamp streaks along its OWN path (ring spin, effector push). */
+  instanceBlur?: { shutter: number; phase: number; prevTransform: ResolvedTransform; prevInstances: Record<number, InstanceTransform> };
 }
 
 export interface ResolvedLayer {
@@ -2127,9 +2294,17 @@ export interface ResolvedLayer {
   // Adjustment layer (B11b): its resolved effect stack + which layers below it covers. The renderer's
   // apply-below composite (B11b-gpu) consumes this; the layer itself draws nothing.
   adjustment?: ResolvedAdjustment;
+  // B38: a shape layer's glass material for this frame (the renderer turns it into an adjustment pass
+  // clipped to the outline, core/effects/glass.ts). Absent = no glass.
+  glass?: ResolvedGlass;
   // 2.5D (M1): world model matrix for 3D layers (`is3D`), for the M2 MVP path. Absent on 2D
   // layers, which keep the cheap affine transform above.
   worldMatrix?: Mat4;
+  // B81: present only under an `orbitChildren` ancestor - the card matrix the renderer multiplies the local
+  // (already-scaled) quad corner by instead of cardMVP: worldMatrix . diag(1 / scaleX, 1 / scaleY, 1, 1).
+  cardMatrix?: Mat4;
+  // B81: present only on a `sortWithParent` decal - the parent's world matrix, used for the painter depth.
+  sortMatrix?: Mat4;
   // 2.5D (M2): true when the source layer's 3D switch is on - the renderer projects it through
   // the frame camera (MVP) and depth-sorts it. Absent/false → the untouched 2D path.
   is3D?: boolean;
@@ -2157,6 +2332,18 @@ export interface ResolvedAdjustment {
   filters: ImageFilters;
   coveredLayerIds: string[];
   noOp: boolean;
+  /** B38: present only on the pass a glass shape synthesizes - the rim bend + highlight its mix step
+   *  adds inside the outline mask (core/effects/glass.ts glassMixPixel). */
+  glass?: GlassMixParams;
+}
+
+/** B38: what the glass pass's mix step needs beyond an adjustment's opacity x masks. */
+export interface GlassMixParams {
+  refraction: number;
+  edgeWidth: number;
+  highlight: number;
+  /** Degrees (screen, Y down). */
+  lightAngle: number;
 }
 
 export interface RenderFrame {
@@ -2187,6 +2374,8 @@ export interface ResolvedPrecomp {
   renderFrame: RenderFrame | null;
   width: number;
   height: number;
+  /** B57: the evaluated effect stack (keyed params at this frame); absent when the layer has none. */
+  effects?: ResolvedEffect[];
 }
 
 /**

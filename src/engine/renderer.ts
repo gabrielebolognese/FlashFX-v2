@@ -1,9 +1,11 @@
+import { LIQUID_DRIP_WGSL } from '../core/effects/liquidDrip';
 import type { RenderFrame, ResolvedLayer, ResolvedMask, ResolvedFill, ResolvedPattern, ResolvedEffect, ResolvedVideo, ResolvedBlur, Background } from '../core/types';
 import { MAX_PRECOMP_DEPTH } from '../core/precomp';
 // 2.5D (M2): per-3D-layer MVP + painter's depth sort. cardMVP/cameraSpaceDepth are pure and
 // harness-verified (verify:camera3d); the renderer just packs the matrix + reorders draws.
 import { cardMVP, cameraSpaceDepth, painterOrder, cocRadius, type ResolvedCamera } from '../core/camera3d';
 import { cornerPinMatrix, cornerPinSourceQuad } from '../core/cornerPin';
+import { multiply as multiplyMat4 } from '../core/mat4';
 
 /** Options for a recursive precomp render into an offscreen target texture. */
 interface PrecompRenderOpts {
@@ -19,6 +21,7 @@ import { packMaskSlots } from '../core/maskCoverage';
 import { packRefineEdge } from '../core/refineEdge';
 import { ADJUST_MODE, IDENTITY_FILTERS, isIdentityFilters, planAdjustmentPasses, type AdjustmentPassPlan } from '../core/effects/adjustmentComposite';
 import { packBlurFx, planBlurFxSlots } from '../core/effects/blurFxPack';
+import { GLASS_BACK_RIM, glassAdjustmentLayer } from '../core/effects/glass';
 import { MASK_WGSL } from './maskWgsl';
 import { REFINE_WGSL } from './refineWgsl';
 import { renderTextToCanvas, textCacheKey } from './textAtlas';
@@ -30,12 +33,15 @@ import { particleRenderer } from './particleRenderer';
 import { fieldSampledRenderer } from '../field-sampling/renderer';
 import { patternRenderer } from '../patterns/renderer';
 import { parsePatternConfig } from '../patterns/config';
+import { resolveBlobParams } from '../patterns/blobField';
 import { PATTERN_TYPE } from '../patterns/types';
 import { lottieRendererEngine } from './lottieRenderer';
 import { videoTextureCache, VideoTextureCache } from './video/videoTextureCache';
 import { frameScheduler } from './video/frameScheduler';
+import type { VideoFrameLookup } from './video/exportFrames';
 import { videoDecoderPool } from './video/videoDecoderPool';
 import { FLOW_WARP_SHADER, FLOW_UNIFORM_SIZE } from './video/opticalFlow';
+import { shapeSdfParams, SDF_STAR } from '../core/shapeSdf';
 
 const BG_MAX_LAYERS = 10;
 const BG_MAX_STOPS = 4;
@@ -207,150 +213,15 @@ fn fs(in: VertexOutput) -> @location(0) vec4f {
 }
 `;
 
-const RECT_SHADER = /* wgsl */ `
-struct MaskSlot {
-  params: vec4f,
-  center: vec2f,
-  size: vec2f,
-  rot: f32,
-  points: f32,
-  inner: f32,
-  _pad: f32,
-}
-
+// Shared gradient / multi-layer fill evaluation (WGSL). Included by RECT_SHADER (index 0 = fill,
+// 1 = stroke) and, since B63, PATH_SHADER (index 0 only: a pen path / morph / polygon fill with a
+// gradient material). Both shaders name their uniform \`u\` and declare fHeader / fSolid / fMeta /
+// fMeta2 / fColors / fPos with this layout (the path struct sizes the arrays for one fill).
+// CPU twin: core/fillSampler.ts.
+const FILL_WGSL = /* wgsl */ `
 const FILL_MAX_LAYERS: i32 = 8;
 const FILL_MAX_STOPS: i32 = 8;
 const FILL_STRIDE: i32 = 64;   // FILL_MAX_LAYERS * FILL_MAX_STOPS (stops per fill)
-
-struct Uniforms {
-  resolution: vec2f,
-  rectPos: vec2f,
-  rectSize: vec2f,
-  anchorPoint: vec2f,
-  rotation: f32,
-  opacity: f32,
-  borderRadius: f32,
-  shapeType: f32,
-  shapeParams: vec4f,
-  strokeWidth: f32,
-  maskCount: f32,
-  _pad1: f32,
-  _pad2: f32,
-  masks: array<MaskSlot, 8>,
-  // Fill data. Index 0 = fill, 1 = stroke. Each supports up to 8 gradient
-  // layers composited with blend modes (matching the DOM preview) and up to
-  // 8 stops per layer. Solid fills set fHeader.x = 0 and use fSolid.
-  fHeader: array<vec4f, 2>,    // per fill: (kind, layerCount, _, _)
-  fSolid: array<vec4f, 2>,     // per fill: solid / fallback rgba
-  fMeta: array<vec4f, 16>,     // per (fill,layer): (gradientType, angle, cx, cy)
-  fMeta2: array<vec4f, 16>,    // per (fill,layer): (blendMode, stopCount, _, _)
-  fColors: array<vec4f, 128>,  // per (fill,layer,stop): rgba
-  fPos: array<vec4f, 32>,      // per (fill,layer,stop): position, packed 4/vec4
-  // Pattern fill (built-in analytic patterns). patA.x = 0 disables it.
-  patA: vec4f,                 // (enabled, patternType, tile, angle)
-  patB: vec4f,                 // (markSize, opacity, hasBackground, _)
-  patColor: vec4f,             // mark rgb
-  patBg: vec4f,                // background rgb
-  // 2.5D (M2): 0 for a 2D layer (untouched path); 1 → project the quad through mvp.
-  is3D: f32,
-  _mvpPad0: f32,
-  _mvpPad1: f32,
-  _mvpPad2: f32,
-  mvp: mat4x4<f32>,
-}
-
-@group(0) @binding(0) var<uniform> u: Uniforms;
-
-struct VertexOutput {
-  @builtin(position) position: vec4f,
-  @location(0) uv: vec2f,
-  @location(1) worldPos: vec2f,
-}
-
-@vertex
-fn vs(@builtin(vertex_index) vi: u32) -> VertexOutput {
-  var pos = array<vec2f, 6>(
-    vec2f(0.0, 0.0),
-    vec2f(1.0, 0.0),
-    vec2f(0.0, 1.0),
-    vec2f(0.0, 1.0),
-    vec2f(1.0, 0.0),
-    vec2f(1.0, 1.0),
-  );
-
-  let p = pos[vi];
-  let local = (p - vec2f(0.5)) * u.rectSize;
-
-  let pivot = u.anchorPoint;
-  let rel = local - pivot;
-  let cosR = cos(u.rotation);
-  let sinR = sin(u.rotation);
-  let rotated = vec2f(
-    rel.x * cosR - rel.y * sinR,
-    rel.x * sinR + rel.y * cosR,
-  );
-  let worldPos = rotated + pivot + u.rectPos;
-
-  let ndc = vec2f(
-    (worldPos.x / u.resolution.x) * 2.0 - 1.0,
-    1.0 - (worldPos.y / u.resolution.y) * 2.0,
-  );
-
-  var out: VertexOutput;
-  out.position = vec4f(ndc, 0.0, 1.0);
-  // 2.5D (M2): project the local (already-scaled) quad corner through the camera MVP.
-  if (u.is3D > 0.5) { out.position = u.mvp * vec4f(local, 0.0, 1.0); }
-  out.uv = p;
-  out.worldPos = worldPos;
-  return out;
-}
-
-fn roundedBoxSDF(p: vec2f, size: vec2f, radii: vec4f) -> f32 {
-  // radii = (topLeft, topRight, bottomRight, bottomLeft). localUV is centred at 0
-  // with uv.y=0 at the top, so p.y>0 is the bottom half and p.x>0 the right half.
-  let right = p.x > 0.0;
-  let radius = select(
-    select(radii.x, radii.y, right),  // top:    tl | tr
-    select(radii.w, radii.z, right),  // bottom: bl | br
-    p.y > 0.0
-  );
-  let q = abs(p) - size + vec2f(radius);
-  return length(max(q, vec2f(0.0))) + min(max(q.x, q.y), 0.0) - radius;
-}
-
-fn circleSDF(p: vec2f, r: f32) -> f32 {
-  return length(p) - r;
-}
-
-// N-pointed star SDF. Reflect the point into one point-sector, then measure the signed distance to
-// that point's edge - the segment from the outer tip to the adjacent inner vertex. Inside < 0.
-fn starSDF(p: vec2f, points: f32, outerR: f32, innerR: f32) -> f32 {
-  let pi = 3.14159265;
-  let n = max(points, 2.0);
-  let an = pi / n;                 // half of a point's angular span
-  let R = max(outerR, 1e-4);
-  let ri = clamp(innerR, 1e-4, R);
-
-  // Tips sit at -pi/2 + k*(2*an) (top first, matching the vector geometry). Shift so tips are at
-  // multiples of 2*an, fold to [-an, an], mirror to [0, an].
-  var a = atan2(p.y, p.x) + pi * 0.5;
-  a = a - 2.0 * an * floor(a / (2.0 * an) + 0.5);
-  a = abs(a);
-  let r = length(p);
-  let q = vec2f(r * cos(a), r * sin(a));   // tip along +x, edge sweeps toward +y
-
-  let vOut = vec2f(R, 0.0);                 // outer tip
-  let vIn = vec2f(ri * cos(an), ri * sin(an)); // adjacent inner vertex (on the sector boundary)
-  let e = vIn - vOut;
-  let w = q - vOut;
-  let t = clamp(dot(w, e) / dot(e, e), 0.0, 1.0);
-  let d = length(w - e * t);
-  // Interior lies to the left of the tip→inner edge; make it negative.
-  let cr = e.x * w.y - e.y * w.x;
-  return select(d, -d, cr > 0.0);
-}
-
-${MASK_WGSL}
 
 // ── Gradient fill evaluation ──────────────────────────────────────────────
 // Separable blend modes per the W3C Compositing spec, evaluated per channel.
@@ -404,6 +275,11 @@ fn blendRGB(mode: i32, cb: vec3f, cs: vec3f) -> vec3f {
 // extent. boxSize is the shape's bounding box in pixels.
 fn gradientT(gType: i32, angle: f32, center: vec2f, uv: vec2f, boxSize: vec2f) -> f32 {
   let localPos = (uv - vec2f(0.5)) * boxSize;
+  if (gType == 2) {
+    // B74 conic: angle from the centre, 0 at the start angle (0 = toward top), clockwise, wrapped (core/fillSampler.ts).
+    let dc = localPos - (center - vec2f(0.5)) * boxSize;
+    return fract((atan2(dc.x, -dc.y) - angle) / 6.283185307);
+  }
   if (gType == 1) {
     let centerPix = (center - vec2f(0.5)) * boxSize;
     let dv = localPos - centerPix;
@@ -476,6 +352,183 @@ fn sampleFill(fi: i32, uv: vec2f, boxSize: vec2f) -> vec4f {
   return vec4f(accRGB, accA);
 }
 
+`;
+
+const RECT_SHADER = /* wgsl */ `
+struct MaskSlot {
+  params: vec4f,
+  center: vec2f,
+  size: vec2f,
+  rot: f32,
+  points: f32,
+  inner: f32,
+  _pad: f32,
+}
+
+struct Uniforms {
+  resolution: vec2f,
+  rectPos: vec2f,
+  rectSize: vec2f,
+  anchorPoint: vec2f,
+  rotation: f32,
+  opacity: f32,
+  borderRadius: f32,
+  shapeType: f32,
+  shapeParams: vec4f,
+  strokeWidth: f32,
+  maskCount: f32,
+  // B63: the quad is the shape box grown by quadPad px on every side (half the stroke + an AA
+  // margin, core/shapeSdf.ts), so a centred stroke is never cut at the shape bounds.
+  quadPad: f32,
+  _pad2: f32,
+  masks: array<MaskSlot, 8>,
+  // Fill data. Index 0 = fill, 1 = stroke. Each supports up to 8 gradient
+  // layers composited with blend modes (matching the DOM preview) and up to
+  // 8 stops per layer. Solid fills set fHeader.x = 0 and use fSolid.
+  fHeader: array<vec4f, 2>,    // per fill: (kind, layerCount, _, _)
+  fSolid: array<vec4f, 2>,     // per fill: solid / fallback rgba
+  fMeta: array<vec4f, 16>,     // per (fill,layer): (gradientType, angle, cx, cy)
+  fMeta2: array<vec4f, 16>,    // per (fill,layer): (blendMode, stopCount, _, _)
+  fColors: array<vec4f, 128>,  // per (fill,layer,stop): rgba
+  fPos: array<vec4f, 32>,      // per (fill,layer,stop): position, packed 4/vec4
+  // Pattern fill (built-in analytic patterns). patA.x = 0 disables it.
+  patA: vec4f,                 // (enabled, patternType, tile, angle)
+  patB: vec4f,                 // (markSize, opacity, hasBackground, _)
+  patColor: vec4f,             // mark rgb
+  patBg: vec4f,                // background rgb
+  // 2.5D (M2): 0 for a 2D layer (untouched path); 1 → project the quad through mvp.
+  is3D: f32,
+  _mvpPad0: f32,
+  _mvpPad1: f32,
+  _mvpPad2: f32,
+  mvp: mat4x4<f32>,
+}
+
+@group(0) @binding(0) var<uniform> u: Uniforms;
+
+struct VertexOutput {
+  @builtin(position) position: vec4f,
+  @location(0) uv: vec2f,
+  @location(1) worldPos: vec2f,
+}
+
+@vertex
+fn vs(@builtin(vertex_index) vi: u32) -> VertexOutput {
+  var pos = array<vec2f, 6>(
+    vec2f(0.0, 0.0),
+    vec2f(1.0, 0.0),
+    vec2f(0.0, 1.0),
+    vec2f(0.0, 1.0),
+    vec2f(1.0, 0.0),
+    vec2f(1.0, 1.0),
+  );
+
+  let p = pos[vi];
+  let local = (p - vec2f(0.5)) * quadSize();
+
+  let pivot = u.anchorPoint;
+  let rel = local - pivot;
+  let cosR = cos(u.rotation);
+  let sinR = sin(u.rotation);
+  let rotated = vec2f(
+    rel.x * cosR - rel.y * sinR,
+    rel.x * sinR + rel.y * cosR,
+  );
+  let worldPos = rotated + pivot + u.rectPos;
+
+  let ndc = vec2f(
+    (worldPos.x / u.resolution.x) * 2.0 - 1.0,
+    1.0 - (worldPos.y / u.resolution.y) * 2.0,
+  );
+
+  var out: VertexOutput;
+  out.position = vec4f(ndc, 0.0, 1.0);
+  // 2.5D (M2): project the local (already-scaled) quad corner through the camera MVP.
+  if (u.is3D > 0.5) { out.position = u.mvp * vec4f(local, 0.0, 1.0); }
+  out.uv = p;
+  out.worldPos = worldPos;
+  return out;
+}
+
+// The drawn quad: the signed shape box grown by quadPad on each side (a mirrored box stays mirrored).
+fn quadSize() -> vec2f {
+  let sgn = select(vec2f(-1.0), vec2f(1.0), u.rectSize >= vec2f(0.0));
+  return u.rectSize + vec2f(2.0 * u.quadPad) * sgn;
+}
+
+fn roundedBoxSDF(p: vec2f, size: vec2f, radii: vec4f) -> f32 {
+  // radii = (topLeft, topRight, bottomRight, bottomLeft). localUV is centred at 0
+  // with uv.y=0 at the top, so p.y>0 is the bottom half and p.x>0 the right half.
+  let right = p.x > 0.0;
+  let radius = select(
+    select(radii.x, radii.y, right),  // top:    tl | tr
+    select(radii.w, radii.z, right),  // bottom: bl | br
+    p.y > 0.0
+  );
+  let q = abs(p) - size + vec2f(radius);
+  return length(max(q, vec2f(0.0))) + min(max(q.x, q.y), 0.0) - radius;
+}
+
+fn circleSDF(p: vec2f, r: f32) -> f32 {
+  return length(p) - r;
+}
+
+// B63: signed distance to an ellipse with semi-axes ab (an exact circle when they match). Closest point by
+// the trig-free fixed-point iteration (evolute / curvature-centre step, 4 rounds), which converges for
+// every point inside and outside (a Newton solve on the angle jumped branches on interior lines and
+// fwidth() drew those jumps as seams). Sign from the implicit equation. CPU twin: core/shapeSdf.ts.
+fn ellipseSDF(p: vec2f, ab: vec2f) -> f32 {
+  let a = max(ab, vec2f(1e-4));
+  if (abs(a.x - a.y) <= 1e-4 * max(a.x, a.y)) { return circleSDF(p, a.x); }
+  let q = abs(p);
+  var t = vec2f(0.70710678);
+  let k = a.x * a.x - a.y * a.y;
+  for (var i = 0; i < 4; i = i + 1) {
+    let xy = a * t;
+    let e = vec2f(k * t.x * t.x * t.x / a.x, -k * t.y * t.y * t.y / a.y);
+    let r = length(xy - e);
+    let qe = q - e;
+    let ql = max(length(qe), 1e-6);
+    t = clamp((qe * (r / ql) + e) / a, vec2f(0.0), vec2f(1.0));
+    t = t / max(length(t), 1e-6);
+  }
+  let d = length(q - a * t);
+  let kk = dot(q / a, q / a);
+  return select(d, -d, kk < 1.0);
+}
+
+// N-pointed star SDF. Reflect the point into one point-sector, then measure the signed distance to
+// that point's edge - the segment from the outer tip to the adjacent inner vertex. Inside < 0.
+fn starSDF(p: vec2f, points: f32, outerR: f32, innerR: f32) -> f32 {
+  let pi = 3.14159265;
+  let n = max(points, 2.0);
+  let an = pi / n;                 // half of a point's angular span
+  let R = max(outerR, 1e-4);
+  let ri = clamp(innerR, 1e-4, R);
+
+  // Tips sit at -pi/2 + k*(2*an) (top first, matching the vector geometry). Shift so tips are at
+  // multiples of 2*an, fold to [-an, an], mirror to [0, an].
+  var a = atan2(p.y, p.x) + pi * 0.5;
+  a = a - 2.0 * an * floor(a / (2.0 * an) + 0.5);
+  a = abs(a);
+  let r = length(p);
+  let q = vec2f(r * cos(a), r * sin(a));   // tip along +x, edge sweeps toward +y
+
+  let vOut = vec2f(R, 0.0);                 // outer tip
+  let vIn = vec2f(ri * cos(an), ri * sin(an)); // adjacent inner vertex (on the sector boundary)
+  let e = vIn - vOut;
+  let w = q - vOut;
+  let t = clamp(dot(w, e) / dot(e, e), 0.0, 1.0);
+  let d = length(w - e * t);
+  // Interior lies to the left of the tip→inner edge; make it negative.
+  let cr = e.x * w.y - e.y * w.x;
+  return select(d, -d, cr > 0.0);
+}
+
+${MASK_WGSL}
+
+${FILL_WGSL}
+
 // ── Pattern fill evaluation ───────────────────────────────────────────────
 fn segDist(p: vec2f, a: vec2f, b: vec2f) -> f32 {
   let pa = p - a;
@@ -544,15 +597,20 @@ fn samplePattern(p: vec2f, aa: f32) -> vec4f {
 
 @fragment
 fn fs(in: VertexOutput) -> @location(0) vec4f {
-  let localUV = (in.uv - vec2f(0.5)) * u.rectSize;
-  let halfSize = u.rectSize * 0.5;
+  // Shape-local px and the 0..1 uv across the true shape box. B63: the quad is padded by quadPad
+  // (so a centred stroke is never cut), so gradients / patterns map through shapeUV, not the quad uv.
+  // localUV stays signed (true layer-space position, as before); shapeUV follows the quad's vertex order.
+  let boxSize = max(abs(u.rectSize), vec2f(1e-4));
+  let localUV = (in.uv - vec2f(0.5)) * quadSize();
+  let shapeUV = (in.uv - vec2f(0.5)) * abs(quadSize()) / boxSize + vec2f(0.5);
+  let halfSize = boxSize * 0.5;
   let st = i32(u.shapeType);
   var dist: f32;
 
   if (st == 1) {
-    // Circle
-    let r = min(halfSize.x, halfSize.y);
-    dist = circleSDF(localUV, r);
+    // Ellipse (an exact circle when both semi-axes match). B63: it used to take min(halfSize) of a
+    // 1.1x margin quad, so every circle drew 10% too large and a non-uniform scale gave a circle.
+    dist = ellipseSDF(localUV, halfSize);
   } else if (st == 2) {
     // Star
     dist = starSDF(localUV, u.shapeParams.x, u.shapeParams.y, u.shapeParams.z);
@@ -562,21 +620,18 @@ fn fs(in: VertexOutput) -> @location(0) vec4f {
     dist = roundedBoxSDF(localUV, halfSize, u.shapeParams);
   }
 
-  let aa = fwidth(dist);
-
-  // Circle/star quads are expanded 1.1x for SDF margin (see fillLayerData);
-  // undo that so gradients map to the true shape box.
-  var expansion = 1.0;
-  if (st == 1 || st == 2) { expansion = 1.1; }
-  let boxSize = u.rectSize / expansion;
+  var aa = fwidth(dist);
+  // B63: a true distance changes by at most ~1 px per screen px; bound the ellipse's AA width by that so a
+  // kink in its distance (the medial ridge) can never widen the edge. Circles never reach the bound.
+  if (st == 1) { aa = min(aa, fwidth(localUV.x) + fwidth(localUV.y)); }
 
   // Fill
-  let fillC = sampleFill(0, in.uv, boxSize);
+  let fillC = sampleFill(0, shapeUV, boxSize);
   var baseRGB = fillC.rgb;
   var baseA = fillC.a;
 
   // Pattern overlay (composited over the fill, clipped to the shape below).
-  let pPat = in.uv * u.rectSize;
+  let pPat = shapeUV * boxSize;
   let pAA = max(fwidth(pPat.x), fwidth(pPat.y));
   let pat = samplePattern(pPat, pAA);
   if (pat.a > 0.0) {
@@ -592,7 +647,7 @@ fn fs(in: VertexOutput) -> @location(0) vec4f {
 
   // Stroke
   if (u.strokeWidth > 0.0) {
-    let strokeC = sampleFill(1, in.uv, boxSize);
+    let strokeC = sampleFill(1, shapeUV, boxSize);
     if (strokeC.a > 0.0) {
       let strokeOuter = 1.0 - smoothstep(-aa, aa, dist - u.strokeWidth * 0.5);
       let strokeInner = 1.0 - smoothstep(-aa, aa, -(dist + u.strokeWidth * 0.5));
@@ -708,6 +763,8 @@ const SHAPE_UNIFORM_SIZE = 3744;
 const SHAPE_UNIFORM_ALIGN = 3840;
 const SHAPE_UNIFORM_FLOATS = 936;
 const SHAPE_MVP_FLAG = 916; // float index of is3D
+/** Float offsets of the fill arrays in the shape uniform (packFill; B63 adds PATH_FILL_LAYOUT). */
+const SHAPE_FILL_LAYOUT = { header: 116, solid: 124, meta: 132, meta2: 196, colors: 260, pos: 772 };
 const SHAPE_MVP_BASE = 920; // float index of mvp[0]
 
 // Procedural pattern layer (Phase 1.5): a buffer-only quad whose fragment GENERATES the pattern
@@ -743,11 +800,16 @@ struct PatternU {
   paletteMode: f32,       // 18 (0 linear, 1 smooth)
   paletteCount: f32,      // 19
   blendMode: f32,         // 20 (fragment output form, matched to the pipeline's blend state)
-  _p0: f32, _p1: f32, _p2: f32, // 21,22,23 (pad palette to a 16-byte boundary)
+  // B58 blobField (pattern id 11) only; 0 for every other type. They also pad the palette to 16 bytes.
+  blobSeed: f32,          // 21 (integer seed)
+  blobFloor: f32,         // 22 (0 = mesh field, >0 = cloud-floor top edge from the bottom)
+  blobLumps: f32,         // 23
   palette: array<vec4f, ${PATTERN_MAX_STOPS}>, // 24..55 (rgb, pos)
   // 2.5D (M2): 0 for a 2D layer; 1 → project the quad through mvp.
   is3D: f32,              // 56
-  _mvpPad0: f32, _mvpPad1: f32, _mvpPad2: f32, // 57,58,59
+  blobSoft: f32,          // 57 (B58 softness)
+  blobBillow: f32,        // 58 (B58 billow)
+  _mvpPad2: f32,          // 59
   mvp: mat4x4<f32>,       // 60..75
 }
 @group(0) @binding(0) var<uniform> u: PatternU;
@@ -841,6 +903,96 @@ fn patternValue(uv: vec2f) -> f32 {
   }
   return clamp((val - 0.5) * (1.0 + u.contrast*2.0) + 0.5, 0.0, 1.0);
 }
+// ---- B58 blobField: WGSL twin of patterns/blobField.ts (integer hash, so CPU == GPU) ----
+fn bHash(a: u32) -> u32 {
+  var x = a;
+  x = x ^ (x >> 16u); x = x * 0x7feb352du; x = x ^ (x >> 15u); x = x * 0x846ca68bu; x = x ^ (x >> 16u);
+  return x;
+}
+fn bHash3(a: i32, b: i32, c: i32) -> u32 { return bHash(bitcast<u32>(a) ^ bHash(bitcast<u32>(b) ^ bHash(bitcast<u32>(c)))); }
+fn bRand(a: i32, b: i32, c: i32) -> f32 { return f32(bHash3(a, b, c) >> 8u) / 16777216.0; }
+fn bNoise(x: f32, y: f32, salt: i32) -> f32 {
+  let fx0 = floor(x); let fy0 = floor(y);
+  let ix = i32(fx0); let iy = i32(fy0);
+  let fx = x - fx0; let fy = y - fy0;
+  let ux = fx*fx*(3.0 - 2.0*fx); let uy = fy*fy*(3.0 - 2.0*fy);
+  let a = bRand(ix, iy, salt); let b = bRand(ix + 1, iy, salt); let c = bRand(ix, iy + 1, salt); let d = bRand(ix + 1, iy + 1, salt);
+  let ab = a + (b - a) * ux; let cd = c + (d - c) * ux;
+  return ab + (cd - ab) * uy;
+}
+fn bFbm(x: f32, y: f32, salt: i32) -> f32 {
+  var v = 0.0; var amp = 0.5; var f = 1.0;
+  for (var o = 0; o < 4; o = o + 1) { v = v + amp * bNoise(x * f, y * f, salt + o * 1013); f = f * 2.0; amp = amp * 0.5; }
+  return v / 0.9375;
+}
+fn bRamp(v: f32) -> vec3f {
+  let n = i32(u.paletteCount);
+  if (n <= 0) { return vec3f(v); }
+  if (v <= u.palette[0].w) { return u.palette[0].xyz; }
+  if (v >= u.palette[n-1].w) { return u.palette[n-1].xyz; }
+  for (var i = 0; i < n-1; i = i + 1) {
+    let a = u.palette[i]; let b = u.palette[i+1];
+    if (v >= a.w && v <= b.w) {
+      var t = (v - a.w) / max(0.0001, b.w - a.w);
+      if (u.paletteMode > 0.5) { t = t*t*(3.0 - 2.0*t); }
+      return mix(a.xyz, b.xyz, t);
+    }
+  }
+  return u.palette[n-1].xyz;
+}
+fn blobField(uv: vec2f) -> vec4f {
+  let aspect = u.quadSize.x / max(1.0, u.quadSize.y);
+  let seed = i32(u.blobSeed + 0.5);
+  let tt = u.time * u.speed;
+  var p = rot2((uv - vec2f(0.5)) * vec2f(aspect, 1.0), u.patRot);
+  let size = max(0.05, u.scale);
+  if (u.warp > 0.0) {
+    let wx = bFbm(p.x * 2.2 / size + tt * 0.11, p.y * 2.2 / size, seed + 101) - 0.5;
+    let wy = bFbm(p.x * 2.2 / size + 5.2, p.y * 2.2 / size - tt * 0.13, seed + 202) - 0.5;
+    p = p + u.warp * 0.5 * vec2f(wx, wy);
+  }
+  var col = vec3f(0.0);
+  var alpha = 1.0;
+  if (u.blobFloor > 0.0) {
+    let edgeN = bFbm(p.x * 1.6 / size + tt * 0.25, tt * 0.12, seed + 303) - 0.5;
+    let edgeY = 0.5 - u.blobFloor + u.blobLumps * 2.0 * edgeN;
+    let depth = p.y - edgeY;
+    let feather = 0.05 * u.blobSoft;
+    let e = clamp((depth + feather) / (2.0 * feather), 0.0, 1.0);
+    alpha = e * e * (3.0 - 2.0 * e);
+    let bil = bFbm(p.x * 3.0 / size + tt * 0.1, p.y * 3.0 / size - tt * 0.05, seed + 404) - 0.5;
+    let k = clamp(depth / max(0.05, u.blobFloor) + u.blobBillow * bil, 0.0, 1.0);
+    col = bRamp(k);
+  } else {
+    let count = clamp(i32(u.complexity + 0.5), 1, 16);
+    var es = array<f32, 16>();
+    var m = -1e30;
+    for (var i = 0; i < 16; i = i + 1) {
+      if (i >= count) { break; }
+      let hx = bRand(i, 0, seed); let hy = bRand(i, 1, seed);
+      let p1 = bRand(i, 2, seed) * 6.2831853; let p2 = bRand(i, 3, seed) * 6.2831853;
+      let f1 = 0.45 + 0.8 * bRand(i, 4, seed); let f2 = 0.45 + 0.8 * bRand(i, 5, seed);
+      let rv = bRand(i, 6, seed);
+      let c = vec2f((hx - 0.5) * 0.9 * aspect + 0.22 * sin(tt * f1 + p1), (hy - 0.5) * 0.9 + 0.22 * cos(tt * f2 + p2));
+      let r = (0.62 / sqrt(max(1.0, f32(count)) / 4.0)) * size * (0.7 + 0.6 * rv);
+      let d = p - c;
+      let e = -dot(d, d) / (r * r * u.blobSoft);
+      es[i] = e;
+      m = max(m, e);
+    }
+    let n = max(1, i32(u.paletteCount));
+    var sw = 0.0; var acc = vec3f(0.0);
+    for (var i = 0; i < 16; i = i + 1) {
+      if (i >= count) { break; }
+      let w = exp(es[i] - m);
+      sw = sw + w;
+      acc = acc + w * u.palette[i % n].xyz;
+    }
+    col = acc / sw;
+  }
+  if (u.contrast != 0.0) { col = clamp((col - vec3f(0.5)) * (1.0 + u.contrast) + vec3f(0.5), vec3f(0.0), vec3f(1.0)); }
+  return vec4f(col, alpha);
+}
 fn samplePalette(v: f32) -> vec3f {
   let n = i32(u.paletteCount);
   if (n <= 0) { return vec3f(v); }
@@ -859,9 +1011,16 @@ fn samplePalette(v: f32) -> vec3f {
 
 @fragment
 fn fs(in: VO) -> @location(0) vec4f {
-  let val = patternValue(in.uv);
-  let col = samplePalette(val);
-  let a = u.opacity;
+  var col: vec3f;
+  var a = u.opacity;
+  if (i32(u.patternType) == 11) {
+    // B58 blobField: colour + alpha straight from the field (cloud floor is transparent above its edge).
+    let bf = blobField(in.uv);
+    col = bf.rgb;
+    a = a * bf.a;
+  } else {
+    col = samplePalette(patternValue(in.uv));
+  }
   let m = i32(u.blendMode);
   // Output form must match the selected pipeline's blend state (opacity-correct):
   //  multiply: dst*mix(1,col,a)  [blend dst,zero]     screen: col*a*(1-dst)+dst  [blend one-minus-dst,one]
@@ -884,8 +1043,32 @@ const ADJUST_BELOW_BINDING = `
 // The quad covers the whole target, so the copied composite is sampled at this fragment's own texel
 // (exact, no interpolation drift). Mix-only (the split plan's last pass): texData already holds the
 // effected + blurred / glowed result; mix it with the below by k = opacity x mask alpha.
-const ADJUST_FS_PROLOGUE = `  let adjUV = in.position.xy / vec2f(textureDimensions(texData));
+// B38 glass (adjustGlass = 1, mix-only): the mask stack's signed distance + outward normal (band =
+// edgeWidth) bend the blurred backdrop outward near the outline and light the rim from lightAngle.
+// CPU twin: core/effects/glass.ts glassMixPixel (verify:glass, gpu:glass).
+const ADJUST_FS_PROLOGUE = `  let adjDims = vec2f(textureDimensions(texData));
+  let adjUV = in.position.xy / adjDims;
   if (i32(u.adjustMode + 0.5) == ${ADJUST_MODE.mixOnly}) {
+    if (u.adjustGlass > 0.5) {
+      let gRefr = u.liftR;
+      let gEdge = u.liftG;
+      let gHigh = u.liftB;
+      let gAng = u.liftIntensity * 0.017453292519943295;
+      let gFld = computeMaskStack(in.worldPos, i32(u.maskCount + 0.5), u.masks, max(gEdge, 0.0));
+      let gK = clamp(u.opacity * gFld.x, 0.0, 1.0);
+      var gOff = vec2f(0.0);
+      var gLight = 0.0;
+      if (gEdge > 0.0) {
+        let gRim = 1.0 - clamp(-gFld.y / gEdge, 0.0, 1.0);
+        let gR2 = gRim * gRim;
+        gOff = gFld.zw * (gRefr * gR2);
+        let gD = gFld.z * cos(gAng) + gFld.w * sin(gAng);
+        gLight = gHigh * gR2 * gR2 * (max(gD, 0.0) + ${GLASS_BACK_RIM} * max(-gD, 0.0));
+      }
+      let gFx = textureSampleLevel(texData, texSampler, (in.position.xy + gOff) / adjDims, 0.0);
+      let gLit = vec4f(min(gFx.rgb + vec3f(gLight * gFx.a), vec3f(gFx.a)), gFx.a);
+      return mix(textureSampleLevel(belowTex, texSampler, adjUV, 0.0), gLit, gK);
+    }
     let adjFx = textureSampleLevel(texData, texSampler, adjUV, 0.0);
     let adjK = clamp(u.opacity * computeMaskStackAlpha(in.worldPos, i32(u.maskCount + 0.5), u.masks), 0.0, 1.0);
     return mix(textureSampleLevel(belowTex, texSampler, adjUV, 0.0), adjFx, adjK);
@@ -900,6 +1083,14 @@ const ADJUST_FS_UV = `
 // filters + colour effects that follow run on straight colour, like on an image layer.
 const ADJUST_FS_UNPREMULTIPLY = `
   color = vec4f(select(vec3f(0.0), color.rgb / max(color.a, 1e-4), color.a > 1e-4), color.a);`;
+
+// B57: a precomp texture is premultiplied (its layers blended into a transparent target), so un-premultiply
+// it before the straight-colour stages; otherwise anti-aliased edges and semi-transparent content came out
+// darkened (c * a * a). No-op for straight sources (srcPremultiplied = 0) and opaque pixels.
+const SRC_FS_UNPREMULTIPLY = `
+  if (u.srcPremultiplied > 0.5) {
+    color = vec4f(select(vec3f(0.0), color.rgb / max(color.a, 1e-4), color.a > 1e-4), color.a);
+  }`;
 
 // Clamp + re-premultiply the effected colour; apply-only returns it (into the split plan's
 // intermediate), apply-mix mixes it with the below by k = opacity x mask alpha.
@@ -965,7 +1156,9 @@ struct ImageUniforms {
   effectTime: f32,  // frame number, seeds procedural/noise effects
   // B11b-gpu: 0 on every image / video draw; ADJUST_MODE (1..3) on the adjustment-variant pipeline.
   adjustMode: f32,
-  _epad2: f32,
+  // B38: 1 on a glass shape's mix-only pass (its rim bend + highlight ride in lift R/G/B/I, which the
+  // mix-only pass never reads as lift); 0 everywhere else.
+  adjustGlass: f32,
   effects: array<EffectSlot, 16>,
   // 2.5D (M2): 0 for a 2D layer; 1 → project the quad through mvp (image/video/precomp cards).
   is3D: f32,
@@ -981,6 +1174,9 @@ struct ImageUniforms {
   refineRadius: f32,
   refineContrast: f32,
   refineDecontam: f32,
+  // B57: 1 = the texture holds PREMULTIPLIED colour (a precomp rendered into a transparent target);
+  // un-premultiplied after the warp + spatial stages. 0 (images, video, lottie) = straight colour.
+  srcPremultiplied: f32,
 }
 
 @group(0) @binding(0) var<uniform> u: ImageUniforms;
@@ -1688,10 +1884,16 @@ fn applyWarpEffect(uv: vec2f, a: vec4f, b: vec4f, aspect: f32, time: f32) -> vec
       }
     }
     case ${EFFECT_TYPE.bulge}: {
-      let maxr = 0.5;
-      if (r < maxr && r > 1.0e-5) {
-        let d = normalize(ca) * pow(r / maxr, 1.0 - p0) * maxr;
-        w = vec2f(d.x / aspect, d.y) + vec2f(0.5);
+      // B57: params [amount, centreX, centreY, radius] (centre in UV, radius in texture heights).
+      // radius <= 0 (an old 1-param bulge) keeps the centred bulge. CPU twin: core/effects/layerEffects.ts.
+      var c0 = vec2f(0.5);
+      var maxr = 0.5;
+      if (b.x > 0.0) { c0 = vec2f(a.z, a.w); maxr = b.x; }
+      let cb = vec2f((uv.x - c0.x) * aspect, uv.y - c0.y);
+      let rb = length(cb);
+      if (rb < maxr && rb > 1.0e-5) {
+        let d = normalize(cb) * pow(rb / maxr, 1.0 - p0) * maxr;
+        w = vec2f(d.x / aspect, d.y) + c0;
       }
     }
     case ${EFFECT_TYPE.pinch}: {
@@ -1816,6 +2018,7 @@ fn applyWarpEffect(uv: vec2f, a: vec4f, b: vec4f, aspect: f32, time: f32) -> vec
 // disc. Neighbour reads come from the raw texture (composing multiple spatial ops
 // needs an RTT ping-pong, a later batch). type ids match effectRegistry.EFFECT_TYPE.
 // texel = 1 uv per screen pixel; effects are identity at their default param (0).
+${LIQUID_DRIP_WGSL}
 fn applySpatialEffect(color: vec4f, a: vec4f, b: vec4f, uv: vec2f, texel: vec2f, time: f32) -> vec4f {
   let t = i32(a.x);
   let p0 = a.y;
@@ -1857,6 +2060,13 @@ fn applySpatialEffect(color: vec4f, a: vec4f, b: vec4f, uv: vec2f, texel: vec2f,
         sampleTex(uv + vec2f(du, 0.0)).g,
         sampleTex(uv + vec2f(du - off, 0.0)).b,
       );
+      // B57: on a premultiplied source with transparency (a text / shape precomp) the slice shifts the
+      // coverage too, so a shifted row is not drawn as a black bar. Opaque / straight sources unchanged.
+      if (u.srcPremultiplied > 0.5) {
+        alpha = max(textureSampleLevel(texData, texSampler, uv + vec2f(du + off, 0.0), 0.0).a,
+          max(textureSampleLevel(texData, texSampler, uv + vec2f(du, 0.0), 0.0).a,
+              textureSampleLevel(texData, texSampler, uv + vec2f(du - off, 0.0), 0.0).a));
+      }
     }
     case ${EFFECT_TYPE.vhs}: {
       let jitter = (hash21(vec2f(floor(uv.y * 220.0), floor(time))) - 0.5) * p0 * 0.02;
@@ -2129,6 +2339,12 @@ fn applySpatialEffect(color: vec4f, a: vec4f, b: vec4f, uv: vec2f, texel: vec2f,
       let gate = step(1.0 - amt, hg);
       c = mix(c, sampleTex(uv + off), gate);
     }
+    // B61 liquid drip / melt: upstream walk along the drip flow field (core/effects/liquidDrip.ts).
+    case ${EFFECT_TYPE.liquidDrip}: {
+      let dr = liquidDripFx(vec4f(c, alpha), uv, texel, a, b);
+      c = dr.rgb;
+      alpha = dr.a;
+    }
 
     default: {}
   }
@@ -2194,7 +2410,7 @@ ${adjust ? ADJUST_FS_PROLOGUE : ''}  let aspect = max(u.quadSize.x, 1.0) / max(u
   // The clamp-to-edge sampler + this bounds test give geometric warps a transparent
   // border (tiling/fold warps keep uv in range, so inBounds stays 1).
   let inBounds = step(0.0, uv.x) * step(uv.x, 1.0) * step(0.0, uv.y) * step(uv.y, 1.0);
-  color = color * inBounds;${adjust ? ADJUST_FS_UNPREMULTIPLY : ''}
+  color = color * inBounds;${adjust ? ADJUST_FS_UNPREMULTIPLY : SRC_FS_UNPREMULTIPLY}
 
   // Exposure
   let exposureMul = pow(2.0, u.exposure);
@@ -2262,6 +2478,8 @@ const IMAGE_MVP_BASE = 260; // float index of mvp[0]
 const IMAGE_SRCROT_FLOAT = 276; // float index of srcRotation (deg); 0 for images/text, 90/180/270 for rotated video
 // Refine Edge (B10e): radius / contrast / decontaminate at 277..279 (radius 0 = off; buffers start zeroed).
 const IMAGE_REFINE_FLOAT = 277;
+// B57: srcPremultiplied at 280 (precomp textures hold premultiplied colour; the struct ends at 1136 bytes).
+const IMAGE_SRCPREMUL_FLOAT = 280;
 
 function writeRefineEdge(data: Float32Array, layer: ResolvedLayer): void {
   if (!layer.refineEdge) return;
@@ -2279,7 +2497,11 @@ function writeRefineEdge(data: Float32Array, layer: ResolvedLayer): void {
 function writeCard3D(data: Float32Array, flagIdx: number, mvpIdx: number, layer: ResolvedLayer, camera: ResolvedCamera | undefined): void {
   if (!layer.is3D || !camera) return;
   const t = layer.transform;
-  const m = cardMVP(camera, [t.positionX, t.positionY, t.positionZ], [t.anchorX, t.anchorY], [t.rotationX, t.rotationY, t.rotation]);
+  // B81: under a true-3D (orbitChildren) parent the resolver hands the full card matrix (parent yaw / pitch
+  // orbit the card); every other 3D layer keeps the cardMVP of its 2.5D transform (byte-identical).
+  const m = layer.cardMatrix
+    ? multiplyMat4(camera.viewProjection, layer.cardMatrix)
+    : cardMVP(camera, [t.positionX, t.positionY, t.positionZ], [t.anchorX, t.anchorY], [t.rotationX, t.rotationY, t.rotation]);
   data[flagIdx] = 1;
   for (let k = 0; k < 16; k++) data[mvpIdx + k] = m[k];
 }
@@ -2302,6 +2524,7 @@ const IMAGE_MAX_EFFECTS = 16;
 const IMAGE_EFFECTCOUNT_FLOAT = 124;
 const IMAGE_EFFECTTIME_FLOAT = 125;
 const IMAGE_ADJUSTMODE_FLOAT = 126; // B11b-gpu: ADJUST_MODE on the adjustment-variant pipeline (0 elsewhere)
+const IMAGE_ADJUSTGLASS_FLOAT = 127; // B38: 1 on a glass shape's mix-only pass
 const IMAGE_EFFECTS_BASE_FLOAT = 128;
 
 const PATH_SHADER = /* wgsl */ `
@@ -2331,9 +2554,23 @@ struct PathUniforms {
   _mvpPad1: f32,
   _mvpPad2: f32,
   mvp: mat4x4<f32>,
+  // B63: gradient material fill on a path / morph / polygon shape. Fill vertices carry the marker colour
+  // r = -1 (pathTessellation fillGradient) and are shaded here from the fill descriptor; everything else
+  // keeps its per-vertex colour. pathBox = (minX, minY, w, h) of the fill in layer px; pathBoxPx = the
+  // box in comp px (scaled), the size the SDF shapes give gradientT.
+  pathBox: vec4f,
+  pathBoxPx: vec4f,
+  fHeader: array<vec4f, 1>,
+  fSolid: array<vec4f, 1>,
+  fMeta: array<vec4f, 8>,
+  fMeta2: array<vec4f, 8>,
+  fColors: array<vec4f, 64>,
+  fPos: array<vec4f, 16>,
 }
 
 @group(0) @binding(0) var<uniform> u: PathUniforms;
+
+${FILL_WGSL}
 
 struct VertexInput {
   @location(0) pos: vec2f,
@@ -2344,6 +2581,7 @@ struct VertexOutput {
   @builtin(position) position: vec4f,
   @location(0) color: vec4f,
   @location(1) world: vec2f,
+  @location(2) local: vec2f,
 }
 
 @vertex
@@ -2368,6 +2606,7 @@ fn vs(in: VertexInput) -> VertexOutput {
   if (u.is3D > 0.5) { out.position = u.mvp * vec4f(scaled, 0.0, 1.0); }
   out.color = in.color;
   out.world = world;
+  out.local = in.pos;
   return out;
 }
 
@@ -2376,13 +2615,23 @@ ${MASK_WGSL}
 @fragment
 fn fs(in: VertexOutput) -> @location(0) vec4f {
   let mA = computeMaskStackAlpha(in.world, i32(u.maskCount + 0.5), u.masks);
-  return vec4f(in.color.rgb, in.color.a * u.opacity * mA);
+  var c = in.color;
+  if (c.r < -0.5) {
+    // B63: gradient fill, evaluated per pixel across the fill's box (same mapping as the SDF shapes).
+    let uv = (in.local - u.pathBox.xy) / max(u.pathBox.zw, vec2f(1e-4));
+    c = sampleFill(0, uv, max(u.pathBoxPx.xy, vec2f(1e-4)));
+  }
+  return vec4f(c.rgb, c.a * u.opacity * mA);
 }
 `;
 
-// 432 bytes (header 48 + masks 384) + 2.5D (B53) is3D f108 (+pad) and mvp f112..127 = 512 = UNIFORM_ALIGN.
-const PATH_UNIFORM_SIZE = 512;
-const PATH_UNIFORM_FLOATS = 128;
+// 432 bytes (header 48 + masks 384) + 2.5D (B53) is3D f108 (+pad) and mvp f112..127 = 512, + B63 gradient
+// fill: pathBox f128, pathBoxPx f132, fHeader f136, fSolid f140, fMeta f144, fMeta2 f176, fColors f208,
+// fPos f464..527 = 2112 bytes, aligned up to a 256 multiple for the dynamic offset.
+const PATH_UNIFORM_SIZE = 2112;
+const PATH_UNIFORM_ALIGN = 2304;
+const PATH_UNIFORM_FLOATS = 528;
+const PATH_FILL_LAYOUT = { header: 136, solid: 140, meta: 144, meta2: 176, colors: 208, pos: 464 };
 const PATH_MVP_FLAG = 108; // float index of is3D
 const PATH_MVP_BASE = 112; // float index of mvp[0]
 const PATH_VERTEX_STRIDE = 24; // 6 floats
@@ -3068,12 +3317,22 @@ export class WebGPURenderer {
   // the screen renderer reads the proxy-aware rotation; EXPORT decodes the ORIGINAL (coded) frame and
   // never routes through the proxy, so the export renderer must read the original rotation instead.
   private exportMode = false;
+  // B68: an export / render_frame run's own video-frame source (exportFrameSource.ts). When set, video
+  // layers read the exact decoded frame from it and the renderer never reports requirements to, reads
+  // from, or prunes the shared preview frameScheduler (whose prefetch and open-frame cap used to race
+  // the export). Null for the screen renderer.
+  private frameSource: VideoFrameLookup | null = null;
 
   /** GPU adapter info captured at offscreen (export) init, for the export diagnostics block. Best-effort. */
   private offscreenAdapterInfo: GPUAdapterInfo | null = null;
 
   setMotionBlurSamples(n: number): void {
     this.motionBlurSamples = Math.max(2, Math.round(n));
+  }
+
+  /** B68: export / render_frame read video frames from their own source (null = the preview scheduler). */
+  setVideoFrameSource(source: VideoFrameLookup | null): void {
+    this.frameSource = source;
   }
 
   /** Mark this as the export renderer (reads original container rotation; see exportMode). */
@@ -3372,7 +3631,7 @@ export class WebGPURenderer {
     const pathShaderModule = device.createShaderModule({ code: PATH_SHADER });
 
     const pathUniformBuffer = device.createBuffer({
-      size: UNIFORM_ALIGN * MAX_LAYERS,
+      size: PATH_UNIFORM_ALIGN * MAX_LAYERS,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
 
@@ -3761,9 +4020,9 @@ export class WebGPURenderer {
     if (video.sourceFrameB == null || !video.blendMix) return null;
     try {
       const bId = `${layerId}:fbw`;
-      frameScheduler.reportVideoRequirement(bId, video.assetId, video.sourceFrameB, video.playbackRate);
+      if (!this.frameSource) frameScheduler.reportVideoRequirement(bId, video.assetId, video.sourceFrameB, video.playbackRate);
       if (this.videoTex.getCurrentFrameIndex(bId) !== video.sourceFrameB) {
-        const bFrame = frameScheduler.getFrame(video.assetId, video.sourceFrameB);
+        const bFrame = (this.frameSource ?? frameScheduler).getFrame(video.assetId, video.sourceFrameB);
         if (bFrame) this.videoTex.uploadFrame(bId, video.sourceFrameB, bFrame);
       }
       const texA = this.videoTex.getTexture(layerId);
@@ -4024,6 +4283,9 @@ export class WebGPURenderer {
 
     // Upload background uniforms (per-call - a nested precomp frame has its own bg).
     this.uploadBackgroundUniforms(gpu, frame.background);
+    // B57: a nested precomp frame whose background has no enabled layer is transparent where nothing is
+    // drawn (AE precomps; new precomposes get an empty background). The top level always draws its bg.
+    const drawBackground = depth === 0 || frame.background.layers.some((l) => l.enabled);
 
     // Cached Render Tree bookkeeping runs ONLY at the top level; nested precomp
     // frames re-render fully into their own textures (no dirty-tracking). Text keys
@@ -4036,7 +4298,7 @@ export class WebGPURenderer {
       this.renderTree.markAllClean(this.frameClock);
       // P2a: prune video requirements for layers not drawn last frame BEFORE this frame's video loops
       // (incl. the precomp pre-pass below) re-report them, so prefetch only decodes assets still in use.
-      frameScheduler.frameBoundary();
+      if (!this.frameSource) frameScheduler.frameBoundary();
     }
 
     // Precomp pre-pass: render each precomp layer's nested composition into its own
@@ -4056,6 +4318,9 @@ export class WebGPURenderer {
           precompViews.set(layer.id, view);
         }
       }
+      // B57: the nested renders above re-uploaded the SHARED background buffer with their own bg, and
+      // this frame's pass is submitted after theirs: restore this frame's background.
+      if (precompViews.size > 0) this.uploadBackgroundUniforms(gpu, frame.background);
     }
 
     const shapeLayers: { index: number; layer: ResolvedLayer }[] = [];
@@ -4127,6 +4392,22 @@ export class WebGPURenderer {
     if (clamped && !proceduralClampWarned) {
       proceduralClampWarned = true;
       console.warn(`[renderer] Layer/procedural-instance count exceeded ${MAX_LAYERS} and was clamped. Reduce tile/grid density or split across layers.`);
+    }
+    // B38 glass: a shape with a glass material gets a synthesized adjustment pass right BELOW it (blur +
+    // filters over the composite so far, mixed back inside the shape's outline with the rim bend +
+    // highlight; core/effects/glass.ts glassAdjustmentLayer). The shape then draws on top as usual.
+    // Frames without glass keep expandedLayers untouched; without the adjustment pipeline glass is inert.
+    if (gpu.adjustPipeline && expandedLayers.some((l) => l.glass)) {
+      let budget = MAX_LAYERS - expandedLayers.length;
+      const withGlass: ResolvedLayer[] = [];
+      for (const l of expandedLayers) {
+        if (l.glass && budget > 0) {
+          const pass = glassAdjustmentLayer(l);
+          if (pass) { withGlass.push(pass); budget--; }
+        }
+        withGlass.push(l);
+      }
+      expandedLayers.splice(0, expandedLayers.length, ...withGlass);
     }
 
     for (let i = 0; i < expandedLayers.length; i++) {
@@ -4217,7 +4498,9 @@ export class WebGPURenderer {
         data[9] = t.opacity;
         this.writeMaskUniforms(data, 10, 12, textLayer.masks);
         writeCard3D(data, TEXT_MVP_FLAG, TEXT_MVP_BASE, textLayer, frame.camera);
-        writeCornerPin(data, TEXT_MVP_FLAG, TEXT_MVP_BASE, textLayer, { cx: 0, cy: 0, w: data[4], h: data[5] }, frame.width, frame.height);
+        // B43: the raster may carry an overhang pad around the measured box; a corner pin maps the BOX
+        // (the pad extrapolates through the same warp, like the shape SDF margin).
+        writeCornerPin(data, TEXT_MVP_FLAG, TEXT_MVP_BASE, textLayer, { cx: 0, cy: 0, w: (rendered.width - 2 * rendered.padX) * t.scaleX, h: (rendered.height - 2 * rendered.padY) * t.scaleY }, frame.width, frame.height);
 
         const gpuTexture = this.getOrCreateTextTexture(gpu, rendered.key, rendered.bitmap, rendered.width, rendered.height);
         if (!gpuTexture) {
@@ -4257,47 +4540,56 @@ export class WebGPURenderer {
         }
 
         const sourceFrame = video.sourceFrame;
-        // Report the exact resolved source frame so the scheduler prefetches from
-        // the same trim/offset/rate the renderer draws (single mapping source).
-        frameScheduler.reportVideoRequirement(vidLayer.id, video.assetId, sourceFrame, video.playbackRate);
-
         const currentIdx = this.videoTex.getCurrentFrameIndex(vidLayer.id);
-        if (this.presentLatest) {
-          // Audio-master: display the newest decoded frame ≤ target and drop the
-          // rest; hold the current texture on a miss - never block. Selection is
-          // PER LAYER (two layers on one asset can need different source frames).
-          const pick = frameScheduler.getPresentableFrame(
-            video.assetId,
-            sourceFrame,
-            currentIdx < 0 ? null : currentIdx,
-            WebGPURenderer.PRESENT_MAX_DISTANCE
-          );
-          if (pick && pick.index !== currentIdx) {
-            this.videoTex.uploadFrame(vidLayer.id, pick.index, pick.frame);
+        if (this.frameSource) {
+          // B68: export / render_frame. The exact frame comes from the run's own source (decoded
+          // before this render); the preview scheduler is neither read nor told about it.
+          if (currentIdx !== sourceFrame) {
+            const exact = this.frameSource.getFrame(video.assetId, sourceFrame);
+            if (exact) this.videoTex.uploadFrame(vidLayer.id, sourceFrame, exact);
           }
-        } else if (currentIdx !== sourceFrame) {
-          // Classic path: request the EXACT source frame; only upload when the texture doesn't already
-          // hold it (avoids a redundant GPU copy every render while paused).
-          const videoFrame = frameScheduler.getFrame(video.assetId, sourceFrame);
-          if (videoFrame) {
-            this.videoTex.uploadFrame(vidLayer.id, sourceFrame, videoFrame);
-          } else {
-            // Exact frame not decoded yet: show the freshest decoded frame <= target (drop-to-newest)
-            // instead of FREEZING, then upgrade to exact on a later tick. During a SCRUB allow ANY
-            // distance so a far seek snaps to the nearest decoded keyframe (frameScheduler prefetches it)
-            // rather than holding the pre-jump frame; during playback keep the tight window so a miss
-            // never shows a stale frame.
-            const maxDist = frameScheduler.isScrubbingNow()
-              ? Number.MAX_SAFE_INTEGER
-              : WebGPURenderer.PRESENT_MAX_DISTANCE;
+        } else {
+          // Report the exact resolved source frame so the scheduler prefetches from
+          // the same trim/offset/rate the renderer draws (single mapping source).
+          frameScheduler.reportVideoRequirement(vidLayer.id, video.assetId, sourceFrame, video.playbackRate);
+
+          if (this.presentLatest) {
+            // Audio-master: display the newest decoded frame ≤ target and drop the
+            // rest; hold the current texture on a miss - never block. Selection is
+            // PER LAYER (two layers on one asset can need different source frames).
             const pick = frameScheduler.getPresentableFrame(
               video.assetId,
               sourceFrame,
               currentIdx < 0 ? null : currentIdx,
-              maxDist
+              WebGPURenderer.PRESENT_MAX_DISTANCE
             );
             if (pick && pick.index !== currentIdx) {
               this.videoTex.uploadFrame(vidLayer.id, pick.index, pick.frame);
+            }
+          } else if (currentIdx !== sourceFrame) {
+            // Classic path: request the EXACT source frame; only upload when the texture doesn't already
+            // hold it (avoids a redundant GPU copy every render while paused).
+            const videoFrame = frameScheduler.getFrame(video.assetId, sourceFrame);
+            if (videoFrame) {
+              this.videoTex.uploadFrame(vidLayer.id, sourceFrame, videoFrame);
+            } else {
+              // Exact frame not decoded yet: show the freshest decoded frame <= target (drop-to-newest)
+              // instead of FREEZING, then upgrade to exact on a later tick. During a SCRUB allow ANY
+              // distance so a far seek snaps to the nearest decoded keyframe (frameScheduler prefetches it)
+              // rather than holding the pre-jump frame; during playback keep the tight window so a miss
+              // never shows a stale frame.
+              const maxDist = frameScheduler.isScrubbingNow()
+                ? Number.MAX_SAFE_INTEGER
+                : WebGPURenderer.PRESENT_MAX_DISTANCE;
+              const pick = frameScheduler.getPresentableFrame(
+                video.assetId,
+                sourceFrame,
+                currentIdx < 0 ? null : currentIdx,
+                maxDist
+              );
+              if (pick && pick.index !== currentIdx) {
+                this.videoTex.uploadFrame(vidLayer.id, pick.index, pick.frame);
+              }
             }
           }
         }
@@ -4452,7 +4744,9 @@ export class WebGPURenderer {
           precompView = view;
           sourceWidth = imgLayer.precomp.width;
           sourceHeight = imgLayer.precomp.height;
-          // filters/CC/effects stay identity → the precomp texture composites as-is.
+          // filters / CC stay identity; B57: the precomp's own effect stack (if any) runs on its texture
+          // (warp / spatial / colour slots), so nothing behind the layer is touched.
+          if (imgLayer.precomp.effects) imgEffects = imgLayer.precomp.effects;
         } else {
           const img = imgLayer.image;
           if (!img) {
@@ -4515,6 +4809,7 @@ export class WebGPURenderer {
         let textureView: GPUTextureView | null;
         if (precompView) {
           textureView = precompView;
+          data[IMAGE_SRCPREMUL_FLOAT] = 1;
         } else {
           const gpuTexture = bitmap ? this.getOrCreateImageTexture(gpu, textureKey, bitmap, sourceWidth, sourceHeight) : null;
           textureView = gpuTexture?.createView() ?? null;
@@ -4573,10 +4868,11 @@ export class WebGPURenderer {
     if (pathLayers.length > 0) {
       const merged: number[] = [];
       let vertexOffset = 0;
-      const pathBufData = new ArrayBuffer(UNIFORM_ALIGN * pathLayers.length);
+      const pathBufData = new ArrayBuffer(PATH_UNIFORM_ALIGN * pathLayers.length);
       for (let i = 0; i < pathLayers.length; i++) {
         const layer = pathLayers[i].layer;
         const s = layer.shape!;
+        const gradFill = !!s.fill && s.fill.kind === 1 && s.fill.layers.length > 0;
         const tess = tessellatePathCached(layer.id, {
           vertices: s.vertices,
           closed: s.closed,
@@ -4589,6 +4885,7 @@ export class WebGPURenderer {
           dashArray: s.dashArray, // B8c dashed stroke
           dashOffset: s.dashOffset,
           strokeFill: s.stroke, // B8e gradient stroke (baked per-vertex when it's a gradient)
+          fillGradient: gradFill, // B63 gradient fill (shaded per pixel from the uniform below)
         });
 
         pathRanges.push({ first: vertexOffset, count: tess.vertexCount });
@@ -4596,7 +4893,7 @@ export class WebGPURenderer {
         vertexOffset += tess.vertexCount;
 
         const t = layer.transform;
-        const u = new Float32Array(pathBufData, UNIFORM_ALIGN * i, PATH_UNIFORM_FLOATS);
+        const u = new Float32Array(pathBufData, PATH_UNIFORM_ALIGN * i, PATH_UNIFORM_FLOATS);
         u[0] = frame.width;
         u[1] = frame.height;
         u[2] = t.positionX;
@@ -4609,6 +4906,23 @@ export class WebGPURenderer {
         u[9] = t.opacity;
         this.writeMaskUniforms(u, 10, 12, layer.masks);
         writeCard3D(u, PATH_MVP_FLAG, PATH_MVP_BASE, layer, frame.camera);
+        if (gradFill) {
+          // B63: the fill's box (layer px) + its comp-px size, and the fill descriptor.
+          let bx0 = Infinity, by0 = Infinity, bx1 = -Infinity, by1 = -Infinity;
+          for (let k = 0; k < tess.data.length; k += PATH_FLOATS_PER_VERTEX) {
+            if (tess.data[k + 2] > -0.5) continue; // fill vertices only (the stroke may overhang)
+            const x = tess.data[k], y = tess.data[k + 1];
+            if (x < bx0) bx0 = x;
+            if (x > bx1) bx1 = x;
+            if (y < by0) by0 = y;
+            if (y > by1) by1 = y;
+          }
+          if (bx0 <= bx1) {
+            u[128] = bx0; u[129] = by0; u[130] = bx1 - bx0; u[131] = by1 - by0;
+            u[132] = (bx1 - bx0) * Math.abs(t.scaleX); u[133] = (by1 - by0) * Math.abs(t.scaleY);
+          }
+          this.packFill(u, 0, s.fill!, PATH_FILL_LAYOUT);
+        }
         if (layer.cornerPin && s.vertices.length > 0) {
           // Path shapes pin their (scaled) vertex bounds.
           let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
@@ -4623,7 +4937,7 @@ export class WebGPURenderer {
         this.ensurePathVertexCapacity(gpu, totalVerts);
         device.queue.writeBuffer(gpu.pathVertexBuffer, 0, new Float32Array(merged));
       }
-      device.queue.writeBuffer(pathUniformBuffer, 0, pathBufData, 0, UNIFORM_ALIGN * pathLayers.length);
+      device.queue.writeBuffer(pathUniformBuffer, 0, pathBufData, 0, PATH_UNIFORM_ALIGN * pathLayers.length);
     }
 
     const shapeBindGroup = device.createBindGroup({
@@ -4664,6 +4978,11 @@ export class WebGPURenderer {
         d[10] = gp.localFrame / (frame.frameRate ?? 30);
         d[11] = PATTERN_TYPE[cfg.type];
         d[12] = gp.scale; d[13] = cfg.speed; d[14] = gp.rotation; d[15] = cfg.complexity; // knobs are keyframed
+        if (cfg.type === 'blobField') {
+          // B58: blob count rides on complexity; seed / floor / lumps / softness / billow in the spare floats.
+          const bp = resolveBlobParams(cfg);
+          d[15] = bp.count; d[21] = bp.seed; d[22] = bp.floor; d[23] = bp.lumps; d[57] = bp.softness; d[58] = bp.billow;
+        }
         d[16] = gp.warp; d[17] = gp.contrast; d[18] = cfg.paletteMode === 'smooth' ? 1 : 0;
         d[20] = PATTERN_BLEND_INDEX[pl.blendMode] ?? 0; // blend-with-below mode
         const stops = cfg.palette.slice(0, PATTERN_MAX_STOPS);
@@ -4705,7 +5024,8 @@ export class WebGPURenderer {
         const drawStart = draws.length;
         const rl3d = expandedLayers[i];
         const is3DLayer = !!rl3d.is3D;
-        const layerDepth = is3DLayer && frame.camera && rl3d.worldMatrix ? cameraSpaceDepth(frame.camera, rl3d.worldMatrix) : 0;
+        // B81: a card decal (sortWithParent) sorts at its card's depth, so it stays glued on top of its card.
+        const layerDepth = is3DLayer && frame.camera && rl3d.worldMatrix ? cameraSpaceDepth(frame.camera, rl3d.sortMatrix ?? rl3d.worldMatrix) : 0;
         // 2.5D DOF: a 3D layer off the camera's focus plane gets a camera depth-of-field blur,
         // synthesized as a per-layer gaussian from the circle-of-confusion radius and pushed
         // through the existing blur pipeline. Only when the layer has no blur of its own. The
@@ -4738,7 +5058,7 @@ export class WebGPURenderer {
             draws.push({ blur, shadow, glow, blurFx, fn: (p) => {
               p.setPipeline(pathPipeline);
               p.setVertexBuffer(0, gpu.pathVertexBuffer);
-              p.setBindGroup(0, pbg, [UNIFORM_ALIGN * slot]);
+              p.setBindGroup(0, pbg, [PATH_UNIFORM_ALIGN * slot]);
               p.draw(range.count, 1, range.first);
             } });
           }
@@ -4812,6 +5132,19 @@ export class WebGPURenderer {
       for (const d of sorted) draws.push(d);
     }
 
+    // Track matte (B65): a layer used AS a matte never draws on its own (After Effects turns the matte layer's
+    // video off), also on frames where the layer it mattes is not on screen. Before, a comp-long matte shape
+    // showed up as a plain shape outside the matted clip's time range. Only when the composite pipeline built:
+    // without it, matted / source layers still degrade to drawing normally.
+    if (gpu.matteCompositePipeline && gpu.matteBindGroupLayout && gpu.matteUniformBuffer && draws.some((d) => d.consumedAsMatte)) {
+      const liveSources = new Set<string>();
+      for (const d of draws) if (d.matte && !d.consumedAsMatte) liveSources.add(d.matte.sourceId);
+      for (let k = draws.length - 1; k >= 0; k--) {
+        const d = draws[k];
+        if (d.consumedAsMatte && !(d.layerId && liveSources.has(d.layerId))) draws.splice(k, 1);
+      }
+    }
+
     const blurDraws = draws.filter((d) => d.blur);
     const shadowDraws = draws.filter((d) => d.shadow);
     const glowDraws = draws.filter((d) => d.glow);
@@ -4824,7 +5157,11 @@ export class WebGPURenderer {
     // single scene pass). `matteDraws` are the matted layers, in composite order, for the flags uniform.
     const matteDraws = draws.filter((d) => d.matte && !d.consumedAsMatte);
     // Requires the (guarded) composite pipeline; if it failed to build, matted layers just draw normally.
-    const hasMatte = matteDraws.length > 0 && !!gpu.matteCompositePipeline && !!gpu.matteBindGroup && !!gpu.matteUniformBuffer;
+    // B65: gate on the bind-group LAYOUT, not the bind group: the bind group is built by ensureBlurTextures,
+    // which only runs on the multipass path, so requiring it here meant a frame whose only effect is a track
+    // matte never went multipass and the matte silently drew as two plain layers (mattes only worked next to
+    // a blur / glow / shadow that had already allocated the textures).
+    const hasMatte = matteDraws.length > 0 && !!gpu.matteCompositePipeline && !!gpu.matteBindGroupLayout && !!gpu.matteUniformBuffer;
     // Adjustment layers (B11b-gpu): an active adjustment replaces the composite below it, which only the
     // multipass path (an offscreen scene texture) can do.
     const hasAdjust = draws.some((d) => d.adjust);
@@ -4850,9 +5187,11 @@ export class WebGPURenderer {
           clearValue: { r: 0, g: 0, b: 0, a: clearAlpha },
         }],
       });
-      pass.setPipeline(bgPipeline);
-      pass.setBindGroup(0, bgBindGroup);
-      pass.draw(6);
+      if (drawBackground) {
+        pass.setPipeline(bgPipeline);
+        pass.setBindGroup(0, bgBindGroup);
+        pass.draw(6);
+      }
       for (const d of draws) d.fn(pass);
       pass.end();
     } else {
@@ -4975,9 +5314,11 @@ export class WebGPURenderer {
       let scenePass = encoder.beginRenderPass({
         colorAttachments: [{ view: sceneView, loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 0 } }],
       });
-      scenePass.setPipeline(bgPipeline);
-      scenePass.setBindGroup(0, bgBindGroup);
-      scenePass.draw(6);
+      if (drawBackground) {
+        scenePass.setPipeline(bgPipeline);
+        scenePass.setBindGroup(0, bgBindGroup);
+        scenePass.draw(6);
+      }
 
       let blurSlot = 0;
       let shadowSlot = 0;
@@ -5444,52 +5785,41 @@ export class WebGPURenderer {
     const t = layer.transform;
     const s = layer.shape!;
 
-    // Expand size for star/circle to give SDF margin (undone in the shader for
-    // gradient mapping via the same 1.1 factor).
-    let w = s.width * t.scaleX;
-    let h = s.height * t.scaleY;
-    if (s.renderType === 'star' || s.renderType === 'circle') {
-      w *= 1.1;
-      h *= 1.1;
-    }
+    // B63: box, corner radii, stroke and quad padding from the pure core/shapeSdf.ts (verify:shape-render).
+    const g = shapeSdfParams(s, t.scaleX, t.scaleY);
 
     // Base block (floats 0..19). See SHAPE_UNIFORM layout notes.
     data[0] = canvasW;
     data[1] = canvasH;
     data[2] = t.positionX;
     data[3] = t.positionY;
-    data[4] = w;
-    data[5] = h;
+    data[4] = g.boxW;
+    data[5] = g.boxH;
     data[6] = t.anchorX;
     data[7] = t.anchorY;
     // rotation, opacity, borderRadius, shapeType
     data[8] = t.rotation * (Math.PI / 180);
     data[9] = t.opacity;
-    data[10] = s.borderRadius;
+    data[10] = g.radii[0];
+    data[11] = g.shapeType;
 
-    const shapeTypeMap: Record<string, number> = { rectangle: 0, circle: 1, star: 2, polygon: 3 };
-    data[11] = shapeTypeMap[s.renderType] ?? 0;
-
-    // shapeParams: vec4 at floats 12..15. Star uses (points, outerR, innerR);
-    // every other SDF shape (rectangle, polygon fallback) uses it for the four
-    // rounded-box corner radii [tl, tr, br, bl] - all equal to borderRadius unless
-    // the rectangle has independent corners, which keeps the uniform case identical.
-    if (s.renderType === 'star') {
-      data[12] = s.points;
-      data[13] = s.outerRadius * t.scaleX;
-      data[14] = s.innerRadius * t.scaleX;
+    // shapeParams: vec4 at floats 12..15. Star uses (points, outerR, innerR); the rounded rect uses it
+    // for the four corner radii [tl, tr, br, bl] (scaled with the layer, clamped to half the short side).
+    if (g.shapeType === SDF_STAR) {
+      data[12] = g.star[0];
+      data[13] = g.star[1];
+      data[14] = g.star[2];
       data[15] = 0;
     } else {
-      const cr = s.cornerRadii;
-      data[12] = cr ? cr[0] : s.borderRadius;
-      data[13] = cr ? cr[1] : s.borderRadius;
-      data[14] = cr ? cr[2] : s.borderRadius;
-      data[15] = cr ? cr[3] : s.borderRadius;
+      data[12] = g.radii[0];
+      data[13] = g.radii[1];
+      data[14] = g.radii[2];
+      data[15] = g.radii[3];
     }
 
-    // strokeWidth (16); maskCount (17) written by writeMaskUniforms; pad 18,19
-    data[16] = s.strokeWidth * t.scaleX;
-    data[18] = 0;
+    // strokeWidth (16); maskCount (17) written by writeMaskUniforms; quadPad (18); pad 19
+    data[16] = g.strokeWidth;
+    data[18] = g.pad;
     data[19] = 0;
 
     // masks: floats 20..115 (8 slots * 12)
@@ -5529,14 +5859,14 @@ export class WebGPURenderer {
   // Writes a ResolvedFill into the flat fill arrays of the shape uniform.
   // `fi` selects fill (0) or stroke (1). Float offsets index the shared arrays:
   //   fHeader @116, fSolid @124, fMeta @132, fMeta2 @196, fColors @260, fPos @772
-  private packFill(data: Float32Array, fi: number, fill: ResolvedFill): void {
+  private packFill(data: Float32Array, fi: number, fill: ResolvedFill, at = SHAPE_FILL_LAYOUT): void {
     const layerCount = Math.min(fill.layers.length, 8);
     // fHeader[fi] = (kind, layerCount, _, _)
-    const hBase = 116 + fi * 4;
+    const hBase = at.header + fi * 4;
     data[hBase] = fill.kind;
     data[hBase + 1] = layerCount;
     // fSolid[fi] = rgba
-    const sBase = 124 + fi * 4;
+    const sBase = at.solid + fi * 4;
     data[sBase] = fill.color[0];
     data[sBase + 1] = fill.color[1];
     data[sBase + 2] = fill.color[2];
@@ -5546,13 +5876,13 @@ export class WebGPURenderer {
       const ly = fill.layers[L];
       const gi = fi * 8 + L;                 // global (fill,layer) index
       // fMeta = (gradientType, angle, cx, cy)
-      const mBase = 132 + gi * 4;
+      const mBase = at.meta + gi * 4;
       data[mBase] = ly.gradientType;
       data[mBase + 1] = ly.angle;
       data[mBase + 2] = ly.centerX;
       data[mBase + 3] = ly.centerY;
       // fMeta2 = (blendMode, stopCount, _, _)
-      const m2Base = 196 + gi * 4;
+      const m2Base = at.meta2 + gi * 4;
       const stopCount = Math.min(ly.stops.length, 8);
       data[m2Base] = ly.blendMode;
       data[m2Base + 1] = stopCount;
@@ -5560,13 +5890,13 @@ export class WebGPURenderer {
       for (let sIdx = 0; sIdx < stopCount; sIdx++) {
         const stop = ly.stops[sIdx];
         const g = fi * 64 + L * 8 + sIdx;    // global stop index
-        const cBase = 260 + g * 4;           // fColors
+        const cBase = at.colors + g * 4;     // fColors
         data[cBase] = stop.color[0];
         data[cBase + 1] = stop.color[1];
         data[cBase + 2] = stop.color[2];
         data[cBase + 3] = stop.color[3];
         // fPos packs 4 positions per vec4 contiguously, so linear indexing works.
-        data[772 + g] = stop.position;
+        data[at.pos + g] = stop.position;
       }
     }
   }
@@ -5622,6 +5952,15 @@ export class WebGPURenderer {
     data[14] = f.gamma;
     // lift / gamma / gain (16..27) stay 0 = identity
     if (mixes) this.writeMaskUniforms(data, 15, 28, layer.masks);
+    // B38: a glass pass's rim terms (only the mix-only pass reads them; lift stays identity on every
+    // apply pass).
+    if (mode === ADJUST_MODE.mixOnly && adj.glass) {
+      data[16] = adj.glass.refraction;
+      data[17] = adj.glass.edgeWidth;
+      data[18] = adj.glass.highlight;
+      data[19] = adj.glass.lightAngle;
+      data[IMAGE_ADJUSTGLASS_FLOAT] = 1;
+    }
     if (apply) this.writeEffectSlots(data, adj.effects);
     data[IMAGE_EFFECTTIME_FLOAT] = frame.frameNumber;
     data[IMAGE_ADJUSTMODE_FLOAT] = mode;

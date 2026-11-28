@@ -1,6 +1,7 @@
 import { Input, BlobSource, UrlSource, ALL_FORMATS, VideoSampleSink, EncodedPacketSink, type InputVideoTrack, type VideoSample, type Source } from 'mediabunny';
 import type { VideoMetadata } from './videoWorker.types';
 import { cursorsToEvict } from './cursorBudget';
+import { EXPORT_CURSORS_PER_ASSET, exportCursorStep, pickExportCursor, type ExportCursorState, type ExportVideoReader } from './exportFrames';
 
 // mediabunny-backed video decode. Playback requests are served by a small pool of LONG-LIVED FORWARD
 // iterators ("cursors"), NOT per-frame getSample(t): getSample spins up a fresh VideoDecoder and
@@ -345,6 +346,101 @@ class MediabunnyController {
     } finally {
       sample.close();
     }
+  }
+
+  /**
+   * B68: a decode session for ONE export (or render_frame run), separate from the playback cursors.
+   * Each asset gets up to EXPORT_CURSORS_PER_ASSET long-lived FORWARD iterators, so a linear export
+   * decodes every source frame once with one decoder per clip, instead of a fresh decoder + GOP walk
+   * per getSample call per clip per frame (hundreds of decoders a second on a multi-clip comp, which
+   * ended in "Decoding error." and an aborted export). The frame shown for index i is the last sample
+   * with index <= i, i.e. the sample covering that time, exactly what getSample returns. close() ends
+   * every iterator (closing its decoder) and every retained sample.
+   */
+  openExportReader(): ExportVideoReader {
+    interface ExportCursor extends ExportCursorState {
+      it: AsyncGenerator<VideoSample, void, unknown> | null;
+      sample: VideoSample | null;
+      peek: VideoSample | null;
+      lastUse: number;
+    }
+    const byAsset = new Map<string, { cursors: ExportCursor[]; chain: Promise<unknown> }>();
+    let seq = 0;
+    let closed = false;
+    const closeCursor = async (c: ExportCursor): Promise<void> => {
+      c.peek?.close();
+      c.peek = null;
+      c.peekIndex = null;
+      c.sample?.close();
+      c.sample = null;
+      c.index = -1;
+      const it = c.it;
+      c.it = null;
+      if (it) await it.return().catch(() => {});
+    };
+    const run = async (ctl: AssetCtl, cursors: ExportCursor[], i: number): Promise<VideoFrame> => {
+      let k = pickExportCursor(cursors, i);
+      if (k < 0) {
+        if (cursors.length < EXPORT_CURSORS_PER_ASSET) {
+          cursors.push({ it: null, index: -1, peekIndex: null, sample: null, peek: null, lastUse: 0 });
+          k = cursors.length - 1;
+        } else {
+          k = 0;
+          for (let j = 1; j < cursors.length; j++) if (cursors[j].lastUse < cursors[k].lastUse) k = j;
+        }
+      }
+      const c = cursors[k];
+      c.lastUse = ++seq;
+      const step = exportCursorStep(c, i);
+      if (step === 'reopen') {
+        await closeCursor(c);
+        c.it = ctl.sink.samples(this.timeForIndex(ctl, i));
+      }
+      if (step !== 'reuse') {
+        const it = c.it;
+        if (!it) throw new Error(`mediabunny: export cursor for ${ctl.assetId} is not open`);
+        for (;;) {
+          if (c.sample && c.index >= i) break;
+          let next = c.peek;
+          c.peek = null;
+          c.peekIndex = null;
+          if (!next) {
+            const r = await it.next();
+            if (r.done) break; // EOF: hold the last frame
+            next = r.value;
+          }
+          const idx = this.indexOf(ctl, next);
+          if (c.sample && idx > i) { c.peek = next; c.peekIndex = idx; break; } // the held sample covers i
+          c.sample?.close();
+          c.sample = next;
+          c.index = idx;
+        }
+      }
+      if (!c.sample) throw new Error(`mediabunny: no export frame at index ${i} for ${ctl.assetId}`);
+      return c.sample.toVideoFrame();
+    };
+    return {
+      decode: (assetId: string, frameIndex: number): Promise<VideoFrame> => {
+        if (closed) return Promise.reject(new Error('the export decode session is closed'));
+        const ctl = this.assets.get(assetId);
+        if (!ctl) return Promise.reject(new Error(`mediabunny: asset ${assetId} not initialized`));
+        const i = Math.max(0, Math.min(Math.round(frameIndex), ctl.metadata.frameCount - 1));
+        let entry = byAsset.get(assetId);
+        if (!entry) { entry = { cursors: [], chain: Promise.resolve() }; byAsset.set(assetId, entry); }
+        const e = entry;
+        const job = e.chain.then(() => run(ctl, e.cursors, i)); // one decode at a time per asset
+        e.chain = job.catch(() => {});
+        return job;
+      },
+      close: async (): Promise<void> => {
+        closed = true;
+        for (const e of byAsset.values()) {
+          await e.chain;
+          for (const c of e.cursors) await closeCursor(c);
+        }
+        byAsset.clear();
+      },
+    };
   }
 
   setProxyMode(assetId: string, scale: number): void {

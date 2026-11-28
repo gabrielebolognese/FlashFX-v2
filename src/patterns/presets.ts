@@ -36,5 +36,8 @@ export const PATTERN_PRESETS: PatternPreset[] = [
   { name: 'Radio Waves', config: { type: 'rings', scale: 1.4, speed: 1.0, rotationDeg: 0, complexity: 1, warp: 0, contrast: 0.4, paletteMode: 'smooth', palette: PALETTES.Neon } },
   { name: 'Fractal Noise', config: { type: 'clouds', scale: 1.0, speed: 0.2, rotationDeg: 0, complexity: 6, warp: 0.1, contrast: 0.25, paletteMode: 'smooth', palette: PALETTES.Mono } },
   { name: 'Energy Field', config: { type: 'warp', scale: 1.1, speed: 0.6, rotationDeg: 0, complexity: 5, warp: 0.7, contrast: 0.3, paletteMode: 'smooth', palette: PALETTES.Neon } },
+  // B58 blob fields (patterns/blobField.ts): a full-frame mesh gradient and a billowing cloud floor.
+  { name: 'Mesh Gradient', config: { type: 'blobField', scale: 1, speed: 0.5, rotationDeg: 0, complexity: 4, warp: 0.35, contrast: 0, paletteMode: 'smooth', palette: ramp([[0.96, 0.93, 0.9], [0.91, 0.35, 0.65], [0.36, 0.42, 0.94], [0.99, 0.37, 0.53], [0.67, 0.47, 0.85]]), blobCount: 7, seed: 3, softness: 1 } },
+  { name: 'Cloud Floor', config: { type: 'blobField', scale: 1, speed: 0.4, rotationDeg: 0, complexity: 4, warp: 0.2, contrast: 0, paletteMode: 'smooth', palette: ramp([[0.13, 0.36, 0.77], [0.33, 0.55, 0.87], [0.62, 0.74, 0.92], [0.88, 0.91, 0.97]]), floor: 0.42, lumps: 0.1, softness: 1.2, billow: 0.35, seed: 1 } },
   { name: 'Deep Cells', config: { type: 'voronoi', scale: 2.0, speed: 0.3, rotationDeg: 0, complexity: 1, warp: 0.2, contrast: 0.35, paletteMode: 'smooth', palette: PALETTES.Aurora } },
 ];

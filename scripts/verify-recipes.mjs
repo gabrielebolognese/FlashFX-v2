@@ -4,7 +4,7 @@
 // layers on the WebGPU renderer) is the taste-proof build, run locally.
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
-import { spawn, execFileSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
@@ -21,6 +21,8 @@ const E = (e) => evaluate(e, scope);
 ok(E('x * 2 + 1') === 7, 'arithmetic');
 ok(E('f(12)') === 24 && E('t(6)') === 22, 'f() scales 30 fps frames to the comp fps, t() adds start');
 ok(E('len(words(text))') === 3 && E('chars(text)') === 13, 'words / chars');
+ok(E("len(letters('MO M'))") === 4 && E("pick(letters('MO M'), 2)") === ' ', 'letters keeps spaces');
+ok(E("slice('Hello', 0, 2)") === 'He' && E('slice(arr, 1, 3)').join() === '2,3', 'slice on strings and arrays');
 ok(E('@a.result.masks[-1].id') === 'm2', 'step refs with negative index');
 ok(E('@missing.result') === undefined, 'a skipped step reads as undefined');
 ok(E("x > 2 ? 'big' : 'small'") === 'big', 'ternary');
@@ -40,7 +42,7 @@ const recipes = loadRecipes();
 ok(recipes.size >= 8, `at least 8 recipes (found ${recipes.size})`);
 for (const r of recipes.values()) {
   ok(validateRecipe(r).length === 0, `${r.id} validates`);
-  ok(r.source.some((s) => /\br0\d\b/.test(s)), `${r.id} names the reference(s) it was extracted from`);
+  ok(r.source.some((s) => /\br(0[1-9]|1[01])\b/.test(s)), `${r.id} names the reference(s) it was extracted from (r01-r11)`);
   ok(Object.keys(r.params ?? {}).length >= 3, `${r.id} is parameterized (>= 3 params)`);
   const d = describeRecipe(r);
   ok(d.params && d.description, `${r.id} describes itself`);
@@ -55,9 +57,10 @@ assert.throws(() => normalizeParams(kt, { text: 'x', color: 'red' }), /colour|mu
 ok(normalizeParams(kt, { text: 'x', color: '#ff0000' }).color[0] === 1, 'hex colours are normalised to RGBA');
 
 // ---- 3. Every action a recipe calls is whitelisted --------------------------------------------
-const manifestPath = join(ROOT, 'public/agent/features.json');
-if (!existsSync(manifestPath)) execFileSync(process.execPath, [join(ROOT, 'scripts/gen-agent-manifest.mjs')], { cwd: ROOT, stdio: 'ignore' });
-const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+// Built in memory from the current src/agent/featureManifest.ts: public/agent/features.json is a generated,
+// gitignored file that is only refreshed by dev / build, so reading it could check against a stale whitelist.
+const { generateAgentManifest } = await import(new URL('./gen-agent-manifest.mjs', import.meta.url));
+const manifest = await generateAgentManifest();
 const whitelist = new Map(manifest.actions.map((a) => [a.id, a]));
 const presets = new Set((manifest.catalogs.textAnimatorPresets ?? []).map((p) => p.id));
 const easings = new Set((manifest.catalogs.easings ?? []).map((p) => p.id));

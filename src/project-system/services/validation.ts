@@ -34,6 +34,7 @@ import type {
   LayerBlur,
   LayerEffect,
   ShapeMaterialConfig,
+  ShapeGlass,
   ShapePatternConfig,
   ShapeModifier,
   ShapeRepeater,
@@ -44,9 +45,14 @@ import type {
 } from '../../core/types';
 import { DEFAULT_DECODE_CHARSET } from '../../core/textDecode';
 import { normalizeTextCaret } from '../../core/textCaret';
+import { normalizeTextTyping } from '../../core/textTyping';
+import { normalizeTextCounter } from '../../core/textCounter';
+import { normalizeTextStyleKeys } from '../../core/textStyleKeys';
 import { isMaskMode } from '../../core/maskCoverage';
+import { normalizeBlockParams } from '../../core/pixelBlocks';
 import { sanitizeRefineEdge } from '../../core/refineEdge';
 import { resolveAdjustmentFilters } from '../../core/effects/adjustmentComposite';
+import { sanitizeShapeGlass } from '../../core/effects/glass';
 import type { LayerConstraints } from '../../core/reframe';
 import type { CornerPin } from '../../core/types';
 
@@ -225,6 +231,8 @@ function ensureShapeGeometry(val: unknown): ShapeGeometry | null {
       return {
         type: 'circle',
         radius: ensureAnimatableProperty(s.radius, 'Radius', 'number', 80),
+        // B63: ellipse vertical radius (absent = circle).
+        ...(s.radiusY !== undefined && s.radiusY !== null ? { radiusY: ensureAnimatableProperty(s.radiusY, 'Radius Y', 'number', 80) } : {}),
         fillColor,
         strokeColor,
         strokeWidth,
@@ -258,7 +266,10 @@ function ensureShapeGeometry(val: unknown): ShapeGeometry | null {
                 closed: typeof k.closed === 'boolean' ? k.closed : true,
                 ...(interp ? { interpolation: interp } : {}),
                 ...ease,
-                ...(k.align === 'auto' ? { align: 'auto' as const } : {}),
+                ...(k.align === 'auto' ? { align: 'auto' as const } : k.align === 'vertices' ? { align: 'vertices' as const } : {}),
+                // B83: per-pose extra contours (holes / islands); kept even when empty (a contour-less pose
+                // of a contoured morph means "no contours here", not "use the static holes").
+                ...(Array.isArray(k.holes) ? { holes: (k.holes as unknown[]).filter((h): h is PathVertex[] => Array.isArray(h)) } : {}),
               };
             })
         : undefined;
@@ -433,6 +444,13 @@ function ensureMaskPathKeyframes(val: unknown): NonNullable<Mask['pathKeyframes'
     .sort((a, b) => a.frame - b.frame);
 }
 
+function ensureMaskBlocks(b: Record<string, unknown>): NonNullable<Mask['blocks']> {
+  return {
+    ...normalizeBlockParams(b as Partial<Omit<NonNullable<Mask['blocks']>, 'progress'>>),
+    progress: ensureAnimatableProperty(b.progress, 'Block Progress', 'number', 0),
+  };
+}
+
 function ensureMasks(val: unknown): Mask[] | undefined {
   if (!Array.isArray(val) || val.length === 0) return undefined;
   const validTypes: MaskType[] = ['rectangle', 'ellipse', 'star', 'polygon'];
@@ -463,6 +481,8 @@ function ensureMasks(val: unknown): Mask[] | undefined {
       // B10e - mask mode (absent = legacy intersect) + edge expansion.
       ...(isMaskMode(m.mode) ? { mode: m.mode } : {}),
       ...(isObject(m.expansion) ? { expansion: ensureAnimatableProperty(m.expansion, 'Mask Expansion', 'number', 0) } : {}),
+      // B54 - pixel-block dissolve / build-on: sanitized params + the keyed progress (rendered per pixel).
+      ...(isObject(m.blocks) ? { blocks: ensureMaskBlocks(m.blocks as Record<string, unknown>) } : {}),
     });
   }
   return masks.length > 0 ? masks : undefined;
@@ -507,6 +527,11 @@ function validateLayer(raw: unknown): Layer | null {
     // B10b - preserve the track-matte mode (else stripped on save/load).
     ...(r.trackMatte === 'alpha' || r.trackMatte === 'alphaInv' || r.trackMatte === 'luma' || r.trackMatte === 'lumaInv' ? { trackMatte: r.trackMatte } : {}),
     ...(typeof r.labelColor === 'string' ? { labelColor: r.labelColor } : {}),
+    // B76 rig role marker (design-kit parts): preserved so it survives save / load.
+    ...(typeof r.rigRole === 'string' && r.rigRole ? { rigRole: r.rigRole.slice(0, 80) } : {}),
+    // B81 true 3D parenting (card-swarm cluster) + card decals: preserved so they survive save / load.
+    ...(r.orbitChildren === true ? { orbitChildren: true } : {}),
+    ...(r.sortWithParent === true ? { sortWithParent: true } : {}),
     // M14 reframe constraints - preserve through the round-trip (else stripped on save/load,
     // the same data-loss class that bit cloner/precomp).
     ...(isObject(r.constraints) ? { constraints: r.constraints as unknown as LayerConstraints } : {}),
@@ -542,6 +567,8 @@ function validateLayer(raw: unknown): Layer | null {
         // M21 - preserve linked-style refs (else stripped on save/load).
         ...(typeof r.fillStyleId === 'string' ? { fillStyleId: r.fillStyleId } : {}),
         ...(typeof r.strokeStyleId === 'string' ? { strokeStyleId: r.strokeStyleId } : {}),
+        // B38 glass material (else stripped on save/load); absent stays absent.
+        ...((): { glass?: ShapeGlass } => { const g = sanitizeShapeGlass(r.glass, (v, name, d) => ensureAnimatableProperty(v, name, 'number', d)); return g ? { glass: g } : {}; })(),
       } as ShapeLayer;
     }
     case 'text': {
@@ -587,6 +614,10 @@ function validateLayer(raw: unknown): Layer | null {
       const decode = ensureTextDecode(r.decode);
       const textPath = ensureTextPath(r.textPath);
       const caret = normalizeTextCaret(r.caret);
+      const typing = normalizeTextTyping(r.typing);
+      const counter = normalizeTextCounter(r.counter);
+      const firstStyle = textContent.spans[0]?.style;
+      const styleKeys = firstStyle ? normalizeTextStyleKeys(r.styleKeys, firstStyle) : null;
       return {
         ...baseFields,
         type: 'text',
@@ -598,9 +629,12 @@ function validateLayer(raw: unknown): Layer | null {
         ...(typeof r.strokeStyleId === 'string' ? { strokeStyleId: r.strokeStyleId } : {}),
         ...(animators ? { animators } : {}),
         ...(decode ? { decode } : {}),
+        ...(counter ? { counter } : {}),
+        ...(styleKeys ? { styleKeys } : {}),
         ...(textPath ? { textPath } : {}),
         ...(r.reflowHidden === true ? { reflowHidden: true } : {}),
         ...(caret ? { caret } : {}),
+        ...(typing ? { typing } : {}),
       } as TextLayer;
     }
     case 'group': {
@@ -724,6 +758,12 @@ function validateLayer(raw: unknown): Layer | null {
         stagger: isObject(r.stagger) ? r.stagger : { delaySeconds: 0 },
         renderCount: typeof r.renderCount === 'number' ? r.renderCount : 500,
         dataBinding: isObject(r.dataBinding) ? r.dataBinding : undefined,
+        // B60: per-instance source layer ids (strings only; absent = one source).
+        ...(Array.isArray(r.sources) && r.sources.some((x) => typeof x === 'string')
+          ? { sources: (r.sources as unknown[]).filter((x): x is string => typeof x === 'string') } : {}),
+        // B60 follow-up: source order ('random' only; absent = cycle) and its integer seed.
+        ...(r.sourceOrder === 'random' ? { sourceOrder: 'random' } : {}),
+        ...(typeof r.sourceSeed === 'number' && Number.isFinite(r.sourceSeed) ? { sourceSeed: Math.trunc(r.sourceSeed) } : {}),
       } as unknown as Layer;
     }
     case 'adjustment': {
@@ -880,6 +920,10 @@ function ensureBackgroundLayer(val: unknown): BackgroundLayer | null {
 function ensureBackground(val: unknown): Background {
   if (isObject(val) && Array.isArray((val as Record<string, unknown>).layers)) {
     const rawLayers = (val as Record<string, unknown>).layers as unknown[];
+    // B57 / B61: an EXPLICITLY empty background is a precompose's transparent background (core/precompose.ts;
+    // the UI never removes a composition's last background layer). Keep it, or a reloaded precomp gains an
+    // opaque default box that hides everything below it and turns every pixel of an effect's input opaque.
+    if (rawLayers.length === 0) return { layers: [] };
     const layers = rawLayers.map(ensureBackgroundLayer).filter((l): l is BackgroundLayer => l !== null);
     if (layers.length > 0) return { layers };
   }

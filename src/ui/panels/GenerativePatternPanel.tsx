@@ -6,6 +6,7 @@ import { parsePatternConfig, serializePatternConfig } from '../../patterns/confi
 import type { PatternConfig, PatternType } from '../../patterns/types';
 import { PATTERN_TYPES } from '../../patterns/types';
 import { PATTERN_PRESETS, PALETTES } from '../../patterns/presets';
+import { BLOB_DEFAULTS } from '../../patterns/blobField';
 import { VFX_ELEMENTS } from '../../core/vfx/vfxElements';
 
 type Knob = 'scale' | 'rotation' | 'warp' | 'contrast';
@@ -14,6 +15,7 @@ const TYPE_LABEL: Record<PatternType, string> = {
   waves: 'Waves', plasma: 'Plasma', kaleidoscope: 'Kaleidoscope', mosaic: 'Mosaic',
   clouds: 'Clouds', voronoi: 'Voronoi', rings: 'Rings', spiral: 'Spiral',
   interference: 'Interference', gradient: 'Gradient Sweep', warp: 'Warp',
+  blobField: 'Blob Field',
 };
 
 const rgbToHex = (c: [number, number, number]) => '#' + c.map((v) => Math.round(Math.min(1, Math.max(0, v)) * 255).toString(16).padStart(2, '0')).join('');
@@ -108,7 +110,19 @@ export function GenerativePatternPanel({ layer }: { layer: GenerativePatternLaye
       <Slider label="Warp" value={layer.patternAnim.warp.defaultValue as number} min={0} max={1.5} step={0.02} onChange={(v) => setKnob('warp', v)} onKey={() => keyKnob('warp')} />
       <Slider label="Contrast" value={layer.patternAnim.contrast.defaultValue as number} min={0} max={1.5} step={0.02} onChange={(v) => setKnob('contrast', v)} onKey={() => keyKnob('contrast')} />
       <Slider label="Speed" value={cfg.speed} min={0} max={3} step={0.05} onChange={(v) => set('speed', v)} />
-      <Slider label="Complexity" value={cfg.complexity} min={1} max={8} step={1} onChange={(v) => set('complexity', v)} />
+      {cfg.type === 'blobField' ? (
+        <>
+          {/* B58 blob field: Floor 0 = full-frame mesh gradient, > 0 = billowing cloud floor */}
+          <Slider label="Blobs" value={cfg.blobCount ?? BLOB_DEFAULTS.blobCount} min={1} max={16} step={1} onChange={(v) => set('blobCount', v)} />
+          <Slider label="Seed" value={cfg.seed ?? BLOB_DEFAULTS.seed} min={0} max={99} step={1} onChange={(v) => set('seed', v)} />
+          <Slider label="Floor" value={cfg.floor ?? BLOB_DEFAULTS.floor} min={0} max={1} step={0.01} onChange={(v) => set('floor', v)} />
+          <Slider label="Lumps" value={cfg.lumps ?? BLOB_DEFAULTS.lumps} min={0} max={0.5} step={0.01} onChange={(v) => set('lumps', v)} />
+          <Slider label="Softness" value={cfg.softness ?? BLOB_DEFAULTS.softness} min={0.05} max={4} step={0.05} onChange={(v) => set('softness', v)} />
+          <Slider label="Billow" value={cfg.billow ?? BLOB_DEFAULTS.billow} min={0} max={2} step={0.05} onChange={(v) => set('billow', v)} />
+        </>
+      ) : (
+        <Slider label="Complexity" value={cfg.complexity} min={1} max={8} step={1} onChange={(v) => set('complexity', v)} />
+      )}
 
       {/* Palette */}
       <div>

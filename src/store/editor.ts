@@ -5,7 +5,7 @@ import { buildMaskReveal, type MaskRevealKind } from '../core/maskReveal';
 import { insertPointOnSegment, applyVertexType } from '../core/pathVertexOps';
 import { pathMaskFromComp } from '../core/maskPath';
 import type { TrackMatteMode } from '../core/trackMatte';
-import type { LayerEffect, RefineEdge, ImageLayer, AdjustmentLayer, TextSpanStyle } from '../core/types';
+import type { LayerEffect, RefineEdge, ImageLayer, AdjustmentLayer, PrecompLayer, TextSpanStyle } from '../core/types';
 import { setBaseSpanStyle, styleTextRange as styleSpansRange, clearTextStyles as clearSpanStyles, wordRanges, type RunStylePatch } from '../core/textRuns';
 import { clampRefineEdge } from '../core/refineEdge';
 import { cloneEffectStack } from '../core/effects/effectStack';
@@ -15,7 +15,7 @@ import { createComposition, createRectangleLayer, createCircleLayer, createStarL
 import { outlineText, canOutlineFont } from '../text/outlineText';
 import { computeBatchNames, type RenamePattern } from '../core/batchRename';
 import { detachStyleValue, type SharedStyle } from '../core/styles';
-import { DEFAULT_SHADOW, DEFAULT_GLOW, DEFAULT_BLUR } from '../core/effectDefaults';
+import { DEFAULT_SHADOW, DEFAULT_BLUR, defaultGlowFor } from '../core/effectDefaults';
 import type { AlignResult, LayerBounds } from '../core/align';
 import { getLayerBounds, computeTidyUp } from '../core/align';
 import { shapeToPathVertices, reversePathVertices, simplifyPathVertices, booleanLayers, booleanLayersWithHoles, type BooleanOp } from '../core/pathOps';
@@ -26,6 +26,7 @@ import { selectSameLayers, type SameAttr } from '../core/selection';
 import { applyReplaceSource, sourceFromLayer, sourceKindForLayer, type ReplaceSource } from '../core/replaceSource';
 import { computeReframe, applyAxisPosition, applyAxisScale, DEFAULT_CONSTRAINTS, type LayerConstraints, type ReframeInput } from '../core/reframe';
 import { serializePatternConfig, parsePatternConfig } from '../patterns/config';
+import { applyBlobFieldOptions, resolveBlobParams, type BlobFieldOptions } from '../patterns/blobField';
 import { DEFAULT_PATTERN } from '../patterns/presets';
 import { getVfxElement, buildVfxSweep } from '../core/vfx/vfxElements';
 import type { GenerativePatternLayer } from '../core/types';
@@ -47,11 +48,13 @@ import {
 } from '../core/keyframeOps';
 import { smoothSelected, wiggleSelected, exponentialScaleSelected } from '../core/keyframeAssistants';
 import { cloneValue } from '../core/keyframeValue';
-import { buildKeyframesFromSpecs, easeSpecError, CSS_EASES, type KeyframeSpec, type KeyframeEaseSpec, type ValueShape } from '../core/keyframeSpecs';
+import { buildKeyframesFromSpecs, canonicalEase, easeSpecError, CSS_EASES, type KeyframeSpec, type KeyframeEaseSpec, type ValueShape } from '../core/keyframeSpecs';
 import { planCameraMove, type CameraMoveTarget } from '../core/cameraMove';
 import { CORNER_PIN_KEYS, isConvexQuad } from '../core/cornerPin';
+import { applyShapeGlassInput, type ShapeGlassInput } from '../core/effects/glass';
 import type { CornerPin } from '../core/types';
-import { outlineFromSpec, type OutlineSpec } from '../core/shapeOutline';
+import { outlineFromSpec, polygonOutline, type OutlineResult, type OutlineSpec } from '../core/shapeOutline';
+import { evalPathKeyframes } from '../core/shapeModifiers';
 import { animPropTarget, canonicalKeyframePath, createAnimProp, staticValueFor } from '../core/animProps';
 import { identityRemapSeconds } from '../core/timeRemap';
 import { generatePresetKeyframes, getPresetById, type PresetContext } from '../core/animationPresets';
@@ -89,6 +92,8 @@ import { useImageSizePromptStore } from './imageSizePrompt';
 import { canParentTo } from '../core/layerSwitches';
 import { recomputeCompositionDuration, withMinimumDuration, getMinimumDuration } from '../core/compositionDuration';
 import { reflowCompressedTracks, isTrackCompressed } from '../core/trackCompression';
+import { mirrorSpanLineHeight } from '../core/textLineHeight';
+import { findStackFit, pinClipToTime, placeMatteAbove, placeOnNewTracks, planClipTiming, shiftLayerKeyframes, withTrackCompression, type ClipTimingSpec, type ClipTimingPlan, type NewTrackSpot } from '../core/trackPlacement';
 import { clampGroupResizeDelta, applyResizeDelta, type ResizeEdge } from '../core/clipResize';
 import { buildCaptionLayers, deoverlapCaptionLayers, type CaptionSegment, type CaptionOptions } from '../core/captions';
 import { computeExplodeElements, type SplitMode } from '../core/textExplode';
@@ -131,9 +136,34 @@ let textEditPreSel: SelectionState | null = null;
 /** One pose of `setShapeMorph`. */
 export interface MorphPoseSpec {
   frame: number;
-  shape: OutlineSpec;
+  /** An outline spec, or (B83) { type: 'layer', layerId, frame? }: another shape layer's outline with its
+   *  holes / islands, in that layer's own local space (its transform is not applied). */
+  shape: OutlineSpec | { type: 'layer'; layerId: string; frame?: number };
   /** Ease of the morph from this pose to the next (default linear). "spring" is not supported here. */
   ease?: KeyframeEaseSpec;
+}
+
+/** B83: resolve a morph pose spec (an outline spec or another shape layer's outline) to vertices + contours. */
+function poseOutline(composition: Composition, spec: MorphPoseSpec['shape'], i: number): OutlineResult {
+  if (spec && typeof spec === 'object' && (spec as { type?: unknown }).type === 'layer') {
+    const ref = spec as { type: 'layer'; layerId: string; frame?: number };
+    const src = composition.layers.find((l) => l.id === ref.layerId);
+    if (!src) throw new Error(`poses[${i}].shape.layerId: no layer with id "${ref.layerId}"`);
+    if (src.type !== 'shape') throw new Error(`poses[${i}].shape.layerId: layer "${ref.layerId}" is a ${src.type}, not a shape layer (outline text first with editor.outlineTextLayer)`);
+    const f = typeof ref.frame === 'number' && Number.isFinite(ref.frame) ? ref.frame : 0;
+    const sh = src.shape;
+    const clone = (vs: PathVertex[]): PathVertex[] => vs.map((v) => ({ position: [v.position[0], v.position[1]], handleIn: [v.handleIn[0], v.handleIn[1]], handleOut: [v.handleOut[0], v.handleOut[1]], vertexType: v.vertexType }));
+    if (sh.type === 'polygon') {
+      if (sh.pathKeyframes && sh.pathKeyframes.length > 0) {
+        const e = evalPathKeyframes(sh.pathKeyframes, f);
+        const hs = e.holes ?? sh.holes;
+        return { vertices: clone(e.vertices), closed: e.closed, ...(hs && hs.length ? { holes: hs.map(clone) } : {}) };
+      }
+      return { vertices: clone(sh.vertices), closed: sh.closed, ...(sh.holes && sh.holes.length ? { holes: sh.holes.map(clone) } : {}) };
+    }
+    return { vertices: clone(shapeToPathVertices(sh, f)), closed: true };
+  }
+  return outlineFromSpec(spec as OutlineSpec);
 }
 
 /** B53 corner pin corners for `setCornerPin` (comp px). */
@@ -156,6 +186,8 @@ export interface AddShapeOptions {
   /** Star points (default 5) and inner radius ratio (default 0.4). */
   points?: number;
   innerRatio?: number;
+  /** B63: polygon side count (default 6; `points` is accepted as an alias). */
+  sides?: number;
 }
 
 /**
@@ -290,8 +322,10 @@ function sel(ids: string[], activeId?: string | null): SelectionState {
   return { selectedIds: ids, activeId: activeId ?? (ids.length > 0 ? ids[ids.length - 1] : null), selectedKeyframes: [], selectedCurvePoints: [] };
 }
 
+// B69: adjustment layers are maskable too (the apply-below pass mixes by opacity x masks, so a mask
+// limits the adjustment to a region); their masks live in composition space like every other layer's.
 function layerSupportsMasks(layer: Layer): boolean {
-  return layer.type === 'shape' || layer.type === 'text' || layer.type === 'video' || layer.type === 'image' || layer.type === 'lottieIcon';
+  return layer.type === 'shape' || layer.type === 'text' || layer.type === 'video' || layer.type === 'image' || layer.type === 'lottieIcon' || layer.type === 'adjustment';
 }
 
 /** Layer kinds a Cloner can repeat as its source (M16). Excludes self/audio/group/precomp/layout. */
@@ -494,6 +528,15 @@ interface EditorState {
   addParticleLayer: () => void;
   addFieldSampledLayer: (configJSON?: string) => void;
   addGenerativePatternLayer: (configJSON?: string) => void;
+  /**
+   * B58: add a gradient-blob field (a generativePattern layer of type 'blobField') in one undo step:
+   * mode 'field' = full-frame mesh gradient of drifting soft colour blobs, 'floor' = billowing cloud
+   * floor with a lumpy top edge (transparent above it). Defaults: the whole composition, centred.
+   * Returns the new layer id and selects it.
+   */
+  addBlobField: (opts?: BlobFieldOptions & { x?: number; y?: number; width?: number; height?: number; name?: string }) => string;
+  /** B58: patch a blob field's options (any pattern layer becomes a blob field), one undo step. */
+  setBlobField: (layerId: string, patch: BlobFieldOptions) => void;
   /** B30 - add a practical-VFX element (light leak / film burn / atmosphere) as a full-frame screen/add
    *  generativePattern with its sweep keyframes, in one undoable command. */
   addVfxElement: (elementId: string) => void;
@@ -516,7 +559,12 @@ interface EditorState {
   /** Replace existing layers (by id) and append new ones (each on a track) as ONE undo step; the
    *  added layers become the selection (the first is active). Used by composite agent helpers (B51
    *  cursor rig). Throws (nothing applied) when an updated id does not exist. */
-  applyLayerEdits: (label: string, edits: { add?: Layer[]; update?: Layer[] }) => void;
+  /** `stack` (B70): put the listed ADDED layers on their own new tracks above everything ({ top: true }) or
+   *  directly under the lowest track of `belowLayerIds`, instead of the first free same-type track. */
+  applyLayerEdits: (label: string, edits: { add?: Layer[]; update?: Layer[]; stack?: { ids: string[] } & NewTrackSpot }) => void;
+  /** B70: move existing layers onto their own new tracks above every track (list order = bottom to top), one
+   *  undo step. Unlike reorderLayers (array order only) this changes what draws on top. */
+  raiseLayersToTop: (layerIds: string[], label?: string) => void;
   /** Insert a template with an ANIMATED build: layers appear one at a time (static), then the
    *  keyframes are applied - used by the AI-panel demo. Committed as one undo step. Returns cancel. */
   insertAnimationTemplateAnimated: (id: string, opts?: { perLayerMs?: number; onLayer?: (shown: number, total: number) => void; onKeyframes?: () => void; onDone?: () => void }) => { cancel: () => void };
@@ -591,7 +639,8 @@ interface EditorState {
   removeLayers: (ids: string[]) => void;
   updateLayerProperty: (layerId: string, path: string, value: unknown) => void;
   /** Track matte (B10b): set/clear how this layer is matted by the layer directly above it. */
-  setTrackMatte: (layerId: string, mode: TrackMatteMode | undefined) => void;
+  /** `matteLayerId` (B65): re-stack first so that layer is the one directly above (one undo step). */
+  setTrackMatte: (layerId: string, mode: TrackMatteMode | undefined, matteLayerId?: string) => void;
   /** Refine Edge (B10e): set / clear the colour-aware matte-edge refinement of an image / video layer.
    *  Batch-aware (a slider drag is one undo step). */
   setRefineEdge: (layerId: string, refine: RefineEdge | undefined) => void;
@@ -649,6 +698,13 @@ interface EditorState {
    */
   setCornerPin: (layerId: string, corners: CornerPinCorners | null) => void;
   /**
+   * B38: frosted / liquid glass on a shape layer - blur (+ brighten, saturate, rim bend, rim highlight)
+   * the composite below inside the shape outline. A partial patch over the current glass (or the
+   * defaults); numbers for blur / refraction / highlight / lightAngle set their base value and keep
+   * their keyframes (key them with setKeyframes "glass.blur" etc.). null removes the glass.
+   */
+  setShapeGlass: (layerId: string, glass: ShapeGlassInput | null) => void;
+  /**
    * B46: add a shape with explicit geometry and clean defaults (no stroke unless asked), in one undo
    * step. Returns the new layer id and selects it.
    */
@@ -660,7 +716,7 @@ interface EditorState {
    * true) matches start point + winding between poses so the morph does not twist. Fill, stroke,
    * materials and transform are kept. Throws on bad input (nothing applied).
    */
-  setShapeMorph: (layerId: string, poses: MorphPoseSpec[], align?: boolean) => void;
+  setShapeMorph: (layerId: string, poses: MorphPoseSpec[], align?: boolean | 'vertices') => void;
   /** Delete the keyframes at the given (propertyPath, frame) targets (undoable, batched). */
   deleteKeyframes: (layerId: string, targets: KeyframeTarget[]) => void;
   /** Set interpolation (and optional bezier handles) on the given keyframe targets (undoable, batched). */
@@ -815,7 +871,14 @@ interface EditorState {
   reorderLayers: (sourceIds: string[], targetIndex: number) => void;
 
   // Track operations
-  moveClipInTime: (layerId: string, newInPoint: number) => void;
+  /**
+   * Slide a clip so it starts at `newInPoint`. 'exact' (default, B65): the clip lands on that frame even on a
+   * magnetic track (the track turns absolute; on an overlap the clip moves to a new track directly above).
+   * 'timeline': the timeline-drag rules (a magnetic track re-packs by order, an overlap refuses the move).
+   */
+  moveClipInTime: (layerId: string, newInPoint: number, placement?: 'exact' | 'timeline') => void;
+  /** B65: set a clip's in / out, source range, speed and direction in one undo step (exact placement). */
+  applyClipTiming: (layerId: string, spec: ClipTimingSpec) => (ClipTimingPlan & { trackId: string | null; movedToNewTrack: boolean; unpinnedTrack: boolean; restacked?: boolean }) | null;
   moveClipToTrack: (layerId: string, targetTrackId: string, newInPoint?: number) => void;
   reorderClipToTrackPosition: (layerId: string, targetOrder: number, newInPoint?: number) => void;
   resizeClips: (layerIds: string[], edge: ResizeEdge, delta: number) => void;
@@ -835,6 +898,8 @@ interface EditorState {
   // gapless layout immediately when enabled; leaves clips in place (now freely
   // positionable) when disabled.
   toggleTrackCompression: (trackId: string) => void;
+  /** B65: set a track's magnetism explicitly (true = clips packed gaplessly from frame 0). */
+  setTrackCompressed: (trackId: string, compressed: boolean) => void;
 
   // Trim operations
   trimSplit: (layerId?: string) => void;
@@ -1043,15 +1108,15 @@ function ensureLayerHasTrack(composition: Composition, layer: Layer): Compositio
   if (layer.trackId) return composition;
   const trackType = layerTypeToTrackType(layer.type);
 
-  // Premiere-style: try to drop the new clip onto an existing same-type track
-  // first; only create a new track when none has open space at this time range.
-  const fitId = findFirstFit(
+  // Reuse an existing same-type track when one has open space at this time range AND sits above every
+  // clip already visible then (B84: a new layer draws on top, as in After Effects; the old first fit took the
+  // top-most free track, which could be under a shot's ground, so late layers rendered behind it). Only
+  // when no such track exists is a new top track created.
+  const fitId = findStackFit(
     composition.layers,
     composition.tracks,
-    layer.type,
-    layer.inPoint,
-    layer.outPoint,
-    layer.id,
+    { inPoint: layer.inPoint, outPoint: layer.outPoint, excludeLayerId: layer.id, audio: trackType === 'audio' },
+    (t) => trackAcceptsLayerType(t.type, layer.type),
   );
   if (fitId) {
     return {
@@ -2494,6 +2559,73 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     });
   },
 
+  addBlobField: (opts) => {
+    const o = opts ?? {};
+    if (typeof o !== 'object' || Array.isArray(o)) throw new Error('addBlobField options must be an object');
+    const cfg = applyBlobFieldOptions(null, o);
+    const { composition, selection } = get();
+    const oldComp = composition;
+    const oldSel = selection;
+    const cw = composition.settings.width, ch = composition.settings.height;
+    const num = (v: unknown, d: number, name: string): number => {
+      if (v === undefined) return d;
+      if (typeof v !== 'number' || !Number.isFinite(v)) throw new Error(`${name} must be a finite number`);
+      return v;
+    };
+    const w = Math.max(2, num(o.width, cw, 'width'));
+    const h = Math.max(2, num(o.height, ch, 'height'));
+    const x = num(o.x, cw / 2, 'x');
+    const y = num(o.y, ch / 2, 'y');
+    const count = composition.layers.filter((l) => l.type === 'generativePattern').length;
+    const floorMode = resolveBlobParams(cfg).floor > 0;
+    const name = typeof o.name === 'string' && o.name.trim() ? o.name : `${floorMode ? 'Cloud Floor' : 'Blob Field'} ${count + 1}`;
+    const knobs = { scale: cfg.scale, rotation: cfg.rotationDeg, warp: cfg.warp, contrast: cfg.contrast };
+    const layer = createGenerativePatternLayer(name, x, y, w, h, serializePatternConfig(cfg), knobs, defaultClipFrames(composition));
+    const newComp = settleComposition(ensureLayerHasTrack({ ...composition, layers: [...composition.layers, layer] }, layer));
+    const newSel: SelectionState = sel([layer.id], layer.id);
+    exec({
+      label: floorMode ? 'Add Cloud Floor' : 'Add Blob Field',
+      execute: () => { set({ composition: newComp, selection: newSel }); },
+      undo: () => { set({ composition: oldComp, selection: oldSel }); },
+    });
+    return layer.id;
+  },
+
+  setBlobField: (layerId, patch) => {
+    const { composition } = get();
+    const layer = composition.layers.find((l) => l.id === layerId);
+    if (!layer) throw new Error(`no layer with id "${layerId}"`);
+    if (layer.type !== 'generativePattern') throw new Error(`setBlobField works on pattern layers made by addBlobField (not ${layer.type})`);
+    const prev = parsePatternConfig(layer.generativePattern.configJSON);
+    const next = applyBlobFieldOptions(prev, patch);
+    // The knobs the renderer reads live on patternAnim: a new number sets the base value, keys stay.
+    // Converting another pattern type seeds all three from the blob config.
+    const converting = prev.type !== 'blobField';
+    const knob = (p: AnimatableProperty, v: number | undefined, cfgV: number): AnimatableProperty => (v === undefined && !converting ? p : { ...p, defaultValue: cfgV });
+    const oldComp = composition;
+    const newComp = {
+      ...composition,
+      layers: composition.layers.map((l) => {
+        if (l.id !== layerId || l.type !== 'generativePattern') return l;
+        return {
+          ...l,
+          generativePattern: { ...l.generativePattern, configJSON: serializePatternConfig(next) },
+          patternAnim: {
+            ...l.patternAnim,
+            scale: knob(l.patternAnim.scale, patch.size, next.scale),
+            warp: knob(l.patternAnim.warp, patch.warp, next.warp),
+            contrast: knob(l.patternAnim.contrast, patch.contrast, next.contrast),
+          },
+        } as Layer;
+      }),
+    };
+    exec({
+      label: 'Set Blob Field',
+      execute: () => { set({ composition: newComp }); },
+      undo: () => { set({ composition: oldComp }); },
+    });
+  },
+
   addVfxElement: (elementId) => {
     const el = getVfxElement(elementId);
     if (!el) return;
@@ -3451,7 +3583,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     if (!layer) return;
     const current = (layer as unknown as Record<'shadow' | 'glow' | 'blur', { enabled?: boolean } | undefined>)[kind];
     if (current?.enabled) return; // already on - keep the user's existing params
-    const def = kind === 'shadow' ? DEFAULT_SHADOW : kind === 'glow' ? DEFAULT_GLOW : DEFAULT_BLUR;
+    const def = kind === 'shadow' ? DEFAULT_SHADOW : kind === 'glow' ? defaultGlowFor(layer) : DEFAULT_BLUR;
     // updateLayerProperty is itself undoable.
     get().updateLayerProperty(layerId, kind, current ? { ...current, enabled: true } : def);
   },
@@ -4047,12 +4179,16 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         value = setBaseSpanStyle(target.content.spans, baseStyle[1] as keyof TextSpanStyle, rawValue);
       }
     }
+    // B72: every text consumer (resolver, scene graph, overlays, snapping) reads animOverrides.lineHeight, so a
+    // write to the base span's lineHeight (what agents, kits and the style JSON use) also lands there while that
+    // override is unkeyed. Before this the span value was silently ignored.
+    const applyEdit = (l: Layer): Layer => mirrorSpanLineHeight(deepSet(l, path, value) as Layer, rawPath, rawValue);
     const history = useHistoryStore.getState();
     if (history.isUndoing || history.isBatching) {
       const { composition } = get();
       const layers = composition.layers.map((layer) => {
         if (layer.id !== layerId) return layer;
-        return deepSet(layer, path, value) as Layer;
+        return applyEdit(layer);
       });
       set({ composition: { ...composition, layers } });
       return;
@@ -4066,9 +4202,15 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
     const newLayers = composition.layers.map((l) => {
       if (l.id !== layerId) return l;
-      return deepSet(l, path, value) as Layer;
+      return applyEdit(l);
     });
-    const newComp = { ...composition, layers: newLayers };
+    let newComp = { ...composition, layers: newLayers };
+    // B65: an in-point typed on a clip of a magnetic track would be packed back by the next settle pass (and
+    // by a reload), so the track turns absolute first; no other clip changes time.
+    if (path === 'inPoint' && layer.trackId && value !== layer.inPoint) {
+      const track = composition.tracks.find((t) => t.id === layer.trackId);
+      if (track && isTrackCompressed(track)) newComp = withTrackCompression(newComp, track.id, false);
+    }
 
     exec({
       label: 'Update Property',
@@ -4331,6 +4473,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const at = ensureKeyframeProperty(layer, propertyPath);
     if (!at && /^transform\.(positionZ|rotationX|rotationY)$/.test(propertyPath)) throw new Error(`"${propertyPath}" exists on 3D layers only: make it a 3D card first (editor.toggleLayer3D); a camera layer is optional (without one the default camera frames the comp 1:1)`);
     if (!at && propertyPath.startsWith('cornerPin.')) throw new Error(`"${propertyPath}" needs a corner pin: call editor.setCornerPin(layerId, { topLeft, topRight, bottomRight, bottomLeft }) first`);
+    if (!at && propertyPath.startsWith('glass.')) throw new Error(`"${propertyPath}" needs a glass material: call editor.setShapeGlass(layerId, { blur }) on a shape layer first`);
     if (!at) throw new Error(`"${propertyPath}" is not an animatable property of this ${layer.type} layer (see agent.getLayer for its paths)`);
     const kfs = buildKeyframesFromSpecs(keyframes, { expected: valueShapeOf(at.prop), existing: at.prop.keyframes, merge: merge === true });
     const updated = deepSet(at.layer, `${at.path}.keyframes`, kfs) as Layer;
@@ -4399,6 +4542,31 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     });
   },
 
+  setShapeGlass: (layerId, glass) => {
+    const { composition } = get();
+    const layer = composition.layers.find((l) => l.id === layerId);
+    if (!layer) throw new Error(`no layer with id "${layerId}"`);
+    if (layer.type !== 'shape') throw new Error(`glass works on shape layers (not ${layer.type})`);
+    if (glass !== null && (!glass || typeof glass !== 'object' || Array.isArray(glass))) throw new Error('glass must be an object { blur?, refraction?, highlight?, lightAngle?, edgeWidth?, brightness?, saturation?, enabled? } or null');
+    const next = glass === null ? undefined : applyShapeGlassInput(layer.glass, glass);
+    const oldComp = composition;
+    const newComp = {
+      ...composition,
+      layers: composition.layers.map((l) => {
+        if (l.id !== layerId || l.type !== 'shape') return l;
+        if (next) return { ...l, glass: next } as Layer;
+        const { glass: _drop, ...rest } = l;
+        void _drop;
+        return rest as Layer;
+      }),
+    };
+    exec({
+      label: glass === null ? 'Remove Glass' : 'Set Glass',
+      execute: () => { set({ composition: newComp }); },
+      undo: () => { set({ composition: oldComp }); },
+    });
+  },
+
   addShapeLayer: (opts) => {
     const { composition, selection } = get();
     const oldComp = composition;
@@ -4427,10 +4595,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         if (layer.type === 'shape' && layer.shape.type === 'rectangle' && opts.radius !== undefined) layer.shape.borderRadius.defaultValue = Math.max(0, num(opts.radius, 'radius'));
         break;
       case 'circle': {
-        // An ellipse: a circle of radius min/2 stretched to w x h by the layer scale (the SDF circle has one radius).
-        const r = Math.min(w, h) / 2;
-        layer = createCircleLayer(opts.name ?? `Ellipse ${count + 1}`, x, y, r, fill, frames);
-        if (w !== h) layer.transform.scale.defaultValue = [w / (2 * r), h / (2 * r)];
+        // B63: a true ellipse - radius = w / 2, radiusY = h / 2 at scale 1 (it used to be a circle stretched by the
+        // layer scale, so a later setShapeMorph / scale key inherited the stretch and the stroke thinned on one axis).
+        layer = createCircleLayer(opts.name ?? `Ellipse ${count + 1}`, x, y, w / 2, fill, frames);
+        if (w !== h && layer.type === 'shape' && layer.shape.type === 'circle') layer.shape.radiusY = createProperty('Radius Y', 'number', h / 2);
         break;
       }
       case 'star': {
@@ -4440,9 +4608,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         break;
       }
       case 'polygon': {
-        const hw = w / 2, hh = h / 2;
-        const corner = (px: number, py: number) => ({ position: [px, py] as Vec2, handleIn: [0, 0] as Vec2, handleOut: [0, 0] as Vec2, vertexType: 'corner' as const });
-        layer = createPolygonLayer(opts.name ?? `Polygon ${count + 1}`, x, y, [corner(-hw, -hh), corner(hw, -hh), corner(hw, hh), corner(-hw, hh)], true, fill, frames);
+        // B63: a regular polygon with `sides` (alias `points`, default 6) inscribed in the w x h ellipse, top vertex
+        // first (it used to ignore both and make a 4-corner rectangle path).
+        const sidesRaw = opts.sides ?? opts.points ?? 6;
+        const sides = Math.round(num(sidesRaw, opts.sides !== undefined ? 'sides' : 'points'));
+        if (sides < 3 || sides > 256) throw new Error('"sides" must be 3..256');
+        layer = createPolygonLayer(opts.name ?? `Polygon ${count + 1}`, x, y, polygonOutline(w, h, sides), true, fill, frames);
         break;
       }
       default:
@@ -4473,18 +4644,24 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       if (!p || typeof p !== 'object' || typeof p.frame !== 'number' || !Number.isFinite(p.frame)) throw new Error(`poses[${i}].frame must be a number`);
       const err = easeSpecError(p.ease);
       if (err) throw new Error(`poses[${i}].ease: ${err}`);
-      if (p.ease === 'spring') throw new Error(`poses[${i}].ease: "spring" is not supported for morphs; use backOut / elasticOut`);
-      const { vertices, closed } = outlineFromSpec(p.shape);
+      const e = canonicalEase(p.ease);
+      if (e === 'spring') throw new Error(`poses[${i}].ease: "spring" is not supported for morphs; use backOut / elasticOut`);
+      const { vertices, closed, holes } = poseOutline(composition, p.shape, i);
       const kf: PathKeyframe = { frame: Math.round(p.frame), vertices, closed };
-      const e = p.ease;
+      if (holes && holes.length > 0) kf.holes = holes;
       if (e === 'hold') kf.interpolation = 'hold';
       else if (Array.isArray(e)) kf.ease = [e[0], e[1], e[2], e[3]];
       else if (typeof e === 'string' && e in CSS_EASES) { const q = CSS_EASES[e as keyof typeof CSS_EASES]; kf.ease = [q[0], q[1], q[2], q[3]]; }
       else if (typeof e === 'string' && e !== 'linear') kf.ease = e as EasingName;
-      if (align !== false) kf.align = 'auto';
+      if (align === 'vertices') kf.align = 'vertices';
+      else if (align !== false) kf.align = 'auto';
       byFrame.set(kf.frame, kf);
     });
     const pathKeyframes = [...byFrame.values()].sort((a, b) => a.frame - b.frame);
+    // B83: when any pose has extra contours, the poses own the contours (a pose without them has none)
+    // and the static holes follow the first pose; otherwise the layer's static holes are kept (old rule).
+    const contoured = pathKeyframes.some((k) => k.holes && k.holes.length > 0);
+    if (contoured) for (const k of pathKeyframes) if (!k.holes) k.holes = [];
     const prev = layer.shape;
     const poly: PolygonShape = {
       ...(prev.type === 'polygon' ? prev : {}),
@@ -4495,6 +4672,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       strokeColor: prev.strokeColor,
       strokeWidth: prev.strokeWidth,
       ...(pathKeyframes.length > 1 ? { pathKeyframes } : { pathKeyframes: undefined }),
+      ...(contoured
+        ? (pathKeyframes[0].holes && pathKeyframes[0].holes.length > 0
+          ? { holes: pathKeyframes[0].holes, fillRule: 'evenodd' as const }
+          : { holes: undefined })
+        : {}),
     };
     const oldComp = composition;
     const newComp = { ...composition, layers: composition.layers.map((l) => (l.id === layerId ? { ...l, shape: poly } as Layer : l)) };
@@ -5497,13 +5679,35 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }
     const added = edits.add ?? [];
     let working: Composition = { ...composition, layers: composition.layers.map((l) => updates.get(l.id) ?? l) };
-    for (const l of added) working = ensureLayerHasTrack({ ...working, layers: [...working.layers, l] }, l);
+    const stacked = new Set(edits.stack?.ids ?? []);
+    for (const l of added) {
+      working = { ...working, layers: [...working.layers, l] };
+      if (!stacked.has(l.id)) working = ensureLayerHasTrack(working, l);
+    }
+    if (edits.stack && stacked.size) {
+      const spot: NewTrackSpot = 'top' in edits.stack ? { top: true } : { belowLayerIds: edits.stack.belowLayerIds };
+      const ids = added.filter((l) => stacked.has(l.id)).map((l) => l.id);
+      working = placeOnNewTracks(working, ids, spot, createTrack, (l) => layerTypeToTrackType(l.type));
+    }
     const newComp = settleComposition(working);
     const newSel: SelectionState = added.length ? sel(added.map((l) => l.id), added[0].id) : oldSel;
     exec({
       label,
       execute: () => { set({ composition: newComp, selection: newSel }); },
       undo: () => { set({ composition: oldComp, selection: oldSel }); },
+    });
+  },
+
+  raiseLayersToTop: (layerIds, label = 'Bring to Front') => {
+    const { composition } = get();
+    const ids = layerIds.filter((id) => composition.layers.some((l) => l.id === id));
+    if (ids.length === 0) return;
+    const oldComp = composition;
+    const newComp = settleComposition(placeOnNewTracks(composition, ids, { top: true }, createTrack, (l) => layerTypeToTrackType(l.type)));
+    exec({
+      label,
+      execute: () => { set({ composition: newComp }); },
+      undo: () => { set({ composition: oldComp }); },
     });
   },
 
@@ -6633,8 +6837,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const cw = composition.settings.width;
     const ch = composition.settings.height;
     const pos = layer.transform.position.defaultValue;
-    const cx = Array.isArray(pos) ? pos[0] : cw / 2;
-    const cy = Array.isArray(pos) ? pos[1] : ch / 2;
+    // An adjustment layer has no placement of its own (it covers the frame; position stays 0, 0): its
+    // first mask starts centred on the composition.
+    const placed = layer.type !== 'adjustment' && Array.isArray(pos);
+    const cx = placed && Array.isArray(pos) ? pos[0] : cw / 2;
+    const cy = placed && Array.isArray(pos) ? pos[1] : ch / 2;
     const mask = createMask(type, cx, cy, cw * 0.4, ch * 0.4);
 
     const newLayers = composition.layers.map((l) => {
@@ -6752,13 +6959,19 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     });
   },
 
-  setTrackMatte: (layerId, mode) => {
+  setTrackMatte: (layerId, mode, matteLayerId) => {
     const { composition } = get();
     const layer = composition.layers.find((l) => l.id === layerId);
     if (!layer) return;
     const oldComp = composition;
-    const newLayers = composition.layers.map((l) => (l.id === layerId ? ({ ...l, trackMatte: mode } as Layer) : l));
-    const comp: Composition = { ...composition, layers: newLayers };
+    let base = composition;
+    if (mode && matteLayerId) {
+      const placed = placeMatteAbove(composition, layerId, matteLayerId, createTrack, (l) => layerTypeToTrackType(l.type));
+      if (!placed) return;
+      if (placed !== composition) base = settleComposition(placed);
+    }
+    const newLayers = base.layers.map((l) => (l.id === layerId ? ({ ...l, trackMatte: mode } as Layer) : l));
+    const comp: Composition = { ...base, layers: newLayers };
     exec({ label: mode ? 'Set Track Matte' : 'Clear Track Matte', execute: () => set({ composition: comp }), undo: () => set({ composition: oldComp }) });
   },
 
@@ -6963,7 +7176,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     });
   },
 
-  moveClipInTime: (layerId, newInPoint) => {
+  moveClipInTime: (layerId, newInPoint, placement = 'exact') => {
     const { composition } = get();
     const layer = composition.layers.find((l) => l.id === layerId);
     if (!layer) return;
@@ -6972,6 +7185,19 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     // No upper wall - the timeline expands to fit. Only floor at 0.
     const clamped = Math.max(0, newInPoint);
     const newOutPoint = clamped + duration;
+
+    if (placement === 'exact') {
+      const pinned = pinClipToTime(composition, layerId, clamped, newOutPoint, createTrack, (l) => layerTypeToTrackType(l.type));
+      if (!pinned) return;
+      const oldExact = composition;
+      const exactComp = settleComposition(pinned.comp);
+      exec({
+        label: 'Move Clip',
+        execute: () => { set({ composition: exactComp }); },
+        undo: () => { set({ composition: oldExact }); },
+      });
+      return;
+    }
 
     if (layer.trackId) {
       if (!canPlaceClipOnTrack(composition.layers, layer.trackId, layerId, clamped, newOutPoint)) return;
@@ -6988,6 +7214,31 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       execute: () => { set({ composition: newComp2 }); },
       undo: () => { set({ composition: oldComp }); },
     });
+  },
+
+  applyClipTiming: (layerId, spec) => {
+    const { composition } = get();
+    const layer = composition.layers.find((l) => l.id === layerId);
+    if (!layer) return null;
+    const plan = planClipTiming(layer, composition.settings.frameRate, spec); // throws on a bad spec
+    let next = shiftLayerKeyframes(layer, plan.keyframeShift);
+    if (next.type === 'video' && plan.startOffset !== undefined) {
+      next = { ...next, video: { ...next.video, startOffset: plan.startOffset, playbackRate: plan.playbackRate ?? next.video.playbackRate, reversed: plan.reversed ? true : undefined } };
+    } else if (next.type === 'audio' && plan.startOffset !== undefined) {
+      next = { ...next, audio: { ...next.audio, startOffset: plan.startOffset } };
+    }
+    const withLayer = { ...composition, layers: composition.layers.map((l) => (l.id === layerId ? next : l)) };
+    const pinned = pinClipToTime(withLayer, layerId, plan.inPoint, plan.outPoint, createTrack, (l) => layerTypeToTrackType(l.type), { restackOnJump: true });
+    if (!pinned) return null;
+    const oldComp = composition;
+    const newComp = settleComposition(pinned.comp);
+    exec({
+      label: 'Clip Timing',
+      execute: () => { set({ composition: newComp }); },
+      undo: () => { set({ composition: oldComp }); },
+    });
+    const placed = newComp.layers.find((l) => l.id === layerId);
+    return { ...plan, inPoint: placed?.inPoint ?? plan.inPoint, outPoint: placed?.outPoint ?? plan.outPoint, trackId: placed?.trackId ?? pinned.trackId, movedToNewTrack: pinned.movedToNewTrack, unpinnedTrack: pinned.unpinnedTrack, ...(pinned.restacked ? { restacked: true } : {}) };
   },
 
   moveClipToTrack: (layerId, targetTrackId, newInPoint) => {
@@ -7244,6 +7495,19 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const newComp = { ...composition, tracks };
     exec({
       label: 'Clear Solo',
+      execute: () => { set({ composition: newComp }); },
+      undo: () => { set({ composition: oldComp }); },
+    });
+  },
+
+  setTrackCompressed: (trackId, compressed) => {
+    const { composition } = get();
+    const next = withTrackCompression(composition, trackId, !!compressed);
+    if (next === composition) return;
+    const oldComp = composition;
+    const newComp = settleComposition(next);
+    exec({
+      label: compressed ? 'Compress Track' : 'Uncompress Track',
       execute: () => { set({ composition: newComp }); },
       undo: () => { set({ composition: oldComp }); },
     });
@@ -7531,10 +7795,11 @@ function deepGet(obj: unknown, path: string): unknown {
 // Immutable set at `key` on either an object or an array. Arrays MUST be cloned
 // via slice() with a numeric index - spreading an array into `{...arr}` would
 // corrupt it into an index-keyed object (breaks `effects.0.params.1` paths).
-// Layers with an editable effect stack: image layers, and adjustment layers (whose stack applies to
-// everything below them - B11b-gpu).
-function hasEffectStack(l: Layer): l is ImageLayer | AdjustmentLayer {
-  return l.type === 'image' || l.type === 'adjustment';
+// Layers with an editable effect stack: image layers, adjustment layers (whose stack applies to
+// everything below them - B11b-gpu) and precomp layers (B57: the stack runs on the precomp texture,
+// which is how text / shape layers get effects).
+function hasEffectStack(l: Layer): l is ImageLayer | AdjustmentLayer | PrecompLayer {
+  return l.type === 'image' || l.type === 'adjustment' || l.type === 'precomp';
 }
 
 function cloneWith(container: unknown, key: string, value: unknown): unknown {

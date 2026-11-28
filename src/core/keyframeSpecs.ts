@@ -54,12 +54,46 @@ function shapeOf(v: unknown): ValueShape | null {
   return null;
 }
 
-/** Validate one ease spec; returns an error message or null. */
-export function easeSpecError(ease: unknown): string | null {
+// B67 - the reference breakdowns (refs/rNN/timeline.json, replicas notes) and most agents write eases
+// with the easings.net / After Effects names ('easeOutCubic', 'easeInOut', 'Easy Ease'). They resolve
+// to the canonical names here, so `setKeyframes` / `setShapeMorph` / cursor and camera moves accept
+// them without a failed round trip. Matching ignores case, spaces, '-' and '_'.
+const EASE_FAMILIES = ['sine', 'quad', 'cubic', 'quart', 'quint', 'expo', 'circ', 'back', 'elastic', 'bounce'] as const;
+const DIR_SUFFIX: Record<string, string> = { in: 'In', out: 'Out', inout: 'InOut' };
+/** After Effects' default Easy Ease (33.33% influence, zero speed at both keys). */
+export const EASY_EASE: CubicBezierQuad = [1 / 3, 0, 2 / 3, 1];
+
+/** Map an alias ease name onto the canonical spec; anything else is returned unchanged. */
+export function canonicalEase<T>(ease: T): T | KeyframeEaseSpec {
+  if (typeof ease !== 'string') return ease;
+  if (ease === 'linear' || ease === 'hold' || ease === 'spring' || ease in CSS_EASES || NAMED.has(ease)) return ease;
+  const k = ease.toLowerCase().replace(/[\s_-]+/g, '');
+  if (k === 'linear' || k === 'hold' || k === 'spring') return k;
+  if (k === 'ease') return 'ease';
+  if (k === 'easein') return 'ease-in';
+  if (k === 'easeout') return 'ease-out';
+  if (k === 'easeinout') return 'ease-in-out';
+  if (k === 'easyease') return EASY_EASE;
+  if (k === 'easyeasein') return [1 / 3, 0, 1, 1];
+  if (k === 'easyeaseout') return [0, 0, 2 / 3, 1];
+  for (const fam of EASE_FAMILIES) {
+    for (const dir of ['inout', 'in', 'out']) {
+      if (k === `ease${dir}${fam}` || k === `${fam}${dir}` || k === `${fam}ease${dir}`) {
+        const name = `${fam}${DIR_SUFFIX[dir]}`;
+        if (NAMED.has(name)) return name as EasingName;
+      }
+    }
+  }
+  return ease;
+}
+
+/** Validate one ease spec; returns an error message or null. Alias names (see `canonicalEase`) are valid. */
+export function easeSpecError(rawEase: unknown): string | null {
+  const ease = canonicalEase(rawEase);
   if (ease === undefined || ease === null) return null;
   if (typeof ease === 'string') {
     if (ease === 'linear' || ease === 'hold' || ease === 'spring' || ease in CSS_EASES || NAMED.has(ease)) return null;
-    return `unknown ease "${ease}"; use linear, hold, spring, ease, ease-in, ease-out, ease-in-out, a named ease (${EASING_NAMES.slice(0, 6).join(', ')}, ...) or [x1, y1, x2, y2]`;
+    return `unknown ease "${ease}"; use linear, hold, spring, ease, ease-in, ease-out, ease-in-out (or easeIn / easeOut / easeInOut), easyEase, a named ease (${EASING_NAMES.slice(0, 6).join(', ')}, ...; easings.net names like easeOutCubic also work) or [x1, y1, x2, y2]`;
   }
   if (Array.isArray(ease) && ease.length === 4 && ease.every((x) => typeof x === 'number' && Number.isFinite(x))) {
     if (ease[0] < 0 || ease[0] > 1 || ease[2] < 0 || ease[2] > 1) return 'cubic-bezier x1 and x2 must be within 0..1';
@@ -106,7 +140,7 @@ export function buildKeyframesFromSpecs(
     if (!sp || !fresh.includes(all[i])) continue;
     const k = all[i];
     const next = all[i + 1];
-    let ease = sp.ease ?? 'linear';
+    let ease = canonicalEase(sp.ease ?? 'linear');
     if (typeof ease === 'string' && ease in CSS_EASES) ease = CSS_EASES[ease as keyof typeof CSS_EASES];
     delete k.easing;
     if (Array.isArray(ease)) {

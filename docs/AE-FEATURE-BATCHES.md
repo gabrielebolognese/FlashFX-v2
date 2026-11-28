@@ -98,12 +98,12 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | B35 | Typing caret for type-on + UI-mock template kit (chat bubble with tail, search bar, notification, toggle pill, YouTube player, Discord card, fast-forward badge, "Scene N" card, section card) (Bricks gap #3) | 🟡 partial (caret + search bar / toggle / chat bubbles / notification shipped; YouTube, Discord, fast-forward, Scene N, section cards owed) | medium |
 | B36 | Text animator completion - keyframable selector Start/End, skew + fill-colour deltas, multi-line glyph stamps, save-your-own animator preset (Bricks gap #4) | ⬜ partial (Nov 2026 wave 1B: Start/End keys, skew, fill colour, seeded order + scatter, multi-line stamps done; save-your-own preset left) | medium |
 | B37 | SVG import as editable shape layers (path / rect / circle / ellipse / polygon / groups -> layers) instead of a flat raster (Bricks gap #5) | ⬜ | medium |
-| B38 | Liquid-glass material - backdrop blur + refraction inside a shape outline, edge light sweep; track-matted adjustment layers (Bricks gap #6) | ⬜ (browser) | **heavy** |
+| B38 | Liquid-glass material - backdrop blur + refraction inside a shape outline, edge light sweep; track-matted adjustment layers (Bricks gap #6) | ✅ (headless-GPU verified) | **heavy** |
 | B39 | Editor ergonomics - in-app eyedropper (EyeDropper API), relative numeric entry (+400 / *2), copy / paste easing between properties (Bricks gap #8) | ⬜ | light |
 | B40 | Property links - pick-whip UI + expressions that read another layer's property (Bricks gap #9) | ⬜ | medium |
 | B41 | Background gradients - renderer drops stops 5-6 (bug) + 4-corner (mesh-like) gradient (Bricks gap #10) | ⬜ (browser) | light |
 | B42 | Orbit / custom 2.5D debug view + bundle true italic serif faces for accent words (Bricks gap #11) | ⬜ | light |
-| B43 | Text raster bounds: synthesized-italic (oblique) glyphs are clipped at the left/right of the text box, e.g. a word-initial italic "f" loses its hook (found in tutorial sample-01) | ⬜ (browser) | light |
+| B43 | Text raster bounds: synthesized-italic (oblique) glyphs are clipped at the left/right of the text box, e.g. a word-initial italic "f" loses its hook (found in tutorial sample-01) | ✅ (headless-GPU verified) | light |
 | B44 | Agent/MCP: one stacking model - render order follows track order, so `reorderLayers` (agent AND the UI's Bring to Front / Send to Back) has no visible effect; make it move the clip's track, add agent stack actions (MCP audit F10) | ⬜ | light |
 | B45 | Agent/MCP: text layout correctness for agents - fixed / fixedWidth text boxes misplace per-glyph (animated, accent) stamps; range reveal presets (type-on, blur-in) show the first glyph before startFrame; optional agent clip length = comp length (MCP audit F9, F12, F13) | ✅ (Nov 2026, wave 1B, headless-GPU verified) | medium |
 | B46 | Agent/MCP: authoring ergonomics - `agent.setKeyframes` with per-keyframe ease (bezier / named / hold) in one call, `agent.addShape` with clean defaults (no stroke, name, fill, radius), `agent.measureString` (no layer), background stack ids + tracks in get_state (MCP audit F14, F16, F21, F22) | ✅ | light |
@@ -114,21 +114,42 @@ The implementation plan for [`AFTER-EFFECTS-PREMIUM-FEATURES.md`](./AFTER-EFFECT
 | B51 | Refs: agent-reachable cursor + click rig (expose `animation-templates/cursor.ts`: move-to-target, dwell, click squash, icon swap) - completes the B35 UI-mock kit (ref gap #5: r03 r06) | ✅ (headless-GPU verified) | light |
 | B52 | Refs: font library - more bundled families (wide grotesque, rounded display, pixel, monoline script, geometric with alternates), 500 / 600 weights, true italic serif, `agent.importFont {path}` over `engine/customFonts.ts` (ref gap #6: r01 r02 r03; absorbs the italic part of B42) | ✅ (headless-GPU verified; Damion replaces Apache-licensed Yellowtail, files are WOFF) | medium |
 | B53 | Refs: perspective cards - prove the 2.5D card render headless (`gpu:camera-cards`), corner pin for text / shape / precomp layers, agent camera move helpers (ref gap #4: r01 r03 r05 r07) | ✅ (headless-GPU verified) | medium |
-| B54 | Refs: seeded pixel-block dissolve / build-on for any layer + 8-bit sparkle generator (ref gap #10: r01 r07) | ⬜ | medium |
+| B54 | Refs: seeded pixel-block dissolve / build-on for any layer + 8-bit sparkle generator (ref gap #10: r01 r07) | ✅ | medium |
 | B55 | Refs: word roll / slot swap text primitive (stepped or rolled vertical word list, in-place swap, per-row colour) (ref gap #11: r03 r04) | ⬜ | light |
 | B56 | Refs: animatable text on path - keyframable `textPath.margin` + path-shape keyframes bound to the text (unfurl along a curl, text riding an opening mask edge) (ref gap #18: r05) | ⬜ | medium |
-| B57 | Refs: effect stack on text / shape / precomp layers (today image + adjustment only) + layer-local bulge / mesh warp with animatable centre and radius (ref gap #12: r01 r05) | ⬜ (browser) | **heavy** |
-| B58 | Refs: gradient-blob field generator (soft animated blurred colour blobs, lumpy cloud floor; seeded, frame-pure) (ref gap #13: r06) | ⬜ | medium |
+| B57 | Refs: effect stack on text / shape / precomp layers (today image + adjustment only) + layer-local bulge / mesh warp with animatable centre and radius (ref gap #12: r01 r05) | ✅ (headless-GPU verified; mesh warp not built) | **heavy** |
+| B58 | Refs: gradient-blob field generator (soft animated blurred colour blobs, lumpy cloud floor; seeded, frame-pure) (ref gap #13: r06) | ✅ (headless-GPU verified) | medium |
 | B59 | Refs: script / logo write-on - stroke-order centreline trim reveal for filled glyphs and logos (ref gap #14: r03) | ⬜ | medium |
-| B60 | Refs: cloner per-instance sources - render `ResolvedCloner.instanceSources` so each copy can be a different image (photo rings / grids) (ref gap #15: r04) | ⬜ (browser) | medium |
-| B61 | Refs: liquid drip / melt text (letters melt into glowing drips that run down and pool; seeded, frame-pure) (ref gap #21: r05, low priority) | ⬜ (browser) | **heavy** |
+| B60 | Refs: cloner per-instance sources - render `ResolvedCloner.instanceSources` so each copy can be a different image (photo rings / grids) (ref gap #15: r04) | ✅ (headless-GPU verified) | medium |
+| B61 | Refs: liquid drip / melt text (letters melt into glowing drips that run down and pool; seeded, frame-pure) (ref gap #21: r05, low priority) | ✅ (headless-GPU verified) | **heavy** |
 | B62 | Refs / F2: agent shape morph - `editor.setShapeMorph` (parametric poses: rounded rect / ellipse / star / polygon / points, per-pose ease incl. overshoot, auto start-point + winding alignment) + fix: path fill dropped half the polygon when the ring had a collinear point | ✅ | medium |
-| B63 | Replicas: shape render correctness - SDF stroke clipped at the shape bounds (rings get flat sides), rounded rect wider than ~2048 px draws lens ends, circle ignores non-uniform scale (no ellipse), setShapeMorph ellipse pose with w != h has wrong geometry, borderRadius not clamped to min(w,h)/2, shape materialConfig radial gradient renders nothing, setShapeMorph with one pose (or a hold first pose) renders nothing, addShapeLayer polygon has no sides (found replicating r02 r04 r06 r07) | ⬜ (browser) | medium |
-| B64 | Replicas: text paint - stroke-only text (transparent fill + stroke) renders nothing; vertical linear gradient fill (angle 180) drops horizontal strokes (T / f crossbars), angle 90 shows no top-to-bottom ramp (found replicating r02 r04) | ⬜ (browser) | light |
-| B65 | Replicas: agent video clip timing - video tracks are magnetic with no agent toggle: `editor.moveClipInTime` returns ok but does not move a video layer, every `import_media` of a video re-packs the earlier video clips back to back, `import_project` snaps inPoint-timed clips back to frame 0, a shape track matte over a video does not matte it (found replicating r07) | ⬜ | light |
-| B66 | Replicas: motion blur from parent transforms - a layer moved / zoomed by a parent (or grand-parent) null gets much weaker blur than the same motion on the layer itself (r02 f6-16 zoom smear) | ⬜ (browser) | medium |
-| B67 | Replicas: agent authoring ergonomics - setKeyframes accepts the breakdown ease names (easeOut, easeInOut, easeOutCubic ...; the replica kit aliases them today), createQuickText option to place by ink centre / baseline, glow defaults that show on coloured text, trim start angle option (12 o'clock), document that text layout trims leading / trailing spaces | ⬜ | light |
-| B68 | Replicas: export fails on video - `export_mp4` (the real exporter) aborts with "A valid external Instance reference no longer exists" when a scaled, position-keyed H.264 clip is in the comp, while render_frame of the same frames works (suspect a VideoFrame closed while still bound via importExternalTexture in the export path; found replicating r07, ties into the EX plan) | ⬜ (browser) | medium |
+| B63 | Replicas: shape render correctness - SDF stroke clipped at the shape bounds (rings get flat sides), rounded rect wider than ~2048 px draws lens ends, circle ignores non-uniform scale (no ellipse), setShapeMorph ellipse pose with w != h has wrong geometry, borderRadius not clamped to min(w,h)/2, shape materialConfig radial gradient renders nothing, setShapeMorph with one pose (or a hold first pose) renders nothing, addShapeLayer polygon has no sides (found replicating r02 r04 r06 r07) | ✅ (Nov 2026, headless-GPU verified, `gpu:shape-render` 18/18) | medium |
+| B64 | Replicas: text paint - stroke-only text (transparent fill + stroke) renders nothing; vertical linear gradient fill (angle 180) drops horizontal strokes (T / f crossbars), angle 90 shows no top-to-bottom ramp (found replicating r02 r04) | ✅ (Nov 2026, engine session 26 Nov, headless-GPU verified) | light |
+| B65 | Replicas: agent video clip timing - video tracks are magnetic with no agent toggle: `editor.moveClipInTime` returns ok but does not move a video layer, every `import_media` of a video re-packs the earlier video clips back to back, `import_project` snaps inPoint-timed clips back to frame 0, a shape track matte over a video does not matte it (found replicating r07) | ✅ (Nov 2026, `f134b80`, headless-GPU verified, `gpu:clip-timing` 11/11: exact placements make the clip's track absolute, `agent.setClipTiming`, `editor.moveClipInTime` exact by default, named `editor.setTrackMatte`, two matte renderer fixes; projects built this way reload byte-identically, older magnetic projects still re-pack on load) | light |
+| B66 | Replicas: motion blur from parent transforms - a layer moved / zoomed by a parent (or grand-parent) null gets much weaker blur than the same motion on the layer itself (r02 f6-16 zoom smear) | ✅ (Nov 2026, headless-GPU verified, `gpu:parent-blur` 8/8; keyframed parent chains already matched, the fix closes the first frame, parent motion paths and parent expressions) | medium |
+| B67 | Replicas: agent authoring ergonomics - setKeyframes accepts the breakdown ease names (easeOut, easeInOut, easeOutCubic ...; the replica kit aliases them today), createQuickText option to place by ink centre / baseline, glow defaults that show on coloured text, trim start angle option (12 o'clock), document that text layout trims leading / trailing spaces | ✅ (Nov 2026, engine session 26 Nov, headless-GPU verified) | light |
+| B68 | Replicas: export fails on video - `export_mp4` (the real exporter) aborts with "A valid external Instance reference no longer exists" when a scaled, position-keyed H.264 clip is in the comp, while render_frame of the same frames works (suspect a VideoFrame closed while still bound via importExternalTexture in the export path; found replicating r07, ties into the EX plan) | ✅ (browser) | medium |
+| B69 | Replicas: adjustment-layer masks - `editor.addMask` on an adjustment layer leaves the layer with no `masks` array (get_layer shows none), so an adjustment effect (glitch, RGB split) cannot be limited to a region; r01 f168-176 title glitch hits the whole frame (found replicating r01) | ✅ (headless-GPU verified, with B38) | light |
+| B70 | Replicas: cursor rig robustness - `findCursorRig` (cursorRig.ts) finds the icon children only by the names arrow / hand / ibeam, so renaming them breaks cursorMoveTo / cursorClick / cursorIcon; a layer added at a later frame goes onto the first same-type track with free space (`ensureLayerHasTrack` findFirstFit) and renders under later shots' grounds (ties to B44). Both confirmed in source, not render-tested (found replicating r03 f1838-2589) | ✅ (Nov 2026, B67 follow-up: icons found by outline, agent.addCursor on top, agent.bringToFront) | light |
+| B71 | Replicas: path stroke width profile - a path stroke has one width per layer: add taper / per-vertex width along the path (r03 S34 line fans merge into a tapering bundle, f3436-3525) (found replicating r03) | ⬜ (browser) | medium |
+| B72 | Replicas: kit / measurement ergonomics - replica-kit `text({lineHeight})` writes `content.spans.0.style.lineHeight` but the renderer reads `animOverrides.lineHeight` (option silently ignored; write both); `measure_text` returns an ink box equal to the line box for VT323 (not tight to the glyph ink) (found replicating r01) | ✅ (Nov 2026, B67 follow-up: span lineHeight mirrored to the override, measure_text glyphInk) | light |
+| B73 | Replicas: render defects to reproduce (low confidence) - `editor.setShapeDash` on a 1 px tall stroked rect or a 2-point open path renders nothing (r01 f206-300); a text selector with shape 'square', start 0 and keyed `end` hides almost every glyph (r01 probe3); transform.rotation keys on some 3D-toggled text layers do not render (r05 f21-32, probe6). Repro each in a headless gpu check before fixing (found replicating r01 r05) | ⬜ (browser) | light |
+| B74 | Refs: conic (angular) gradient fill on shapes with a keyframable start angle - the spinning hue colour-wheel ring (conic exists only on text fills today) (r08) | ✅ (headless-GPU verified) | light |
+| B75 | Refs: styled number counter on a text layer - count between values with decimals, thousands separators / K-M suffix, prefix / suffix, any font and style (italic), eased (r08 view multipliers, follower count) | ✅ (headless-GPU verified) | light |
+| B76 | Refs: design-tool UI kit - pen / crosshair / rotate / direct-select cursor icons, a selection box with handles that follows a layer's bounds, anchor squares, live dX / dY / W / H / angle tooltip readouts, smart-guide labels (extends the B51 cursor rig) (r11) | ✅ (headless-GPU verified) | medium |
+| B77 | Refs: text style keyframes - hold-keyed font family / weight / style switches on one text layer (type-style switcher) (r10) | ✅ (headless-GPU verified) | light |
+| B78 | Refs: soft freeform matte - a blurred / feathered shape used as a track matte keeps its blur (flower-shaped soft reveal) (r10) | ⬜ (browser) | medium |
+| B79 | Refs: person matte on footage (AI roto) - creator pops out over a divider (r09); fallback a pre-keyed stand-in clip | ⬜ (browser) | **heavy** |
+| B80 | Refs: outline text robustness - `editor.outlineTextLayer` on imported fonts, and glyphs with separate parts (i, j, !, :) keep the dot / second contour (r11, read in the code) | 🟡 multi-part glyphs fixed by B83 (even-odd contour fill); imported fonts still refused | light |
+| B81 | Refs: 3D card swarm - one call builds ~16 flat UI cards + ~12 prompt pills as 3D layers at different depths under one cluster whose yaw orbits them (true 3D parenting), seeded no-overlap layout, placeholder UI cards or image / layer sources; pairs with a camera dolly / tilt (r10 S10, S9.E2) | ✅ (headless-GPU verified) | medium |
+| B82 | Refs: typing prompt box - one-call editable prompt / search box (`agent.addPromptBox`): per-character typing schedule (cps / duration / explicit frames, eased rate), arrival colour (new glyphs pink -> white), gradient caret, send press + flash, chip row, slide-in / pop, centred typing, autoGrow, password mask (r10 S3 / S4 / S7 / S11 / S12, r06, r04) | ✅ (headless-GPU verified) | medium |
+| B83 | Refs: arbitrary shape morph - SVG path poses, bezier point poses, layer-outline poses, morphs between outlines with different numbers of contours (holes / islands pair up or shrink / grow), even-odd contour fill (r10 blob -> logo morphs, r11 letter edits, F2 heavy morphs) | ✅ (headless-GPU verified) | medium |
+| B84 | Replicas wave 3: track placement - a new layer (agent.addCardSwarm, agent.addPromptBox, a late import, a 1-frame layer) takes the top-most EXISTING track with room at its time range, so it can draw under layers created after it or under a shot's full-frame ground (r06 cursor, r07 clips, r09 alpha clip, r10 swarm + prompt box); workaround `agent.bringToFront` right after creating it | ✅ (Nov 2026, engine session 27 Nov, headless-GPU verified: new layers land above every clip visible in their range, agent.setClipTiming re-drops a clip that jumps; the kits already stacked on top) | medium |
+| B85 | Replicas wave 3: precomp-wrap robustness - `agent.applyLayerEffects` on a layer whose in / out are already set or that starts after frame 0 hides it or plays its contents late by that start and drops its parent; bulge sign flips on a wrapped layer; faint comb pattern on liquid-drip stream edges (r01, r05, r09); workaround: wrap while the layer starts at 0, then re-time the precomp | ⬜ | medium |
+| B86 | Replicas wave 3: cloner on a tilted orbit - the cloner applies scale before rotation (a squashed rotating cloner spins a rigid ellipse), the radial start angle is not keyframable, and addMask / setTrackMatte on a cloner do nothing (r08 24 chips on a tilted ring, back half behind the statue); fallback hand-keyed 3D chip cards | ⬜ | medium |
+| B87 | Replicas wave 3: design-kit units and targets - agent.addReadout shows comp px (the reference shows artboard units on a zoomed canvas) and clips longer values; addSelectionBox / addReadout reject text layers; a selection box is 10 layers and anchor squares one layer per vertex (r11); see B80 for outlineTextLayer on imported fonts | ⬜ | light |
+| B88 | Replicas wave 3: small API / render defects - setTextCounter drops a label's prefix / suffix when the number span merges back (r08); trim paths no-op on circle layers (r01); setShapeDash no-op on rectangles (r09); a named track matte breaks after a later import lands on the matted clip's track (r07); radial gradient position 100 = bbox corner, so a circle shows a disc edge (r08); MCP responses garble non-ASCII text (U+00B7 read back as U+00C2 U+00B7) (r08); thermalVision / gradientMap / duotone palettes not parameterised (r09); agent.addPromptBox is single-line (r10); agent.addCursor pre-scales its group by size / 20 (r10) | ⬜ | light |
+| B89 | Replicas wave 3: exporter colour on gradient grounds - export_mp4 renders blue radial / linear gradient background layers with a visibly violet, banded centre that render_frame did not show (r03 S1 / S7 / S10 / S11 / S21, fg 0.81 -> 0.73 on S7 with no build change; evidence artifacts/replicas/r03/w3diag/s7.png); also cloner copies ignore motionBlur (r04 photo ring) | ✅ (Nov 2026, engine session 27 Nov: the tint was a BT.601 decode of BT.709 video in the compare tooling, not the exporter (fixed in compare_replica.py stills + the reference extractor); cloner copies now streak along their own paths, headless-GPU verified) | medium |
 | PB1 | Playback: decoded-frame LRU on the mediabunny path (backward/oscillating scrubs hit the cache instead of re-walking the GOP) | ✅ | medium |
 | PB2a | Playback: keyframe-snap-then-refine on far seeks (kills the scrub freeze) | ✅ | medium |
 | PB2b | Playback: real half-res proxy decode (cuts 4K upload/convert cost during scrub) | ✅ | heavy |
@@ -681,7 +702,7 @@ Source: the YouTube tutorial-channel project compared every technique in the 4 B
 - **Likely files:** new pure `src/core/svgImport.ts`, `src/engine/media/importToPool.ts`, `src/store/editor.ts`.
 - **Verification:** gates + `scripts/verify-svg-import.mjs` (path commands incl. relative + arcs, transforms, groups, colours, malformed input fails soft).
 
-## B38 - Liquid-glass material ⬜ (browser)
+## B38 - Liquid-glass material ✅ (headless-GPU verified)
 - **Delivers:** a glass material on any shape: backdrop blur of the composite BELOW the shape inside its outline (rounded corners follow the shape), refraction / bump of that backdrop, brightness, an inner highlight, an edge light sweep (rotating conic highlight on the stroke), outside-only shadow; plus track-matted adjustment layers (an adjustment clipped to a shape). Reuse the adjustment-layer multipass (`matteSrcTex` + `ADJUST_SHADER`) rather than a new pipeline where possible.
 - **Source beats:** n0g4 0:00-0:20 (glass hook), 1:34-9:23 (refraction, frosted blur, light sweep), 14:15-17:26; x3SZ 0:22 (frosted card).
 - **Reference replication (Nov 2026):** needed by r06 f366-472 (frosted pill over a photo); ref gap #17. See `refs/GAP-MATRIX.md` in the task artifacts.
@@ -689,6 +710,26 @@ Source: the YouTube tutorial-channel project compared every technique in the 4 B
 - **Perf weight:** **heavy** (an extra scene copy + blur per glass layer; cap the count, reuse the blur pyramid).
 - **Likely files:** `src/engine/renderer.ts`, `src/core/effects/adjustmentComposite.ts` (CPU twin), shape material types/UI.
 - **Verification:** gates + CPU twin harness + a `gpu:glass` headless-Chrome pixel test (backdrop blurred only inside the outline, untouched frames byte-identical).
+- **Built (wave 2, Nov 2026):** `ShapeLayer.glass?: ShapeGlass` (blur / refraction / highlight / lightAngle keyframable, edgeWidth,
+  brightness, saturation; persisted, absent = an ordinary shape) -> `ResolvedLayer.glass`. The renderer reuses the adjustment
+  multipass: for each glass shape it inserts a synthesized adjustment pass right below it (`core/effects/glass.ts
+  glassAdjustmentLayer`: backdrop filters, the split-plan gaussian blur, then the mix-only pass mixes the blurred backdrop
+  back by an outline mask that traces the shape exactly as the B63 SDFs draw it: rounded rect, circle / ellipse, star,
+  path). The mix-only WGSL gained a glass branch (`adjustGlass` uniform): the outline field's signed distance + normal
+  bend the backdrop outward across the rim (`refraction` px over `edgeWidth`) and light the rim from `lightAngle`
+  (a keyed angle = the edge light sweep). The shape draws on top unchanged (low-alpha fill = tint, stroke = hairline
+  edge). Agent: `editor.setShapeGlass(layerId, patch | null)` (one undo step), keyframe paths `glass.*`, feature
+  `effects.glass`, AUTHORING section 14, recipe `glass-pill` (the r06 caption pill). Track-matted adjustments: B69
+  (adjustment layers take masks) shipped with it. Not built: the outside-only shadow (a layer drop shadow on a
+  low-alpha glass shape is faint), per-corner radii in the outline (the largest corner is used), glass on text,
+  3D / corner-pinned glass (skipped).
+- **Verified:** `verify:glass` 16/16 (input clamps, keys kept, save / load, resolve, outline == the drawn shape for
+  pill / rotated + scaled rect / ellipse / star / path, the synthesized pass, the mix twin: outside exact, rim bend,
+  light direction, opacity). `gpu:glass` 12/12 through the MCP: outside the outline byte-identical to the frame without
+  glass, frosted blur == twin (max 2 / 255), liquid glass with bend + highlight + filters == twin (max 2 / 255), keyed
+  lightAngle moves the lit rim, keyed blur 0 stays sharp, export / import round trip byte-identical, setShapeGlass(null)
+  byte-identical to before, undo restores, apply_recipe glass-pill. `gpu:adjustment` 37/37 (incl. the two B69 checks).
+  Evidence: task artifacts `engine/wave2/glass/`.
 
 ## B39 - Editor ergonomics ⬜
 - **Delivers:** an in-app eyedropper on colour rows (the browser EyeDropper API where available, fall back to sampling the preview canvas); relative / arithmetic numeric entry in `DragInput` (`+400`, `-20`, `*2`, `/2` relative to the current value; plain numbers stay absolute); copy easing only (paste the in/out ease of one keyframe onto selected keyframes of any property).
@@ -723,7 +764,7 @@ Source: the YouTube tutorial-channel project compared every technique in the 4 B
 - **Likely files:** `src/ui/panels/Camera3DView.tsx`, `src/engine/fonts.ts`, `public/fonts/`.
 - **Verification:** gates; fonts: `verify:*` for the manifest entry + headless screenshot of an italic accent.
 
-## B43 - text raster bounds for oblique / overhanging glyphs ⬜
+## B43 - text raster bounds for oblique / overhanging glyphs ✅ (headless-GPU verified)
 - **Delivers:** the text rasterizer pads its measured box by the glyph overhang (actualBoundingBoxLeft/Right) plus the synthetic oblique shear (about 0.2 x line height), so no glyph is clipped; applies to the whole-layer path and the per-glyph stamp path (animators, accent words).
 - **Source beats:** videos/sample-01 cold open (S05): the accent word "free" in Playfair Display, fontStyle italic, renders its "f" with the left hook cut off (shows as "1ree"). Worked around in the sample by keeping that word upright.
 - **Reference replication (Nov 2026):** needed by r02 f102-181, f196-252, f779-832 (italic overhangs on 'second', 'spends', 'Aren't louder.'); ref gap #16. See `refs/GAP-MATRIX.md` in the task artifacts.
@@ -731,6 +772,16 @@ Source: the YouTube tutorial-channel project compared every technique in the 4 B
 - **Perf weight:** light.
 - **Likely files:** `src/text/` raster/measure code, the per-glyph stamp path.
 - **Verification:** gates + headless screenshot of "free project file" with an italic accent on "free" (no clipped pixels at the box edge).
+- **Built (wave 2, Nov 2026):** `textAtlas.renderTextToCanvas` pads the raster symmetrically by the measured ink overhang
+  (Canvas `actualBoundingBox*` per line or per glyph with tracking, half the stroke, the B36 stamp shear, 1 px slack on both
+  axes once padded), then scans the padded raster's border and redraws with a larger pad if a face's metrics under-reported
+  its ink (Instrument Serif italic). The raster stays centred on the measured box, so the layout, `measure_text`, glyph slots
+  and the layer position do not move; corner pins still map the box. Upright text with no overhang keeps pad 0 / 0 and its
+  old raster. Applies to the whole-layer path and the per-glyph stamp path (animators, accent words).
+- **Verified:** `gpu:text-bounds` 20/20 against the pinned pre-B43 renderer (b7e9ba3): layout identical; every italic case
+  keeps more ink than before and stays within 2% of an unclipped Canvas-2D reference; the pinned ink stops short (defect
+  reproduced: stamps "jiffy" +21%, accent word "free" +1.3%, Playfair "f" hook); no ink on any padded raster's border; 7
+  upright cases byte-identical. Regression: `gpu:text-paint`, `gpu:text-kinetic`, `gpu:fonts`.
 
 ---
 
@@ -847,13 +898,26 @@ Source: the frame-by-frame breakdowns of the 7 motion references the owner sent 
 - **Likely files:** `src/core/camera3d.ts`, `src/core/mat4.ts`, `src/engine/renderer.ts` (card path), `src/core/tracking/` (homography), `src/agent/runtime.ts`, `scripts/gpu-camera-cards.mjs`.
 - **Verification:** gates + `verify:camera3d` + new `gpu:camera-cards` (pixel corners within 1 px of the projection) + `verify:corner-pin`.
 
-## B54 - Pixel-block dissolve / build-on ⬜
+## B54 - Pixel-block dissolve / build-on ✅
 - **Delivers:** a seeded pixel-block transition for any layer (block size px, order random / directional / from-centre, in or out, duration) as a reveal mask resolved per frame, plus an "8-bit sparkle" generator (stepped random squares around a target box, accent colour). Frame-pure (mulberry32), agent-reachable as presets.
 - **Source beats:** r01 f300-316 (card dissolves out in ~16 px blocks), f326-358 (builds on); r07 f5-55 (lime squares flicker around "Video editors!"), f926-975 (blocks around "Use my code").
 - **Depends on:** nothing (masks / matte coverage exist).
 - **Perf weight:** medium.
 - **Likely files:** `src/core/maskReveal.ts`, `src/core/maskCoverage.ts`, `src/animation-templates/`, `src/agent/featureManifest.ts`.
 - **Verification:** gates + `scripts/verify-pixel-blocks.mjs` (coverage per frame follows the seeded schedule, scrubbing is byte-identical) + headless render check.
+- **Built (wave 2, Nov 2026):** `Mask.blocks` (seeded block pattern on a rectangle region: size, seed, order random /
+  directional / center, angle, jitter, in / out, keyed progress), evaluated per pixel in the mask WGSL (`mask_blocksEval`,
+  a 2-slot run) with the CPU twin in `core/pixelBlocks.ts` + `core/maskCoverage.ts`; persisted through validation.
+  `agent.pixelBlockReveal` (one undo step) and `agent.pixelSparkle` (`animation-templates/pixelSparkle.ts`: a group of
+  hold-keyed squares crawling in a ring around a box); feature `masks.pixel-blocks`; recipes `pixel-dissolve`,
+  `pixel-sparkle`; `mcp/AUTHORING.md` section 7.
+- **Verified:** `verify:pixel-blocks` 20/20; `gpu:pixel-blocks` 6/6 through the MCP: the GPU mask equals the CPU twin
+  block by block (400 / 400 blocks at f5, f20, f26, f35), dissolve 400 -> 177 -> 85 -> 0 blocks, every block uniform
+  inside, scrubbing back renders the identical set, the sparkle puts 2661 lime px in the ring and 0 on the box.
+- **Re-verified + extended (2026-11-26, on `17531c2`):** `gpu:pixel-blocks` 11/11: build-on (`direction: "in"`) now proven
+  too, GPU == CPU twin square for square for a 30 deg directional sweep stepped on twos (f17 holds f16) and a centre-out
+  sweep at 7 frames each; blocks are only ever added; the `pixel-dissolve` and `pixel-sparkle` recipes run end to end
+  through `apply_recipe` (card 55696 -> 26028 -> 0 white px; 2783 lime px around the box, 0 on it).
 
 ## B55 - Word roll / slot swap ⬜
 - **Delivers:** a text primitive for a vertical word list that steps or rolls (one row per step, hold or eased), with a mask window, per-row colour / opacity (centre bright, neighbours dim) and in-place word swap inside a sentence (the line re-flows around the new word). Agent action `agent.addWordRoll({words, steps:[{frame}], ease})`.
@@ -871,21 +935,61 @@ Source: the frame-by-frame breakdowns of the 7 motion references the owner sent 
 - **Likely files:** `src/core/textPath.ts`, `src/core/types.ts`, `src/core/interpolation.ts`, `src/core/motionPath.ts`, `src/agent/featureManifest.ts`.
 - **Verification:** gates + `verify:text-kinetic` extension (glyph positions along an animated margin and a morphing path, frame-pure).
 
-## B57 - Effects on text / shape / precomp layers + layer-local warp ⬜ (browser)
+## B57 - Effects on text / shape / precomp layers + layer-local warp ✅ (headless-GPU verified; mesh warp not built)
 - **Delivers:** the `effects?: LayerEffect[]` stack on text, shape and precomp layers (today only `ImageLayer` / `AdjustmentLayer` carry it), rendered by sampling the layer's own texture, plus a layer-local bulge / mesh warp effect with an animatable centre and radius that does not touch what is behind.
 - **Source beats:** r01 f168-176 (glitch on the title text); r05 f466-578 ("hope i make it out of here" bulges and warps over footage).
 - **Depends on:** B50 for animated params; reuses the precomp RTT path for text / shapes.
 - **Perf weight:** **heavy** (per-layer RTT for non-image layers).
 - **Likely files:** `src/core/types.ts`, `src/engine/renderer.ts`, `src/core/effects/effectStack.ts`, `src/core/warp/`, the Inspector effects panel.
 - **Verification:** gates + `verify:effects` + `verify:warp` + a headless pixel check on a text layer (gpu:adjustment pattern; layers below stay byte-identical).
+- **Built (wave 2, Nov 2026):** precomp layers carry `effects?: LayerEffect[]` (resolved per frame with B50 keyed params into
+  `ResolvedPrecomp.effects`, run by the image pipeline's warp / spatial / colour slots on the precomp texture); text / shape /
+  video / lottie layers get a stack through `agent.applyLayerEffects` (precompose + stack; `editor.setLayerEffects` is now an
+  agent action too; the editor's effect-stack actions accept precomps). `bulge` takes `[amount, centreX, centreY, radius]`
+  (radius 0 = the old centred bulge; CPU twin `core/effects/layerEffects.ts`). `digitalGlitch` on a premultiplied source shifts
+  coverage with the slices. Precompose fixes found on the way (pre-existing): the precomp layer was placed at (0, 0) (its
+  centre on the top-left corner, so everything precomposed moved), the new sub-comp drew the default opaque background,
+  precomp textures (premultiplied) were composited as straight alpha (darkened edges), and a nested render overwrote the
+  parent's shared background uniforms. Not built: a free-form mesh warp (bulge / twirl / wave / ripple cover r05's beat).
+- **Verified:** `verify:layer-effects` 9/9 (parser, bulge twin == the original centred bulge to 1e-12 for 1-param stacks,
+  positioned bulge only inside its radius, precomp stack resolution + keyed params, persistence), `verify:precomp` 16/16,
+  `gpu:layer-effects` 6/6 through the MCP: precompose + identity stack == the plain frame (max delta 1), the glitch changes
+  the title and no row above / below it, the text stays editable inside the precomp, keyed amount 0 at f0 == plain, the
+  positioned bulge changes pixels only inside its circle; `gpu:camera-cards` 22/22 (precomp card + corner pin).
+- **Re-verified + extended (2026-11-26, on `17531c2`):** CPU twin of the slice glitch (`digitalGlitchSlices` / `hash21f32`
+  in `core/effects/layerEffects.ts`: 40 bands, re-roll every 2 frames, ~amount/2 bands slide, each by its own fixed shift
+  <= amount x 0.1 UV). `verify:layer-effects` 12/12 (3 new twin checks). `gpu:layer-effects` 8/8: on black, each glitched
+  27 px band equals the plain title shifted by the twin's shift (22 inked bands at f4 / f6, 7 slid, 15 still, worst mean
+  |dG| 0.01/255), and the `glitch-burst` recipe runs end to end through `apply_recipe` (clean at f30 / f38, glitched at
+  f33, 0 px changed above the word).
 
-## B58 - Gradient-blob field generator ⬜
+## B58 - Gradient-blob field generator ✅ (headless-GPU verified)
 - **Delivers:** a seeded generator layer of soft animated colour blobs (count, palette, blur, drift speed, lumpy top-edge "cloud floor" mode) so blurred-glow backgrounds are one layer instead of hand-placed blurred ellipses.
 - **Source beats:** r06 f97-372 (blue to white billowing cloud floor under the prompt bar). r03 and r07 hand-build similar glows today.
 - **Depends on:** nothing (generativePattern / procedural modules can host it).
 - **Perf weight:** medium.
 - **Likely files:** `src/procedural/`, `src/core/types.ts`, `src/agent/featureManifest.ts`.
 - **Verification:** gates + `scripts/verify-blob-field.mjs` (seeded, frame-pure) + headless render.
+- **Built (wave 2, Nov 2026):** new generative pattern type `blobField` (pattern id 11, appended; older ids unchanged) in
+  `src/patterns/blobField.ts`. Field mode (floor 0): a full-frame mesh gradient, N (1..16) seeded blobs on slow Lissajous
+  drifts, softmax-weighted blend of the blob colours (blob i = palette[i mod n]), fbm domain warp. Floor mode (floor > 0):
+  a billowing cloud floor, lumpy fbm top edge drifting with time, smooth alpha edge (transparent above), palette ramp by
+  depth below the edge plus billow noise. All randomness from an integer hash (lowbias32: Math.imul in TS, u32 in WGSL),
+  so the WGSL branch in `PATTERN_SHADER` matches the CPU twin within 1 level; optional config fields `blobCount`, `seed`,
+  `floor`, `lumps`, `softness`, `billow` ride in the pattern uniform's spare floats (21-23, 57-58) and persist inside
+  `configJSON` (kept by `parsePatternConfig` only when present, so older configs serialize unchanged). The CPU path
+  (`patterns/renderer.ts`, used for masked patterns) now writes alpha via `patternSample`. Agent: `editor.addBlobField
+  { opts }` (returns the id) and `editor.setBlobField { layerId, patch }`, one undo step each, feature
+  `particles.blob-field`; recipe `mcp/recipes/blob-field.json` (r06 rising floor, r10 fields); UI: Pattern panel type
+  "Blob Field" with Blobs / Seed / Floor / Lumps / Softness / Billow sliders and presets "Mesh Gradient" / "Cloud Floor".
+  Not done: `editor.addMask` still refuses pattern layers (`layerSupportsMasks`); clip a field with a track matte.
+- **Verified:** `verify:blob-field` 18/18 (ids, older types byte-identical on the CPU path, hash, bounds, determinism, frame
+  purity, seeds, drift, opaque field, floor transparency / edge position / lumpiness / billowing / ramp, palette reach,
+  param clamps, config round trip, agent options, persistence). `gpu:blob-field` 10/10 through the MCP: plasma
+  byte-identical to a pre-B58 baseline frame; mesh field GPU == twin (max 0.6 / 255 over 5184 px), drifts, setBlobField +
+  undo byte-exact, undo removes the layer; masked (CPU path) and track-matted fields == twin inside, ground outside;
+  cloud floor == twin over black (max 0.7 / 255), top quarter byte-identical to the ground. Evidence:
+  `artifacts/engine/wave2/blob-field/` (+ `evidence/` r06-style rising floor MP4 / strip, r10-style mesh seeds).
 
 ## B59 - Script / logo write-on ⬜
 - **Delivers:** stroke-order write-on for filled script glyphs and logos: derive a centreline (skeleton) from the outline, trim it over time and use the stroked centreline as the reveal matte of the filled shape.
@@ -895,21 +999,57 @@ Source: the frame-by-frame breakdowns of the 7 motion references the owner sent 
 - **Likely files:** `src/core/pathOps.ts`, `src/core/strokeOutline.ts`, `src/core/shapeModifiers.ts`, `src/core/trackMatte.ts`.
 - **Verification:** gates + `verify:pathops` extension (centreline coverage at t = 0, 0.5, 1).
 
-## B60 - Cloner per-instance sources ⬜ (browser)
+## B60 - Cloner per-instance sources ✅ (headless-GPU verified)
 - **Delivers:** the renderer draws `ResolvedCloner.instanceSources` (already resolved for data binding) so each copy can be a different image, plus an agent option `sources: [layerId...]` on the cloner (instance i uses source i mod n).
 - **Source beats:** r04 f432-529 (ring of different photo tiles spawning along the arc, one full 357 deg turn f448-518).
 - **Depends on:** nothing.
 - **Perf weight:** medium.
 - **Likely files:** `src/cloner/`, `src/core/interpolation.ts` (stamp expansion), `src/agent/featureManifest.ts`.
 - **Verification:** gates + `verify:cloner-render` extension (instance i draws source i mod n).
+- **Built (wave 2, Nov 2026):** `ClonerLayer.sources?: string[]` (persisted, strings only) -> `ResolvedCloner.sourceLayerIds`;
+  the cloner expansion in `resolveFrame` stamps `sources[i mod n]` for instance i (instance transforms unchanged: the main
+  `sourceRef` layer still drives distribution + stagger), and hides every listed layer. The renderer needed no change
+  (cloners render as stamps of resolved layers, so any layer type works: shapes, images, text, video). Agent:
+  `agent.setClonerSources` (one undo step; `[]` = one source), listed under feature `cloner.mograph`; AUTHORING section 8.
+- **Verified:** `verify:cloner-sources` 6/6 (cycling, identical instance transforms, hidden sources, unknown ids skipped,
+  empty list = old behaviour, persistence), `gpu:cloner-sources` 4/4 through the MCP (8 copies render red / green / blue /
+  logo image in order, the sources' own spot is empty, one undo returns to one source).
+- **Built (follow-up audit, Nov 26 2026):** the audit against `gpu:cloner-sources` found three real gaps and closed them.
+  (1) An extra source's own scale / rotation / opacity were dropped (every copy drew at the main source's transform,
+  so photos of different resolutions scaled to one tile size came out at different sizes): pure `src/cloner/sources.ts`
+  (`relativeSourceTransform` against the main source's settled transform, `settledFrame`), applied per stamp via
+  `ResolvedCloner.sourceRelative`; identity for the main source and for same-transform sources, so B60 output is
+  unchanged. (2) Data-bound cloners computed `instanceSources` but every copy drew the unmodified source: each one is now
+  resolved at the frame (`resolveDataBoundContent`, one-layer nested resolve with the module maps saved / restored) into
+  `ResolvedCloner.instanceContent`; explicit `sources` win. New `agent.setClonerData { layerId, data, bindings }` (paths
+  checked against the source, one undo step). (3) Only `i mod n`: `ClonerLayer.sourceOrder: 'random'` + `sourceSeed`
+  (seeded, scrub-stable pick, `pickSourceSlot`), persisted; `agent.setClonerSources` gains `order` / `seed` and returns
+  `picks`. Inspector > Cloner > "Sources per copy" (list, reorder, add, Cycle / Random, seed). AUTHORING section 8.
+- **Verified (follow-up):** `verify:cloner-sources` 11/11 (the 6 above unchanged + relative scale / rotation / opacity,
+  intro pop not divided out, random order, data-bound text rows + sources-win, order / seed persistence);
+  `gpu:cloner-sources` 8/8 (the 4 above + random order renders the returned picks, a 240 px photo scaled 0.5 draws at the
+  120 px photo's size (110 / 110 / 110 / 110 px), data rows [I, WWWW] render per copy, one undo removes the binding).
 
-## B61 - Liquid drip / melt text ⬜ (browser, low priority)
-- **Delivers:** letters that melt into glowing drips running down and pooling, as a seeded drip-path generator (per-glyph drip origins, gravity curve, pool) rendered as stroked pen paths with glow.
-- **Source beats:** r05 f110-210 ("ideas" melts into rainbow neon drips).
-- **Depends on:** B50 / B47 for animated glow.
-- **Perf weight:** **heavy**.
-- **Likely files:** `src/core/textOutline.ts`, `src/core/shapeModifiers.ts`, `src/procedural/`.
-- **Verification:** gates + `scripts/verify-drip.mjs` (seeded drip paths, frame-pure) + headless render.
+## B61 - Liquid drip / melt text ✅ (headless-GPU verified, Nov 2026, step "r08-r11 heavy gaps")
+- **Delivered (different from the plan above, which proposed stroked pen paths):** a texture-aware effect `liquidDrip`
+  (type 315, spatial stage of the image shader) plus `agent.liquidDrip`. Every output pixel walks UPSTREAM along a
+  drip flow field (down with a smooth sideways wobble, bending sideways near an optional floor) in fixed steps; the
+  first opaque source pixel is the stream origin, taken at full opacity in its straight colour if the walked distance
+  is within that column's seeded drip length (head fades over the last 20 %). Drips only fall from the lowest ink of a
+  column, so counters stay open and the word stays readable. Frame-pure (the animation is the keyed length).
+  Params `[length px, floor V, spacing, sway, seed, flow, variance]`; CPU twin + WGSL generated from one module
+  (`src/core/effects/liquidDrip.ts`). Text / shape layers go through the B57 comp-sized precomp wrap.
+- **Fix found on the way (pre-existing, B57):** `validation.ensureBackground` turned a precompose's explicitly empty
+  background into an opaque default solid on load, so after reopening a project every wrapped effect (glitch, bulge,
+  drip) drew an opaque navy box over everything below. An empty `layers: []` now stays empty.
+- **Evidence:** `verify:liquid-drip` 13/13 (identity at length 0, drips only downward and only from the lowest ink,
+  head fade, per-column variance with gaps, floor flow outward / one-sided, opaque streams from hairlines, compositing,
+  exact u32 PCG vs BigInt, purity, registry / WGSL / parser agree, empty background survives save / load);
+  `gpu:liquid-text` 10/10 through the MCP (WebGPU == CPU twin on 277,200 px, mean |diff| 0.002 / 255; the bar
+  itself byte-identical; coverage grows every step; f30 twice byte-identical; floor flow both sides; length 0
+  byte-identical to no effect; undo / redo; export + import byte-identical) + the r05-style "ideas" melt
+  (`engine/wave2/liquid-text/ld-ideas-contact-sheet.png`). Recipe `liquid-melt`, AUTHORING section 18.
+- **Limits:** reads the layer's own pixels only; flat-coloured streams (no liquid shading); up to 2 x 192 taps per pixel.
 
 ## B62 - Agent shape morph ✅ (Nov 2026, wave 1A; owner's F2 format: heavy morphs)
 **Delivered:** `PathKeyframe.ease` (named ease or cubic-bezier quad, overshoot allowed) and `PathKeyframe.align: 'auto'` (re-index the next pose to the start point + winding with the least squared travel, so rect -> circle does not twist); absent = the B8b linear index-0 morph, byte-identical. `core/shapeOutline.ts` builds bezier outlines (rounded rect, ellipse in 4 kappa arcs, star, regular polygon, free points), all starting at the top and running clockwise. Store action `setShapeMorph(layerId, poses, align?)` converts any shape layer to a path with the morph in one undo step (fill, stroke, materials, transform kept); agent action + `shapes.morph` feature; persistence of ease / align in `validation.ts`. **Bug fixed on the way:** `pathTessellation.earClip` stalled on rings with a collinear vertex (its inclusive point-in-triangle test blocks every ear) and filled only one triangle - a square starting at its top-middle filled half; resampled morph rings carry many collinear points. `cleanFillRing` drops the duplicated closing point, duplicates and collinear points before ear clipping (same filled region). **Verify:** `verify:shape-morph` (13 checks: outline geometry, legacy byte-identity, eases incl. overshoot, hold, alignment recovers shifted / reversed rings, frame purity, full fill area of every morph frame) + `gpu:anim-props` (morph renders byte-identically to static-path twins; square corner -> star tip -> circle on screen; one undo step).
@@ -919,7 +1059,7 @@ Source: the frame-by-frame breakdowns of the 7 motion references the owner sent 
 Found while rebuilding four of the owner's references frame by frame (artifacts `replicas/rNN/notes.md`, `gaps.json`). Each was
 worked around through agent actions in the replica builds; the workaround is listed so the fix can be checked against it.
 
-## B63 - Shape render correctness ⬜ (browser)
+## B63 - Shape render correctness ✅ (Nov 2026, headless-GPU verified)
 - **Delivers:** fixes for seven shape defects: (1) the SDF circle / rounded-rect stroke is centred on the edge but clipped at the
   shape bounds, so the outer half is cut (rings get flat sides, pill outlines lose their ends); (2) a rectangle whose width with
   borderRadius exceeds ~2048 layer px draws pointed lens-shaped ends; (3) a circle with non-uniform `transform.scale` renders as a
@@ -936,7 +1076,33 @@ worked around through agent actions in the replica builds; the workaround is lis
 - **Verification:** gates + `verify:shape-*` extension (stroke coverage outside the fill, ellipse from scale, radius clamp) + a
   `gpu:anim-props`-style headless pixel check of each case against its path-shape twin.
 
-## B64 - Text paint ⬜ (browser)
+- **Built (Nov 2026):** (1) the SDF quad is padded by half the stroke + a 2 px AA margin (`core/shapeSdf.ts`
+  `shapeSdfParams`, the renderer's `quadPad`), so strokes are never cut; an unstroked rectangle keeps its exact quad
+  (byte-identical). Circles draw at their true radius (the old 1.1x margin was read as the radius: every circle was 10 %
+  too large). (2) Corner radii scale with the layer's world scale and (5) clamp to half the short side: the "> 2048 px lens
+  ends" were an unscaled radius on a pill under a 0.5 null. (3) `CircleShape.radiusY` (keyframable `shape.radiusY`): an
+  ellipse, drawn by a robust closest-point ellipse SDF (CPU twin `ellipseDistance`); a non-uniform layer scale also gives
+  an ellipse; `addShapeLayer` circle w != h makes a true ellipse at scale 1. (4) The morph ellipse "wrong, larger geometry"
+  was the old stretch scale inherited by the morph (fixed by 3), and path / morph / polygon fills now take gradient
+  materials per pixel in the path shader (shared `FILL_WGSL`). (6) The "radial material renders nothing" config was
+  written in 0..1 units (layer opacity 1 %, stops at 0..1 %): materials are now read tolerantly (0..1 fractions,
+  missing ids / opacities / positions, RGBA array colours). (6b) A single-pose / hold sunburst (16 wedges through one
+  centre) made the ear clipper stall with 0 triangles: an unfinished ear clip now falls back to earcut. (7)
+  `addShapeLayer polygon` takes `sides` (alias `points`).
+- **Verified:** `npm run verify:shape-render` 10/10 (in `npm test`); `npm run gpu:shape-render` 18/18 on the fixed tree,
+  1/18 on the pre-B63 tree (every defect reproduced; the one pass compares two empty frames); plain rects, rounded rects
+  and path fills byte-identical before / after (a star differs by 1 level on 7 px).
+
+## B64 - Text paint ✅ (Nov 2026, engine session 26 Nov, headless-GPU verified)
+- **Built:** (1) the text resolver ignored `content.spans.N.style.strokeWidth` (it read only `animOverrides.strokeWidth`, default 0),
+  so outline-only text drew nothing and a stroke on filled text never showed: `core/interpolation.ts:textStrokeWidth` now takes a keyed
+  or non-zero override, else the span style (old projects: style width 0, byte-identical). (2) On the glyph-stamp path (animators,
+  accent words, text on a path) every 1-glyph raster built the gradient over its own box, so the ramp restarted in each letter (the
+  "missing crossbars" / "no top-to-bottom ramp" reads): `ResolvedText.fillFrame` gives each stamp the whole text box at the glyph's
+  home slot (`engine/textAtlas.ts:buildTextGradient` offset, folded into the raster cache key). The whole-layer raster was already right
+  at 90 / 180 / 270; the crossbar drop itself did not reproduce on the current branch (coverage within 1% of the solid twin).
+- **Verified:** `npm run gpu:text-paint` (render_frame pixels: coverage at 180 deg = solid twin on both paths, 90 / 270 ramps, stroke-only
+  outline drawn and thinner than the fill); `gpu:text-kinetic` 11/11 unchanged.
 - **Delivers:** outline-only text (transparent fill + `strokeColor` / `strokeWidth`) renders its stroke; a linear gradient fill at any
   angle keeps every glyph stroke (angle 180 drops the horizontal crossbars of T and f today) and angle 90 / 270 ramps top to bottom.
 - **Source beats:** r02 f264-366 (outlined question marks); r04 f355-431 (statement text gradient #151d24 to #306181).
@@ -944,31 +1110,88 @@ worked around through agent actions in the replica builds; the workaround is lis
 - **Verification:** gates + `verify:text-runs` extension + `gpu:text-kinetic` screenshot (crossbar pixels present, stroke-only glyph
   coverage > 0).
 
-## B65 - Agent video clip timing ⬜
-- **Delivers:** `editor.moveClipInTime` moves video layers (today it returns ok and the inPoint stays 0); `import_media` of a video no
-  longer re-packs earlier video clips back to back; a shape used as a track matte over a video mattes it in render_frame / export.
-- **Source beats:** r07 f191-368, f479-667, f763-823, f1053-1200 (webcam card, screen recording, demo previews, selfie card).
-- **Workarounds in the replicas:** each clip at frame 0 on its own track, padded with a frozen first frame up to the shot start, hold
-  opacity until the shot, outPoint at the shot end (reload-safe); square-cornered
-  webcam card instead of a matte.
-- **Verification:** gates + `gpu:mcp` extension (two clips imported, the first keeps its timing; moveClipInTime shifts the decoded
-  source frame; matte coverage pixel check).
+## B65 - Agent video clip timing ✅ (headless-GPU verified)
+- **Delivers:** exact clip timing for agents. Video tracks stay magnetic by default for the UI (CapCut-style), but every agent
+  placement turns the clip's track absolute first (no clip changes time), so a clip stays where it is put through later imports,
+  edits and a reload (`core/trackPlacement.ts` `pinClipToTime`).
+  - `agent.setClipTiming { layerId, timing }`: start / end / duration in comp frames, `sourceStart` / `sourceEnd` (source seconds),
+    `speed`, `reversed`, `moveKeyframes` (keyframes follow the clip, default on) in one undo step; pure planner
+    `planClipTiming` (source mapping of `core/timeRemap.ts`), readable errors, warnings (past the source end, Time Remap).
+  - `editor.moveClipInTime` is exact by default (`placement: 'timeline'` keeps the timeline-drag rules; the MiniTimeline uses it).
+  - `editor.setTrackCompressed { trackId, compressed }`; `get_state().tracks[].magnetic`.
+  - `editor.updateLayerProperty(layerId, "inPoint", v)` on a magnetic track pins the track (else the settle pass undid it).
+  - `editor.setTrackMatte(layerId, mode, matteLayerId?)`: re-stacks so the named layer is directly above (`placeMatteAbove`), so a
+    shape created after a video mattes it. resolveFrame and the placement helpers share one render-order comparator.
+  - Renderer (two track-matte bugs found by the proof, both pre-existing): (1) a frame whose only effect was a track matte never
+    mattered: `hasMatte` required the composite bind group, which is only built on the multipass path the matte alone never
+    entered, so every matte silently drew as two plain layers unless a blur / glow / shadow was also on screen (why r05's matte
+    worked and r07's did not). It now gates on the bind-group layout. (2) A layer used as a matte no longer draws on its own on
+    frames where the layer it mattes is off screen (After Effects hides the matte layer); only when the matte pipeline built.
+- **Source beats:** r07 f191-368, f479-667, f763-823, f1053-1200 (webcam card, screen recording, demo previews, selfie card);
+  r09 10 footage placements (f114-207, f256-296, f382-697).
+- **Verification:** `verify:clip-timing` (12 checks, in `npm test`: the old settle-pass repro, exact placement, planner maths
+  against resolveFrame's source frame, keyframe shift, matte re-stack paired by resolveFrame) and `gpu:clip-timing` (local: four
+  test clips with the source frame number burned in as binary blocks; moveClipInTime, setClipTiming, undo / redo, a later import
+  re-packs nothing, decoded source frames in render_frame, reload byte-identical, named track matte, real `export_mp4`, a matte that
+  is the frame's only effect; 11 checks).
+- **Not changed:** loading a project still re-packs magnetic tracks (old saves keep their behaviour); builds made with the new
+  actions save absolute tracks, so they reload as built. Re-rendering r05 now hides its two eye-matte shapes on the ~13 frames
+  where they outlive the clip / text they matte (f299-304, f340-347); no other replica uses a track matte.
 
-## B66 - Motion blur from parent transforms ⬜ (browser)
+## B66 - Motion blur from parent transforms ✅ (Nov 2026, headless-GPU verified)
+- **Built:** `core/interpolation.ts`: `getParentTransform` evaluates every ancestor as itself - its own expression
+  context (`withAncestorExpressionContext`; the chain used to read the CHILD's context, so a parent's expression was
+  ignored and a child's same-named expression replaced the parent's value) and its own motion path (was ignored);
+  the motion-blur previous sample (`computeMotionBlur`, `glyphMotionBlurContext`) is no longer clamped to the clip's
+  in-point, so a layer entering while its rig moves smears on its first frame (After Effects behaviour).
+- **Finding:** keyframed parent / grand-parent chains already produced the same descriptor as an unparented twin
+  (render_frame byte-identical, before and after); r02's weaker smear vs the reference is the blur length (raise the
+  comp shutter angle), not the parenting.
+- **Verified:** `verify:parent-blur` 8/8 (in `npm test`; 3 of them red on the old engine), `gpu:parent-blur` 8/8
+  (r02 rig vs twin byte-identical, first-frame streak 180 px vs 160 sharp, parent expression followed, blur-off frames
+  byte-identical to the pre-B66 engine, export_mp4 carries the smear). Replica impact: 60 first frames gain blur
+  (r02 23, r03 27, r04 10), nothing else changes in 9,762 resolved frames.
 - **Delivers:** export / render_frame motion blur samples the full world transform (parent chain included), so a layer moved or zoomed
   by a null gets the same smear as when the motion is keyed on the layer itself.
 - **Source beats:** r02 f6-16 ("Attention" zooming in from ~5x), f150-154, f232 (whips).
 - **Verification:** gates + headless pixel check: a parented layer and its unparented twin with identical world motion render the
   same blurred frame.
 
-## B67 - Agent authoring ergonomics (replica friction) ⬜
+## B67 - Agent authoring ergonomics (replica friction) ✅ (Nov 2026, engine session 26 Nov, headless-GPU verified)
+- **Built:** `core/keyframeSpecs.ts:canonicalEase` (easings.net / AE names -> canonical, also in setShapeMorph, cursor and camera moves);
+  `agent.placeText` (ink centre / baseline / box, measured with `engine/textAtlas.ts:getTextInkMetrics`; chosen over a createQuickText
+  flag because placement must happen after styling and font loading); `core/effectDefaults.ts:defaultGlowFor` (text / shape first
+  glow = own colour, threshold 0; Inspector toggle and `enableLayerEffect` share it); `agent.setTrimStartAngle` +
+  `core/shapeModifiers.ts:pathFractionAtAngle`; AUTHORING notes (spaces, placement, outline text, rings).
+- **Verified:** `verify:anim-props` 19/19 (aliases = canonical curves, glow default, clock-angle fractions), `verify:agent-manifest`
+  11/11 (125 actions), `gpu:text-paint` (rendered ink centre within 1 px of y, baseline row, green glow halo, 12 o'clock arc).
 - **Delivers:** `setKeyframes` accepts the breakdown names (`easeIn`, `easeOut`, `easeInOut`, `easeOutCubic` ...); a `createQuickText`
   option to place text by ink centre or baseline (today y = the line-box centre, so mixed-case words sit ~0.15 x size high); glow
   defaults visible on coloured text (white glow at threshold 0.6 vanishes on green); a trim start-angle option; AUTHORING note that
   text layout ignores leading / trailing spaces (padding does not move text).
 - **Verification:** gates + `verify:agent-manifest` + `verify:anim-props` extension (alias names resolve to the same curves).
 
-## B68 - Export fails on a video clip ⬜ (browser, launch-relevant)
+## B67 follow-up - authoring ergonomics, second pass (B70, B72, motion paths, errors) ✅ (Nov 2026, headless-GPU verified)
+- **Built:** clearer agent errors (`agent/suggest.ts`: "did you mean" on unknown action ids, argument names and enum
+  values; an `editor.*` action whose first param is `layerId` now fails on a missing layer instead of returning ok and
+  changing nothing; a layer NAME passed as an id names the id). B72: `editor.updateLayerProperty` on
+  `content.spans[0].style.lineHeight` also sets the unkeyed `animOverrides.lineHeight` (`core/textLineHeight.ts`, every text
+  consumer reads the override; the replica kit writes both); `agent.measureText` returns `glyphInk` (tight glyph box from
+  `getTextInkMetrics`, now with `inkLeft / inkRight`) and `baselines`, `ink` keeps its line-box meaning. B70:
+  `findCursorRig` recognises renamed icons by their outline; `agent.addCursor` stacks the rig on new tracks above every
+  layer (`placement: "fit"` = the old drop) and click ripples go directly under the cursor (`core/trackPlacement.ts:
+  placeOnNewTracks`, `applyLayerEdits({ stack })`); the agent rig's hand puts its fingertip on the hotspot (r06).
+  `agent.bringToFront { layerIds }` (store `raiseLayersToTop`): the render stack follows tracks, so `editor.reorderLayers`
+  (list order) never changed what draws on top. `agent.setMotionPath { layerId, nodes, options }` (`core/agentMotionPath.ts`):
+  nodes, auto-smooth or explicit handles, timing, ease, orient, loop in one call (B66 found `editor.addMotionPath` only made
+  an empty path).
+- **Verified:** `verify:authoring-ergonomics` 10/10 (in `npm test`), `gpu:authoring-ergonomics` 9/9 through the MCP
+  (render_frame pixels: line spacing -80 px at 0.8, VT323 `glyphInk` within 1 px of the rendered letters, cursor visible over
+  the later shot's ground while `placement: "fit"` is hidden under it, fingertip on the hotspot, ripple under the cursor,
+  `bringToFront` 40000 / 40000 px vs `reorderLayers` 0, motion path start / middle / end on the nodes), `verify:agent-manifest`
+  11/11 (137 actions).
+
+## B68 - Export fails on a video clip ✅ (browser, launch-relevant)
 - **Delivers:** the real exporter (`agent.exportMp4` / File > Export Video) completes on comps with video layers. Today it aborts with
   `A valid external Instance reference no longer exists.` whenever r07's stand-in flower clip (538x958 H.264, scale 2.0-2.5, keyed
   position) is in the comp, about 80 s in. Bisected on the saved project: all 5 clips fail (also at 540 px wide, also with the clips
@@ -980,3 +1203,219 @@ worked around through agent actions in the replica builds; the workaround is lis
   frame with render_frame (`replicas/r07/render_mp4.mjs`) because of this.
 - **Verification:** gates + `gpu:mcp` extension: export a comp with a scaled, keyed 540x960 H.264 clip end to end; decoded frame at
   t matches render_frame(t).
+- **Built (wave 2, Nov 2026):** the exporter and `render_frame` own their video frames (`src/engine/video/exportFrameSource.ts`
+  + pure planner `exportFrames.ts`): exactly the frames the current comp frame needs are held, each clip decodes through one
+  forward mediabunny cursor (`videoDecoderPool.openExportReader`, at most 3 per asset), and the shared preview `frameScheduler`
+  is never read, filled or pruned by an export (its playback prefetch and open-frame cap used to close / race export frames and
+  multiply live decoders). Video inside precomps is decoded too (`collectExportVideoDecodes` walks nested frames). A software
+  retry keeps the first failure in its message.
+- **Verified:** `verify:export-frames` 6/6 (planner + simulated linear export: each clip frame decoded once, held = need),
+  `verify:export-math` 14/14, `gpu:export-video` 5/5: five 540x960 H.264 clips scaled 2.0 -> 2.5 and position-keyed export
+  through `export_mp4` (150 frames, 19 s) with exported frames == `render_frame(t)` (mean abs diff 1.8-2.0 / 255, exact frame
+  alignment), and the real repro `replicas/r07/project.ffx` exports end to end (1200 frames, 111 s; f600 diff 1.22 / 255).
+
+## Second-batch gaps (B74-B80, from the r08-r11 breakdowns, Nov 2026)
+
+Mapped against the branch after waves 1A + 1B (`refs/GAP-MATRIX.md` in the task artifacts, "Ranked open gaps across all 11
+references"). The ids proposed there as "B69-B74" collided with the replica rows B69-B73 above and were renumbered here:
+conic-gradient-fill = B74, text-counter = B75, design-tool-ui-kit = B76, text-style-keyframes = B77, freeform-mask-feather = B78,
+footage-person-matte = B79, outline-imported-fonts = B80.
+
+## B74 - Conic gradient fill on shapes ✅ (headless-GPU verified)
+- **Delivers:** a conic (angular) gradient fill type on shape layers (rect / circle / path) with keyframable start angle and centre, so a hue-wheel ring spins by keying one number; agent-reachable.
+- **Source beats:** r08 f145-1057, f1082-1477 (spinning hue colour-wheel ring in every section).
+- **Verification:** gates + CPU twin of the conic colour at a pixel + headless pixel check (hue at 12 / 3 / 6 / 9 o'clock).
+- **Built (wave 2, Nov 2026):** material layer type `conic` (start `angle` in degrees, optional `centerX` / `centerY`) ->
+  `gradientType 2` in `resolveShapeFill`; the shape gradient shader's `gradientT` and its CPU twin `core/fillSampler.ts` sweep
+  clockwise from the start angle (0 = 12 o'clock) around the centre; works for fills and strokes (`strokeMaterialConfig`);
+  the Material panel offers Conic. The start angle is static: spin the wheel by keying the layer rotation (same result for a
+  wheel / ring around its centre). Feature `shapes.conic-gradient`; AUTHORING section 6.
+- **Verified:** `verify:conic-gradient` 5/5 (resolver mapping, hue at 12 / 3 / 6 / 9, radius-independent + seamless, start
+  angle + centre, linear / radial unchanged); `gpu:conic-gradient` 3/3 through the MCP (GPU wheel colours at the four clock
+  points, GPU == CPU twin at 16 angles within 0.9 / 255, keyed rotation spins it 90 deg).
+
+## B75 - Styled number counter ✅ (headless-GPU verified)
+- **Delivers:** a counter binding on a text layer: from / to, decimals, separators, compact suffix (10K, 1.2M), prefix / suffix text, ease, start / end frame; the text keeps its own font, style and colour; frame-pure.
+- **Source beats:** r08 f330-440, f653-684, f893-924, f1196-1335, f1480-1492.
+- **Verification:** gates + `verify:*` harness (formatted string per frame, scrubbing byte-identical).
+- **Built (wave 2, Nov 2026):** `TextLayer.counter` (`core/textCounter.ts`: from / to, frame range, ease name or cubic-bezier,
+  stepFrames, decimals, separator, decimal mark, compact K / M / B with rounding that never shows "1000K", prefix / suffix,
+  spanIndex), applied in `resolveFrame` by rewriting the counter span per frame (`withTextCounter`, same object when absent);
+  persisted through validation. `agent.setTextCounter` (one undo step, returns sample strings), feature `text.counter`,
+  recipe `count-up`, AUTHORING section 5.
+- **Verified:** `verify:text-counter` 8/8 (formatting, compact, easing / stepping / clamping, prefix / suffix, only the counter
+  span rewritten, per-frame resolve + identical scrub, persistence); `gpu:text-counter` 3/3 through the MCP (an italic
+  Instrument Serif counter at f0 / f15 / f30 is pixel-identical to the same layer typed by hand: 0 px differ).
+
+## B76 - Design-tool UI kit ✅ (headless-GPU verified)
+- **Delivers:** cursor icons for a design app (pen, crosshair, rotate, direct-select) on the B51 rig, a selection box with corner handles that tracks a target layer's bounds over time, anchor squares on path points, and a number tooltip (dX / dY / W / H / angle) whose value follows the target; agent actions; one undo step each.
+- **Source beats:** r11 every shot (f7-1067).
+- **Verification:** gates + `verify:*` harness (box tracks the target bounds per frame, tooltip text = measured delta).
+- **Built (wave 2, Nov 2026):** `animation-templates/designKit.ts` samples the target from `resolveFrame` on every frame
+  (oriented box, path points; logical anchors via `shapeModifiers.evalPathAnchors` over a morph) and bakes editable layers
+  with sparse linear keys: `agent.addSelectionBox`, `agent.addAnchorSquares`, `agent.addReadout` (counter span with a new
+  per-frame `TextCounter.samples` table, measured line widths), `agent.addGuideLabel`, `agent.addGuideLine` (pen rubber band, Line Extension, centre guide); design icons pen /
+  crosshair / rotate / directSelect / resize join the agent cursor rig on demand (`agent.addCursor` / `agent.cursorIcon`,
+  base rig unchanged) and `agent.addCursor` takes `rimColor` (r11's black arrow with a white rim).
+  `LayerDecorations.rigRole` tags the parts (persisted). Also `editor.setShapeMorph` `align: "vertices"` (`PathKeyframe.align
+  'vertices'`): same-count poses morph vertex for vertex (AE path keyframes), so an r11 anchor drag keeps its sharp corners
+  mid-move; existing morphs unchanged. Feature `templates.design-kit`, recipe `design-chrome`, AUTHORING 15. Started from
+  attempt 1's WIP `dbfee18` (cursor icon outlines kept; its `stackOrder.ts` not taken: B70's agent.bringToFront covers it).
+- **Verified:** `verify:design-kit` 17/17 (box centre / size / rotation and all handles == the target on every frame within
+  0.02 px; squares == vertices; readout text == measured delta; vertex-for-vertex morph; old morphs byte-identical;
+  guide-line ends, resize centring, rim colour, persistence); `gpu:design-kit` 23/23 through the MCP (handles on the 4 corners at rot 0 / 45 / 90, every added pixel within
+  7 px of the outline, one undo byte-identical, squares + guide on a mid-drag morph, glyph edge through the dragged anchor,
+  readout pixel-identical to the hand-typed string, pen / rotate icons, rubber band anchor -> pen, white-rim arrow,
+  export + import byte-identical).
+
+## B77 - Text style keyframes ✅ (headless-GPU verified)
+- **Delivers:** hold keyframes on a text layer's font family / weight / style (the face switches on the key frame, layout re-flows); agent-reachable.
+- **Source beats:** r10 f674-735.
+- **Verification:** gates + `verify:*` harness (resolved face per frame).
+- **Built (wave 2, Nov 2026):** `TextLayer.styleKeys` (`core/textStyleKeys.ts`: hold keys of full faces, missing fields
+  inherited from the previous key, optional spanIndex) applied in `resolveFrame` before layout (same hook as B75); persisted;
+  each key carries a full face so the font walk loads it. `agent.setTextStyleKeys`, feature `text.style-keys`, AUTHORING 5.
+- **Verified:** `verify:text-style-keys` 5/5; `gpu:text-style-keys` 3/3 through the MCP (keyed faces at f5 / f15 / f25 are
+  pixel-identical to the same faces set by hand; the frames differ from each other).
+
+## B78 - Soft freeform matte ⬜ (browser)
+- **Delivers:** a blurred (or feathered) shape used as an alpha track matte keeps its blur in the matte, so a soft-edged shape reveals the layer below.
+- **Source beats:** r10 f604-611.
+- **Verification:** gates + headless pixel check of the soft matte edge ramp.
+
+## B79 - Person matte on footage ⬜ (browser, heavy)
+- **Delivers:** an AI person segmentation matte on a video layer. Out of wave 2 scope; fallback a pre-keyed stand-in clip.
+- **Source beats:** r09 f256-296.
+
+## B80 - Outline text robustness 🟡 (multi-part glyphs fixed by B83)
+- **Delivers:** `editor.outlineTextLayer` works on imported fonts and keeps every contour of multi-part glyphs (i, j, !, :).
+- **Source beats:** r11 (all letter edits).
+- **Verification:** gates + `verify:*` harness on the outline contours.
+- **Status:** the second part of a glyph (the dot of an "i") was stored in `holes` and passed to ONE earcut call as a
+  hole lying outside the outer contour, so it was dropped (repro in `verify:shape-contours`: area 1600 of 2000). B83's
+  even-odd contour fill fixes it (`gpu:shape-contours`: the outlined "i" shows stem + dot, ink within 2.3 % of the
+  live text). Imported fonts are still refused by `canOutlineFont` (open).
+
+## B83 - Arbitrary shape morph ✅ (headless-GPU verified, Nov 2026, step "r08-r11 heavy gaps")
+- **Delivers:** `editor.setShapeMorph` poses of any outline: `{ type: "svg", d, width?, height?, fit? }` (SVG path data,
+  pure parser `src/core/svgPath.ts`: M L H V C S Q T A Z, relative, packed arc flags, Q raised exactly, arcs as <= 90
+  degree cubics), `{ type: "path", points: [[x, y] | { x, y, in?, out? }], holes? }` and `{ type: "layer", layerId,
+  frame? }` (another shape layer's outline with its contours). `PathKeyframe.holes` (per-pose extra contours,
+  persisted); `evalPathHoles` pairs contours between poses (same kind only: hole with hole, island with island; cost =
+  centre distance + area ratio) and shrinks / grows unpaired ones about their centre; the tessellator fills contours
+  even-odd by nesting depth (`contourFill`; the common counters-inside case is the old single earcut call,
+  byte-identical). Morphs without contoured poses keep the static holes (old projects unchanged).
+- **Evidence:** `verify:shape-contours` 18/18; `gpu:shape-contours` 10/10 (SVG ring hole within 0.1 % of its area;
+  unpaired hole at exactly 25.0 % area mid-morph; heart notch / tip; three islands; outlined "i" keeps its dot; layer
+  pose lands on the glyph pixel-exact (9891 vs 9891 px); undo / redo / export + import byte-identical). Contact sheet
+  `engine/wave2/shape-contours/sc-contact-sheet.png`. AUTHORING section 6.
+
+## B81 - 3D card swarm ✅ (headless-GPU verified)
+- **Delivers:** `agent.addCardSwarm`: the r10 S10 "wall of UI in space" in one call and one undo step - about 16 flat UI
+  cards and 12 prompt pills as ordinary editable 3D layers at different depths, parented to one 3D cluster group whose
+  yaw keys orbit them; a seeded, frame-independent layout (no Math.random) inside a box / ellipsoid volume with a min
+  spacing; placeholder UI cards (light / dark, printed accent chip, title bar, content block; violet labelled pills) or
+  image asset / layer sources cycled as cards. Pairs with `editor.addCameraLayer` + `editor.cameraMove` for the dolly /
+  tilt.
+- **Source beats:** r10 S10 f339-425 (S10.E2 cards, S10.E3 pills, S10.E4 camera), S9.E2 (the card shrinking into the swarm).
+- **Verification:** gates + `verify:*` harness (determinism, count, volume, spacing, undo, 3D + parenting, yaw keys) +
+  headless pixel check through the MCP (depth sizes, near-over-far occlusion, parallax consistent with a rotation,
+  export / import byte-identical).
+- **Built (wave 2, Nov 2026):** pure layout `core/cardSwarm.ts` (`layoutCardSwarm`: mulberry32 streams for placement and
+  style, rejection sampling with a bounded attempt count and a best-candidate fallback counted in `relaxed`, per-kind
+  size / aspect / depth band / light share, camera-facing tilt); pure builder `animation-templates/cardSwarm.ts`
+  (`planCardSwarm`); `agent.addCardSwarm` in `agent/runtime.ts` (argument checks, pill labels measured in the real face,
+  sources resolved, one `applyLayerEdits`, stacked under cursor rigs). Engine (opt-in, absent = unchanged): this
+  engine's parenting composed 3D additively (a parent's rotationY only turned each child in place, while the painter
+  depth already used the true world matrix), so yawing a group could not orbit cards. New `LayerDecorations.orbitChildren`
+  on a 3D layer makes `resolveFrame` hand its 3D descendants a `cardMatrix` (the RAW world chain divided by the resolved
+  scale, which the quad pipelines already bake into `local`) that `writeCard3D` uses instead of `cardMVP`; new
+  `sortWithParent` gives a decal its parent's world matrix (`sortMatrix`) for the painter depth, so printed bars and
+  labels stay on their card. Both persisted by validation. Feature `camera.card-swarm`, recipe `card-swarm` (swarm + camera
+  beats), AUTHORING 16.
+- **Verified:** `verify:card-swarm` 20/20 (layout byte-identical per seed and different across seeds with Math.random
+  trapped, 16 + 12 count, box and ellipsoid containment, pairwise spacing, bounded attempts, the action on the real
+  editor + history stores through `window.__ffxAgent`: 89 layers, 3D cards parented to the orbitChildren cluster, decals
+  above their card with sortWithParent, yaw keys -20 -> 15 at f0 / f31 with the easeInOut, one undo step byte-identical,
+  redo, layer sources cycled / scaled / hidden and restored by undo, bad arguments change nothing, persistence, resolver:
+  card world centre = the yaw orbit of its layout point and cardMatrix corners = world corners at f0 / f15 / f31, no
+  matrices without the flags); `gpu:card-swarm` 14/14 through the MCP (r10 swarm 1920 x 1080 with camera dolly + tilt on
+  screen in 6 frames, yaw / dolly / tilt all move it, export + import byte-identical; controlled swarm with two shape
+  sources + an imported image: card boxes within 0.8 px of the true 3D projection at yaw -20 and 15, near card -150 px /
+  far card +171.5 px (opposite, within 0.4 px of expected), near / far width ratio 1.836 vs 1.843, the near card covers
+  the far one over 20005 / 11984 overlap px although the far one is higher in the stack and the overlap flips to the far
+  card when the orbit swings it to the front (15421 px); decals stay printed under a 35 deg yaw (501 / 501 chip px, 0 / 501
+  in the control without sortWithParent); pill label ink within 1.8 px of its projected glyph box). Regressions: gpu:mcp,
+  gpu:camera-cards green.
+- **Limits:** layer motion blur reads the 2D transform, so it does not see the orbit (leave it off on swarm cards);
+  per-glyph animated 3D text under an orbit cluster is not orbit-composed (plain labels are); a parent's layout offset /
+  motion path is not part of the true-3D chain; the canvas selection outline of an orbiting card shows its un-orbited
+  2D box; the arrow cursors (S10.E5) and the gradient bleed (S10.E6) are separate layers.
+## B82 - Typing prompt box ✅ (headless-GPU verified)
+- **Delivers:** a one-call, editable, undoable prompt / search box kit (`agent.addPromptBox`) plus the three engine pieces it
+  needed: a per-character typing schedule with an eased rate or explicit frames, a per-character arrival colour, and a
+  gradient caret; the caret keeps riding the type-on head.
+- **Source beats:** r10 S3.E3 (gradient caret), S4.E1 (centred typing, eased rate), S7.E3 (light card, 31 chars f227-245, chip
+  row), S11 (dark #241e21 r36 box slides in and widens, 45 chars in 25 f, pink -> white arrival, send f462, flash + wipe),
+  S12.E5 (password asterisks); r06 S2 (human keystroke rhythm), r04 S1 (search pill).
+- **Built (wave 2, Nov 2026):** `TextLayer.typing` (`core/textTyping.ts`: `frames` = absolute arrival frame per character,
+  non-decreasing; `arrivalColor` + `arrivalFrames`); `typingFrames` builds a schedule from cps / durationFrames / explicit
+  frames with an ease on the typing RATE. At resolve time the schedule becomes frame-resolved animators with explicit
+  per-character weights (`ResolvedTextAnimator.weights`, never persisted: an opacity hide + a linear-light fill mix), so it
+  rides the existing per-glyph stamp path and the B35 caret head with zero renderer changes. `TextCaret.gradient` [top, bottom]
+  draws the caret stamp with a linear top -> bottom fill (`caretGradientFill`). With a typing schedule the caret blink restarts
+  ON at the last keystroke, and on a `reflowHidden` layer the caret is measured on the visible glyphs (a centred line grows
+  both ways); both are gated on `typing`, so old projects (incl. reflow + caret) resolve byte-identically. Persisted through
+  validation; templates rebase the frames. Kit `animation-templates/promptBox.ts` (`planPromptBox`): group + box + flash
+  overlay + refill wipe + placeholder + typed text + chip row + send button / arrow, themes dark / light, entrances pop /
+  slideFromRight (widens 62 -> 100 % as it lands), align left / center, autoGrow (baked width keys), mask, sendFrame squash
+  100 -> 85 -> 100 %. Actions `agent.addPromptBox` (returns ids, final box rect, sendCenter, typing frames, caretPath) and
+  `agent.setTextTyping` (any text layer); `agent.setTextCaret` takes `gradient`. Feature `templates.prompt-box`, recipe
+  `prompt-box`, AUTHORING 17.
+- **Verified:** `verify:prompt-box` 24/24 (schedule math for explicit / cps / eased; visible glyphs per frame == schedule;
+  newest glyph == arrivalColor on its arrival frame and == the text colour 4 frames later; caret left == head within 1e-6 px,
+  also on a centred growing line; gradient stamp; caretPath / sendCenter == resolved; slide-in widening keeps the text padding;
+  send squash / flash / wipe; ONE undo byte-identical + redo; save / load; old projects resolve byte-identically to the base
+  commit 2c1e99f's resolver over 50 frames); `gpu:prompt-box` 15/15 through the MCP (S11 + S7 builds: box rect and rounded
+  corners, widening entrance, ink width per frame == measured prefix within 2.6 px, newest glyphs pink / 4-frame-old glyphs
+  white, caret top blue / bottom pink, caret 1-2 px right of the ink edge and within 0.4 px of the resolver, send squash
+  ratio 0.73, flash + wipe, undo / redo byte-identical, export + import byte-identical, recipe live).
+- **Limits:** the typed text is single-line (the B35 caret and the reveal work on one line; a 2-line wrap like the r10 S11
+  reference needs a wider box or a smaller font). Typing frames are absolute (re-run `agent.setTextTyping` after moving the
+  clip). The kit is baked: retime the keys or re-run it.
+
+
+## B84 - Track placement: new and re-timed layers land on top ✅ (Nov 2026, engine session 27 Nov, headless-GPU verified)
+- **Bug:** a new layer took the top-most free track of its type at its time range (`ensureLayerHasTrack` first fit), which
+  can sit under a newer track holding that shot's ground. A clip timed with `agent.setClipTiming` kept its track, so an
+  import at f0 timed to f478 joined an old track under everything built since (r07 recording / poster / selfie, r09 alpha
+  clip, r06 / r10 cursor). Replicas worked around it with `agent.bringToFront` after every such call.
+- **Fix:** `core/trackPlacement.ts:findStackFit`: a new visual layer reuses a free accepted track only ABOVE every track
+  holding a clip that overlaps its range (the lowest such track, so sequential shots still pack into the same tracks),
+  else the store creates a new top track. Audio keeps the old first fit. `pinClipToTime(..., { restackOnJump })`, used by
+  `agent.setClipTiming` only: a clip moved to a range disjoint from its old one is re-dropped the same way (returns
+  `restacked: true`); a trim / nudge keeps the track, and the UI timeline drag is unchanged. The design kits (prompt box,
+  card swarm, readouts) already stacked on top through `applyLayerEdits({ stack: top })`.
+- **Verified:** `verify:track-stack` 11/11 (old first-fit repro, ceiling rule, sequential packing, type segregation, audio,
+  restack on jump / nudge byte-identical / magnetic track left absolute); `gpu:track-stack` 4/4 through the MCP (shot-2
+  text over the shot-2 ground at f175: 20 989 ink px, the unchanged engine renders 0; restacked flag; one undo; export +
+  import pixel-identical). Evidence: `artifacts/engine/session-2026-11-27/track-stack/{before,after}`.
+- **Not covered:** the named-matte half of B88 (a later import landing on the matted clip's track) is a separate pairing
+  issue; it is less likely now (imports avoid low tracks) but not fixed.
+
+## B89 - Exporter colour on gradient grounds + cloner motion blur ✅ (Nov 2026, engine session 27 Nov)
+- **Colour:** not an exporter bug. Every FlashFX export is H.264 tagged BT.709 and decodes within ~2 / 255 of render_frame
+  as BT.709 (r03 f560: mean |d| 1.4-1.6). ffmpeg's default YUV -> RGB conversion uses BT.601 even on bt709-tagged
+  streams, so the compare stills showed blues violet ([37, 45, 191] instead of [34, 53, 197]). The same decode made the
+  JPEG reference frames (`refs/*/frames`, the colour source for every replica) BT.601: true [32, 59, 206] read as
+  [36, 54, 199]. Fixed: `mcp/lib/compare_replica.py` stills decode with the stream's matrix (`yuv_matrix`), the artifact
+  reference extractor writes BT.709-correct JPEGs (`refs/_tools/extract.py`, for new references; old frames keep the
+  cast), AUTHORING / TASTE document it. Luma SSIM is unaffected (it reads the Y plane).
+- **Cloner motion blur:** a copy carried its SOURCE's resolved blur, measured at the source's own (usually static) spot,
+  so a spinning ring or a moving cloner rendered sharp copies. `ResolvedCloner.instanceBlur` (cloner world transform +
+  instance transforms one frame earlier, only when the cloner's or the source's switch is on and the shutter is open)
+  gives each stamp its own `motionBlurBetween`. Blur-off projects resolve byte-identically to the base resolver.
+- **Verified:** `verify:cloner-blur` 9/9 (tangential speed 2 pi R / period within 2 %, omega, moving cloner, source switch,
+  static / frame 0 / closed shutter sharp, comp shutter, base byte-identity); `gpu:cloner-blur` 5/5 (tangential sigma
+  20.07 -> 20.63 vs 20.58 predicted, radial unchanged, light conserved, source switch identical, rest frame identical,
+  export_mp4 smears too). Evidence: `artifacts/engine/session-2026-11-27/{cloner-blur,colour}`.

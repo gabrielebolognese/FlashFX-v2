@@ -242,7 +242,7 @@ function LayerCard({ layer, index, total, onUpdate, onRemove, onReorder }: Layer
           <div className="flex items-center gap-1">
             <label className="text-[10px] text-slate-500 w-14 flex-shrink-0">Type</label>
             <div className="flex gap-0.5">
-              {(['linear', 'radial'] as MaterialGradientType[]).map((t) => (
+              {(['linear', 'radial', 'conic'] as MaterialGradientType[]).map((t) => (
                 <button
                   key={t}
                   onClick={() => onUpdate({ type: t })}

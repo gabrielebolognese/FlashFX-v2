@@ -1,0 +1,31 @@
+{
+  "id": "design-chrome",
+  "name": "Design-app chrome around an edit",
+  "category": "ui",
+  "description": "Dress an edit you already animated (a glyph that rotates, slides or has an anchor dragged) as a screen capture of a vector design app: a blue selection box with handles that follows the shape, optional anchor squares on its points, a live readout tooltip (dX / dY, W / H or Angle) that counts with the move, and an optional magenta smart-guide word. Everything is sampled from the real resolved shape, so it sits exactly on the edit; re-apply after re-timing. Animate the edit first (for anchor drags use editor.setShapeMorph with align \"vertices\"), then apply this over the same frames.",
+  "source": [
+    "r11 every shot f7-1067: blue selection boxes + anchor squares, magenta guide words, translucent readout tooltip",
+    "r11 S1 'i' rotation readout 0.36, 2.88, 9.72 ... = 90 x easeInOutCubic"
+  ],
+  "taste": ["TASTE.md 8 UI mocks"],
+  "params": {
+    "layerId": { "type": "layerId", "description": "The edited shape layer (a rectangle, ellipse, path or outlined glyph)." },
+    "readout": { "type": "enum", "enum": ["move", "size", "angle", "position", "none"], "default": "move", "description": "Tooltip lines: move = dX / dY, size = W / H, angle = Angle (rotation delta), position = X / Y." },
+    "handles": { "type": "enum", "enum": ["all", "corners", "none"], "default": "all", "description": "Selection-box handles (none = outline only)." },
+    "anchors": { "type": "boolean", "default": false, "description": "Anchor squares on every path point (path / outlined-glyph layers only)." },
+    "guide": { "type": "string", "default": "", "description": "Smart-guide word above the shape ('' = none), e.g. 'center' or 'anchor'." },
+    "decimalMark": { "type": "enum", "enum": [",", "."], "default": ",", "description": "Readout decimal mark (r11 uses the European comma)." },
+    "length": { "type": "number", "default": 30, "min": 2, "description": "How long the chrome stays, frames at 30 fps (cover the edit)." }
+  },
+  "length30": "length",
+  "checkFrames30": ["length * 0.5", "length - 1"],
+  "lets": {},
+  "steps": [
+    { "id": "box", "action": "agent.addSelectionBox", "args": { "targetId": "{{layerId}}", "startFrame": "{{start}}", "endFrame": "{{end}}", "options": { "handles": "{{handles}}" } } },
+    { "when": "anchors", "id": "pts", "action": "agent.addAnchorSquares", "args": { "targetId": "{{layerId}}", "startFrame": "{{start}}", "endFrame": "{{end}}" } },
+    { "when": "readout != 'none'", "id": "ro", "action": "agent.addReadout", "args": { "targetId": "{{layerId}}", "startFrame": "{{start}}", "endFrame": "{{end}}", "options": { "preset": "{{readout}}", "decimalMark": "{{decimalMark}}" } } },
+    { "when": "guide != ''", "action": "agent.addGuideLabel", "args": { "text": "{{guide}}", "startFrame": "{{start}}", "endFrame": "{{end}}", "options": { "targetId": "{{layerId}}", "point": "top", "line": true, "offset": [0, -22] } } }
+  ],
+  "returns": { "layerId": "{{layerId}}", "boxId": "{{@box.result.groupId}}" },
+  "example": { "params": { "layerId": "LAYER", "readout": "angle", "guide": "center" }, "startFrame": 10 }
+}

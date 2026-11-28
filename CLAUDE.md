@@ -17,6 +17,12 @@ npm run verify:agent-manifest  # Agent manifest + window.__ffxAgent whitelist vs
 npm run mcp:flashfx    # Local stdio MCP server driving a real FlashFX tab over CDP (see mcp/README.md)
 npm run gpu:mcp        # MCP smoke over real stdio: project + text + keyframe + screenshot + MP4 (local, needs Chrome)
 npm run gpu:anim-props # Colour / effect-param keyframes, setKeyframes, renderFrame: keyed == static twin on the real WebGPU renderer (local)
+npm run gpu:text-paint # B64 + B67: gradient / outline text, agent.placeText, first glow, trim start angle - render_frame pixels via the MCP (local)
+npm run gpu:authoring-ergonomics # B67 follow-up: error hints, lineHeight, glyphInk, cursor stacking / hotspot, bringToFront, setMotionPath - render_frame pixels via the MCP (local)
+npm run gpu:card-swarm # B81: agent.addCardSwarm 3D card swarm - true 3D orbit projection, parallax, depth-sort occlusion, decals, export / import - render_frame pixels via the MCP (local)
+npm run gpu:prompt-box # B82: agent.addPromptBox r10 S11 dark box + S7 light card - typing per frame, pink arrival -> white, gradient caret on the head, send flash, undo, export/import - render_frame pixels via the MCP (local)
+npm run gpu:shape-contours # B83: SVG / layer morph poses, holes + islands morph, even-odd contour fill (outlined "i" keeps its dot), undo, save / load - render_frame pixels via the MCP (local)
+npm run gpu:liquid-text # B61: liquid drip / melt == its CPU twin (core/effects/liquidDrip.ts), floor flow, length 0 identity, save / load (precomp background stays transparent) via the MCP (local)
 npm run gpu:bridge     # FlashFX Link e2e (local, needs Chrome): VITE_FFX_LINK=1 build + real tab paired over loopback, recipe build, MP4 + .ffx, round trip, security
 npm run verify:mcp-link # FlashFX Link without a browser (CI): protocol, RFC 6455 codec, Origin/Host/token checks, access gate, packaged server over stdio
 npm run mcp:package    # Build packages/flashfx-mcp (one-file server bundle + recipes + skill + flashfx.mcpb for Claude Desktop)

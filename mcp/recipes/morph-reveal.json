@@ -1,0 +1,149 @@
+{
+  "id": "morph-reveal",
+  "name": "Morph reveal (blurred blob sharpens into a mark, optional zoom-through)",
+  "category": "shape",
+  "description": "Shape continuity instead of a cut: a soft blurred blob (or a small dot) morphs into a target outline (a flower, a heart, a logo: any SVG path data) while it sharpens from a heavy blur, with a gradient fill and a slight turn. Then either it holds as a mark, or (zoomThrough) it keeps growing with an accelerating ease until it swallows the frame and becomes the next section's ground. r10 builds every beat this way: a dot after a word blooms into a black flower that covers the frame; a blurred flower sharpens into the heart logo.",
+  "source": [
+    "r10 S1.E4 dot -> 8-lobe black flower, scale 1 % -> 1500 % f10-19, easeInCubic [1.0, 0.147, 0.831, 0.933] (rms 0.003), rotation -30 -> 0",
+    "r10 S5.E3 blurred violet flower -> heart f161-166, blur 80 -> 0 px, easeOutCubic (B83 different contour counts)",
+    "r10 S2.E2 glossy gradient flower (red top-right, pink, violet bottom-left) easeOutCirc",
+    "r10 replica (artifacts/replicas/r10/build.mjs)"
+  ],
+  "taste": [
+    "TASTE.md 10 Transitions (morph)",
+    "2 Easing (ease-in into a cut)",
+    "7 Colour (one gradient family)"
+  ],
+  "params": {
+    "x": { "type": "number", "default": null, "description": "Centre x (default comp centre)." },
+    "y": { "type": "number", "default": null, "description": "Centre y (default comp centre)." },
+    "size": { "type": "number", "default": null, "description": "Mark size px when formed (default 40 % of the short side)." },
+    "from": { "type": "string", "default": "", "description": "SVG path data of the start outline ('' = a circle: a dot or a round blob)." },
+    "to": { "type": "string", "default": "M50 0 C58 0 62 10 62 22 C70 12 82 8 88 14 C94 20 90 32 80 38 C92 38 100 42 100 50 C100 58 92 62 80 62 C90 68 94 80 88 86 C82 92 70 88 62 78 C62 90 58 100 50 100 C42 100 38 90 38 78 C30 88 18 92 12 86 C6 80 10 68 20 62 C8 62 0 58 0 50 C0 42 8 38 20 38 C10 32 6 20 12 14 C18 8 30 12 38 22 C38 10 42 0 50 0 Z", "description": "SVG path data of the target outline (default: an 8-lobe flower). Any logo or icon path works (B83)." },
+    "fromScale": { "type": "number", "default": 0.35, "min": 0.01, "description": "Start scale (0.03 = a dot, 0.35-0.6 = a blob)." },
+    "colors": { "type": "array", "items": "string", "default": ["#6175ce", "#ab79d9", "#e458b0", "#f9795a"], "description": "Gradient stops as hex strings (diagonal, bottom-left to top-right). One colour = flat fill." },
+    "blur": { "type": "number", "default": 60, "min": 0, "description": "Start blur px (0 = sharp from the start, the dot case)." },
+    "spin": { "type": "number", "default": -30, "description": "Start rotation in degrees (turns to 0 as it forms)." },
+    "delay": { "type": "number", "default": 0, "min": 0, "description": "Frames at 30 fps before it starts." },
+    "form": { "type": "number", "default": 6, "min": 2, "description": "Morph + sharpen length, frames at 30 fps (r10: 5-6)." },
+    "formEase": { "type": "ease", "default": [0.33, 1, 0.68, 1], "description": "Morph / sharpen ease (easeOutCubic)." },
+    "zoomThrough": { "type": "boolean", "default": false, "description": "Keep growing until it covers the frame (it becomes the next ground)." },
+    "zoom": { "type": "number", "default": 9, "min": 3, "description": "Zoom-through length, frames at 30 fps (r10: 9)." },
+    "zoomEase": { "type": "ease", "default": [1.0, 0.147, 0.831, 0.933], "description": "Zoom-through ease (measured r10 S1.E4 easeInCubic)." },
+    "exit": { "type": "boolean", "default": false, "description": "Without zoomThrough: shrink away ending on the end frame (easeIn)." },
+    "name": { "type": "string", "default": "Morph mark", "description": "Layer name." }
+  },
+  "length30": "delay + form + (zoomThrough ? zoom + 20 : 45)",
+  "checkFrames30": [
+    "delay + form * 0.4",
+    "delay + form",
+    "zoomThrough ? delay + form + zoom * 0.7 : delay + form + 20"
+  ],
+  "lets": {
+    "X": "x == null ? CX : x",
+    "Y": "y == null ? CY : y",
+    "SZ": "size == null ? round(min(W, H) * 0.4) : size",
+    "s0": "start + f(delay)",
+    "a1": "start + f(delay) + f(form)"
+  },
+  "steps": [
+    {
+      "let": {
+        "cover": "ceil(2.3 * sqrt(W * W + H * H) / SZ)",
+        "z1": "a1 + f(zoom)",
+        "NC": "len(colors)"
+      }
+    },
+    {
+      "id": "sh",
+      "action": "editor.addShapeLayer",
+      "args": { "opts": { "type": "circle", "x": "{{X - PX}}", "y": "{{Y - PY}}", "width": "{{SZ}}", "height": "{{SZ}}", "radius": "{{round(SZ / 2)}}", "fill": "{{rgba(pick(colors, 0))}}", "name": "{{name}}" } },
+      "layer": true,
+      "root": true
+    },
+    { "let": { "L": "@sh.result" } },
+    {
+      "action": "editor.setShapeMorph",
+      "args": {
+        "layerId": "{{L}}",
+        "poses": [
+          { "frame": "{{s0}}", "shape": "{{from == '' ? obj('type', 'ellipse', 'width', SZ, 'height', SZ) : obj('type', 'svg', 'd', from, 'width', SZ, 'height', SZ)}}", "ease": "{{formEase}}" },
+          { "frame": "{{a1}}", "shape": "{{obj('type', 'svg', 'd', to, 'width', SZ, 'height', SZ)}}" }
+        ]
+      }
+    },
+    {
+      "when": "NC > 1",
+      "action": "editor.updateLayerProperty",
+      "args": {
+        "layerId": "{{L}}",
+        "path": "materialConfig",
+        "value": {
+          "enabled": true,
+          "layers": [
+            {
+              "id": "g",
+              "type": "linear",
+              "angle": 45,
+              "blendMode": "normal",
+              "opacity": 100,
+              "colorStops": [
+                { "id": "c0", "color": "{{pick(colors, 0)}}", "opacity": 100, "position": 0 },
+                { "id": "c1", "color": "{{pick(colors, NC > 2 ? 1 : 0)}}", "opacity": 100, "position": "{{NC > 2 ? 35 : 0}}" },
+                { "id": "c2", "color": "{{pick(colors, NC > 3 ? 2 : NC - 1)}}", "opacity": 100, "position": "{{NC > 3 ? 65 : 100}}" },
+                { "id": "c3", "color": "{{pick(colors, NC - 1)}}", "opacity": 100, "position": 100 }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "action": "editor.setKeyframes",
+      "args": {
+        "layerId": "{{L}}",
+        "propertyPath": "transform.scale",
+        "keyframes": [
+          { "frame": "{{s0}}", "value": "{{[fromScale, fromScale]}}", "ease": "{{formEase}}" },
+          { "frame": "{{a1}}", "value": [1, 1], "ease": "{{zoomThrough ? zoomEase : 'hold'}}" },
+          { "frame": "{{zoomThrough ? z1 : (exit ? end - f(8) : end)}}", "value": "{{zoomThrough ? [cover, cover] : [1, 1]}}", "ease": "{{zoomThrough ? 'hold' : [0.55, 0, 1, 0.45]}}" },
+          { "frame": "{{zoomThrough ? max(end, z1 + 1) : end}}", "value": "{{zoomThrough ? [cover, cover] : (exit ? [0, 0] : [1, 1])}}" }
+        ]
+      }
+    },
+    {
+      "when": "spin != 0",
+      "action": "editor.setKeyframes",
+      "args": {
+        "layerId": "{{L}}",
+        "propertyPath": "transform.rotation",
+        "keyframes": [
+          { "frame": "{{s0}}", "value": "{{spin}}", "ease": "{{formEase}}" },
+          { "frame": "{{a1}}", "value": 0, "ease": "hold" }
+        ]
+      }
+    },
+    { "when": "blur > 0", "action": "editor.enableLayerEffect", "args": { "layerId": "{{L}}", "kind": "blur" } },
+    {
+      "when": "blur > 0",
+      "action": "editor.setKeyframes",
+      "args": {
+        "layerId": "{{L}}",
+        "propertyPath": "blur.radius",
+        "keyframes": [
+          { "frame": "{{s0}}", "value": "{{blur}}", "ease": "{{formEase}}" },
+          { "frame": "{{a1}}", "value": 0, "ease": "hold" }
+        ]
+      }
+    }
+  ],
+  "returns": {
+    "layerId": "{{L}}",
+    "formedFrame": "{{a1}}",
+    "coverFrame": "{{zoomThrough ? z1 : a1}}"
+  },
+  "example": {
+    "params": { "zoomThrough": true, "from": "", "fromScale": 0.03, "blur": 0, "colors": ["#000000"] },
+    "startFrame": 9
+  }
+}

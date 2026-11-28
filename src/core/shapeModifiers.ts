@@ -150,6 +150,32 @@ export function trimPath(
  * path (the pattern position at arc 0 is `dashOffset`). An empty/zero pattern returns the whole path as
  * one contour (no dashing). Pure arc-length walk - mirrors trim; the fill is unaffected (stroke only).
  */
+/**
+ * B67 - trim start angle: the arc-length fraction (0..1, measured from vertex 0 along the path) where a
+ * ray from the path's bounding-box centre at `angleDeg` meets the outline. Clock convention, Y-down
+ * comp space: 0 = 12 o'clock, 90 = 3 o'clock, clockwise. Set a trim's start + offset to this value and
+ * a ring draws on from that angle (AE rings usually start at 12 o'clock; vertex 0 of a converted
+ * circle sits elsewhere). Pure; ~1/256 of the perimeter resolution, below a pixel on a 1080 ring.
+ */
+export function pathFractionAtAngle(vertices: PathVertex[], closed: boolean, angleDeg: number): number {
+  if (vertices.length < 2) return 0;
+  const { pts, cum, total } = flattenAll(vertices, closed, 64);
+  if (total <= 0 || pts.length === 0) return 0;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const q of pts) { minX = Math.min(minX, q[0]); maxX = Math.max(maxX, q[0]); minY = Math.min(minY, q[1]); maxY = Math.max(maxY, q[1]); }
+  const c: Vec2 = [(minX + maxX) / 2, (minY + maxY) / 2];
+  const a = (angleDeg * Math.PI) / 180;
+  const dir: Vec2 = [Math.sin(a), -Math.cos(a)];
+  let best = 0, bestDot = -Infinity;
+  for (let i = 0; i < pts.length; i++) {
+    const d = norm(sub(pts[i], c));
+    const dot = d[0] * dir[0] + d[1] * dir[1];
+    if (dot > bestDot) { bestDot = dot; best = i; }
+  }
+  const f = cum[best] / total;
+  return f >= 1 - 1e-9 ? 0 : f;
+}
+
 export function dashPath(vertices: PathVertex[], closed: boolean, dashArray: number[], dashOffset: number, perSeg = 24): PathVertex[][] {
   if (vertices.length < 2) return [vertices.map(clonePathVertex)];
   let pattern = dashArray.filter((d) => Number.isFinite(d) && d > 0);
@@ -359,7 +385,14 @@ export function morphProgress(ease: PathKeyframe['ease'], t: number): number {
  * pose's ORIGINAL vertices - beziers intact, byte-identical to the authored shape. Strictly BETWEEN
  * two poses returns a morphed polyline. `hold` interpolation on a pose freezes it until the next.
  */
-export function evalPathKeyframes(kfs: PathKeyframe[], frame: number): { vertices: PathVertex[]; closed: boolean } {
+export function evalPathKeyframes(kfs: PathKeyframe[], frame: number): { vertices: PathVertex[]; closed: boolean; holes?: PathVertex[][] } {
+  const main = evalMainContour(kfs, frame);
+  // B83: extra contours only when a pose carries them (else the caller keeps the static holes).
+  if (!kfs.some((k) => Array.isArray(k.holes) && k.holes.length > 0)) return main;
+  return { ...main, holes: evalPathHoles(kfs, frame) };
+}
+
+function evalMainContour(kfs: PathKeyframe[], frame: number): { vertices: PathVertex[]; closed: boolean } {
   const clone = (k: PathKeyframe) => ({ vertices: k.vertices.map(clonePathVertex), closed: k.closed });
   if (kfs.length === 0) return { vertices: [], closed: false };
   if (kfs.length === 1 || frame <= kfs[0].frame) return clone(kfs[0]);
@@ -375,7 +408,195 @@ export function evalPathKeyframes(kfs: PathKeyframe[], frame: number): { vertice
   if (frame === k1.frame) return clone(k1);
   const span = k1.frame - k0.frame;
   const t = span <= 0 ? 0 : (frame - k0.frame) / span;
-  return morphPaths(k0.vertices, k0.closed, k1.vertices, k1.closed, morphProgress(k0.ease, t), k0.align === 'auto');
+  if (k0.align === 'vertices' && k0.vertices.length === k1.vertices.length) {
+    return { vertices: lerpVertices(k0.vertices, k1.vertices, morphProgress(k0.ease, t)), closed: k0.closed };
+  }
+  // 'vertices' with different counts falls back to the matched (B62 auto) arc-length morph.
+  return morphPaths(k0.vertices, k0.closed, k1.vertices, k1.closed, morphProgress(k0.ease, t), k0.align === 'auto' || k0.align === 'vertices');
+}
+
+// ── B83: multi-contour morph (holes + islands) ──
+
+function flatRing(vs: PathVertex[]): Vec2[] {
+  if (vs.length < 2) return vs.map((v) => [v.position[0], v.position[1]] as Vec2);
+  const { pts } = flattenAll(vs, true, 8);
+  return pts.slice(0, -1);
+}
+
+function ringArea(pts: Vec2[]): number {
+  let a = 0;
+  for (let i = 0; i < pts.length; i++) { const p = pts[i], q = pts[(i + 1) % pts.length]; a += p[0] * q[1] - q[0] * p[1]; }
+  return a / 2;
+}
+
+function ringCentroid(pts: Vec2[]): Vec2 {
+  const a = ringArea(pts);
+  if (Math.abs(a) < 1e-9) {
+    let x = 0, y = 0;
+    for (const p of pts) { x += p[0]; y += p[1]; }
+    return pts.length ? [x / pts.length, y / pts.length] : [0, 0];
+  }
+  let cx = 0, cy = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i], q = pts[(i + 1) % pts.length];
+    const f = p[0] * q[1] - q[0] * p[1];
+    cx += (p[0] + q[0]) * f; cy += (p[1] + q[1]) * f;
+  }
+  return [cx / (6 * a), cy / (6 * a)];
+}
+
+/** Even-odd point-in-polygon on a flattened ring. */
+export function pointInRing(pt: Vec2, ring: Vec2[]): boolean {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const a = ring[i], b = ring[j];
+    if ((a[1] > pt[1]) !== (b[1] > pt[1]) && pt[0] < ((b[0] - a[0]) * (pt[1] - a[1])) / (b[1] - a[1] + 1e-300) + a[0]) inside = !inside;
+  }
+  return inside;
+}
+
+/**
+ * Nesting depth of each contour among `rings` (how many OTHER rings contain its first point). Even
+ * depth = filled (an outer or an island), odd = a hole: the even-odd rule, contour by contour.
+ */
+export function contourDepths(rings: Vec2[][]): number[] {
+  return rings.map((r, i) => {
+    if (r.length === 0) return 0;
+    // Probe a point just inside the ring's own area: its first point would sit ON the ring.
+    const probe = r[0];
+    let d = 0;
+    for (let j = 0; j < rings.length; j++) if (j !== i && rings[j].length >= 3 && pointInRing(probe, rings[j])) d++;
+    return d;
+  });
+}
+
+function scaleAbout(vs: PathVertex[], c: Vec2, f: number): PathVertex[] {
+  return vs.map((v) => ({
+    position: [c[0] + (v.position[0] - c[0]) * f, c[1] + (v.position[1] - c[1]) * f] as Vec2,
+    handleIn: [v.handleIn[0] * f, v.handleIn[1] * f] as Vec2,
+    handleOut: [v.handleOut[0] * f, v.handleOut[1] * f] as Vec2,
+    vertexType: v.vertexType,
+  }));
+}
+
+export interface ContourInfo { vs: PathVertex[]; c: Vec2; area: number; filled: boolean }
+
+function contourInfos(main: PathVertex[], holes: PathVertex[][]): ContourInfo[] {
+  const rings = [flatRing(main), ...holes.map(flatRing)];
+  const depth = contourDepths(rings);
+  return holes.map((vs, i) => {
+    const r = rings[i + 1];
+    return { vs, c: ringCentroid(r), area: Math.abs(ringArea(r)), filled: depth[i + 1] % 2 === 0 };
+  });
+}
+
+/**
+ * B83: pair the extra contours of two poses. Greedy on a cost of centre distance (relative to the
+ * pose size) plus an area-ratio term; only contours of the same kind pair (hole with hole, island
+ * with island) so the fill never flips mid-morph. Deterministic (ties keep the lower indices).
+ */
+export function pairContours(a: ContourInfo[], b: ContourInfo[], size: number): Array<[number, number]> {
+  const cand: Array<{ i: number; j: number; cost: number }> = [];
+  const s = Math.max(size, 1e-6);
+  for (let i = 0; i < a.length; i++) for (let j = 0; j < b.length; j++) {
+    if (a[i].filled !== b[j].filled) continue;
+    const d = Math.hypot(a[i].c[0] - b[j].c[0], a[i].c[1] - b[j].c[1]) / s;
+    const r = Math.abs(Math.log((a[i].area + 1e-6) / (b[j].area + 1e-6)));
+    cand.push({ i, j, cost: d + 0.25 * r });
+  }
+  cand.sort((x, y) => x.cost - y.cost || x.i - y.i || x.j - y.j);
+  const usedA = new Set<number>(), usedB = new Set<number>();
+  const out: Array<[number, number]> = [];
+  for (const c of cand) {
+    if (usedA.has(c.i) || usedB.has(c.j)) continue;
+    usedA.add(c.i); usedB.add(c.j);
+    out.push([c.i, c.j]);
+  }
+  return out.sort((x, y) => x[0] - y[0]);
+}
+
+function poseSize(vs: PathVertex[]): number {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const v of vs) {
+    if (v.position[0] < minX) minX = v.position[0]; if (v.position[0] > maxX) maxX = v.position[0];
+    if (v.position[1] < minY) minY = v.position[1]; if (v.position[1] > maxY) maxY = v.position[1];
+  }
+  return vs.length ? Math.hypot(maxX - minX, maxY - minY) : 1;
+}
+
+/**
+ * B83: the extra contours (holes / islands) of an animated outline at `frame`. At a pose: that pose's
+ * own contours (bezier intact). Between poses: paired contours morph (matched start point and
+ * winding); an unpaired contour of the first pose shrinks into its own centre, one of the second pose
+ * grows out of its centre. align 'vertices' with identical contour and vertex counts morphs vertex for
+ * vertex, like the main contour.
+ */
+export function evalPathHoles(kfs: PathKeyframe[], frame: number): PathVertex[][] {
+  const hs = (k: PathKeyframe): PathVertex[][] => (k.holes ?? []).map((h) => h.map(clonePathVertex));
+  if (kfs.length === 0) return [];
+  if (kfs.length === 1 || frame <= kfs[0].frame) return hs(kfs[0]);
+  const last = kfs[kfs.length - 1];
+  if (frame >= last.frame) return hs(last);
+  let i = 0;
+  for (let j = 0; j < kfs.length - 1; j++) if (frame >= kfs[j].frame && frame <= kfs[j + 1].frame) { i = j; break; }
+  const k0 = kfs[i], k1 = kfs[i + 1];
+  if (frame === k0.frame || k0.interpolation === 'hold') return hs(k0);
+  if (frame === k1.frame) return hs(k1);
+  const span = k1.frame - k0.frame;
+  const p = morphProgress(k0.ease, span <= 0 ? 0 : (frame - k0.frame) / span);
+  const A = k0.holes ?? [], B = k1.holes ?? [];
+  if (k0.align === 'vertices' && A.length === B.length && A.every((h, n) => h.length === B[n].length)) {
+    return A.map((h, n) => lerpVertices(h, B[n], p));
+  }
+  const ia = contourInfos(k0.vertices, A), ib = contourInfos(k1.vertices, B);
+  const pairs = pairContours(ia, ib, Math.max(poseSize(k0.vertices), poseSize(k1.vertices)));
+  const out: PathVertex[][] = [];
+  const pairedA = new Map(pairs.map(([x, y]) => [x, y]));
+  const pairedB = new Set(pairs.map(([, y]) => y));
+  for (let a = 0; a < A.length; a++) {
+    const b = pairedA.get(a);
+    if (b !== undefined) out.push(morphPaths(A[a], true, B[b], true, p, true).vertices);
+    else if (p < 1) out.push(scaleAbout(A[a], ia[a].c, 1 - p));
+  }
+  for (let b = 0; b < B.length; b++) if (!pairedB.has(b) && p > 0) out.push(scaleAbout(B[b], ib[b].c, p));
+  return out;
+}
+
+/** B76: index-for-index vertex interpolation (positions and bezier handles), keeping vertex types of `a`. */
+export function lerpVertices(a: PathVertex[], b: PathVertex[], t: number): PathVertex[] {
+  const l = (x: number, y: number): number => x + (y - x) * t;
+  return a.map((v, i) => {
+    const w = b[i];
+    return {
+      position: [l(v.position[0], w.position[0]), l(v.position[1], w.position[1])],
+      handleIn: [l(v.handleIn[0], w.handleIn[0]), l(v.handleIn[1], w.handleIn[1])],
+      handleOut: [l(v.handleOut[0], w.handleOut[0]), l(v.handleOut[1], w.handleOut[1])],
+      vertexType: v.vertexType,
+      ...(v.handleMode ? { handleMode: v.handleMode } : {}),
+    };
+  });
+}
+
+/**
+ * B76: the LOGICAL anchor positions of an animated outline at `frame` (layer-local): the same-index pose
+ * vertices interpolated on the pose ease, whatever the drawn morph does in between (the arc-length morph
+ * resamples, so its points are not anchors). Null when the two poses around `frame` differ in vertex count.
+ */
+export function evalPathAnchors(kfs: PathKeyframe[], frame: number): Vec2[] | null {
+  if (kfs.length === 0) return null;
+  const pos = (vs: PathVertex[]): Vec2[] => vs.map((v) => [v.position[0], v.position[1]]);
+  if (kfs.length === 1 || frame <= kfs[0].frame) return pos(kfs[0].vertices);
+  const last = kfs[kfs.length - 1];
+  if (frame >= last.frame) return pos(last.vertices);
+  let i = 0;
+  for (let j = 0; j < kfs.length - 1; j++) if (frame >= kfs[j].frame && frame <= kfs[j + 1].frame) { i = j; break; }
+  const k0 = kfs[i], k1 = kfs[i + 1];
+  if (frame === k0.frame || k0.interpolation === 'hold') return pos(k0.vertices);
+  if (frame === k1.frame) return pos(k1.vertices);
+  if (k0.vertices.length !== k1.vertices.length) return null;
+  const span = k1.frame - k0.frame;
+  const e = morphProgress(k0.ease, span <= 0 ? 0 : (frame - k0.frame) / span);
+  return k0.vertices.map((v, n): Vec2 => [v.position[0] + (k1.vertices[n].position[0] - v.position[0]) * e, v.position[1] + (k1.vertices[n].position[1] - v.position[1]) * e]);
 }
 
 // ── In-shape Repeater (B8d) ──

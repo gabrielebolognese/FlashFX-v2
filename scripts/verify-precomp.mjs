@@ -201,8 +201,13 @@ try {
     assert.equal(built.parentLayers[0].compositionId, built.subComposition.id);
     assert.ok(built.parentLayers.some((l) => l.id === r3.id));
     assert.ok(!built.parentLayers.some((l) => l.id === r1.id || l.id === r2.id), 'moved layers removed from parent');
-    // precomp identity transform (children stay put) + spans moved time range
-    assert.deepEqual(built.parentLayers[0].transform.position.defaultValue, [0, 0]);
+    // precomp at the comp centre (layer quads are centred on their position, so the same-size sub-comp
+    // lines up 1:1 there: children stay put; gpu:layer-effects proves it pixel for pixel) + spans moved
+    // time range. B57: (0, 0) used to put the precomp's centre on the top-left corner.
+    assert.deepEqual(built.parentLayers[0].transform.position.defaultValue, [SETTINGS.width / 2, SETTINGS.height / 2]);
+    assert.deepEqual(built.parentLayers[0].transform.scale.defaultValue, [1, 1]);
+    // B57: the sub-comp is transparent (no default opaque background layer).
+    assert.deepEqual(built.subComposition.background.layers, []);
   });
   check('buildPrecompose pulls descendants of a selected group along', () => {
     const comp = createComposition('parent', { ...SETTINGS });

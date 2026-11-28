@@ -122,7 +122,7 @@ function getLeafWorldSize(layer: Layer, layers: Layer[], frame: number): { w: nu
         break;
       case 'circle': {
         const r = evaluateNumber(shape.radius, frame);
-        w = r * 2; h = r * 2;
+        w = r * 2; h = (shape.radiusY ? evaluateNumber(shape.radiusY, frame) : r) * 2;
         break;
       }
       case 'star': {

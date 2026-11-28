@@ -39,6 +39,8 @@ export type AgentHelperMethod =
   | 'getLayer'
   | 'measureText'
   | 'measureString'
+  | 'placeText'
+  | 'setTrimStartAngle'
   | 'renderFrame'
   | 'renderStrip'
   | 'configureParticles'
@@ -52,10 +54,29 @@ export type AgentHelperMethod =
   | 'play'
   | 'pause'
   | 'addCursor'
+  | 'setMotionPath'
+  | 'bringToFront'
   | 'cursorMoveTo'
   | 'cursorClick'
   | 'cursorIcon'
-  | 'setTextCaret';
+  | 'setTextCaret'
+  | 'pixelBlockReveal'
+  | 'pixelSparkle'
+  | 'applyLayerEffects'
+  | 'liquidDrip'
+  | 'setClonerSources'
+  | 'setClonerData'
+  | 'setTextCounter'
+  | 'setTextStyleKeys'
+  | 'setClipTiming'
+  | 'addSelectionBox'
+  | 'addAnchorSquares'
+  | 'addReadout'
+  | 'addGuideLabel'
+  | 'addGuideLine'
+  | 'addCardSwarm'
+  | 'setTextTyping'
+  | 'addPromptBox';
 
 export type FeatureStatus = 'shipped' | 'browser-gated' | 'partial';
 
@@ -148,7 +169,7 @@ const EFFECTOR_TYPES = ['random', 'falloff', 'step', 'time', 'target'] as const;
 const PHYSICS_ROLES = ['kinematic', 'dynamic', 'static', 'ghost'] as const;
 const MOTION_PRINCIPLES = ['anticipation', 'follow-through', 'squash-stretch', 'stagger'] as const;
 const LAYER_FX = ['shadow', 'glow', 'blur'] as const;
-const CURSOR_ICONS = ['arrow', 'hand', 'ibeam'] as const;
+const CURSOR_ICONS = ['arrow', 'hand', 'ibeam', 'pen', 'crosshair', 'rotate', 'directSelect', 'resize'] as const;
 /** Friendly paths of the animated overrides (core/animProps.ts ANIM_PROP_DEFS: kept in sync by verify:anim-props). */
 export const ANIM_COLOR_PATHS = ['shape.fillColor', 'shape.strokeColor', 'text.color', 'text.strokeColor', 'glow.color', 'shadow.color'] as const;
 export const ANIM_FX_PATHS = ['glow.intensity', 'glow.radius', 'glow.threshold', 'shadow.blurRadius', 'shadow.lightDistance', 'shadow.lightAngle', 'shadow.shadowScale', 'blur.radius', 'blur.strength', 'blur.angle'] as const;
@@ -209,9 +230,21 @@ export const AGENT_ACTIONS: readonly AgentActionSpec[] = [
     description: 'Read every field of one layer, so you can see the exact dot-paths updateLayerProperty / addKeyframe accept and verify what an action produced. Read-only.',
     params: [LAYER_ID] },
   { id: 'agent.measureText', store: 'agent', method: 'measureText', undoable: false,
-    returns: '{ frame, center, box {width,height,left,top}, ink {width,height,left,right,top,bottom}, lines, lineWidths, lineHeightPx, fontSize, scale, rotation }',
-    description: 'Measure a text layer exactly as the renderer lays it out (comp px), so you can align other layers, size masks and cards, or left-align by centre. ink = the lines (width of the widest line x line count); box = the drawn quad incl. padding. Assumes scale 1 / no rotation for the edges. Read-only.',
+    returns: '{ frame, center, box {width,height,left,top}, ink {width,height,left,right,top,bottom}, glyphInk {left,right,top,bottom,width,height,centerX,centerY}, baselines, lines, lineWidths, lineHeightPx, fontSize, scale, rotation }',
+    description: 'Measure a text layer exactly as the renderer lays it out (comp px), so you can align other layers, size masks and cards, or left-align by centre. glyphInk = the TIGHT box of the drawn letters (cap / x-height, descenders, side bearings; includes the layer scale): use it to hug text with a pill, underline, highlight or mask. ink = the line box (widest line advance x line count; taller than the letters, unscaled). baselines = comp y of each line baseline. box = the drawn quad incl. padding. Rotation is not applied to the edges. Read-only.',
     params: [LAYER_ID, { name: 'frame', type: 'number', optional: true, description: 'Default: the playhead.' }] },
+  { id: 'agent.placeText', store: 'agent', method: 'placeText', undoable: true,
+    returns: '{ anchor, moved [dx,dy], position, keyframesShifted, inkTop, inkBottom, baselineY }',
+    description: 'Move a text layer so its visible ink centre (default), its first-line baseline, or its line-box centre lands on (x, y) in comp px, measured in the real face after styling. createQuickText / addText put y on the line-box centre, so mixed-case words sit ~0.15 x size high: style the text first (font, size, weight), then call this. Keyframed position keeps its motion (every key shifts by the same delta). One undo step.',
+    params: [LAYER_ID, { name: 'x', type: 'number', optional: true, description: 'Comp px; null / omitted keeps the current x.' },
+      { name: 'y', type: 'number' },
+      { name: 'anchor', type: 'string', values: ['inkCenter', 'baseline', 'box'], optional: true, description: 'Default inkCenter.' },
+      { name: 'frame', type: 'number', optional: true, description: 'Frame to measure at (default: the playhead).' }] },
+  { id: 'agent.setTrimStartAngle', store: 'agent', method: 'setTrimStartAngle', undoable: true,
+    returns: '{ modifierIndex, angle, pathFraction, offset }',
+    description: 'Make a trim-path draw-on start at a clock angle around the shape (0 = 12 o’clock, 90 = 3 o’clock, clockwise): sets the trim offset (shifting its keys) so start + offset lands where a ray from the shape centre at that angle meets the path. For progress rings: stroked circle > editor.convertShapeToPath > addShapeModifier trim > this > keyframe modifiers.N.end 0 -> 1. One undo step.',
+    params: [LAYER_ID, { name: 'angle', type: 'number', description: 'Degrees, 0 = 12 o’clock, clockwise.' },
+      { name: 'modifierIndex', type: 'number', optional: true, description: 'Default: the first trim modifier.' }] },
   { id: 'agent.renderFrame', store: 'agent', method: 'renderFrame', undoable: false,
     returns: '{ exportId, bytes, frame, width, height, mimeType: "image/png" }; read the PNG with __ffxAgent.readExport(exportId, offset, length)',
     description: 'Render ONE frame of the active composition at full resolution through an offscreen WebGPU renderer, exactly like the MP4 exporter (export-quality motion blur, full-resolution video, no UI overlays, not the scaled preview), as a PNG. For pixel-true checks and side-by-sides with reference frames. Default size = the composition; pass width or height alone to keep the aspect.',
@@ -330,11 +363,20 @@ export const AGENT_ACTIONS: readonly AgentActionSpec[] = [
     description: 'Move the pivot (anchor point) without moving the layer on screen.',
     params: [{ name: 'id', type: 'string' }, { name: 'anchor', type: '[number, number]' }, { name: 'frame', type: 'number' }] },
   { id: 'editor.reorderLayers', store: 'editor', method: 'reorderLayers', undoable: true,
-    description: 'Move layers to a stacking index.',
+    description: 'Move layers to an index of the layer LIST (getState().layers order). This does not change what draws on top: the render stack follows the timeline tracks. To put layers on top of everything use agent.bringToFront.',
     params: [{ name: 'sourceIds', type: 'string[]' }, { name: 'targetIndex', type: 'number' }] },
   { id: 'editor.moveClipInTime', store: 'editor', method: 'moveClipInTime', undoable: true,
-    description: 'Slide a clip so it starts at a new frame.',
-    params: [LAYER_ID, { name: 'newInPoint', type: 'number' }] },
+    description: 'Slide a clip so it starts at a new frame (its length is kept; keyframes stay where they are: use agent.setClipTiming to move them with the clip). Exact by default, also for video on a magnetic track: the track turns absolute, and if the new range overlaps another clip on that track the clip moves to a new track directly above.',
+    params: [LAYER_ID, { name: 'newInPoint', type: 'number' },
+      { name: 'placement', type: 'string', values: ['exact', 'timeline'], optional: true, description: '"timeline" = the timeline drag rules instead: a magnetic track re-packs by order, an overlap refuses the move.' }] },
+  { id: 'agent.setClipTiming', store: 'agent', method: 'setClipTiming', undoable: true,
+    returns: '{ layerId, inPoint, outPoint, durationFrames, trackId, sourceStart?, sourceEnd?, sourceDuration?, startOffset?, speed?, reversed?, keyframesShiftedBy?, trackNowAbsolute?, movedToNewTrack?, restacked?, warnings? }',
+    description: 'Clip timing in one undo step (B65): where a clip starts and ends on the timeline, which part of its source it plays, its speed and direction. Works on any layer (in / out); sourceStart / sourceEnd on video and audio; speed / reversed on video. Unset fields keep their value; a speed change alone keeps the source range (the clip gets shorter or longer). Placement is exact: a magnetic video track turns absolute (nothing else moves), so the clip stays put through later imports, edits and a reload; an overlap on the same track moves the clip to a new track directly above. A JUMP (the new range does not overlap the old one, e.g. a clip imported at frame 0 and timed to frame 478) re-drops the clip on top of every layer visible in its new range (restacked: true), so it never hides under a ground built later (B84); a trim or nudge keeps the track. When the start moves, the layer\'s keyframes move with it (moveKeyframes: false keeps them).',
+    params: [LAYER_ID, { name: 'timing', type: '{ startFrame?: number; endFrame?: number; durationFrames?: number; sourceStart?: number; sourceEnd?: number; speed?: number; reversed?: boolean; moveKeyframes?: boolean }',
+      description: 'Frames are comp frames (endFrame exclusive); sourceStart / sourceEnd are seconds of the source file. Pass at most one of endFrame / durationFrames / sourceEnd. speed 0.01-100 (2 = twice as fast).' }] },
+  { id: 'editor.setTrackCompressed', store: 'editor', method: 'setTrackCompressed', undoable: true,
+    description: 'Turn a track\'s magnetism on or off. Magnetic (compressed) tracks pack their clips gaplessly from frame 0 in clip order; video tracks are magnetic by default. Off = every clip keeps its own frames (nothing moves when you turn it off). getState().tracks[].magnetic shows it.',
+    params: [{ name: 'trackId', type: 'string', description: 'Track id (getState().tracks or a layer\'s trackId).' }, { name: 'compressed', type: 'boolean' }] },
   { id: 'editor.trimSplit', store: 'editor', method: 'trimSplit', undoable: true,
     description: 'Split a clip at the playhead.', params: [{ name: 'layerId', type: 'string', optional: true }] },
 
@@ -353,11 +395,26 @@ export const AGENT_ACTIONS: readonly AgentActionSpec[] = [
   { id: 'agent.applyTextDecode', store: 'agent', method: 'applyTextDecode', undoable: true,
     description: 'Scramble/decode reveal (hacker text) over [startFrame, startFrame+durationFrames].',
     params: [LAYER_ID, { name: 'startFrame', type: 'number', optional: true }, { name: 'durationFrames', type: 'number', optional: true }] },
+  { id: 'agent.setTextCounter', store: 'agent', method: 'setTextCounter', undoable: true,
+    returns: '{ counter, sampleText: { start, middle, end } }',
+    description: 'Styled number counter (B75): one span of a text layer counts from `from` to `to` over [startFrame, endFrame] on an ease, formatted with separators / decimals / compact units (10K, 1.2M) and a prefix / suffix. The span keeps its own font, weight, italic and colour; put a differently styled prefix or suffix in the neighbouring spans (editor.styleTextRange). Frame-pure. null removes it. One undo step.',
+    params: [LAYER_ID, { name: 'counter', type: '{ from: number; to: number; startFrame: number; endFrame: number; decimals?: number; separator?: string; decimalMark?: "." | ","; compact?: boolean; compactDecimals?: number; compactUpper?: boolean; prefix?: string; suffix?: string; ease?: string | [x1, y1, x2, y2]; stepFrames?: number; spanIndex?: number } | null',
+      description: 'Defaults: separator ",", decimals 0, ease "cubicOut" (names from core/easings.ts: expoOut, quartOut, backOut...), compactDecimals 1, spanIndex 0.' }] },
+  { id: 'agent.setTextStyleKeys', store: 'agent', method: 'setTextStyleKeys', undoable: true,
+    returns: '{ styleKeys: { keys: [{ frame, fontFamily, fontWeight, fontStyle }], spanIndex? } | null }',
+    description: 'Hold keyframes on a text layer\'s face (B77): at each key frame the font family / weight / italic switches (no in-between) and the layout re-flows (a word cycling through typefaces). Each key may set any of the three; missing ones carry over from the previous face. Before the first key the stored style shows. Faces load like any other (bundled or import_font). null removes them. One undo step.',
+    params: [LAYER_ID, { name: 'keys', type: '{ frame: number; fontFamily?: string; fontWeight?: number; fontStyle?: "normal" | "italic" }[] | null' },
+      { name: 'spanIndex', type: 'number', optional: true, description: 'Only this span switches (default: every span).' }] },
   { id: 'agent.setTextCaret', store: 'agent', method: 'setTextCaret', undoable: true,
     returns: 'the caret now on the layer (TextCaret), or null',
     description: 'Typing caret (B35): a bar, block or underline drawn right after the last revealed glyph, so it rides a type-on (agent.applyTextAnimatorPreset "type-on") frame by frame. Fields merge into the current caret; null turns it off. Solid while typing, blinking before / after (blinkRate cycles per second, 0 = solid). Single-line text. One undo step (updateLayerProperty "caret"; tweak one field later with "caret.<field>").',
-    params: [LAYER_ID, { name: 'caret', type: '{ style?: "bar" | "block" | "underline"; color?: [r, g, b, a]; width?: number; height?: number; gap?: number; offsetY?: number; radius?: number; blinkRate?: number; solidWhileTyping?: boolean; startFrame?: number; endFrame?: number } | null', optional: true,
-      description: 'Defaults: style bar, colour = text colour, bar 6% / block 55% of the font size wide, height = font size, blinkRate 1.' }] },
+    params: [LAYER_ID, { name: 'caret', type: '{ style?: "bar" | "block" | "underline"; color?: [r, g, b, a]; gradient?: [[r, g, b, a], [r, g, b, a]]; width?: number; height?: number; gap?: number; offsetY?: number; radius?: number; blinkRate?: number; solidWhileTyping?: boolean; startFrame?: number; endFrame?: number } | null', optional: true,
+      description: 'Defaults: style bar, colour = text colour, bar 6% / block 55% of the font size wide, height = font size, blinkRate 1. B82 gradient: [top, bottom] colours of a vertical gradient caret (r10 blue -> pink: [[0.38, 0.46, 0.81, 1], [0.91, 0.35, 0.63, 1]]).' }] },
+  { id: 'agent.setTextTyping', store: 'agent', method: 'setTextTyping', undoable: true,
+    returns: '{ typing: { enabled, frames, arrivalColor?, arrivalFrames? }, count, startFrame, endFrame } or { typing: null }',
+    description: 'Per-character typing schedule on a text layer (B82): character i (spaces included) appears on frames[i], so a type-on can follow ANY timing: an even rate (startFrame + cps or durationFrames), an EASED typing rate (ease: slow start, fast middle, like r10 S4 easeInOutCubic) or explicit measured keystrokes (frames: one absolute frame per character, r06 human rhythm). Optional arrivalColor: each new character is drawn in that colour on its arrival frame and mixes to the text colour over arrivalFrames (default 4; r10 S11 pink -> white). The B35 caret (agent.setTextCaret) rides the head exactly; on a reflowHidden centred layer the line grows both ways and the caret follows. Frame-pure, persisted, editable later with updateLayerProperty "typing.frames" / "typing.arrivalColor". Use it INSTEAD of a type-on animator (they stack: an animator still hides glyphs). null removes it. One undo step.',
+    params: [LAYER_ID, { name: 'typing', type: '{ startFrame?: number; cps?: number; durationFrames?: number; frames?: number[]; ease?: string | [x1, y1, x2, y2]; arrivalColor?: [r, g, b, a] | "#rrggbb"; arrivalFrames?: number; enabled?: boolean } | null',
+      description: 'frames wins over startFrame + durationFrames (first char on startFrame, last on startFrame + durationFrames - 1), which wins over cps (default 24 chars / s). ease = any easing name or cubic-bezier quad, applied to the typing rate.' }] },
   { id: 'editor.styleTextRange', store: 'editor', method: 'styleTextRange', undoable: true,
     description: 'Mixed styles: give characters [start, end) of a text layer their own face / weight / italic / colour (raw-text indices).',
     params: [LAYER_ID, { name: 'start', type: 'number' }, { name: 'end', type: 'number' },
@@ -381,16 +438,16 @@ export const AGENT_ACTIONS: readonly AgentActionSpec[] = [
   { id: 'editor.addStar', store: 'editor', method: 'addStar', undoable: true, params: [], returns: 'new layer id (activeLayerId)', description: 'Add a star.' },
   { id: 'editor.addPolygon', store: 'editor', method: 'addPolygon', undoable: true, params: [], returns: 'new layer id (activeLayerId)', description: 'Add a polygon.' },
   { id: 'editor.addShapeLayer', store: 'editor', method: 'addShapeLayer', undoable: true, returns: 'the new layer id',
-    description: 'Add a shape with explicit geometry and CLEAN defaults in one undo step: no stroke unless you pass stroke / strokeWidth, your fill, corner radius and name. Prefer this over addShapeWithDimensions (which adds the UI default 1 px grey stroke). An ellipse with width != height is a circle stretched by the layer scale.',
-    params: [{ name: 'opts', type: '{ type: "rectangle" | "circle" | "star" | "polygon"; x: number; y: number; width: number; height: number; fill?: [r, g, b, a]; stroke?: [r, g, b, a]; strokeWidth?: number; radius?: number; name?: string; points?: number; innerRatio?: number }', description: 'x, y = centre (comp px); colours RGBA 0..1; fill defaults to white; strokeWidth defaults to 2 when stroke is given, else 0.' }] },
+    description: 'Add a shape with explicit geometry and CLEAN defaults in one undo step: no stroke unless you pass stroke / strokeWidth, your fill, corner radius and name. Prefer this over addShapeWithDimensions (which adds the UI default 1 px grey stroke). type "circle" with width != height is a true ellipse (shape.radius = width / 2, shape.radiusY = height / 2, scale 1; both keyframable); a circle layer with a non-uniform scale also draws as an ellipse. type "polygon" is a regular polygon with `sides` (default 6) inscribed in width x height. Strokes are centred on the edge and never clipped; corner radius scales with the layer and is clamped to half the short side.',
+    params: [{ name: 'opts', type: '{ type: "rectangle" | "circle" | "star" | "polygon"; x: number; y: number; width: number; height: number; fill?: [r, g, b, a]; stroke?: [r, g, b, a]; strokeWidth?: number; radius?: number; name?: string; points?: number; innerRatio?: number; sides?: number }', description: 'x, y = centre (comp px); colours RGBA 0..1; fill defaults to white; strokeWidth defaults to 2 when stroke is given, else 0.' }] },
   { id: 'editor.addShapeWithDimensions', store: 'editor', method: 'addShapeWithDimensions', undoable: true, returns: 'new layer id (activeLayerId)',
     description: 'Add a shape with an explicit position and size (comp px).',
     params: [{ name: 'shapeType', type: 'string', values: SHAPE_TYPES }, { name: 'x', type: 'number' }, { name: 'y', type: 'number' }, { name: 'width', type: 'number' }, { name: 'height', type: 'number' }] },
   { id: 'editor.setShapeMorph', store: 'editor', method: 'setShapeMorph', undoable: true,
-    description: 'Shape morph in one undo step: the shape layer becomes a path whose outline morphs through the poses (square -> circle -> star -> pill ...). Each pose: { frame, shape, ease } where shape is { type: "rectangle", width, height, radius? } | { type: "ellipse", width, height } | { type: "star", width, height, points?, innerRatio? } | { type: "polygon", width, height, sides? } | { type: "path", points: [[x, y], ...], closed? } (layer-local px, centred on the layer position) and ease shapes the morph to the NEXT pose (named ease / CSS keyword / cubic-bezier quad / "hold"; backOut overshoots the shape). align (default true) matches start point and winding so nothing twists. Fill, stroke, gradients and transform are kept.',
+    description: 'Shape morph in one undo step: the shape layer becomes a path whose outline morphs through the poses (square -> circle -> star -> pill ...). Each pose: { frame, shape, ease } where shape is { type: "rectangle", width, height, radius? } | { type: "ellipse", width, height } | { type: "star", width, height, points?, innerRatio? } | { type: "polygon", width, height, sides? } | { type: "path", points: [[x, y] | { x, y, in?: [dx, dy], out?: [dx, dy] }, ...], closed?, holes?: [[points], ...] } | { type: "svg", d: "<SVG path data>", width?, height?, fit?: "contain" | "stretch" | "none" } (any logo / icon / glyph: subpaths become holes or islands, the drawing is centred and fitted) | { type: "layer", layerId, frame? } (the outline of another shape layer with its holes, e.g. an outlined letter) (layer-local px, centred on the layer position). Poses may have different contour counts (B83): contours pair up by position and size (holes with holes, islands with islands), an unpaired one shrinks into / grows out of its centre, all filled even-odd and ease shapes the morph to the NEXT pose (named ease / CSS keyword / cubic-bezier quad / "hold"; backOut overshoots the shape). align (default true) matches start point and winding so nothing twists. Fill, stroke, gradients and transform are kept.',
     params: [LAYER_ID,
       { name: 'poses', type: 'Array<{ frame: number; shape: OutlineSpec; ease?: string | [number, number, number, number] }>' },
-      { name: 'align', type: 'boolean', optional: true, description: 'Default true (best start point + winding per pose pair).' }] },
+      { name: 'align', type: 'boolean | "vertices"', optional: true, description: 'Default true (best start point + winding per pose pair). "vertices" (B76): poses with the same vertex count morph vertex for vertex (each anchor and its handles move straight to the same-index anchor, like an After Effects path keyframe): use it for anchor drags and letter edits; different counts fall back to the matched morph.' }] },
   { id: 'editor.addShapeModifier', store: 'editor', method: 'addShapeModifier', undoable: true,
     description: 'Add a path modifier (Trim Paths for line draw-on, Offset, Roughen, Pucker & Bloat). Edit params with updateLayerProperty/addKeyframe on "modifiers.<i>.<param>".',
     params: [LAYER_ID, { name: 'type', type: 'string', values: MODIFIER_TYPES }] },
@@ -441,7 +498,18 @@ export const AGENT_ACTIONS: readonly AgentActionSpec[] = [
     description: 'Make a layer trail another with spring-damped lag (follow-through).',
     params: [{ name: 'childId', type: 'string' }, { name: 'parentId', type: 'string' }, { name: 'opts', type: '{ lag?: number; bounce?: number }', optional: true }] },
   { id: 'editor.addMotionPath', store: 'editor', method: 'addMotionPath', undoable: true,
-    description: 'Attach an editable motion path to a layer.', params: [LAYER_ID] },
+    description: 'Attach an EMPTY editable motion path to a layer (the user then draws its nodes in the Motion Path tab). Agents: use agent.setMotionPath, which sets the nodes and the timing in one call.', params: [LAYER_ID] },
+  { id: 'agent.bringToFront', store: 'agent', method: 'bringToFront', undoable: true,
+    returns: '{ moved: ids bottom to top, topToBottom: the new top of the stack }',
+    description: 'Draw layers above everything else: each goes onto its own new timeline track at the top of the render stack, keeping their current order among themselves (a group takes its children along, so a cursor rig moves whole). Clip timing is unchanged. Use it when a layer added early must sit above shots built later (a cursor, a title, a flash). One undo step.',
+    params: [{ name: 'layerIds', type: 'string[]', description: 'Layer ids to raise.' }] },
+  { id: 'agent.setMotionPath', store: 'agent', method: 'setMotionPath', undoable: true,
+    returns: '{ pathId, nodes, closed, smooth, lengthPx, startFrame, endFrame, replaced } (or { pathId: null, removed } for [])',
+    description: 'Move a layer along a curve: set its motion path nodes (comp px) and the travel timing in one call. Nodes without handles are auto-smoothed into a flowing curve (smooth: false = straight segments); give { x, y, in, out } for exact bezier handles (relative to the node). The layer travels from the first node at startFrame to the last at endFrame (constant speed by default, any setKeyframes ease). orientToPath turns it along the tangent (planes, arrows, comets); loop / pingPong keep it going. Calling it again replaces the path; nodes [] removes it. Motion blur follows the path. The path stays editable in the Motion Path tab. One undo step.',
+    params: [LAYER_ID,
+      { name: 'nodes', type: '([x, y] | { x: number; y: number; in?: [dx, dy]; out?: [dx, dy] })[]', description: 'At least 2 nodes, in travel order; [] removes the path.' },
+      { name: 'options', type: '{ closed?: boolean; smooth?: boolean; orientToPath?: boolean; loop?: "none" | "loop" | "pingPong"; startFrame?: number; endFrame?: number; ease?: string | [x1, y1, x2, y2] }', optional: true,
+        description: 'Defaults: open, smooth (when no node has handles), no orient, loop none, startFrame = the layer in-point, endFrame = its last frame, ease linear.' }] },
 
   // ----- expressions -----
   { id: 'agent.setExpression', store: 'agent', method: 'setExpression', undoable: true,
@@ -459,6 +527,19 @@ export const AGENT_ACTIONS: readonly AgentActionSpec[] = [
     description: 'Append an effector to a cloner stack.', params: [LAYER_ID, { name: 'type', type: 'string', values: EFFECTOR_TYPES }] },
   { id: 'editor.removeClonerEffector', store: 'editor', method: 'removeClonerEffector', undoable: true,
     description: 'Remove the effector at an index.', params: [LAYER_ID, { name: 'index', type: 'number' }] },
+  // B60 per-instance sources
+  { id: 'agent.setClonerSources', store: 'agent', method: 'setClonerSources', undoable: true,
+    returns: '{ clonerId, sources, order, seed, instances, picks }',
+    description: 'Give a cloner several sources: instance i draws sources[i mod n] (a ring of different photos, an orbit of different chips), or a seeded random pick per instance with order "random" (a swarm of mixed cards). The listed layers (image, shape, text, video...) are hidden like the main source and stay editable; the main source still drives the instance animation (stagger) and its position offsets every copy. Each other source keeps its own scale, rotation and opacity relative to the main source (scale each photo to the tile size and its copies keep that size). Pass [] to go back to one source. One undo step. Returns picks = the source id of the first 24 instances.',
+    params: [LAYER_ID, { name: 'sources', type: 'string[]', description: 'Layer ids, in instance order (cycled).' },
+      { name: 'order', type: 'string', optional: true, values: ['cycle', 'random'], description: 'cycle (default) = i mod n; random = seeded pick per instance, stable while scrubbing.' },
+      { name: 'seed', type: 'number', optional: true, description: 'Seed of the random order (integer, default 0). Change it to reshuffle.' }] },
+  { id: 'agent.setClonerData', store: 'agent', method: 'setClonerData', undoable: true,
+    returns: '{ clonerId, rows, bindings, instances }',
+    description: 'Data-bind a cloner: copy i is the source with row data[i mod rows] written into the bound properties (a ring of different words, a grid of labels, bars of different sizes). bindings map a dot-path on the source layer (content.spans.0.text for the text, shape.width, shape.height...) to a key of each row; read the paths with get_layer. Explicit agent.setClonerSources wins when both are set. Pass data [] to remove the binding. One undo step.',
+    params: [LAYER_ID,
+      { name: 'data', type: '{ [key: string]: string | number }[]', description: 'Rows, in instance order (cycled).' },
+      { name: 'bindings', type: '{ propertyPath: string; dataKey: string }[]', optional: true, description: 'Which source property each row key writes. Required unless data is [].' }] },
 
   // ----- particles / procedural / patterns -----
   { id: 'editor.addParticleLayer', store: 'editor', method: 'addParticleLayer', undoable: true, params: [], returns: 'new layer id (activeLayerId)',
@@ -501,8 +582,9 @@ export const AGENT_ACTIONS: readonly AgentActionSpec[] = [
     description: 'Keyframe an iris / wipe reveal of the layer through a mask.',
     params: [LAYER_ID, { name: 'maskId', type: 'string' }, { name: 'kind', type: 'string', values: MASK_REVEALS }, { name: 'startFrame', type: 'number' }, { name: 'durationFrames', type: 'number' }] },
   { id: 'editor.setTrackMatte', store: 'editor', method: 'setTrackMatte', undoable: true,
-    description: 'Matte a layer by the layer directly above it (undefined clears).',
-    params: [LAYER_ID, { name: 'mode', type: 'string | undefined', values: TRACK_MATTES }] },
+    description: 'Matte a layer by the layer directly above it (undefined clears). Pass matteLayerId to name the matte: the stack is re-ordered first so that layer sits directly above (each on its own track, no clip changes time), in the same undo step.',
+    params: [LAYER_ID, { name: 'mode', type: 'string | undefined', values: TRACK_MATTES },
+      { name: 'matteLayerId', type: 'string', optional: true, description: 'The layer to use as the matte (e.g. a shape created after a video).' }] },
 
   // ----- effects / adjustment -----
   { id: 'editor.enableLayerEffect', store: 'editor', method: 'enableLayerEffect', undoable: true,
@@ -515,6 +597,9 @@ export const AGENT_ACTIONS: readonly AgentActionSpec[] = [
     description: 'Enable/disable an effect-stack effect.', params: [LAYER_ID, { name: 'type', type: 'number' }] },
   { id: 'editor.removeLayerEffect', store: 'editor', method: 'removeLayerEffect', undoable: true,
     description: 'Remove an effect-stack effect.', params: [LAYER_ID, { name: 'type', type: 'number' }] },
+  { id: 'editor.setLayerEffects', store: 'editor', method: 'setLayerEffects', undoable: true,
+    description: 'Replace the whole effect stack of an image / adjustment / precomp layer (one undo step). Order = render order. For text / shape layers use agent.applyLayerEffects.',
+    params: [LAYER_ID, { name: 'effects', type: '{ type: number; enabled: boolean; params: number[] }[]' }] },
   { id: 'editor.addAdjustmentLayer', store: 'editor', method: 'addAdjustmentLayer', undoable: true, params: [], returns: 'new layer id (activeLayerId)',
     description: 'Add an adjustment layer (its effects apply to everything below it).' },
   { id: 'editor.addBeamLayer', store: 'editor', method: 'addBeamLayer', undoable: true, params: [], returns: 'new layer id (activeLayerId)',
@@ -568,16 +653,43 @@ export const AGENT_ACTIONS: readonly AgentActionSpec[] = [
   { id: 'editor.addAnimationItem', store: 'editor', method: 'addAnimationItem', undoable: true, returns: 'new layer id (activeLayerId)',
     description: 'Add an animation item (ready-made animated element).', params: [{ name: 'presetName', type: 'string', catalog: 'animationItems' }] },
 
+  // ----- B57 effects on text / shape layers (via a precomp) + positionable bulge (core/effects/layerEffects.ts) -----
+  { id: 'agent.applyLayerEffects', store: 'agent', method: 'applyLayerEffects', undoable: true,
+    returns: '{ layerId, wrapped, compositionId, effects: [{ effect, type, params }] }',
+    description: 'Put an effect stack (glitch, RGB split, bulge, twirl, wave, blur-free colour looks...) on ANY visual layer. Image / adjustment / precomp layers take it directly; a text, shape, video or lottie layer is first nested in a precomp (Precompose, the layer stays fully editable inside it) and the stack runs on that precomp, so nothing behind the layer is touched. Key a param afterwards with editor.setKeyframes on the returned layerId, path "effect.<type>.<paramIndex>" (e.g. "effect.245.0" = digitalGlitch amount). Undo: 1 step (2 when it wraps: precompose + effects).',
+    params: [LAYER_ID, { name: 'effects', type: '{ effect: string; params?: number[]; enabled?: boolean }[]',
+      description: 'Registry ids (src/core/effects/effectRegistry.ts). Useful: digitalGlitch [amount 0..1] (row-slice glitch + RGB offset), rgbSplit [px], chromaticAberration, bulge [amount -1..1, centreX, centreY, radius] (centre in UV 0..1 of the precomp = the comp, radius as a fraction of the comp height; radius 0 = centred), twirl, wave, ripple, pixelate.' },
+      { name: 'mode', type: 'string', optional: true, values: ['replace', 'append'], description: 'replace (default) or append to the existing stack.' }] },
+
+  // ----- B54 pixel-block dissolve / build-on + 8-bit sparkle (core/pixelBlocks.ts, animation-templates/pixelSparkle.ts) -----
+  { id: 'agent.liquidDrip', store: 'agent', method: 'liquidDrip', undoable: true,
+    returns: '{ layerId, wrapped, effectType, params, keyPath, keys }',
+    description: 'Liquid drip / melt (B61, r05 "ideas" melting into neon drips): the layer melts into liquid streams that run down from every bottom edge with a sideways wobble and, given a floor, bend and flow along it. Drip lengths differ per column (seeded), each drip head fades out; the streams take the colour of the letter above them and draw UNDER the original. A text / shape / video / lottie layer is first nested in a comp-sized precomp (B57, stays editable inside); image and precomp layers take it directly. With startFrame / endFrame the drip length is keyed 0 -> length on the ease (default the r05 measured melt [0.376, 0.12, 0.234, 0.97]); re-key it with editor.setKeyframes on the returned layerId, path keyPath ("effect.315.0"). Glow on the returned precomp layer gives the neon look. Undo: 1 step (2 when it wraps). Re-running replaces the drip.',
+    params: [LAYER_ID, { name: 'options', type: '{ length: number; startFrame?: number; endFrame?: number; ease?: string | [number, number, number, number]; floorY?: number; floor?: number; spacing?: number; sway?: number; seed?: number; flow?: number; variance?: number }',
+      description: 'length: drip length in comp px (required). floorY: floor line in comp px (or floor: 0..1 of the height; none = drips just fall). spacing: px between independent drips, about a stroke width (default 14). sway: sideways wobble px (default 6). seed (default 1). flow: along the floor, > 0 right, < 0 left (0..1 how hard it turns), 0 = outward from the frame centre (default). variance: 0..1 how much drip lengths differ; near 1 a wide bottom edge splits into separate drips with gaps (default 0.9).' }] },
+  { id: 'agent.pixelBlockReveal', store: 'agent', method: 'pixelBlockReveal', undoable: true,
+    returns: '{ maskId, maskIndex, region, blockSize, order, direction, keys }',
+    description: 'Pixel-block dissolve ("out") or build-on ("in") on a masked layer (shape, text, image, video, lottieIcon): appends ONE intersect mask whose rectangle is the block grid region and whose keyed "blocks.progress" (0 -> 1) shows or hides whole seeded squares, rendered per pixel on the GPU. Frame-pure (seeded hash, scrubbing is identical). Edit later with editor.updateMaskProperty (path "blocks.size", "blocks.seed", "blocks.order", "blocks.angle", "blocks.jitter", "blocks.direction"; re-time by setting "blocks.progress" or calling this again on a fresh layer). One undo step.',
+    params: [LAYER_ID, { name: 'options', type: '{ direction: "in" | "out"; startFrame: number; durationFrames: number; region?: { x: number; y: number; width: number; height: number }; blockSize?: number; order?: "random" | "directional" | "center"; angle?: number; jitter?: number; seed?: number; stepFrames?: number; name?: string }',
+      description: 'region: comp px, top-left origin, default the whole comp (pass the layer box for directional / centre orders so the sweep spans the layer). blockSize px (default 16). angle: directional sweep in degrees (0 = left to right, 90 = top to bottom). jitter 0..1 (default 0.35). stepFrames 1 = new blocks every frame, 2 = on twos.' }] },
+  { id: 'agent.pixelSparkle', store: 'agent', method: 'pixelSparkle', undoable: true,
+    returns: '{ groupId, squareIds, cells, steps }',
+    description: '8-bit sparkle: stepped, seeded squares that flicker and crawl in a ring around a target box (a word, a button) without covering it. Lands as editable layers: a group at the box centre holding `count` square shape layers with hold keys on position and opacity. Frame-pure. One undo step.',
+    params: [{ name: 'options', type: '{ box: { x: number; y: number; width: number; height: number }; color: [r, g, b, a]; startFrame: number; durationFrames: number; count?: number; blockSize?: number; margin?: number; stepFrames?: number; density?: number; wander?: number; seed?: number; name?: string }',
+      description: 'box: comp px, top-left origin. count default 12, blockSize 16, margin 3 blocks, stepFrames 2, density 0.6 (share of squares on per step), wander 0.65 (chance to crawl to a neighbouring cell instead of jumping).' }] },
+
   // ----- B51 cursor rig (animation-templates/cursorRig.ts) -----
   { id: 'agent.addCursor', store: 'agent', method: 'addCursor', undoable: true,
-    returns: '{ cursorId, icons: { arrow, hand, ibeam }, frame }',
-    description: 'Add a pointer cursor: a group (its position = the hotspot, the arrow tip) holding an arrow, a hand and an I-beam icon, one visible. On screen from `frame` to the comp end. Then script it with agent.cursorMoveTo / cursorClick / cursorIcon (author in time order). One undo step.',
+    returns: '{ cursorId, icons: { arrow, hand, ibeam, (+ the design icon if asked) }, frame, placement }',
+    description: 'Add a pointer cursor: a group (its position = the hotspot: the arrow tip, the hand fingertip, the I-beam centre, the pen nib, the crosshair / rotate centre, the direct-select tip) holding an arrow, a hand and an I-beam icon (plus the B76 design-app icon pen / crosshair / rotate / directSelect / resize when that is the starting icon), one visible. On screen from `frame` to the comp end, stacked ABOVE every existing layer (placement "top"), so it can be added at any point of the build. Then script it with agent.cursorMoveTo / cursorClick / cursorIcon (author in time order; click ripples stack directly under the cursor). The icons may be renamed: the rig still finds them. One undo step.',
     params: [{ name: 'icon', type: 'string', optional: true, values: CURSOR_ICONS, description: 'Default arrow.' },
       { name: 'x', type: 'number', optional: true, description: 'Hotspot x (comp px), default the comp centre.' }, { name: 'y', type: 'number', optional: true },
       { name: 'frame', type: 'number', optional: true, description: 'First frame on screen (default 0).' },
       { name: 'color', type: '[r, g, b, a]', optional: true, description: 'Icon fill (default white, dark outline).' },
       { name: 'size', type: 'number', optional: true, description: 'Icon height in px (default 36).' },
-      { name: 'name', type: 'string', optional: true }] },
+      { name: 'name', type: 'string', optional: true },
+      { name: 'placement', type: 'string', optional: true, values: ['top', 'fit'], description: '"top" (default) = own tracks above every layer; "fit" = timeline-drop rules: a free track above every layer visible at that time (B84), else a new top track.' },
+      { name: 'rimColor', type: '[r, g, b, a]', optional: true, description: 'B76: icon outline colour (default near-black). color [0, 0, 0, 1] + rimColor [1, 1, 1, 1] = the macOS black arrow with a white rim (r11).' }] },
   { id: 'agent.cursorMoveTo', store: 'agent', method: 'cursorMoveTo', undoable: true,
     returns: '{ cursorId, from, to, startFrame, endFrame }',
     description: 'Move the cursor from wherever it is at `frame` to (x, y): two position keys with a ballistic ease-out (fast start, long settle; the template rig fitted as cubic-bezier [0.38, 1, 0.76, 1]) along a gentle arc (spatial tangents). It ARRIVES exactly at frame + durationFrames. Keys stay editable (timeline / graph editor / editor.setKeyframes on the group "transform.position"). One undo step.',
@@ -595,8 +707,108 @@ export const AGENT_ACTIONS: readonly AgentActionSpec[] = [
       { name: 'rippleColor', type: '[r, g, b, a]', optional: true, description: 'Ring colour (default white 90%).' }] },
   { id: 'agent.cursorIcon', store: 'agent', method: 'cursorIcon', undoable: true,
     returns: '{ cursorId, frame, from, icon }',
-    description: 'Swap the cursor icon on `frame` (hold step on the icon opacities): e.g. hand over a button, I-beam over a text field. One undo step.',
+    description: 'Swap the cursor icon on `frame` (hold step on the icon opacities): e.g. hand over a button, I-beam over a text field; B76 design-app tools: pen (path drawing), crosshair (precision), rotate (rotation handle), directSelect (anchor / direct selection), resize (double arrow, centred). A design icon the rig lacks is added to it (returns addedIconId). One undo step.',
     params: [{ name: 'cursorId', type: 'string' }, { name: 'frame', type: 'number' }, { name: 'icon', type: 'string', values: CURSOR_ICONS }] },
+  // ----- B76 design-tool UI kit (animation-templates/designKit.ts) -----
+  { id: 'agent.addSelectionBox', store: 'agent', method: 'addSelectionBox', undoable: true,
+    returns: '{ groupId, outlineId, handleIds, startFrame, endFrame, first: { center, width, height, rotation, corners }, last }',
+    description: 'Design-app selection box (B76, r11): a 1 px blue outline on the target layer\'s oriented bounds plus white square handles on the corners (and edge midpoints), FOLLOWING the target on every frame of [startFrame, endFrame): it moves, rotates and resizes with it (parents, motion paths and point-pose morphs included, sampled from the real resolved frame). Lands as editable layers: a group (position = box centre, rotation = target rotation) holding the outline rectangle and the handles, with linear keys only where the target moves. Baked: re-run after re-timing the target. Targets: shapes (rectangle, ellipse, star, path / outlined glyph), images, videos; outline text first (editor.outlineTextLayer). Stacked under any cursor rig. One undo step.',
+    params: [{ name: 'targetId', type: 'string' }, { name: 'startFrame', type: 'number', optional: true, description: 'Default the target in-point.' },
+      { name: 'endFrame', type: 'number', optional: true, description: 'Exclusive; default the target out-point (at most 3600 frames).' },
+      { name: 'options', type: '{ handles?: "all" | "corners" | "none"; color?: [r, g, b, a]; handleSize?: number; strokeWidth?: number; padding?: number; name?: string }', optional: true,
+        description: 'Defaults: handles "all" (8), color blue [0.2, 0.52, 1, 1], handleSize 7 px, strokeWidth 1 px, padding 0.' }] },
+  { id: 'agent.addAnchorSquares', store: 'agent', method: 'addAnchorSquares', undoable: true,
+    returns: '{ groupId, squareIds, points, pointCount, startFrame, endFrame, firstPositions }',
+    description: 'Anchor-point squares (B76, r11): a small white square with a blue rim on each chosen path vertex of a path / polygon / outlined-glyph layer, riding the vertex on every frame (point-pose morphs, rotation, parents). `highlight` vertices are filled blue (the selected / dragged anchor). Editable layers in a group, linear keys only where a vertex moves. One undo step.',
+    params: [{ name: 'targetId', type: 'string' }, { name: 'startFrame', type: 'number', optional: true }, { name: 'endFrame', type: 'number', optional: true },
+      { name: 'options', type: '{ points?: number[]; highlight?: number[]; color?: [r, g, b, a]; size?: number; strokeWidth?: number; name?: string }', optional: true,
+        description: 'points: vertex indices (default all; read them with agent.getLayer shape.vertices). size 7 px.' }] },
+  { id: 'agent.addReadout', store: 'agent', method: 'addReadout', undoable: true,
+    returns: '{ groupId, backgroundId, textIds, size, startFrame, endFrame, sampleText: [{ start, middle, end }] }',
+    description: 'Live number tooltip (B76, r11): a translucent rounded box whose lines count with the target ("dX: -157,70 px / dY: -2,00 px", "W: 18,95 px / H: 42,88 px", "Angle: 87,12 deg"). Every value is the MEASURED quantity of that frame (deltas against startFrame), stored as a B75 counter span with a per-frame samples table, so it is exact, keeps its font and stays editable. The box follows the target (top-left offset from its bottom-right, or from the dragged vertex), a cursor / any layer, or sits at a fixed point. One undo step.',
+    params: [{ name: 'targetId', type: 'string' }, { name: 'startFrame', type: 'number', optional: true }, { name: 'endFrame', type: 'number', optional: true },
+      { name: 'options', type: '{ preset?: "move" | "size" | "angle" | "position"; lines?: { label: string; quantity: "dx" | "dy" | "x" | "y" | "w" | "h" | "angle" | "dangle" | "scale"; unit?: string; point?: number }[]; follow?: "target" | string | [x, y]; offset?: [dx, dy]; decimals?: number; decimalMark?: "." | ","; fontSize?: number; fontFamily?: string; textColor?: [r, g, b, a]; background?: [r, g, b, a]; padding?: number; name?: string }', optional: true,
+        description: 'preset move = dX / dY, size = W / H, angle = Angle (rotation delta with a degree sign), position = X / Y (default move); lines overrides it (point = measure that vertex, not the box centre). follow default "target"; a cursorId keeps it beside the pointer. offset [14, 14] px. decimals 2, decimalMark "," (European, as in r11), fontSize 15, Inter, text dark grey, background light grey 85%.' }] },
+  { id: 'agent.addGuideLine', store: 'agent', method: 'addGuideLine', undoable: true,
+    returns: '{ lineId, startFrame, endFrame, from, to }',
+    description: 'Thin guide line whose two ends follow points on every frame (B76, r11): the pen rubber band from the last anchor to the cursor, a magenta "Line Extension" guide along a path segment (extend), the vertical smart guide through a centre. An end is a fixed [x, y] or { layerId, point? }: a shape\'s centre / top / bottom edge midpoint or a path vertex, sampled from the resolved frame; a group (a cursor) by its position = the hotspot. One rectangle layer with sparse linear keys. Stacked under any cursor rig. One undo step.',
+    params: [{ name: 'startFrame', type: 'number', optional: true }, { name: 'endFrame', type: 'number', optional: true, description: 'Exclusive; default the comp end.' },
+      { name: 'options', type: '{ from: [x, y] | { layerId: string; point?: "center" | "top" | "bottom" | number }; to: [x, y] | { layerId: string; point?: "center" | "top" | "bottom" | number }; extend?: number; color?: [r, g, b, a]; width?: number; name?: string }',
+        description: 'extend: px past both ends (0). color default design blue [0.2, 0.52, 1, 1] (smart guides: magenta [0.86, 0.16, 0.82, 1]); width 1 px.' }] },
+  // ----- B81 3D card swarm (core/cardSwarm.ts + animation-templates/cardSwarm.ts) -----
+  { id: 'agent.addCardSwarm', store: 'agent', method: 'addCardSwarm', undoable: true,
+    returns: '{ clusterId, cardIds, items: [{ id, kind: "card" | "pill", index, partIds, source?, position (local [x, y, z]), world, rotation [rx, ry, rz], width, height, variant }], layerCount, hiddenSourceIds, layout: { minSpacing, minDistance, relaxed }, volume, startFrame, endFrame, cluster: { yawKeys, yawAtStart, yawAtEnd } }',
+    description: '2.5D card swarm in ONE call and ONE undo step (B81, r10 S10): about 16 flat UI cards + 12 prompt pills scattered at different depths inside a volume, all 3D layers parented to one 3D cluster group whose yaw ORBITS them about the volume centre (true 3D parenting: near and far cards slide in opposite directions, the painter depth order follows the turn). The layout is seeded and pure (same seed = identical swarm, no overlaps closer than minSpacing, every centre inside the volume, camera-facing planes with a small random tilt). Cards cycle through `sources` (image / shape / precomp / text layer ids are duplicated, image asset ids become image layers; source layers are hidden), or with no sources become placeholder UI cards (light #f7f5f5 / dark #1c1c1e rounded rects with an accent chip, a title bar and a content block printed on them). Pills are violet rounded pills with the r10 prompt labels. Everything stays ordinary editable layers: retime the cluster with setKeyframes "transform.rotationY" on clusterId, move a card with updateLayerProperty "transform.position" / "transform.positionZ" on its id. Add a camera (editor.addCameraLayer + editor.cameraMove) for the dolly / tilt. Stacked under any cursor rig.',
+    params: [
+      { name: 'count', type: 'number', optional: true, description: 'UI cards (default 16; pills come on top of this, options.pills).' },
+      { name: 'seed', type: 'number', optional: true, description: 'Layout seed (default 1). Same seed + same params = byte-identical swarm.' },
+      { name: 'sources', type: 'string[]', optional: true, description: 'Layer ids and / or image asset ids (agent.importImage) the cards cycle through, sized to the card width keeping their aspect. Omit for placeholder UI cards.' },
+      { name: 'volume', type: '{ center?: [x, y, z]; size?: [width, height, depth]; shape?: "box" | "ellipsoid" }', optional: true,
+        description: 'Comp px; z + = away from the camera. Default: centre (W/2, H/2, 540), size (1.1 W, 1.05 H, 1080), box: every card at or behind the z = 0 plane (1:1 under the default camera).' },
+      { name: 'cluster', type: '{ yawFrom?: number; yawTo?: number; startFrame?: number; endFrame?: number; ease?: string | [number, number, number, number]; yawKeys?: { frame: number; value: number; ease?: string | [number, number, number, number] }[]; yaw?: number; pitch?: number; pitchKeys?: { frame: number; value: number; ease?: string | [number, number, number, number] }[] }', optional: true,
+        description: 'Cluster orbit (degrees). yawFrom -> yawTo between startFrame and endFrame (default the swarm clip) with ease (default easeInOut [0.42, 0, 0.58, 1]); r10 S10: { yawFrom: -20, yawTo: 15, startFrame: 0, endFrame: 31 }. yawKeys = full control (setKeyframes specs). yaw = static yaw, pitch = static tilt about X (pitchKeys to animate it). Omitted = static, facing the camera.' },
+      { name: 'options', type: '{ pills?: number; labels?: string[] | false; minSpacing?: number; tilt?: number; cardWidth?: [min, max]; cardAspect?: [min, max]; pillWidth?: [min, max]; pillHeight?: number; cardDepth?: [a, b]; pillDepth?: [a, b]; lightShare?: number; detail?: "full" | "plain"; startFrame?: number; endFrame?: number; hideSources?: boolean; labelFontFamily?: string; maxAttempts?: number; name?: string }', optional: true,
+        description: 'pills: default 0.75 x count without sources (12 for 16 cards), 0 with sources. labels: pill texts, cycled (default the r10 prompts; false = bare pills). minSpacing: min centre distance px (default 0.55 x the cube root of volume / items). tilt: max random out-of-plane tilt deg (default 8). cardWidth [300, 440] px, cardAspect (height / width) [0.6, 0.78], pillWidth [300, 420] (grown to fit the label), pillHeight 58 (sizes scale with the comp). cardDepth / pillDepth: depth band as fractions of the volume depth, 0 = near face (pills default [0, 0.55]: in front, as in r10). lightShare: share of light cards (0.5). detail "plain" = one layer per card (no printed bars / labels). startFrame / endFrame: the clip (default the whole comp). hideSources (default true) hides the source layers. maxAttempts: placement candidates per card (80).' },
+      { name: 'name', type: 'string', optional: true, description: 'Cluster name (default "Card swarm"); cards are "<name> card N" / "<name> pill N".' },
+    ] },
+  { id: 'agent.addGuideLabel', store: 'agent', method: 'addGuideLabel', undoable: true,
+    returns: '{ labelId, lineId, startFrame, endFrame, position }',
+    description: 'Smart-guide label (B76, r11): a small magenta word ("anchor", "center", "Line Extension", "Shift+X") above a point, optionally with a 1 px pin line to it. Static at (x, y), or following a target\'s centre / top edge / one vertex on every frame. Editable text (+ line) layers. One undo step.',
+    params: [{ name: 'text', type: 'string' }, { name: 'startFrame', type: 'number', optional: true }, { name: 'endFrame', type: 'number', optional: true },
+      { name: 'options', type: '{ targetId?: string; point?: "center" | "top" | number; x?: number; y?: number; offset?: [dx, dy]; line?: boolean; color?: [r, g, b, a]; fontSize?: number; fontFamily?: string; name?: string }', optional: true,
+        description: 'Without targetId the label sits at (x, y) + offset (default the comp centre). offset default [0, -16] (above). color magenta [0.86, 0.16, 0.82, 1], fontSize 13, Inter medium.' }] },
+  // ----- B82 typing prompt box (animation-templates/promptBox.ts) -----
+  { id: 'agent.addPromptBox', store: 'agent', method: 'addPromptBox', undoable: true,
+    returns: '{ groupId, boxId, textId, placeholderId, sendId, sendArrowId, rowIds, flashId, refillId, content, typing: { startFrame, endFrame, frames }, box: { x, y, width, height, left, top, right, bottom, radius }, sendCenter: [x, y], sendFrame, fontSize, caretPath: [{ frame, x, y, left }], warnings? }: aim agent.cursorMoveTo / cursorClick at sendCenter on sendFrame',
+    description: 'Typing prompt / search box in ONE call (B82; r10 S7 / S11 / S12, r06 S2, r04 S1): a rounded box (theme dark #241e21 / light white, or explicit colours), a placeholder that shows until the first keystroke, the typed text with a per-character typing schedule (cps, durationFrames or explicit frames, with an eased typing RATE), an optional arrival colour (each new character arrives pink and turns white over arrivalFrames), a caret riding the type-on head (solid or a vertical gradient, blinking before / after), a round send button with an up arrow (press squash 100 -> 85 -> 100 % on sendFrame), an optional chip row ("+", "Attach", "Themes"), an optional send flash (gradient overlay, then the fill wipes back from the left) and an entrance (pop, or slideFromRight: slides in from the right and widens as it lands, r10 S11). align "center" types centred so the line grows both ways; autoGrow makes the box width follow the typed line; mask makes a password field (asterisks). Lands as ordinary editable layers in a group (retime keys in the timeline, recolour with updateLayerProperty, retype with agent.setTextContent + agent.setTextTyping). Stacked under any cursor rig. One undo step.',
+    params: [
+      { name: 'x', type: 'number', optional: true, description: 'Box centre x (default comp centre; with autoGrow + left align the left edge stays put).' },
+      { name: 'y', type: 'number', optional: true, description: 'Box centre y (default comp centre).' },
+      { name: 'width', type: 'number', optional: true, description: 'Box width px (default half the comp width; with autoGrow the minimum).' },
+      { name: 'height', type: 'number', optional: true, description: 'Default 2.6 x fontSize (4.8 x with a chip row).' },
+      { name: 'radius', type: 'number', optional: true, description: 'Corner radius px (default a pill: height / 2; r10 S11 uses 36).' },
+      { name: 'theme', type: 'string', optional: true, values: ['light', 'dark'], description: 'light (default) = white box, hairline border, #111 text; dark = #241e21 box, #f3eeed text.' },
+      { name: 'fill', type: '[r, g, b, a] | "#rrggbb"', optional: true, description: 'Box colour (overrides the theme).' },
+      { name: 'textColor', type: '[r, g, b, a] | "#rrggbb"', optional: true },
+      { name: 'placeholderColor', type: '[r, g, b, a] | "#rrggbb"', optional: true },
+      { name: 'placeholder', type: 'string', optional: true, description: 'Grey hint shown until the first keystroke.' },
+      { name: 'text', type: 'string', description: 'What gets typed.' },
+      { name: 'startFrame', type: 'number', optional: true, description: 'Frame the box appears / its entrance starts (default 0).' },
+      { name: 'endFrame', type: 'number', optional: true, description: 'Clip end, exclusive (default the comp end).' },
+      { name: 'typing', type: '{ startFrame?: number; cps?: number; durationFrames?: number; frames?: number[]; ease?: string | [x1, y1, x2, y2] }', optional: true,
+        description: 'Default: starts after the entrance (startFrame + entranceFrames, or + 6 without one) at 24 chars / s. durationFrames: first char on startFrame, last on startFrame + durationFrames - 1. frames: one absolute frame per character. ease shapes the typing RATE.' },
+      { name: 'caret', type: '{ color?: [r, g, b, a] | "#hex"; gradient?: [top, bottom]; blink?: number | boolean; shape?: "bar" | "block" | "underline"; width?: number; height?: number; gap?: number } | false', optional: true,
+        description: 'Default a bar in the text colour, 8% of the font size wide, 1.12 x tall, right on the head (gap 0 px), 1 blink / s before and after typing (solid while typing; the blink restarts ON at the last keystroke). gradient [top, bottom] = r10 blue -> pink ["#6175ce", "#e85aa0"]. false = no caret.' },
+      { name: 'arrivalColor', type: '[r, g, b, a] | "#rrggbb"', optional: true, description: 'Each new character arrives in this colour and fades to textColor (r10 S11: "#e780f6").' },
+      { name: 'arrivalFrames', type: 'number', optional: true, description: 'Frames of that fade (default 4).' },
+      { name: 'autoGrow', type: 'boolean | { maxWidth?: number }', optional: true, description: 'The box width follows the typed line (baked keys), never below width.' },
+      { name: 'buttons', type: '{ send?: boolean; row?: string[] }', optional: true, description: 'send (default true): round button with an up arrow at the right; row: chip labels under the text, e.g. ["+", "Attach", "Themes"] (r10 S7).' },
+      { name: 'sendFrame', type: 'number', optional: true, description: 'Send press: the button squashes to 85 % on sendFrame + 1, back by + 4 (r10 S11 f462). Click the cursor on this frame.' },
+      { name: 'flash', type: 'boolean | { colors?: ([r, g, b, a] | "#hex")[] }', optional: true, description: 'With sendFrame: a gradient overlay (default blue / violet / orange) fades in over 2 frames, then the box fill wipes back from the left (sendFrame + 9 .. + 21).' },
+      { name: 'entrance', type: 'string', optional: true, values: ['none', 'pop', 'slideFromRight'], description: 'pop = scale 0.82 -> 1 backOut + fade; slideFromRight = slides in from the right (0.55 x width) and widens 62 -> 100 % as it lands, easeOutCubic, fading in over 6 frames (r10 S11).' },
+      { name: 'entranceFrames', type: 'number', optional: true, description: 'Default 18 (slideFromRight) / 10 (pop).' },
+      { name: 'mask', type: 'boolean | string', optional: true, description: 'Password field: true = one "*" per character, or the mask character.' },
+      { name: 'align', type: 'string', optional: true, values: ['left', 'center'], description: 'left (default) or center: centred typing grows both ways (r10 S4).' },
+      { name: 'fontSize', type: 'number', optional: true, description: 'Default 30 px.' },
+      { name: 'fontFamily', type: 'string', optional: true, catalog: 'fontFamilies', description: 'Default Inter.' },
+      { name: 'fontWeight', type: 'number', optional: true, description: 'Default 400.' },
+      { name: 'name', type: 'string', optional: true, description: 'Group name (default "Prompt box"); parts are named after it.' },
+    ] },
+  // ----- B38 glass material -----
+  { id: 'editor.setShapeGlass', store: 'editor', method: 'setShapeGlass', undoable: true,
+    description: 'Frosted / liquid glass on a shape layer (rectangle, rounded rect, circle, star or path): the composite BELOW the shape is brightened / saturated, blurred and mixed back inside the shape outline (corners follow the radius), the rim bends the backdrop outward like a lens edge and catches a highlight from lightAngle. The shape still draws on top: give it a low-alpha fill as the tint (e.g. [1, 1, 1, 0.08] or [0, 0, 0, 0.1]) and a 1 px light stroke as the hairline edge, or fill alpha 0 for pure glass. A partial patch over the current glass (or the defaults); numbers for blur / refraction / highlight / lightAngle set their base value and keep their keys: animate them with setKeyframes "glass.blur" / "glass.refraction" / "glass.highlight" / "glass.lightAngle" (a rotating lightAngle sweeps the edge light). null removes the glass. One undo step. Not on 3D, corner-pinned or matte layers.',
+    params: [LAYER_ID, { name: 'glass', type: '{ blur?: number; refraction?: number; highlight?: number; lightAngle?: number; edgeWidth?: number; brightness?: number; saturation?: number; enabled?: boolean } | null',
+      description: 'blur px 0..200 (default 18); refraction px -200..200 (default 8, rim bend, positive pulls the scene from just outside the edge inward); highlight 0..1 (default 0.35); lightAngle degrees, screen Y down (default -120 = from the upper left); edgeWidth px of the bent / lit rim band (default 16); brightness / saturation -1..1 on the backdrop (defaults 0.06 / 0.15).' }] },
+
+  // ----- B58 gradient-blob field (patterns/blobField.ts) -----
+  { id: 'editor.addBlobField', store: 'editor', method: 'addBlobField', undoable: true, returns: 'the new layer id (also selected)',
+    description: 'Add a gradient-blob field as ONE editable layer (a generative pattern of type blobField), instead of hand-placing blurred ellipses. mode "field" = a full-frame mesh gradient: seeded soft colour blobs drift on slow loops and blend into each other (Lovable / Stripe style backgrounds, the field inside a button or a cursor). mode "floor" = a billowing cloud floor: a lumpy soft top edge rising from the bottom, the colour running from the first colour at the edge to the last at the bottom, transparent above the edge (the blue-to-white glow under a dark UI). Frame-pure and seeded: scrubbing and export match. Defaults: covers the whole composition. Key the rise / fade with setKeyframes on transform.position / transform.opacity; size, warp and contrast are also keyable as patternAnim.scale / patternAnim.warp / patternAnim.contrast. One undo step.',
+    params: [{ name: 'opts', type: '{ mode?: "field" | "floor"; colors?: (string | [r, g, b, a])[]; count?: number; seed?: number; size?: number; speed?: number; warp?: number; contrast?: number; floor?: number; lumps?: number; softness?: number; billow?: number; x?: number; y?: number; width?: number; height?: number; name?: string }', optional: true,
+      description: 'colors: up to 8, hex strings or [r, g, b, a] 0..1 (field: blob i = colors[i mod n]; floor: ramp from the edge to the bottom). count 1..16 blobs (default 7). seed: integer layout seed. size: blob size multiplier (default 1). speed: drift speed (default 1; 0 = still). warp: flowing deformation 0..4 (field default 0.35, floor 0.2). contrast: colour contrast (default 0). floor: top edge height as a fraction of the layer height from the bottom (floor mode default 0.4). lumps: edge lumpiness (default 0.12). softness: blob blend / edge feather 0.05..4 (default 1). billow: puff noise inside the floor (default 0.35). x / y: centre, width / height: size in comp px (default the composition).' }] },
+  { id: 'editor.setBlobField', store: 'editor', method: 'setBlobField', undoable: true,
+    description: 'Change a blob field made by editor.addBlobField (any pattern layer becomes a blob field): same options as addBlobField minus placement. Unlisted options keep their value; mode "field" sets floor 0, mode "floor" restores a floor. size / warp / contrast set the base of the keyable knobs (their keyframes stay). One undo step.',
+    params: [{ name: 'layerId', type: 'string' },
+      { name: 'patch', type: '{ mode?: "field" | "floor"; colors?: (string | [r, g, b, a])[]; count?: number; seed?: number; size?: number; speed?: number; warp?: number; contrast?: number; floor?: number; lumps?: number; softness?: number; billow?: number }' }] },
 ];
 
 // ---------------------------------------------------------------------------------------------
@@ -638,21 +850,23 @@ export const AGENT_FEATURES: readonly AgentFeature[] = [
   { id: 'layers.edit', area: 'layers', name: 'Select, rename, delete, duplicate, reorder',
     description: 'Core layer management and any property edit by dot-path.',
     ui: 'Canvas / timeline selection; Edit menu; Object > Bring to Front / Send to Back; Inspector fields',
-    actions: ['agent.getLayer', 'editor.selectLayer', 'editor.selectAllLayers', 'editor.deselectAll', 'editor.updateLayerProperty', 'editor.renameLayer', 'editor.removeLayer', 'editor.removeLayers', 'editor.duplicateSelection', 'editor.reorderLayers'],
+    actions: ['agent.getLayer', 'editor.selectLayer', 'editor.selectAllLayers', 'editor.deselectAll', 'editor.updateLayerProperty', 'editor.renameLayer', 'editor.removeLayer', 'editor.removeLayers', 'editor.duplicateSelection', 'editor.reorderLayers', 'agent.bringToFront'],
     status: 'shipped' },
   { id: 'layers.groups-parenting', area: 'layers', name: 'Groups, parenting and anchor point',
     description: 'Group layers, parent one layer to another, move the pivot.',
     ui: 'Object > Group (Ctrl+G) / Ungroup; Inspector > Anchor tab (pivot). Parenting has no UI control yet: agent-only via setLayerParent',
     actions: ['editor.createGroup', 'editor.ungroupSelection', 'editor.setLayerParent', 'editor.setLayerAnchor'], status: 'shipped' },
   { id: 'layers.timing', area: 'layers', name: 'Clip timing',
-    description: 'Slide and split clips on the timeline.', ui: 'Drag clips in the timeline; right-click a clip > Split at Playhead (Ctrl+Shift+S)',
-    actions: ['editor.moveClipInTime', 'editor.trimSplit'], status: 'shipped' },
+    description: 'Slide, trim and split clips; set a video clip\'s source range, speed and direction; magnetic or free tracks.',
+    ui: 'Drag clips in the timeline; drag clip edges to trim; right-click a clip > Split at Playhead (Ctrl+Shift+S); the Compression button on a track header (packed or free positioning); Inspector > Speed; right-click a clip > Speed / Duration',
+    actions: ['agent.setClipTiming', 'editor.moveClipInTime', 'editor.setTrackCompressed', 'editor.trimSplit'], status: 'shipped',
+    notes: 'B65: agent placement is exact. Video tracks are magnetic by default (clips packed from frame 0); agent.setClipTiming and editor.moveClipInTime turn the clip\'s track absolute first, so a clip put at frame 114 stays there through later imports, edits and a reload. Typing a layer\'s "inPoint" with editor.updateLayerProperty does the same. Keyframes are comp frames: setClipTiming moves them with the clip (moveKeyframes: false keeps them), moveClipInTime does not.' },
 
   // text
   { id: 'text.add', area: 'text', name: 'Text layers',
     description: 'Point or paragraph text with per-span font, weight, size, colour, stroke, letter spacing, line height.',
     ui: 'Canvas toolbar > Text (T), click the canvas and type; style in Inspector > Text',
-    actions: ['editor.addText', 'editor.createQuickText', 'agent.setTextContent', 'agent.measureText', 'agent.measureString', 'editor.updateLayerProperty'], status: 'shipped' },
+    actions: ['editor.addText', 'editor.createQuickText', 'agent.setTextContent', 'agent.measureText', 'agent.measureString', 'agent.placeText', 'editor.updateLayerProperty'], status: 'shipped' },
   { id: 'text.animators', area: 'text', name: 'Text animators (range selectors)',
     description: 'After-Effects-style per-character / word / line animators driven by a range selector: type-on, fade, pop, cascade, slide, rise, blur, tumble, scatter, colour wave, delete. Split by character, character excluding spaces, word or line; deltas for position, scale, rotation, 3D rotation, blur, opacity, tracking in em (tracking burst), fill colour, skew and seeded scatter; selector shapes (ramp up/down, triangle, round, smooth, square) with ease high/low, seeded randomize order and keyframable start / end / offset; animators stack. Works on multi-line, wrapped and fixed-box text.',
     ui: 'Select a text layer > Inspector (properties) > Animators section > pick a preset (edit split, deltas incl. Tracking em, selector shape / ease / reveal timing there)',
@@ -673,6 +887,17 @@ export const AGENT_FEATURES: readonly AgentFeature[] = [
     ui: 'Agent / MCP: agent.setTextCaret (Inspector control: not yet)',
     actions: ['agent.setTextCaret', 'editor.updateLayerProperty'], status: 'shipped',
     notes: 'Lives in layer.caret (TextCaret in src/core/types.ts), resolved as one rectangle stamp (core/textCaret.ts), frame-pure. Single-line text only (like per-glyph animators); not on text-on-path. Pair with agent.applyTextAnimatorPreset(layerId, "type-on", start, duration). Block caret = style "block" (e.g. lime [0.6, 0.85, 0.16, 1]).' },
+  { id: 'shapes.conic-gradient', area: 'shapes', name: 'Conic (angular) gradient fill / stroke',
+    description: 'A colour sweep around a centre on any shape fill or stroke: hue wheels, progress rings, radar sweeps, metallic cones. Spin it by keying the layer rotation.',
+    ui: 'Select a shape > Inspector > Material > Conic', actions: ['editor.addShapeLayer', 'editor.updateLayerProperty', 'editor.setKeyframes'], status: 'shipped',
+    notes: 'materialConfig (fill) / strokeMaterialConfig (stroke) = { enabled: true, layers: [{ id, type: "conic", angle?: deg (0 = 12 o\'clock, clockwise), centerX?: 0..1, centerY?: 0..1, blendMode: "normal", opacity: 100, colorStops: [{ id, color: "#rrggbb", opacity: 100, position: 0..100 }] }] }. Repeat the first stop at 100 for a seamless wheel.' },
+  { id: 'text.style-keys', area: 'text', name: 'Hold-keyed typeface switch',
+    description: 'A word that snaps through typefaces, weights or italic on chosen frames (type-specimen cuts, "which font?" beats), the layout re-flowing at each switch.',
+    ui: 'Agent / MCP only (lives in layer.styleKeys)', actions: ['agent.setTextStyleKeys'], status: 'shipped' },
+  { id: 'text.counter', area: 'text', name: 'Number counter on a styled text layer',
+    description: 'Counts views, followers, prices or percentages up (or down) inside a styled text layer: separators, decimals, compact 10K / 1.2M, prefix / suffix, any ease, stepped or smooth.',
+    ui: 'Agent / MCP only (lives in layer.counter)', actions: ['agent.setTextCounter'], status: 'shipped',
+    notes: 'The counter rewrites one span per frame before layout, so measure_text / placeText measure the stored text: set the counter after placing, or place with the widest value as content.' },
   { id: 'text.decode', area: 'text', name: 'Text decode / scramble reveal',
     description: 'Characters flicker through random glyphs before resolving (hacker text).',
     ui: 'Select a text layer > Inspector > Animators section > Decode', actions: ['agent.applyTextDecode'], status: 'shipped' },
@@ -698,12 +923,12 @@ export const AGENT_FEATURES: readonly AgentFeature[] = [
     notes: 'Agents: use editor.addShapeLayer (explicit size, fill, radius, name, no default stroke).' },
   { id: 'shapes.modifiers', area: 'shapes', name: 'Path modifiers (Trim Paths, Offset, Roughen, Pucker & Bloat)',
     description: 'Non-destructive outline modifiers; Trim Paths gives line draw-on animation.',
-    ui: 'Select a shape > Inspector > Path Modifiers > add', actions: ['editor.addShapeModifier', 'editor.addKeyframe'], status: 'shipped' },
+    ui: 'Select a shape > Inspector > Path Modifiers > add', actions: ['editor.addShapeModifier', 'editor.addKeyframe', 'agent.setTrimStartAngle'], status: 'shipped' },
   { id: 'shapes.morph', area: 'shapes', name: 'Shape morph',
-    description: 'Morph a shape through outlines (rect, rounded rect, ellipse, star, polygon, free points) with an ease per morph and automatic correspondence so outlines do not twist; different vertex counts morph.',
+    description: 'Morph a shape through outlines (rect, rounded rect, ellipse, star, polygon, free points with bezier handles, SVG path data, another shape layer such as an outlined letter) with an ease per morph and automatic correspondence so outlines do not twist; different vertex counts AND different contour counts (holes, islands: logo to letter to heart) morph.',
     ui: 'Select a pen path > Inspector > Path Animation > Add Pose at the playhead (poses morph linearly in the UI; eases and parametric poses are agent / MCP: editor.setShapeMorph)',
     actions: ['editor.setShapeMorph'], status: 'shipped',
-    notes: 'Pixel-proven headless by npm run gpu:anim-props. Combine with transform keys (scale / rotation) and colour keys (shape.fillColor) for the heavy-morph look.' },
+    notes: 'Pixel-proven headless by npm run gpu:anim-props and (B83 contours, SVG poses, layer poses) npm run gpu:shape-contours. Combine with transform keys (scale / rotation) and colour keys (shape.fillColor) for the heavy-morph look.' },
   { id: 'shapes.repeater', area: 'shapes', name: 'Shape repeater',
     description: 'Copies of a shape with accumulating offset / rotation / scale (radial arrays, spirals).',
     ui: 'Inspector (shape) > Repeater toggle', actions: ['editor.toggleShapeRepeater'], status: 'shipped' },
@@ -741,7 +966,7 @@ export const AGENT_FEATURES: readonly AgentFeature[] = [
     ui: 'Inspector > Animate tab > principles', actions: ['editor.applyMotionPrinciple', 'editor.applySecondaryMotion'], status: 'shipped' },
   { id: 'keyframes.motion-path', area: 'keyframes', name: 'Motion paths',
     description: 'Animate a layer along an editable bezier path.', ui: 'Inspector > Motion Path tab',
-    actions: ['editor.addMotionPath'], status: 'shipped' },
+    actions: ['agent.setMotionPath', 'editor.addMotionPath'], status: 'shipped' },
 
   // expressions
   { id: 'expressions.code', area: 'expressions', name: 'Expressions',
@@ -754,7 +979,7 @@ export const AGENT_FEATURES: readonly AgentFeature[] = [
   { id: 'cloner.mograph', area: 'cloner', name: 'Cloner + effectors (MoGraph)',
     description: 'One layer that repeats a source in grid / radial / path / field distributions, shaped by random, falloff, step, time and target effectors with per-instance stagger.',
     ui: 'Canvas toolbar > Cloner, or Object > Create Cloner from Selection; Inspector > Cloner tab',
-    actions: ['editor.addCloner', 'editor.createClonerFromSelection', 'editor.addClonerEffector', 'editor.removeClonerEffector', 'editor.updateLayerProperty'],
+    actions: ['editor.addCloner', 'editor.createClonerFromSelection', 'editor.addClonerEffector', 'editor.removeClonerEffector', 'editor.updateLayerProperty', 'agent.setClonerSources', 'agent.setClonerData'],
     status: 'shipped', notes: 'Renders as per-instance stamps of the source (v1). Distribution params are edited with updateLayerProperty on the cloner layer.' },
 
   // particles / procedural
@@ -779,9 +1004,20 @@ export const AGENT_FEATURES: readonly AgentFeature[] = [
     description: 'Rectangle / ellipse / star / polygon masks with AE modes, feather, expansion, plus one-click iris / wipe reveals.',
     ui: 'Inspector > Masks tab > add a mask; reveal buttons in the same tab',
     actions: ['editor.addMask', 'editor.removeMask', 'editor.updateMaskProperty', 'editor.addMaskKeyframe', 'editor.applyMaskReveal'], status: 'shipped' },
+  { id: 'effects.layer-stack', area: 'effects', name: 'Effect stack on text / shape layers (via precomp) + positionable bulge',
+    description: 'Glitch, RGB split, bulge, twirl, wave and the rest of the effect stack on any visual layer: precomp layers carry a stack (keyable params), and text / shape / video layers get one by being nested in a precomp. The bulge warp takes a centre and radius, so a word can bulge in place.',
+    ui: 'Agent / MCP (agent.applyLayerEffects); in the app: Precompose, then the effect stack on the precomp',
+    actions: ['agent.applyLayerEffects', 'editor.setLayerEffectParam', 'editor.setLayerEffects', 'editor.toggleLayerEffect', 'editor.removeLayerEffect', 'editor.setKeyframes'], status: 'shipped',
+    notes: 'Effects sample the layer\'s own texture: the precomp is the comp size, so warps read UV of the comp (bulge centre = layer centre / comp size). Layers below stay untouched.' },
+  { id: 'masks.pixel-blocks', area: 'masks', name: 'Pixel-block dissolve / build-on + 8-bit sparkle',
+    description: 'Seeded pixel-block transitions on any masked layer (random, directional sweep or centre-out; build-on or dissolve; stepped on ones or twos) and an 8-bit sparkle of flickering squares around a target box.',
+    ui: 'Agent / MCP only (the mask lands in the layer Masks list; its progress keys are ordinary keys)',
+    actions: ['agent.pixelBlockReveal', 'agent.pixelSparkle', 'editor.updateMaskProperty'], status: 'shipped',
+    notes: 'A blocks mask takes 2 of the 8 mask slots and combines by intersect with the other masks. Blocks are squares in comp px; region corners round to whole pixels so block edges stay crisp.' },
   { id: 'masks.track-matte', area: 'masks', name: 'Track mattes',
-    description: 'Alpha / luma (inverted) matte from the layer above.', ui: 'Inspector (properties) > Matte dropdown',
-    actions: ['editor.setTrackMatte'], status: 'shipped' },
+    description: 'Alpha / luma (inverted) matte from the layer above, on any layer including video.', ui: 'Inspector (properties) > Matte dropdown',
+    actions: ['editor.setTrackMatte'], status: 'shipped',
+    notes: 'The matte is the layer directly above in the render stack. editor.setTrackMatte(layerId, mode, matteLayerId) re-stacks first so the named layer is the matte (B65: a shape created after a video can land on a track below it).' },
 
   // effects / adjustment
   { id: 'effects.motion-blur', area: 'effects', name: 'Motion blur',
@@ -797,11 +1033,21 @@ export const AGENT_FEATURES: readonly AgentFeature[] = [
     ui: 'Agent / MCP: enable the effect (editor.enableLayerEffect / editor.setLayerEffectParam), then editor.addKeyframe or editor.setKeyframes on its path; the keys show in the timeline under "Animated"',
     actions: ['editor.enableLayerEffect', 'editor.setLayerEffectParam', 'editor.setKeyframes', 'editor.addKeyframe'], status: 'shipped',
     notes: `Paths: ${ANIM_FX_PATHS.join(', ')}, effect.<type>.<paramIndex>. A blur radius keyed to 0 drops the blur pass on those frames. Pixel-proven headless by npm run gpu:anim-props.` },
+  { id: 'effects.glass', area: 'effects', name: 'Frosted / liquid glass material (B38)',
+    description: 'Glass on any shape: backdrop blur of everything below inside the outline, brighten / saturate, a refracting rim and an edge highlight with a keyframable light angle. For frosted pills, glass cards and Apple-style liquid glass over photos or video.',
+    ui: 'Agent / MCP only (editor.setShapeGlass)', actions: ['editor.setShapeGlass', 'editor.setKeyframes'], status: 'browser-gated',
+    notes: 'The renderer runs the glass as an adjustment pass right below the shape (scene copy + gaussian blur per glass layer: keep it to a few glass layers per frame). Keyframe paths: glass.blur, glass.refraction, glass.highlight, glass.lightAngle. Pixel-proven headless by npm run gpu:glass.' },
+  { id: 'effects.liquid-drip', area: 'effects', name: 'Liquid drip / melt (B61)',
+    description: 'Text or any layer melts into liquid streams: drips of different lengths run down from every bottom edge with a wobble, take the colour of the letter above, fade at the head and, with a floor, turn and flow along it. Keyframe the length to melt over time; add a glow for neon drips.',
+    ui: 'Effects > Stylized Motion Graphics > Liquid Drip (melt) slider (length); every param via agent.liquidDrip',
+    actions: ['agent.liquidDrip', 'editor.setKeyframes', 'editor.setLayerEffectParam'], status: 'browser-gated',
+    notes: 'A texture-aware effect in the image shader (upstream walk along the drip flow field, at most 192 taps per pixel). CPU twin and WGSL live in src/core/effects/liquidDrip.ts. Pixel-proven headless by npm run gpu:liquid-text; maths by npm run verify:liquid-drip.' },
   { id: 'effects.beam', area: 'effects', name: 'Light beams', description: 'Laser / light beam layer.',
     ui: 'Right-click the canvas > New Beam / Lightning', actions: ['editor.addBeamLayer'], status: 'browser-gated' },
   { id: 'adjustment.layer', area: 'adjustment', name: 'Adjustment layers',
     description: 'Effects that apply to everything below, with opacity and masks.',
-    ui: 'Canvas toolbar > Adjustment Layer', actions: ['editor.addAdjustmentLayer', 'editor.setLayerEffectParam'], status: 'browser-gated' },
+    ui: 'Canvas toolbar > Adjustment Layer', actions: ['editor.addAdjustmentLayer', 'editor.setLayerEffectParam', 'editor.addMask'], status: 'browser-gated',
+    notes: 'B69: an adjustment layer takes masks (editor.addMask, Inspector > Masks): the adjustment then applies only inside them (pixel-proven by npm run gpu:adjustment).' },
 
   // precomp
   { id: 'precomp.nesting', area: 'precomp', name: 'Precompositions',
@@ -863,8 +1109,29 @@ export const AGENT_FEATURES: readonly AgentFeature[] = [
     ui: 'Agent / MCP only (the recursive-editor template uses the same rig)',
     actions: ['agent.addCursor', 'agent.cursorMoveTo', 'agent.cursorClick', 'agent.cursorIcon'], status: 'shipped',
     notes: 'Everything lands as ordinary editable layers and keys: the cursor is a group ("transform.position" = hotspot, "transform.scale" = click squash), the icons are polygon children, each ripple is its own circle layer. Author moves / clicks in time order: a move starts from where the cursor is at its start frame.' },
+  { id: 'camera.card-swarm', area: 'camera-2.5d', name: '3D card swarm',
+    description: 'A 2.5D swarm of flat UI cards and prompt pills at different depths that orbit as one cluster (B81, r10 S10): one call builds about 28 3D layers parented to a 3D cluster group, a seeded no-overlap layout inside a box or ellipsoid volume, and the cluster yaw keys. Pair it with a camera dolly / tilt (editor.cameraMove).',
+    ui: 'Agent / MCP only (lands as ordinary editable 3D layers under one cluster group)',
+    actions: ['agent.addCardSwarm', 'editor.addCameraLayer', 'editor.cameraMove', 'editor.setKeyframes'], status: 'shipped',
+    notes: 'Render proven on the real WebGPU renderer (gpu:card-swarm): cards land on their true 3D projection while the cluster yaws (near and far cards move in opposite directions), near cards occlude far ones, depth shows as size, export / import renders byte-identically. The cluster group carries orbitChildren (true 3D parenting: its X / Y rotation and depth orbit the 3D children) and card decals carry sortWithParent (they depth-sort with their card); both are opt-in layer flags, so other projects resolve as before. Layer motion blur does not see the orbit (it reads the 2D transform): keep it off on swarm cards. Per-glyph animated 3D text under the cluster is not orbit-composed (plain labels are).' },
+  { id: 'templates.design-kit', area: 'templates', name: 'Design-tool UI kit',
+    description: 'The chrome of a vector design app around an edit (B76): pen / crosshair / rotate / direct-select cursors on the cursor rig, a selection box with handles that follows a layer, anchor squares on path points, live dX / dY / W / H / Angle readout tooltips that count with the move, and magenta smart-guide labels. For "animation dressed as a screen capture" edits (letter puns, logo builds, UI walkthroughs).',
+    ui: 'Agent / MCP only (lands as ordinary editable layers)',
+    actions: ['agent.addSelectionBox', 'agent.addAnchorSquares', 'agent.addReadout', 'agent.addGuideLabel', 'agent.addGuideLine', 'agent.cursorIcon'], status: 'shipped',
+    notes: 'Author the edit first (the glyph rotation, the anchor drag), then add the kit over the same frames: the box / squares / tooltip are SAMPLED from the resolved target, so they are exact but baked (re-run after re-timing). Readout values are counter samples: edit them with agent.setTextCounter. Kit layers stack under any cursor rig.' },
+  { id: 'templates.prompt-box', area: 'templates', name: 'Typing prompt box',
+    description: 'A prompt / search box that types in one call (B82): dark or light rounded box, placeholder, per-character typing (even, eased or measured rhythm), new characters arriving in an accent colour, a solid or gradient caret riding the head, send button press, "+ / Attach / Themes" chips, a send flash with a wipe back, pop / slide-in entrances, centred typing that grows both ways, auto-growing width and password masking.',
+    ui: 'Agent / MCP only (lands as ordinary editable layers)',
+    actions: ['agent.addPromptBox', 'agent.setTextTyping', 'agent.setTextCaret'], status: 'shipped',
+    notes: 'The typed text carries layer.typing (TextTyping in src/core/types.ts: frames per character + arrivalColor / arrivalFrames, core/textTyping.ts), resolved through the per-glyph stamp path like an animator; the caret gradient is TextCaret.gradient. Single-line typed text (the caret limit). Absolute frames: re-run setTextTyping after moving the clip. Aim the cursor with the returned sendCenter / caretPath.' },
   { id: 'templates.items', area: 'templates', name: 'Animation items',
     description: 'Ready-made animated elements.', ui: 'Canvas toolbar > Animation Item', actions: ['editor.addAnimationItem'], status: 'shipped' },
+
+  // B58 gradient-blob field
+  { id: 'particles.blob-field', area: 'particles', name: 'Gradient-blob field and cloud floor',
+    description: 'One seeded, frame-pure layer of soft drifting colour blobs: a full-frame mesh gradient, or a billowing cloud floor with a lumpy soft top edge that is transparent above it.',
+    ui: 'Canvas toolbar > Pattern, then Type: Blob Field (presets Mesh Gradient / Cloud Floor)', actions: ['editor.addBlobField', 'editor.setBlobField'], status: 'shipped',
+    notes: 'WebGPU pattern shader (pattern id 11) with a bit-matched CPU twin (patterns/blobField.ts, used for masked patterns): gpu:blob-field proves GPU == CPU. It is a generativePattern layer, so masks, track mattes, blend modes, opacity and transforms work as on any pattern layer.' },
 ];
 
 export interface AgentManifest {
@@ -883,7 +1150,7 @@ export function buildAgentManifest(): AgentManifest {
     conventions: {
       units: 'Positions and sizes are composition pixels, origin top-left, Y down. Time is in frames (see getState().fps).',
       timing: 'New layers are 4-second clips (outPoint = inPoint + 4 s, capped at the comp length), like the UI. In a longer comp set editor.updateLayerProperty(layerId, "outPoint", durationFrames) or the layer disappears after 4 s.',
-      textBox: 'createQuickText / addText make an auto-size text box centred on x (y = the line box centre). An auto box is exactly as wide as the text, so horizontalAlign "left" only takes effect with a fixed box: layoutConfig.boundingBox = { type: "fixedWidth", width } and x = left edge + width / 2.',
+      textBox: 'createQuickText / addText make an auto-size text box centred on x (y = the line box centre; to put the visible ink centre or the baseline on y, style the text then call agent.placeText). Layout ignores leading / trailing spaces, so padding a string with spaces does not move it: use x or a fixed box. An auto box is exactly as wide as the text, so horizontalAlign "left" only takes effect with a fixed box: layoutConfig.boundingBox = { type: "fixedWidth", width } and x = left edge + width / 2.',
       shapes: 'addShapeWithDimensions takes the shape CENTRE. New shapes carry a 1 px grey stroke: set "shape.strokeWidth.defaultValue" to 0 for clean fills.',
       colors: 'RGBA arrays with components 0..1, e.g. [1, 0.8, 0.2, 1].',
       scale: 'Scale is a [sx, sy] multiplier: 1 = 100%.',

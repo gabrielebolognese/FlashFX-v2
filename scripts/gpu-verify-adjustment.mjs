@@ -20,6 +20,10 @@
 //     (Saturation slider, a searched Invert effect, a Gaussian Blur wire filter) drives the store, and the
 //     store's composition renders the expected pixels; the Effects tab hides the styles that need a
 //     layer silhouette.
+//  6. B69: the Masks tab's Add mask > Ellipse (genuine clicks) gives the ADJUSTMENT layer a mask (the
+//     store used to refuse adjustment layers silently); the store's composition then renders the
+//     adjustment only inside the mask (== the twin mixed by the mask coverage) and byte-identical to the
+//     composite below outside it.
 
 import assert from 'node:assert/strict';
 import { execSync } from 'node:child_process';
@@ -365,8 +369,14 @@ window.__adjGpu = async () => {
     const m = createMask('ellipse', 160, 90, 200, 120); m.feather.defaultValue = 5;
     await same('image + effect stack + feathered mask', [Object.assign(img(), { effects: [{ type: EFFECT_TYPE.invert, enabled: true, params: [0.5] }, { type: EFFECT_TYPE.pixelate, enabled: true, params: [4] }], masks: [m] })]);
     await same('shape with image glow + drop shadow (multipass)', [img(), rect(160, 120, { glow: { ...DEFAULT_GLOW, threshold: 0.3, radius: 10 }, shadow: { ...DEFAULT_SHADOW } })]);
-    await same('outer glow + inner glow shapes', [rect(90, 80, { glow: { ...DEFAULT_GLOW, mode: 'outer', color: [0, 0.6, 1, 1] } }), Object.assign(createCircleLayer('c', 240, 90, 40, [0.2, 1, 0.3, 1], 30), { glow: { ...DEFAULT_GLOW, mode: 'inner', color: [1, 0, 1, 1] } })]);
-    await same('track matte (alpha)', [Object.assign(rect(160, 200), { trackMatte: 'alpha' }), createCircleLayer('src', 160, 90, 50, [1, 1, 1, 1], 30)]);
+    // B63 intentionally changed how SDF circles draw (true radius instead of the old 1.1x quad margin), so the
+    // pinned pre-batch renderer cannot be byte-identical on a circle any more. These two cases test the glow /
+    // track-matte paths, not circle geometry: their second shape is a fully rounded (radius = half the side), unstroked
+    // rectangle, which B63 keeps byte-identical (gpu:shape-render regression frame) and which still exercises the
+    // inner glow and the matte source on a round, anti-aliased edge.
+    const roundSq = (name, x, size, color) => { const l = createRectangleLayer(name, x, 90, size, size, color, 30); l.shape.borderRadius.defaultValue = size / 2; return l; };
+    await same('outer glow + inner glow shapes', [rect(90, 80, { glow: { ...DEFAULT_GLOW, mode: 'outer', color: [0, 0.6, 1, 1] } }), Object.assign(roundSq('c', 240, 80, [0.2, 1, 0.3, 1]), { glow: { ...DEFAULT_GLOW, mode: 'inner', color: [1, 0, 1, 1] } })]);
+    await same('track matte (alpha)', [Object.assign(rect(160, 200), { trackMatte: 'alpha' }), roundSq('src', 160, 100, [1, 1, 1, 1])]);
     await same('empty (no-op) adjustment over content', [img(), adj()]);
     await same('blur-only adjustment with effects preview off', [img(), adj({ blur: { ...DEFAULT_BLUR, radius: 8 } })], (x) => x.setEffectsPreviewDisabled(true));
   }
@@ -389,6 +399,7 @@ import { createImageLayer, createAdjustmentLayer } from '@/core/factory';
 import { mediaAssetManager } from '@/engine/media/assetManager';
 import { EFFECT_TYPE } from '@/core/effects/effectRegistry';
 import { adjustPixel, applyBasicFilters, IDENTITY_FILTERS } from '@/core/effects/adjustmentComposite';
+import { packMaskSlots, maskStackCoverage, MASK_BLOCK_FLOATS } from '@/core/maskCoverage';
 ${PAGE_LIB}
 
 document.body.style.margin = '0';
@@ -444,8 +455,12 @@ window.__insp = {
       glow: a.glow ? { enabled: a.glow.enabled, mode: a.glow.mode } : null,
       history: useHistoryStore.getState().undoStack.map((c) => c.label),
       invertType: EFFECT_TYPE.invert,
+      masks: Array.isArray(a.masks) ? a.masks.map((m) => ({ type: m.type, position: m.position.defaultValue, size: m.size.defaultValue })) : null,
     };
   },
+  // B69: the Masks tab's "Add mask" toolbar button and a menu entry by label.
+  addMaskAt() { return rectOf(document.querySelector('button[title="Add mask"]')); },
+  menuItemAt(label) { return rectOf(find('button', (b) => b.textContent.trim() === label)); },
   undo() { useHistoryStore.getState().undo(); },
   // Render the STORE's composition through the real renderer; compare with the twin of what the
   // adjustment now holds (filters -> colour effects (invert) -> optional gaussian Blur).
@@ -464,6 +479,22 @@ window.__insp = {
     const fx = (c) => { const r0 = applyBasicFilters([c[0], c[1], c[2]], f).map(clamp01); const r1 = r0.map((v) => v + (1 - 2 * v) * amt); return [r1[0], r1[1], r1[2], c[3]]; };
     let expect = mapImg((x, y) => adjustPixel(texel(below, x, y), 1, fx));
     if (a.blur && a.blur.enabled && a.blur.type === 'gaussian') expect = gaussian(quant(expect), a.blur.radius);
+    // B69: an adjustment mask mixes the adjusted result back by its coverage (the mix-only pass).
+    const rl = frame.layers.find((l) => l.id === window.__ids.adj);
+    if (rl && rl.masks && rl.masks.length > 0) {
+      const block = new Float32Array(MASK_BLOCK_FLOATS);
+      const count = packMaskSlots(rl.masks, block, 0);
+      const k = (x, y) => maskStackCoverage(block, 0, count, x + 0.5, y + 0.5);
+      const fxImg = expect;
+      expect = mapImg((x, y) => { const b = texel(below, x, y), e = texel(fxImg, x, y), kk = k(x, y); return b.map((v, c) => v + (e[c] - v) * kk); });
+      let inside = 0, outside = 0, outsideMax = 0, insideChanged = 0;
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+        const kk = k(x, y), i = (y * W + x) * 4;
+        const d = Math.max(Math.abs(px[i] - Math.round(below[i] * 255)), Math.abs(px[i + 1] - Math.round(below[i + 1] * 255)), Math.abs(px[i + 2] - Math.round(below[i + 2] * 255)));
+        if (kk === 0) { outside++; outsideMax = Math.max(outsideMax, d); } else if (kk > 0.999) { inside++; if (d > 8) insideChanged++; }
+      }
+      return { err: err ? err.message : null, ...compareTo(px, expect), inside, outside, outsideMax, insideChanged, maskCount: count };
+    }
     return { err: err ? err.message : null, ...compareTo(px, expect) };
   },
 };
@@ -611,6 +642,19 @@ try {
     await ev('window.__insp.undo()');
     await settle();
     r.afterUndo = await ev('window.__insp.state()');
+    // B69: Masks tab > Add mask > Ellipse on the adjustment layer.
+    await click(await ev("window.__insp.tabAt('Masks')"));
+    await settle();
+    const addBtn = await ev('window.__insp.addMaskAt()');
+    r.addMaskBtn = !!addBtn;
+    if (addBtn) await click(addBtn);
+    await settle();
+    const ell = await ev("window.__insp.menuItemAt('Ellipse')");
+    r.ellipseItem = !!ell;
+    if (ell) await click(ell);
+    await settle();
+    r.afterMask = await ev('window.__insp.state()');
+    r.renderMask = await ev('window.__insp.renderAndCompare()');
     r.logs = page.logs.filter((l) => /^(error|exception)/.test(l));
     return r;
   });
@@ -647,6 +691,23 @@ try {
     assert.ok(!insp.glowLabels.includes('Mode') && !insp.glowLabels.includes('Glow Only'), JSON.stringify(insp.glowLabels));
     assert.ok(insp.glowLabels.includes('Threshold'));
     assert.equal(insp.afterUndo.glow, null);
+  });
+  check(`B69 UI: Masks tab > Add mask > Ellipse gives the adjustment layer a mask (centred on the comp, one undo step)`, () => {
+    assert.equal(insp.addMaskBtn, true, 'Add mask button');
+    assert.equal(insp.ellipseItem, true, 'Ellipse menu item');
+    assert.ok(Array.isArray(insp.afterMask.masks) && insp.afterMask.masks.length === 1, JSON.stringify(insp.afterMask.masks));
+    assert.equal(insp.afterMask.masks[0].type, 'ellipse');
+    assert.deepEqual(insp.afterMask.masks[0].position, [320 / 2, 180 / 2]); // the page comp is W x H = 320 x 180 (PAGE_LIB)
+    assert.equal(insp.afterMask.history.at(-1), 'Add Mask');
+  });
+  check(`B69 render: the masked adjustment applies only inside its mask (== twin x coverage, max err ${insp.renderMask.maxErr}/255; ${insp.renderMask.inside} px inside, ${insp.renderMask.outside} outside byte-identical to below)`, () => {
+    const s = insp.renderMask;
+    assert.equal(s.err, null);
+    assert.ok(s.maskCount >= 1, 'the resolved adjustment carries the mask');
+    assert.ok(s.maxErr <= TOL.blur, JSON.stringify(s.worst));
+    assert.ok(s.inside > 2000 && s.outside > 2000, `mask splits the frame: ${s.inside} / ${s.outside}`);
+    assert.equal(s.outsideMax, 0, 'outside the mask the composite is untouched');
+    assert.ok(s.insideChanged > s.inside * 0.5, `inside the mask the adjustment shows (${s.insideChanged} / ${s.inside} changed)`);
   });
   check('UI: no React / runtime errors logged by the Inspector', () => {
     assert.deepEqual(insp.logs, []);

@@ -156,7 +156,7 @@ const TOOLS = [
   },
   {
     name: 'measure_text',
-    description: 'Measure a text layer as the renderer lays it out (agent.measureText): centre, ink box (left/right/top/bottom of the lines), per-line widths, line height. Use it to align shapes, size masks and cards, or left-align text by computing its centre.',
+    description: 'Measure a text layer as the renderer lays it out (agent.measureText): centre, glyphInk (the TIGHT box of the drawn letters, use it to hug text with a pill, underline or mask), ink (the line box: advance width x line height, taller than the letters), baselines, per-line widths, line height. Use it to align shapes, size masks and cards, or left-align text by computing its centre.',
     inputSchema: { type: 'object', required: ['layerId'], properties: { layerId: { type: 'string' }, frame: { type: 'number', description: 'Default: the playhead.' } } },
     annotations: { readOnlyHint: true },
     handler: async ({ layerId, frame }) => fromRun(await session.run('agent.measureText', frame === undefined ? { layerId } : { layerId, frame })),
@@ -310,8 +310,8 @@ const TOOLS = [
       required: ['path'],
       properties: {
         path: { type: 'string', description: 'Output .mp4 path on this machine.' },
-        width: { type: 'number' },
-        height: { type: 'number' },
+        width: { type: 'number', description: 'Output width. Alone, the height follows the composition aspect.' },
+        height: { type: 'number', description: 'Output height. Alone, the width follows the composition aspect.' },
         frameRate: { type: 'number' },
         bitrate: { type: 'number', description: 'Bits per second (default 8000000).' },
         includeAudio: { type: 'boolean', default: true },
@@ -382,7 +382,7 @@ const TOOLS = [
   },
   {
     name: 'import_media',
-    description: 'Import a video (MP4, MOV, WebM, MKV), audio (MP3, WAV, M4A, AAC, OGG, FLAC) or image file from disk into the open project (streamed in chunks, so big clips work) and, by default, place it: video as a video layer (fit to the canvas unless fit=false), audio as an audio layer, images as an image layer. Returns the import result (kind, assetId, duration, size, compFrames) plus activeLayerId of the placed layer. The clip starts at frame 0; move it in time with editor.moveClipInTime.',
+    description: 'Import a video (MP4, MOV, WebM, MKV), audio (MP3, WAV, M4A, AAC, OGG, FLAC) or image file from disk into the open project (streamed in chunks, so big clips work) and, by default, place it: video as a video layer (fit to the canvas unless fit=false), audio as an audio layer, images as an image layer. Returns the import result (kind, assetId, duration, size, compFrames) plus activeLayerId of the placed layer. The clip starts at frame 0; time it with agent.setClipTiming { layerId, timing: { startFrame, endFrame | durationFrames | sourceEnd, sourceStart, speed, reversed } } (exact, stays put through later imports and a reload).',
     inputSchema: {
       type: 'object',
       required: ['path'],

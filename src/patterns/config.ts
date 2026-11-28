@@ -4,6 +4,8 @@ import { DEFAULT_PATTERN } from './presets';
 
 const TYPES: PatternType[] = PATTERN_TYPES;
 const num = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
+type BlobKey = 'blobCount' | 'seed' | 'floor' | 'lumps' | 'softness' | 'billow';
+const optNum = (k: BlobKey, v: unknown): Partial<Pick<PatternConfig, BlobKey>> => (typeof v === 'number' && Number.isFinite(v) ? { [k]: v } : {});
 
 /** Parse a stored configJSON into a complete, defaulted PatternConfig (lenient - never throws). */
 export function parsePatternConfig(json: string): PatternConfig {
@@ -20,6 +22,13 @@ export function parsePatternConfig(json: string): PatternConfig {
     contrast: num(raw.contrast, d.contrast),
     paletteMode: raw.paletteMode === 'linear' ? 'linear' : 'smooth',
     palette: Array.isArray(raw.palette) && raw.palette.length >= 2 ? raw.palette : d.palette,
+    // B58 blob fields: kept only when present (finite numbers), so other configs serialize unchanged.
+    ...optNum('blobCount', raw.blobCount),
+    ...optNum('seed', raw.seed),
+    ...optNum('floor', raw.floor),
+    ...optNum('lumps', raw.lumps),
+    ...optNum('softness', raw.softness),
+    ...optNum('billow', raw.billow),
   };
 }
 

@@ -23,10 +23,11 @@ function sampleShapeLocalRing(shape: ShapeGeometry, frame: number): Vec2[] {
     }
     case 'circle': {
       const r = evaluateNumber(shape.radius, frame);
+      const ry = shape.radiusY ? evaluateNumber(shape.radiusY, frame) : r; // B63 ellipse
       const pts: Vec2[] = [];
       for (let i = 0; i < CIRCLE_SEGMENTS; i++) {
         const a = (2 * Math.PI * i) / CIRCLE_SEGMENTS;
-        pts.push([r * Math.cos(a), r * Math.sin(a)]);
+        pts.push([r * Math.cos(a), ry * Math.sin(a)]);
       }
       return pts;
     }

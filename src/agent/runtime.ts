@@ -11,6 +11,8 @@
 // commands; the composite helpers below either delegate to an undoable editor action or wrap their
 // change in a history Command, so every undoable action is one Ctrl+Z.
 
+import { renderOrder, type ClipTimingSpec } from '../core/trackPlacement';
+import { isTrackCompressed } from '../core/trackCompression';
 import { useEditorStore } from '../store/editor';
 import { useHistoryStore } from '../store/history';
 import { useExpressionStore } from '../expressions/store';
@@ -24,17 +26,19 @@ import { useOnboardingStore } from '../onboarding/store';
 import { usePanelStore, type UiMode } from '../store/panels';
 import { playbackController, useTimelineStore } from '../store/timeline';
 import { exportToMp4, type ExportSettings } from '../codec/exporter';
-import { collectExportVideoDecodes } from '../codec/exportMath';
+import { collectExportVideoDecodes, resolveRequestedExportSize } from '../codec/exportMath';
 import { WebGPURenderer } from '../engine/renderer';
 import { EXPORT_MOTION_BLUR_SAMPLES } from '../store/preview';
-import { videoDecoderPool } from '../engine/video/videoDecoderPool';
-import { frameScheduler } from '../engine/video/frameScheduler';
+import { ExportFrameSource } from '../engine/video/exportFrameSource';
 import { PARTICLE_PRESETS } from '../particles/presets';
-import { resolveFrame } from '../core/interpolation';
-import { getTextLayout, measureStringWidth } from '../engine/textAtlas';
+import { evaluateNumber, evaluateVec2, resolveFrame } from '../core/interpolation';
+import { getTextInkMetrics, getTextLayout, measureStringWidth } from '../engine/textAtlas';
+import { evalPathAnchors, pathFractionAtAngle } from '../core/shapeModifiers';
+import { planAgentMotionPath } from '../core/agentMotionPath';
+import { uid } from '../core/factory';
 import { ensureCompositionFonts, ensureFontFace } from '../engine/fonts';
 import { MAX_FONT_BYTES, hydrateCustomFonts, useCustomFontStore } from '../engine/customFonts';
-import type { Layer, ParticleLayer, ResolvedText, TextLayer } from '../core/types';
+import type { FontWeight, Layer, LayerAnimProps, ParticleLayer, ResolvedText, TextLayer, Vec2, Vec4 } from '../core/types';
 import {
   AGENT_ACTIONS,
   AGENT_MANIFEST_SCHEMA_VERSION,
@@ -44,12 +48,32 @@ import {
   type AgentManifest,
 } from './featureManifest';
 import { buildAgentCatalogs, type AgentCatalogs } from './catalogs';
+import { didYouMean, missingLayerMessage } from './suggest';
 import {
   buildAgentCursor, findCursorRig, planCursorMove, planCursorClick, buildClickRipple, planCursorIcon, cursorIconAt,
-  AGENT_CURSOR_ICONS, type AgentCursorIcon,
+  ALL_AGENT_CURSOR_ICONS, buildMissingCursorIcon, type AgentCursorIcon,
 } from '../animation-templates/cursorRig';
-import type { KeyframeEaseSpec } from '../core/keyframeSpecs';
+import {
+  planSelectionBox, planAnchorSquares, planReadout, planGuideLabel, planGuideLine, sampleFromResolved, readoutValue, readoutCounter,
+  READOUT_PRESETS, READOUT_QUANTITIES, type ReadoutLine, type ReadoutQuantity, type TargetSample,
+} from '../animation-templates/designKit';
+import { buildPixelBlockMask } from '../animation-templates/pixelBlockReveal';
+import { buildPixelSparkle } from '../animation-templates/pixelSparkle';
+import { isPixelBlockOrder } from '../core/pixelBlocks';
+import { layerEffectsRoute, parseAgentEffects } from '../core/effects/layerEffects';
+import { LIQUID_DRIP_DEFAULTS } from '../core/effects/liquidDrip';
+import { normalizeTextCounter, counterTextAt } from '../core/textCounter';
+import { normalizeTextStyleKeys } from '../core/textStyleKeys';
+import { EASINGS } from '../core/easings';
+import { EFFECT_TYPE, getEffectDefByType } from '../core/effects/effectRegistry';
+import { buildKeyframesFromSpecs, easeSpecError } from '../core/keyframeSpecs';
+import type { KeyframeEaseSpec, KeyframeSpec } from '../core/keyframeSpecs';
+import { layoutCardSwarm, swarmWorldPoint, type SwarmVec3, type SwarmVolume } from '../core/cardSwarm';
+import { planCardSwarm, SWARM_PILL_LABELS, type SwarmSource } from '../animation-templates/cardSwarm';
 import { normalizeTextCaret } from '../core/textCaret';
+import { normalizeTextTyping, typingFrames, type TypingEase } from '../core/textTyping';
+import { planPromptBox, type PromptBoxSpec } from '../animation-templates/promptBox';
+import { pickSourceSlot } from '../cloner/sources';
 
 export interface AgentLayerSummary {
   id: string;
@@ -85,6 +109,8 @@ export interface AgentTrackSummary {
   order: number;
   visible: boolean;
   locked: boolean;
+  /** Magnetic (compressed) track: clips are packed gaplessly from frame 0 (video tracks default to it). */
+  magnetic: boolean;
 }
 
 export interface AgentStateSummary {
@@ -188,7 +214,7 @@ export function getAgentState(): AgentStateSummary {
     activeLayerId: ed.selection.activeId,
     layers: comp.layers.map(summarizeLayer),
     background: (comp.background?.layers ?? []).map((b) => ({ id: b.id, type: b.type, enabled: b.enabled, opacity: b.opacity })),
-    tracks: comp.tracks.map((t) => ({ id: t.id, name: t.name, type: t.type, order: t.order, visible: t.visible, locked: t.locked })),
+    tracks: comp.tracks.map((t) => ({ id: t.id, name: t.name, type: t.type, order: t.order, visible: t.visible, locked: t.locked, magnetic: isTrackCompressed(t) })),
     canUndo: hist.undoStack.length > 0,
     canRedo: hist.redoStack.length > 0,
   };
@@ -203,22 +229,27 @@ export function normalizeArgs(spec: AgentActionSpec, args: unknown): unknown[] {
     const obj = args as Record<string, unknown>;
     const known = new Set(spec.params.map((p) => p.name));
     const unknownKeys = Object.keys(obj).filter((k) => !known.has(k));
-    if (unknownKeys.length) throw new Error(`unknown argument(s) ${unknownKeys.join(', ')}; expected ${spec.params.map((p) => p.name).join(', ') || 'none'}`);
+    if (unknownKeys.length) {
+      // B67: name the likely intended argument ("layerID" -> "layerId", "ease" on a layer action...).
+      const names = spec.params.map((p) => p.name);
+      const hints = unknownKeys.map((k) => didYouMean(k, names, 1)).filter(Boolean);
+      throw new Error(`unknown argument(s) ${unknownKeys.join(', ')}${hints.length === 1 && unknownKeys.length === 1 ? hints[0] : ''}; ${spec.id} expects ${names.join(', ') || 'no arguments'}`);
+    }
     positional = spec.params.map((p) => obj[p.name]);
   } else throw new Error('args must be an object keyed by param name or a positional array');
 
   if (positional.length > spec.params.length) {
-    throw new Error(`too many arguments: ${spec.id} takes ${spec.params.length}`);
+    throw new Error(`too many arguments: ${spec.id} takes ${spec.params.length} (${spec.params.map((p) => p.name).join(', ') || 'none'})`);
   }
   spec.params.forEach((p, i) => {
     const v = positional[i];
     if (v === undefined) {
-      if (!p.optional && !p.type.includes('undefined')) throw new Error(`missing required argument "${p.name}" (${p.type})`);
+      if (!p.optional && !p.type.includes('undefined')) throw new Error(`missing required argument "${p.name}" (${p.type}) for ${spec.id}`);
       return;
     }
     if (v === null && p.type.includes('null')) return;
     if (p.values && !p.values.includes(v as string)) {
-      throw new Error(`"${p.name}" must be one of ${p.values.join(', ')}`);
+      throw new Error(`"${p.name}" must be one of ${p.values.join(', ')}${typeof v === 'string' ? didYouMean(v, p.values, 1) : ''}`);
     }
   });
   // Trim trailing undefineds so optional params keep their defaults.
@@ -227,10 +258,43 @@ export function normalizeArgs(spec: AgentActionSpec, args: unknown): unknown[] {
   return positional.slice(0, end);
 }
 
+// B54 option readers (agent args arrive as JSON).
+function pbObject(v: unknown, label: string): Record<string, unknown> {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) throw new Error(`"${label}" must be an object`);
+  return v as Record<string, unknown>;
+}
+function pbNum(v: unknown, label: string): number {
+  if (typeof v !== 'number' || !Number.isFinite(v)) throw new Error(`"${label}" must be a number`);
+  return v;
+}
+function pbOptNum(v: unknown, label: string): number | undefined {
+  return v === undefined || v === null ? undefined : pbNum(v, label);
+}
+function pbRect(v: unknown, label: string): { x: number; y: number; width: number; height: number } {
+  const r = pbObject(v, label);
+  const out = { x: pbNum(r.x, `${label}.x`), y: pbNum(r.y, `${label}.y`), width: pbNum(r.width, `${label}.width`), height: pbNum(r.height, `${label}.height`) };
+  if (out.width <= 0 || out.height <= 0) throw new Error(`"${label}" needs a positive width and height`);
+  return out;
+}
+
 function requireLayer(layerId: unknown): Layer {
-  const layer = useEditorStore.getState().composition.layers.find((l) => l.id === layerId);
-  if (!layer) throw new Error(`no layer with id "${String(layerId)}"`);
+  const layers = useEditorStore.getState().composition.layers;
+  const layer = layers.find((l) => l.id === layerId);
+  if (!layer) throw new Error(missingLayerMessage(layerId, layers));
   return layer;
+}
+
+/**
+ * B67: editor.* store actions return silently when their target layer does not exist (the UI never passes a
+ * stale id), so an agent saw ok: true and nothing changed. Check the `layerId` first param up front.
+ * agent.* helpers already throw through requireLayer.
+ */
+function assertTargetLayerExists(spec: AgentActionSpec, positional: readonly unknown[]): void {
+  if (spec.store !== 'editor' || spec.params[0]?.name !== 'layerId') return;
+  const id = positional[0];
+  if (id === undefined || id === null) return; // missing-arg errors are normalizeArgs' job
+  const layers = useEditorStore.getState().composition.layers;
+  if (!layers.some((l) => l.id === id)) throw new Error(missingLayerMessage(id, layers));
 }
 
 function requireTextLayer(layerId: unknown): TextLayer {
@@ -389,6 +453,18 @@ async function waitForOpenedProject(projectId: string): Promise<void> {
 
 /** One offscreen renderer reused across renderFrame calls (re-created when the size changes). */
 let frameRenderer: { renderer: WebGPURenderer; width: number; height: number } | null = null;
+/** B68: render_frame's own video frames + decode session (like the exporter's), kept across calls so a
+ *  run of consecutive frames decodes forward; released after a few idle seconds (frees the decoders). */
+let frameSource: ExportFrameSource | null = null;
+let frameSourceIdle: ReturnType<typeof setTimeout> | null = null;
+const FRAME_SOURCE_IDLE_MS = 4000;
+function releaseFrameSource(): void {
+  if (frameSourceIdle) { clearTimeout(frameSourceIdle); frameSourceIdle = null; }
+  frameRenderer?.renderer.setVideoFrameSource(null);
+  const src = frameSource;
+  frameSource = null;
+  void src?.dispose();
+}
 /** Serialize frame renders: they share the renderer and its canvas. */
 let frameRenderChain: Promise<unknown> = Promise.resolve();
 
@@ -411,7 +487,9 @@ function renderSize(width: unknown, height: unknown): { w: number; h: number } {
  */
 async function renderCompFrame(frame: number, w: number, h: number): Promise<OffscreenCanvas> {
   const job = frameRenderChain.then(async () => {
+    if (frameSourceIdle) { clearTimeout(frameSourceIdle); frameSourceIdle = null; }
     if (!frameRenderer || frameRenderer.width !== w || frameRenderer.height !== h) {
+      releaseFrameSource();
       frameRenderer?.renderer.destroy();
       frameRenderer = null;
       const r = new WebGPURenderer();
@@ -427,21 +505,22 @@ async function renderCompFrame(frame: number, w: number, h: number): Promise<Off
     // B52: lazy font faces load before the frame is resolved (measured) and rasterized.
     await ensureCompositionFonts(comp, ed.getComposition);
     const data = resolveFrame(comp, f, { getComposition: ed.getComposition, depth: 0, visited: new Set() });
-    // Full-resolution source frames (the exporter's path), never a buffered half-res preview proxy.
+    // Full-resolution source frames through the exporter's own frame source (B68): never a buffered
+    // half-res preview proxy, and the preview scheduler is left alone.
     const decodes = collectExportVideoDecodes(data.layers);
-    if (decodes.length) {
-      frameScheduler.releaseBufferedFrames();
-      await Promise.all(decodes.map(async ({ assetId, frame: sf }) => {
-        if (frameScheduler.getFrame(assetId, sf)) return;
-        frameScheduler.injectFrame(assetId, sf, await videoDecoderPool.decodeFrameForExport(assetId, sf));
-      }));
+    if (decodes.length && !frameSource) frameSource = new ExportFrameSource();
+    if (frameSource) {
+      r.setVideoFrameSource(frameSource);
+      await frameSource.prepare(decodes);
     }
     await Promise.all(data.layers.filter((l) => l.layerType === 'image' && l.image?.assetId).map((l) => mediaAssetManager.ensureImageBitmap(l.image!.assetId)));
     try {
       await r.renderFrameAsync(data, 'offscreen');
     } finally {
-      // Like the exporter's cleanup: do not leave full-resolution frames in the shared scheduler.
-      if (decodes.length) frameScheduler.releaseBufferedFrames();
+      if (frameSource) {
+        if (frameSourceIdle) clearTimeout(frameSourceIdle);
+        frameSourceIdle = setTimeout(releaseFrameSource, FRAME_SOURCE_IDLE_MS);
+      }
     }
     const src = r.getOffscreenCanvas();
     if (!src) throw new Error('the offscreen renderer has no canvas');
@@ -464,6 +543,287 @@ async function keepPng(canvas: OffscreenCanvas): Promise<{ exportId: string; byt
 
 /** Composite helpers: each is one undoable step built on real store actions / history commands.
  *  (createProject / exportMp4 are session-level and not undoable, like their UI counterparts.) */
+// ----- B76 design-tool UI kit: argument checks + target sampling shared by the four actions -----
+function dkOptions(v: unknown): Record<string, unknown> {
+  if (v === undefined || v === null) return {};
+  if (typeof v !== 'object' || Array.isArray(v)) throw new Error('"options" must be an object');
+  return v as Record<string, unknown>;
+}
+function dkNum(v: unknown, label: string): number | undefined {
+  if (v === undefined || v === null) return undefined;
+  if (typeof v !== 'number' || !Number.isFinite(v)) throw new Error(`"${label}" must be a number`);
+  return v;
+}
+function dkColor(v: unknown, label: string): [number, number, number, number] | undefined {
+  if (v === undefined || v === null) return undefined;
+  if (!(Array.isArray(v) && v.length === 4 && v.every((c) => typeof c === 'number' && Number.isFinite(c)))) throw new Error(`"${label}" must be an RGBA colour [r, g, b, a] (0..1)`);
+  return [v[0], v[1], v[2], v[3]];
+}
+function dkVec2(v: unknown, label: string): Vec2 | undefined {
+  if (v === undefined || v === null) return undefined;
+  if (!(Array.isArray(v) && v.length === 2 && v.every((c) => typeof c === 'number' && Number.isFinite(c)))) throw new Error(`"${label}" must be [x, y]`);
+  return [v[0], v[1]];
+}
+function dkName(v: unknown): string | undefined {
+  return typeof v === 'string' && v.trim() ? v.trim() : undefined;
+}
+function dkIndexList(v: unknown, label: string): number[] | undefined {
+  if (v === undefined || v === null) return undefined;
+  if (!Array.isArray(v) || !v.every((i) => typeof i === 'number' && Number.isInteger(i))) throw new Error(`"${label}" must be an array of vertex indices`);
+  return v as number[];
+}
+function dkBox(s: TargetSample): { frame: number; center: Vec2; width: number; height: number; rotation: number; corners: Vec2[] } {
+  const r = (n: number): number => Math.round(n * 100) / 100;
+  return { frame: s.frame, center: [r(s.center[0]), r(s.center[1])], width: r(s.width), height: r(s.height), rotation: r(s.rotation), corners: s.corners.map((c): Vec2 => [r(c[0]), r(c[1])]) };
+}
+/** [start, end) of the kit clip: default the target's own clip; at most 3600 sampled frames. */
+function dkRange(startFrame: unknown, endFrame: unknown, target: Layer): { start: number; end: number } {
+  const start = Math.round(dkNum(startFrame, 'startFrame') ?? target.inPoint);
+  const end = Math.round(dkNum(endFrame, 'endFrame') ?? target.outPoint);
+  if (!(end > start)) throw new Error('"endFrame" must be after "startFrame"');
+  if (end - start > 3600) throw new Error('the range is longer than 3600 frames: split it into shorter kit clips (one per shot)');
+  return { start, end };
+}
+/**
+ * The target's rendered geometry on every frame of [start, end), resolved exactly like the renderer (parents,
+ * motion paths, point-pose morphs). The target is probed visible and on screen for the whole range, so the
+ * kit may run a little before / after the target's own clip.
+ */
+function sampleTarget(target: Layer, start: number, end: number): TargetSample[] {
+  if (target.type === 'text') throw new Error('text layers have no fixed outline here: outline the word first (editor.outlineTextLayer) and target the glyph shape, or put a rectangle on agent.measureText glyphInk');
+  if (target.type === 'group' || target.type === 'audio' || target.type === 'camera') throw new Error(`a ${target.type} layer draws nothing to select: target one of its shape / image / video layers`);
+  const ed = useEditorStore.getState();
+  const probe = { ...target, visible: true, inPoint: Math.min(target.inPoint, start), outPoint: Math.max(target.outPoint, end) } as Layer;
+  const comp = { ...ed.composition, layers: ed.composition.layers.map((l) => (l.id === target.id ? probe : l)) };
+  const out: TargetSample[] = [];
+  for (let f = start; f < end; f++) {
+    const r = resolveFrame(comp, f, { getComposition: ed.getComposition }).layers.find((l) => l.id === target.id);
+    const anchors = target.type === 'shape' && target.shape.type === 'polygon' && target.shape.pathKeyframes && target.shape.pathKeyframes.length > 0
+      ? evalPathAnchors(target.shape.pathKeyframes, f) : null;
+    const s = r ? sampleFromResolved(r, f, anchors) : null;
+    if (!s) throw new Error(`layer "${target.name}" (${target.type}) has no measurable outline at frame ${f} (supported: rectangle, ellipse, star, path / outlined glyph, image, video)`);
+    out.push(s);
+  }
+  return out;
+}
+function dkReadoutLines(preset: unknown, lines: unknown, pointCount: number): ReadoutLine[] {
+  if (lines !== undefined && lines !== null) {
+    if (!Array.isArray(lines) || lines.length === 0) throw new Error('"lines" must be a non-empty array of { label, quantity, unit?, point? }');
+    return lines.map((raw, i) => {
+      if (!raw || typeof raw !== 'object') throw new Error(`lines[${i}] must be an object`);
+      const r = raw as Record<string, unknown>;
+      if (!(READOUT_QUANTITIES as readonly string[]).includes(r.quantity as string)) throw new Error(`lines[${i}].quantity must be one of ${READOUT_QUANTITIES.join(', ')}`);
+      if (r.point !== undefined && (typeof r.point !== 'number' || !Number.isInteger(r.point) || r.point < 0 || r.point >= pointCount)) throw new Error(`lines[${i}].point must be a vertex index 0..${Math.max(0, pointCount - 1)}`);
+      return { label: typeof r.label === 'string' ? r.label.slice(0, 40) : '', quantity: r.quantity as ReadoutQuantity, ...(typeof r.unit === 'string' ? { unit: r.unit.slice(0, 12) } : {}), ...(typeof r.point === 'number' ? { point: r.point } : {}) };
+    });
+  }
+  const key = preset === undefined || preset === null ? 'move' : preset;
+  if (typeof key !== 'string' || !(key in READOUT_PRESETS)) throw new Error(`"preset" must be one of ${Object.keys(READOUT_PRESETS).join(', ')} (or pass "lines")`);
+  return READOUT_PRESETS[key as keyof typeof READOUT_PRESETS].map((l) => ({ ...l }));
+}
+/** The tooltip's top-left per sampled frame: offset from the target's bottom-right (or the dragged vertex), a layer, or a fixed point. */
+function readoutAnchors(follow: unknown, samples: TargetSample[], lines: ReadoutLine[], offset: Vec2): Vec2[] {
+  if (Array.isArray(follow)) {
+    const p = dkVec2(follow, 'follow');
+    if (!p) throw new Error('"follow" must be "target", a layer id or [x, y]');
+    return samples.map((): Vec2 => [p[0], p[1]]);
+  }
+  if (follow === undefined || follow === null || follow === 'target') {
+    const pt = lines.find((l) => l.point !== undefined)?.point;
+    return samples.map((s): Vec2 => {
+      if (pt !== undefined) return [s.points[pt][0] + offset[0], s.points[pt][1] + offset[1]];
+      const xs = s.corners.map((c) => c[0]), ys = s.corners.map((c) => c[1]);
+      return [Math.max(...xs) + offset[0], Math.max(...ys) + offset[1]];
+    });
+  }
+  if (typeof follow !== 'string') throw new Error('"follow" must be "target", a layer id (e.g. the cursorId) or [x, y]');
+  const layer = requireLayer(follow);
+  const ed = useEditorStore.getState();
+  return samples.map((s): Vec2 => {
+    let p: Vec2;
+    if (layer.type === 'group') p = evaluateVec2(layer.transform.position, s.frame);
+    else {
+      const r = resolveFrame(ed.composition, s.frame, { getComposition: ed.getComposition }).layers.find((l) => l.id === layer.id);
+      p = r ? [r.transform.positionX, r.transform.positionY] : evaluateVec2(layer.transform.position, s.frame);
+    }
+    return [p[0] + offset[0], p[1] + offset[1]];
+  });
+}
+/** Widest of some strings in a face, with the renderer's own layout code. */
+async function measureWidest(strings: string[], fontFamily: string, fontSize: number): Promise<number> {
+  const probe: ResolvedText = {
+    content: '', mode: 'point', boxWidth: 300, boxHeight: 200, fontFamily, fontWeight: 400, fontStyle: 'normal', fontSize, lineHeight: 1.2,
+    letterSpacing: 0, fillColor: [1, 1, 1, 1], strokeColor: [0, 0, 0, 0], strokeWidth: 0, textAlign: 'left', underline: false, strikethrough: false,
+    measuredWidth: 0, measuredHeight: 0,
+  };
+  await ensureFontFace(fontFamily, 400, 'normal');
+  let w = 0;
+  for (const s of strings) w = Math.max(w, measureStringWidth({ ...probe, content: s }, s));
+  return w;
+}
+/** A guide-line end per frame of [start, end): [x, y], or { layerId, point? } (a shape's centre / top / vertex; a
+ *  group, e.g. a cursor, by its position: the hotspot). */
+function guideEndpoint(spec: unknown, label: string, start: number, end: number): Vec2[] {
+  const n = end - start;
+  if (Array.isArray(spec)) {
+    const p = dkVec2(spec, label);
+    if (!p) throw new Error(`"${label}" must be [x, y] or { layerId, point? }`);
+    return Array.from({ length: n }, (): Vec2 => [p[0], p[1]]);
+  }
+  if (!spec || typeof spec !== 'object') throw new Error(`"${label}" must be [x, y] or { layerId, point? }`);
+  const r = spec as Record<string, unknown>;
+  const layer = requireLayer(r.layerId);
+  if (layer.type === 'group') return Array.from({ length: n }, (_, i) => evaluateVec2(layer.transform.position, start + i));
+  const samples = sampleTarget(layer, start, end);
+  const pi = r.point;
+  if (pi !== undefined && pi !== null && pi !== 'center' && pi !== 'top' && pi !== 'bottom' && (typeof pi !== 'number' || !Number.isInteger(pi) || pi < 0 || pi >= samples[0].points.length)) {
+    throw new Error(`"${label}.point" must be "center", "top", "bottom" or a vertex index 0..${Math.max(0, samples[0].points.length - 1)}`);
+  }
+  return samples.map((s): Vec2 => {
+    if (typeof pi === 'number') return [s.points[pi][0], s.points[pi][1]];
+    if (pi === 'top') return [(s.corners[0][0] + s.corners[1][0]) / 2, (s.corners[0][1] + s.corners[1][1]) / 2];
+    if (pi === 'bottom') return [(s.corners[2][0] + s.corners[3][0]) / 2, (s.corners[2][1] + s.corners[3][1]) / 2];
+    return [s.center[0], s.center[1]];
+  });
+}
+
+/** Add kit layers as one undo step: under any cursor rig (the pointer stays on top), else above every layer. */
+function commitDesignKit(label: string, layers: Layer[]): void {
+  const ed = useEditorStore.getState();
+  const cursorIds: string[] = [];
+  for (const l of ed.composition.layers) {
+    if (l.type !== 'group') continue;
+    try {
+      const rig = findCursorRig(ed.composition.layers, l.id);
+      cursorIds.push(rig.group.id, ...Object.values(rig.icons).flatMap((i) => (i ? [i.id] : [])));
+    } catch { /* not a cursor rig */ }
+  }
+  const ids = layers.map((l) => l.id);
+  ed.applyLayerEdits(label, { add: layers, stack: cursorIds.length ? { ids, belowLayerIds: cursorIds } : { ids, top: true as const } });
+}
+
+// ----- B81 3D card swarm: argument checks + source resolution for agent.addCardSwarm -----
+function swRange(v: unknown, label: string, fallback: [number, number]): [number, number] {
+  if (v === undefined || v === null) return fallback;
+  if (typeof v === 'number' && Number.isFinite(v) && v > 0) return [v, v];
+  if (!(Array.isArray(v) && v.length === 2 && v.every((n) => typeof n === 'number' && Number.isFinite(n)) && v[0] > 0 && v[1] >= v[0])) throw new Error(`"${label}" must be [min, max] with 0 < min <= max (or one positive number)`);
+  return [v[0], v[1]];
+}
+function swUnitRange(v: unknown, label: string): [number, number] {
+  if (!(Array.isArray(v) && v.length === 2 && v.every((n) => typeof n === 'number' && Number.isFinite(n)) && v[0] >= 0 && v[1] <= 1 && v[1] >= v[0])) throw new Error(`"${label}" must be [a, b] with 0 <= a <= b <= 1 (0 = the near face of the volume, 1 = the far face)`);
+  return [v[0], v[1]];
+}
+function swVec3(v: unknown, label: string): SwarmVec3 | undefined {
+  if (v === undefined || v === null) return undefined;
+  if (!(Array.isArray(v) && (v.length === 3 || v.length === 2) && v.every((n) => typeof n === 'number' && Number.isFinite(n)))) throw new Error(`"${label}" must be [x, y, z] (comp px)`);
+  return [v[0], v[1], v.length === 3 ? v[2] : 0];
+}
+function swKeys(v: unknown, label: string): KeyframeSpec[] {
+  if (v === undefined || v === null) return [];
+  if (!Array.isArray(v) || v.length === 0) throw new Error(`"${label}" must be a non-empty array of { frame, value (degrees), ease? }`);
+  return v.map((k, i) => {
+    if (!k || typeof k !== 'object') throw new Error(`${label}[${i}] must be { frame, value, ease? }`);
+    const r = k as Record<string, unknown>;
+    if (typeof r.frame !== 'number' || !Number.isFinite(r.frame)) throw new Error(`${label}[${i}].frame must be a number`);
+    if (typeof r.value !== 'number' || !Number.isFinite(r.value)) throw new Error(`${label}[${i}].value must be a number (degrees)`);
+    return { frame: r.frame, value: r.value, ...(r.ease !== undefined ? { ease: r.ease as KeyframeEaseSpec } : {}) };
+  });
+}
+/** Natural (unscaled) size of a layer used as a card source. */
+function swNaturalSize(l: Layer): { w: number; h: number } {
+  const ed = useEditorStore.getState();
+  if (l.type === 'image') return { w: l.image.sourceWidth, h: l.image.sourceHeight };
+  if (l.type === 'video') return { w: l.video.sourceWidth, h: l.video.sourceHeight };
+  if (l.type === 'precomp') { const c = ed.getComposition(l.compositionId); return { w: c?.settings.width ?? 1920, h: c?.settings.height ?? 1080 }; }
+  if (l.type === 'shape') {
+    const g = l.shape;
+    if (g.type === 'rectangle') return { w: evaluateNumber(g.width, 0), h: evaluateNumber(g.height, 0) };
+    if (g.type === 'star') { const d = evaluateNumber(g.outerRadius, 0) * 2; return { w: d, h: d }; }
+    if (g.type === 'circle') { const rx = evaluateNumber(g.radius, 0); return { w: rx * 2, h: (g.radiusY ? evaluateNumber(g.radiusY, 0) : rx) * 2 }; }
+    const xs = g.vertices.map((p) => p.position[0]), ys = g.vertices.map((p) => p.position[1]);
+    return { w: Math.max(1, Math.max(...xs) - Math.min(...xs)), h: Math.max(1, Math.max(...ys) - Math.min(...ys)) };
+  }
+  if (l.type === 'text') {
+    const r = resolveFrame(ed.composition, l.inPoint, { getComposition: ed.getComposition }).layers.find((x) => x.id === l.id);
+    return { w: r?.text?.measuredWidth || 400, h: r?.text?.measuredHeight || 100 };
+  }
+  return { w: 400, h: 300 };
+}
+async function swResolveSources(v: unknown): Promise<SwarmSource[]> {
+  if (v === undefined || v === null) return [];
+  if (!Array.isArray(v) || !v.every((s) => typeof s === 'string' && s)) throw new Error('"sources" must be an array of layer ids or image asset ids');
+  const layers = useEditorStore.getState().composition.layers;
+  const out: SwarmSource[] = [];
+  for (const id of v as string[]) {
+    const layer = layers.find((l) => l.id === id);
+    if (layer) {
+      if (layer.type === 'group' || layer.type === 'camera' || layer.type === 'audio' || layer.type === 'adjustment') throw new Error(`source "${id}" is a ${layer.type} layer: a card must draw (image, shape, text, video or precomp)`);
+      const { w, h } = swNaturalSize(layer);
+      out.push({ kind: 'layer', layer, naturalWidth: w, naturalHeight: h });
+      continue;
+    }
+    const meta = mediaAssetManager.getImageMetadata(id) ?? (await mediaAssetManager.ensureImageMetadata(id));
+    if (!meta) throw new Error(`source "${id}" is neither a layer of this composition nor an imported image asset (agent.importImage returns an assetId)`);
+    const name = mediaAssetManager.getAsset(id)?.name?.replace(/\.[^.]+$/, '') || 'Image';
+    out.push({ kind: 'image', assetId: id, name, width: meta.width, height: meta.height, format: meta.format, fileSize: meta.fileSize });
+  }
+  return out;
+}
+/** Every layer of every cursor rig in the comp (new swarm layers stack UNDER the pointer). */
+function cursorRigLayerIds(): string[] {
+  const ed = useEditorStore.getState();
+  const ids: string[] = [];
+  for (const l of ed.composition.layers) {
+    if (l.type !== 'group') continue;
+    try {
+      const rig = findCursorRig(ed.composition.layers, l.id);
+      ids.push(rig.group.id, ...Object.values(rig.icons).flatMap((i) => (i ? [i.id] : [])));
+    } catch { /* not a cursor rig */ }
+  }
+  return ids;
+}
+
+// ----- B82 typing prompt box: argument readers -----
+/** RGBA 0..1 or a hex string (#rgb, #rrggbb, #rrggbbaa). */
+function pbColor(v: unknown, label: string): Vec4 | undefined {
+  if (v === undefined || v === null) return undefined;
+  if (typeof v === 'string') {
+    const m = /^#?([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.exec(v.trim());
+    if (!m) throw new Error(`"${label}" must be a hex colour ("#e780f6") or [r, g, b, a] (0..1)`);
+    const h = m[1].length === 3 ? m[1].split('').map((c) => c + c).join('') : m[1];
+    const c = (i: number): number => parseInt(h.slice(i, i + 2), 16) / 255;
+    return [c(0), c(2), c(4), h.length === 8 ? c(6) : 1];
+  }
+  return dkColor(v, label);
+}
+function pbEase(v: unknown, label: string): TypingEase | undefined {
+  if (v === undefined || v === null) return undefined;
+  if (typeof v === 'string') {
+    if (!(v in EASINGS)) throw new Error(`"${label}": unknown easing "${v}" (one of ${Object.keys(EASINGS).join(', ')}, or a cubic-bezier [x1, y1, x2, y2])`);
+    return v;
+  }
+  if (Array.isArray(v) && v.length === 4 && v.every((n) => typeof n === 'number' && Number.isFinite(n))) return [v[0], v[1], v[2], v[3]];
+  throw new Error(`"${label}" must be an easing name or a cubic-bezier [x1, y1, x2, y2]`);
+}
+function pbFrames(v: unknown, label: string): number[] | undefined {
+  if (v === undefined || v === null) return undefined;
+  if (!Array.isArray(v) || v.length === 0 || !v.every((n) => typeof n === 'number' && Number.isFinite(n))) throw new Error(`"${label}" must be a non-empty array of frame numbers (one per character)`);
+  return v as number[];
+}
+/** The typing timing object shared by agent.addPromptBox and agent.setTextTyping. */
+function pbTyping(v: unknown, extra: readonly string[] = []): { startFrame?: number; cps?: number; durationFrames?: number; frames?: number[]; ease?: TypingEase } {
+  if (v === undefined || v === null) return {};
+  const o = pbObject(v, 'typing');
+  const known = new Set(['startFrame', 'cps', 'durationFrames', 'frames', 'ease', ...extra]);
+  const unknown = Object.keys(o).filter((k) => !known.has(k));
+  if (unknown.length) throw new Error(`unknown typing field(s): ${unknown.join(', ')} (accepted: ${[...known].join(', ')})`);
+  const cps = pbOptNum(o.cps, 'typing.cps');
+  if (cps !== undefined && !(cps > 0)) throw new Error('"typing.cps" must be positive');
+  const dur = pbOptNum(o.durationFrames, 'typing.durationFrames');
+  if (dur !== undefined && !(dur >= 1)) throw new Error('"typing.durationFrames" must be at least 1');
+  return { startFrame: pbOptNum(o.startFrame, 'typing.startFrame'), cps, durationFrames: dur, frames: pbFrames(o.frames, 'typing.frames'), ease: pbEase(o.ease, 'typing.ease') };
+}
+
 const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
   setTextContent: (layerId, text) => {
     const layer = requireTextLayer(layerId);
@@ -607,8 +967,13 @@ const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
   exportMp4: async (width, height, frameRate, bitrate, includeAudio) => {
     const ed = useEditorStore.getState();
     const settings: Partial<ExportSettings> = {};
-    if (typeof width === 'number') settings.width = width;
-    if (typeof height === 'number') settings.height = height;
+    if (typeof width === 'number' || typeof height === 'number') {
+      // One side only: the other follows the comp aspect (no distorted 540x1920 from { width: 540 }).
+      const size = resolveRequestedExportSize(ed.composition.settings.width, ed.composition.settings.height,
+        typeof width === 'number' ? width : undefined, typeof height === 'number' ? height : undefined);
+      settings.width = size.width;
+      settings.height = size.height;
+    }
     if (typeof frameRate === 'number') settings.frameRate = frameRate;
     if (typeof bitrate === 'number') settings.bitrate = bitrate;
     settings.includeAudio = includeAudio !== false;
@@ -654,7 +1019,7 @@ const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
     const fullText = layer.content.spans.map((sp) => sp.text).join('');
     const first = layer.content.spans[0];
     const content = first ? { ...layer.content, spans: [{ ...first, text: fullText }] } : layer.content;
-    const probe = { ...layer, content, animators: [], decode: undefined, masks: [], textPath: undefined, inPoint: Math.min(layer.inPoint, f), outPoint: Math.max(layer.outPoint, f + 1) };
+    const probe = { ...layer, content, animators: [], decode: undefined, typing: undefined, masks: [], textPath: undefined, inPoint: Math.min(layer.inPoint, f), outPoint: Math.max(layer.outPoint, f + 1) };
     const comp = { ...ed.composition, layers: ed.composition.layers.map((l) => (l.id === layer.id ? probe : l)) };
     const resolved = resolveFrame(comp, f, { getComposition: ed.getComposition }).layers.find((l) => l.id === layer.id);
     if (!resolved?.text) throw new Error('the text did not resolve at this frame');
@@ -666,11 +1031,24 @@ const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
     // The renderer centres the text quad on the layer position (scale 1, no rotation assumed here).
     const cx = t.positionX;
     const cy = t.positionY;
+    // B72: the TIGHT box of the drawn glyphs (canvas ink metrics, same layout as the rasterizer). `ink` above is
+    // the line box (advance widths x line height), kept for old builds: for a pixel face like VT323 or caps it
+    // is much taller than the visible letters.
+    const g = getTextInkMetrics(resolved.text);
+    const sx = t.scaleX;
+    const sy = t.scaleY;
+    const glyphInk = {
+      left: cx + g.inkLeft * sx, right: cx + g.inkRight * sx, top: cy + g.inkTop * sy, bottom: cy + g.inkBottom * sy,
+      width: (g.inkRight - g.inkLeft) * Math.abs(sx), height: (g.inkBottom - g.inkTop) * Math.abs(sy),
+      centerX: cx + ((g.inkLeft + g.inkRight) / 2) * sx, centerY: cy + g.inkCenterY * sy,
+    };
     return {
       frame: f,
       center: [cx, cy],
       box: { width: layout.canvasWidth, height: layout.canvasHeight, left: cx - layout.canvasWidth / 2, top: cy - layout.canvasHeight / 2 },
       ink: { width: inkWidth, height: inkHeight, left: cx - inkWidth / 2, right: cx + inkWidth / 2, top: cy - inkHeight / 2, bottom: cy + inkHeight / 2 },
+      glyphInk,
+      baselines: g.baselines.map((b) => cy + b * sy),
       lines: layout.lines,
       lineWidths,
       lineHeightPx: layout.lineHeightPx,
@@ -874,7 +1252,7 @@ const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
   },
 
   // ----- B51 cursor rig (animation-templates/cursorRig.ts): each call is ONE undo step -----
-  addCursor: (icon, x, y, frame, color, size, name) => {
+  addCursor: (icon, x, y, frame, color, size, name, placement, rimColor) => {
     const comp = useEditorStore.getState().composition;
     const num = (v: unknown, fallback: number, label: string): number => {
       if (v === undefined || v === null) return fallback;
@@ -892,11 +1270,17 @@ const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
       color: color as [number, number, number, number] | undefined,
       size: num(size, 36, 'size'),
       name: typeof name === 'string' && name.trim() ? name.trim() : undefined,
+      rim: dkColor(rimColor, 'rimColor'),
     });
-    useEditorStore.getState().applyLayerEdits('Add cursor', { add: layers });
+    if (placement !== undefined && placement !== null && placement !== 'top' && placement !== 'fit') throw new Error('"placement" must be "top" (default: above every layer) or "fit" (a free track above the layers visible at that time, like a timeline drop)');
+    // B70: a pointer belongs above the shot it clicks in ('top': above every layer). 'fit' drops it like any new
+    // layer: since B84 onto a free track above everything visible at that time (before, it could land under a
+    // later shot's ground).
+    const onTop = placement !== 'fit';
+    useEditorStore.getState().applyLayerEdits('Add cursor', { add: layers, ...(onTop ? { stack: { ids: layers.map((l) => l.id), top: true as const } } : {}) });
     const icons: Record<string, string> = {};
     for (const l of layers.slice(1)) icons[l.name] = l.id;
-    return { cursorId: layers[0].id, icons, frame: start };
+    return { cursorId: layers[0].id, icons, frame: start, placement: onTop ? 'top' : 'fit' };
   },
 
   cursorMoveTo: (cursorId, frame, x, y, durationFrames, ease, arc) => {
@@ -922,7 +1306,9 @@ const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
     const f = Math.round(frame);
     const group = planCursorClick(rig.group, { frame: f, squash: squash as number | undefined });
     const ring = ripple === false ? null : buildClickRipple(rig.group, f, { color: rippleColor as [number, number, number, number] | undefined });
-    ed.applyLayerEdits('Cursor click', { update: [group], add: ring ? [ring] : [] });
+    // B70: the ripple goes on a new track directly under the cursor (above the content it clicks).
+    const rigIds = [rig.group.id, ...Object.values(rig.icons).map((l) => l!.id)];
+    ed.applyLayerEdits('Cursor click', { update: [group], add: ring ? [ring] : [], ...(ring ? { stack: { ids: [ring.id], belowLayerIds: rigIds } } : {}) });
     if (!ring) useEditorStore.getState().selectLayer(rig.group.id);
     return { cursorId: rig.group.id, frame: f, rippleId: ring ? ring.id : null, responseFrame: f + 2 };
   },
@@ -931,10 +1317,654 @@ const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
     const ed = useEditorStore.getState();
     const rig = findCursorRig(ed.composition.layers, String(cursorId));
     if (typeof frame !== 'number' || !Number.isFinite(frame)) throw new Error('"frame" must be a number');
-    if (!AGENT_CURSOR_ICONS.includes(icon as AgentCursorIcon)) throw new Error(`"icon" must be one of ${AGENT_CURSOR_ICONS.join(', ')}`);
+    if (!(ALL_AGENT_CURSOR_ICONS as readonly string[]).includes(icon as string)) throw new Error(`"icon" must be one of ${ALL_AGENT_CURSOR_ICONS.join(', ')}`);
     const before = cursorIconAt(rig, Math.round(frame));
-    ed.applyLayerEdits('Cursor icon', { update: planCursorIcon(rig, frame, icon as AgentCursorIcon) });
-    return { cursorId: rig.group.id, frame: Math.round(frame), from: before, icon };
+    // B76: a design-tool icon (pen, crosshair, rotate, directSelect) the rig lacks joins it in the same undo step.
+    const added = buildMissingCursorIcon(rig, icon as AgentCursorIcon);
+    const withIcon = added ? { ...rig, icons: { ...rig.icons, [icon as AgentCursorIcon]: added } } : rig;
+    const updates = planCursorIcon(withIcon, frame, icon as AgentCursorIcon);
+    const addedLayer = added ? updates.find((l) => l.id === added.id) ?? added : null;
+    ed.applyLayerEdits('Cursor icon', {
+      update: updates.filter((l) => !added || l.id !== added.id),
+      // The new icon goes on its own track above every layer (a pointer belongs on top; one icon shows at a time).
+      ...(addedLayer ? { add: [addedLayer], stack: { ids: [addedLayer.id], top: true as const } } : {}),
+    });
+    return { cursorId: rig.group.id, frame: Math.round(frame), from: before, icon, ...(addedLayer ? { addedIconId: addedLayer.id } : {}) };
+  },
+
+  // ----- B76 design-tool UI kit (animation-templates/designKit.ts): each call is ONE undo step -----
+  addSelectionBox: (targetId, startFrame, endFrame, options) => {
+    const o = dkOptions(options);
+    const target = requireLayer(targetId);
+    const { start, end } = dkRange(startFrame, endFrame, target);
+    const samples = sampleTarget(target, start, end);
+    const handles = o.handles === undefined ? 'all' : o.handles;
+    if (handles !== 'all' && handles !== 'corners' && handles !== 'none') throw new Error('"handles" must be "all", "corners" or "none"');
+    const plan = planSelectionBox(samples, {
+      handles, color: dkColor(o.color, 'color'), handleSize: dkNum(o.handleSize, 'handleSize'), strokeWidth: dkNum(o.strokeWidth, 'strokeWidth'),
+      padding: dkNum(o.padding, 'padding'), name: dkName(o.name), endFrame: end,
+    });
+    commitDesignKit('Add selection box', plan.layers);
+    return { groupId: plan.groupId, outlineId: plan.outlineId, handleIds: plan.handleIds, startFrame: start, endFrame: end, first: dkBox(samples[0]), last: dkBox(samples[samples.length - 1]) };
+  },
+
+  addAnchorSquares: (targetId, startFrame, endFrame, options) => {
+    const o = dkOptions(options);
+    const target = requireLayer(targetId);
+    const { start, end } = dkRange(startFrame, endFrame, target);
+    const samples = sampleTarget(target, start, end);
+    const plan = planAnchorSquares(samples, {
+      points: dkIndexList(o.points, 'points'), highlight: dkIndexList(o.highlight, 'highlight'), color: dkColor(o.color, 'color'),
+      size: dkNum(o.size, 'size'), strokeWidth: dkNum(o.strokeWidth, 'strokeWidth'), name: dkName(o.name), endFrame: end,
+    });
+    commitDesignKit('Add anchor squares', plan.layers);
+    return { groupId: plan.groupId, squareIds: plan.squareIds, points: plan.points, pointCount: samples[0].points.length, startFrame: start, endFrame: end,
+      firstPositions: plan.points.map((i) => samples[0].points[i]) };
+  },
+
+  addReadout: async (targetId, startFrame, endFrame, options) => {
+    const o = dkOptions(options);
+    const target = requireLayer(targetId);
+    const { start, end } = dkRange(startFrame, endFrame, target);
+    const samples = sampleTarget(target, start, end);
+    const lines = dkReadoutLines(o.preset, o.lines, samples[0].points.length);
+    const decimals = Math.round(dkNum(o.decimals, 'decimals') ?? 2);
+    const decimalMark = o.decimalMark === undefined ? ',' : o.decimalMark;
+    if (decimalMark !== '.' && decimalMark !== ',') throw new Error('"decimalMark" must be "." or ","');
+    const fontSize = dkNum(o.fontSize, 'fontSize') ?? 15;
+    const fontFamily = typeof o.fontFamily === 'string' && o.fontFamily ? o.fontFamily : 'Inter';
+    const offset = dkVec2(o.offset, 'offset') ?? [14, 14];
+    const anchors = readoutAnchors(o.follow, samples, lines, offset);
+    // Measure the widest string each line ever shows (the real face), so the tooltip fits every frame.
+    const lineWidths: number[] = [];
+    for (const line of lines) {
+      const c = readoutCounter(samples.map((s) => readoutValue(line, s, samples[0])), start, decimals, decimalMark, 1);
+      const strings = new Set<string>();
+      for (const s of samples) strings.add(`${line.label}${counterTextAt(c, s.frame)}${line.unit ?? ''}`);
+      lineWidths.push(await measureWidest([...strings], fontFamily, fontSize));
+    }
+    const plan = planReadout(samples, {
+      lines, decimals, decimalMark, fontSize, fontFamily, textColor: dkColor(o.textColor, 'textColor'), background: dkColor(o.background, 'background'),
+      padding: dkNum(o.padding, 'padding'), anchors, lineWidths, name: dkName(o.name), endFrame: end,
+    });
+    commitDesignKit('Add readout', plan.layers);
+    const mid = Math.floor(samples.length / 2);
+    return {
+      groupId: plan.groupId, backgroundId: plan.backgroundId, textIds: plan.textIds, size: plan.size, startFrame: start, endFrame: end,
+      sampleText: lines.map((line, li) => {
+        const c = readoutCounter(plan.values[li], start, decimals, decimalMark, 1);
+        const txt = (f: number): string => `${line.label}${counterTextAt(c, f)}${line.unit ?? ''}`;
+        return { start: txt(samples[0].frame), middle: txt(samples[mid].frame), end: txt(samples[samples.length - 1].frame) };
+      }),
+    };
+  },
+
+  addGuideLine: (startFrame, endFrame, options) => {
+    const o = dkOptions(options);
+    const comp = useEditorStore.getState().composition;
+    const start = Math.round(dkNum(startFrame, 'startFrame') ?? 0);
+    const end = Math.round(dkNum(endFrame, 'endFrame') ?? comp.settings.durationFrames);
+    if (!(end > start)) throw new Error('"endFrame" must be after "startFrame"');
+    if (end - start > 3600) throw new Error('the range is longer than 3600 frames: split it');
+    const from = guideEndpoint(o.from, 'from', start, end);
+    const to = guideEndpoint(o.to, 'to', start, end);
+    const extend = dkNum(o.extend, 'extend') ?? 0;
+    const ext = (a: Vec2, b: Vec2): [Vec2, Vec2] => {
+      if (extend === 0) return [a, b];
+      const dx = b[0] - a[0], dy = b[1] - a[1], d = Math.hypot(dx, dy) || 1;
+      return [[a[0] - (dx / d) * extend, a[1] - (dy / d) * extend], [b[0] + (dx / d) * extend, b[1] + (dy / d) * extend]];
+    };
+    const frames: number[] = [], a: Vec2[] = [], b: Vec2[] = [];
+    for (let f = start; f < end; f++) { const [p, q] = ext(from[f - start], to[f - start]); frames.push(f); a.push(p); b.push(q); }
+    const plan = planGuideLine({ from: a, to: b, frames, color: dkColor(o.color, 'color'), width: dkNum(o.width, 'width'), name: dkName(o.name), endFrame: end });
+    commitDesignKit('Add guide line', plan.layers);
+    return { lineId: plan.lineId, startFrame: start, endFrame: end, from: a[0], to: b[0] };
+  },
+
+  addGuideLabel: (text, startFrame, endFrame, options) => {
+    if (typeof text !== 'string' || !text.trim()) throw new Error('"text" must be a non-empty string');
+    const o = dkOptions(options);
+    const offset = dkVec2(o.offset, 'offset') ?? [0, -16];
+    let frames: number[];
+    let points: Vec2[];
+    let start: number;
+    let end: number;
+    if (o.targetId !== undefined && o.targetId !== null) {
+      const target = requireLayer(o.targetId);
+      ({ start, end } = dkRange(startFrame, endFrame, target));
+      const samples = sampleTarget(target, start, end);
+      frames = samples.map((s) => s.frame);
+      const pi = o.point;
+      if (pi !== undefined && pi !== null && pi !== 'center' && pi !== 'top' && (typeof pi !== 'number' || !Number.isInteger(pi) || pi < 0 || pi >= samples[0].points.length)) {
+        throw new Error(`"point" must be "center", "top" or a vertex index 0..${Math.max(0, samples[0].points.length - 1)}`);
+      }
+      points = samples.map((s): Vec2 => {
+        if (typeof pi === 'number') return [s.points[pi][0], s.points[pi][1]];
+        if (pi === 'top') return [(s.corners[0][0] + s.corners[1][0]) / 2, (s.corners[0][1] + s.corners[1][1]) / 2];
+        return [s.center[0], s.center[1]];
+      });
+    } else {
+      const comp = useEditorStore.getState().composition;
+      start = Math.round(dkNum(startFrame, 'startFrame') ?? 0);
+      end = Math.round(dkNum(endFrame, 'endFrame') ?? start + 30);
+      if (!(end > start)) throw new Error('"endFrame" must be after "startFrame"');
+      frames = [start];
+      points = [[dkNum(o.x, 'x') ?? comp.settings.width / 2, dkNum(o.y, 'y') ?? comp.settings.height / 2]];
+    }
+    const fontSize = dkNum(o.fontSize, 'fontSize') ?? 13;
+    const positions = points.map((p): Vec2 => [p[0] + offset[0], p[1] + offset[1]]);
+    const gap = fontSize * 0.7;
+    const line = o.line === true
+      ? {
+        from: positions.map((p, i): Vec2 => {
+          const vx = points[i][0] - p[0], vy = points[i][1] - p[1];
+          const d = Math.hypot(vx, vy) || 1;
+          return [p[0] + (vx / d) * gap, p[1] + (vy / d) * gap];
+        }),
+        to: points,
+      }
+      : undefined;
+    const plan = planGuideLabel({
+      text: text.trim(), positions, frames, color: dkColor(o.color, 'color'), fontSize,
+      fontFamily: typeof o.fontFamily === 'string' && o.fontFamily ? o.fontFamily : undefined, line, name: dkName(o.name), endFrame: end,
+    });
+    commitDesignKit('Add guide label', plan.layers);
+    return { labelId: plan.labelId, lineId: plan.lineId, startFrame: start, endFrame: end, position: positions[0] };
+  },
+
+  // ----- B81 3D card swarm (core/cardSwarm.ts layout + animation-templates/cardSwarm.ts): ONE undo step -----
+  addCardSwarm: async (count, seed, sources, volume, cluster, options, name) => {
+    const o = dkOptions(options);
+    const c = dkOptions(cluster);
+    const v = dkOptions(volume);
+    const comp = useEditorStore.getState().composition;
+    const W = comp.settings.width, H = comp.settings.height;
+    const k = Math.min(W, H) / 1080;
+    const srcs = await swResolveSources(sources);
+    const nCards = Math.round(dkNum(count, 'count') ?? 16);
+    const nPills = Math.round(dkNum(o.pills, 'pills') ?? (srcs.length === 0 ? Math.round(nCards * 0.75) : 0));
+    if (nCards < 0 || nPills < 0 || nCards + nPills === 0) throw new Error('"count" (cards) and options.pills must be >= 0 and not both 0');
+    const shape = v.shape === undefined ? 'box' : v.shape;
+    if (shape !== 'box' && shape !== 'ellipsoid') throw new Error('volume.shape must be "box" or "ellipsoid"');
+    const vol: SwarmVolume = {
+      center: swVec3(v.center, 'volume.center') ?? [W / 2, H / 2, 540 * k],
+      size: swVec3(v.size, 'volume.size') ?? [W * 1.1, H * 1.05, 1080 * k],
+      shape,
+    };
+    const start = Math.round(dkNum(o.startFrame, 'startFrame') ?? 0);
+    const end = Math.round(dkNum(o.endFrame, 'endFrame') ?? comp.settings.durationFrames);
+    if (!(end > start)) throw new Error('"endFrame" must be after "startFrame"');
+    const detail = o.detail === undefined ? 'full' : o.detail;
+    if (detail !== 'full' && detail !== 'plain') throw new Error('"detail" must be "full" or "plain"');
+    const pillH = dkNum(o.pillHeight, 'pillHeight') ?? 58 * k;
+    const layout = layoutCardSwarm({
+      seed: dkNum(seed, 'seed') ?? 1,
+      volume: vol,
+      kinds: [
+        { kind: 'card', count: nCards, width: swRange(o.cardWidth, 'cardWidth', [300 * k, 440 * k]), aspect: swRange(o.cardAspect, 'cardAspect', [0.6, 0.78]),
+          depthRange: o.cardDepth === undefined ? [0, 1] : swUnitRange(o.cardDepth, 'cardDepth'), lightShare: dkNum(o.lightShare, 'lightShare') ?? 0.5 },
+        { kind: 'pill', count: nPills, width: swRange(o.pillWidth, 'pillWidth', [300 * k, 420 * k]), height: pillH,
+          depthRange: o.pillDepth === undefined ? [0, 0.55] : swUnitRange(o.pillDepth, 'pillDepth') },
+      ],
+      minSpacing: dkNum(o.minSpacing, 'minSpacing'),
+      tilt: dkNum(o.tilt, 'tilt'),
+      maxAttempts: dkNum(o.maxAttempts, 'maxAttempts'),
+    });
+    // Cluster animation: explicit yaw keys, or yawFrom -> yawTo (r10: -20 -> 15 deg, easeInOut), or a static yaw.
+    let yawKeys = swKeys(c.yawKeys, 'cluster.yawKeys');
+    const yawFrom = dkNum(c.yawFrom, 'cluster.yawFrom'), yawTo = dkNum(c.yawTo, 'cluster.yawTo');
+    if (yawKeys.length === 0 && (yawFrom !== undefined || yawTo !== undefined)) {
+      const a = Math.round(dkNum(c.startFrame, 'cluster.startFrame') ?? start);
+      const b = Math.round(dkNum(c.endFrame, 'cluster.endFrame') ?? end - 1);
+      if (!(b > a)) throw new Error('cluster.endFrame must be after cluster.startFrame');
+      yawKeys = [{ frame: a, value: yawFrom ?? 0, ease: (c.ease ?? [0.42, 0, 0.58, 1]) as KeyframeEaseSpec }, { frame: b, value: yawTo ?? 0 }];
+    }
+    const pitchKeys = swKeys(c.pitchKeys, 'cluster.pitchKeys');
+    // Pill labels: r10 prompts by default, false = none; measured in the real face so each pill hugs its text.
+    let labels: string[] | null = SWARM_PILL_LABELS.slice();
+    if (o.labels === false || o.labels === null) labels = null;
+    else if (o.labels !== undefined) {
+      if (!Array.isArray(o.labels) || o.labels.length === 0 || !o.labels.every((s) => typeof s === 'string')) throw new Error('"labels" must be a non-empty array of strings, or false');
+      labels = (o.labels as string[]).map((s) => s.slice(0, 80));
+    }
+    const fontFamily = typeof o.labelFontFamily === 'string' && o.labelFontFamily ? o.labelFontFamily : 'Inter';
+    const labelSize = Math.round(pillH * 0.34 * 100) / 100;
+    const pillWidths: number[] = [];
+    if (labels && detail === 'full') {
+      for (let i = 0; i < nPills; i++) pillWidths.push(Math.ceil((await measureWidest([labels[i % labels.length]], fontFamily, labelSize)) + pillH * 1.1));
+    }
+    const pitch = dkNum(c.pitch, 'cluster.pitch') ?? 0;
+    const plan = planCardSwarm({
+      layout, center: vol.center, startFrame: start, endFrame: end,
+      cluster: { yawKeys, yaw: dkNum(c.yaw, 'cluster.yaw') ?? 0, pitchKeys, pitch },
+      sources: srcs, labels, pillWidths, labelFontSize: labelSize, labelFontFamily: fontFamily, detail,
+      name: dkName(name) ?? dkName(o.name),
+    });
+    const hide = o.hideSources !== false
+      ? srcs.flatMap((s) => (s.kind === 'layer' && s.layer.visible ? [{ ...s.layer, visible: false } as Layer] : []))
+      : [];
+    const ids = plan.layers.map((l) => l.id);
+    const below = cursorRigLayerIds();
+    useEditorStore.getState().applyLayerEdits('Add card swarm', {
+      add: plan.layers, update: hide,
+      stack: below.length ? { ids, belowLayerIds: below } : { ids, top: true as const },
+    });
+    const group = useEditorStore.getState().composition.layers.find((l) => l.id === plan.clusterId);
+    const yawAt = (f: number): number => (group?.transform.rotationY ? evaluateNumber(group.transform.rotationY, f) : 0);
+    const pitchAt = (f: number): number => (group?.transform.rotationX ? evaluateNumber(group.transform.rotationX, f) : 0);
+    const r1 = (n: number): number => Math.round(n * 10) / 10;
+    return {
+      clusterId: plan.clusterId,
+      cardIds: plan.items.map((i) => i.id),
+      items: plan.items.map((i) => ({ ...i, world: swarmWorldPoint(vol.center, i.position, yawAt(start), pitchAt(start)).map(r1) })),
+      layerCount: plan.layers.length,
+      hiddenSourceIds: hide.map((l) => l.id),
+      layout: { minSpacing: r1(layout.minSpacing), minDistance: r1(layout.minDistance), relaxed: layout.relaxed },
+      volume: vol, startFrame: start, endFrame: end,
+      cluster: { yawKeys: yawKeys.map((y) => ({ frame: y.frame, value: y.value })), yawAtStart: r1(yawAt(start)), yawAtEnd: r1(yawAt(end - 1)) },
+    };
+  },
+
+  // ----- B67 follow-up (B70): raise layers to the top of the RENDER stack (tracks), in one undo step -----
+  bringToFront: (layerIds) => {
+    if (!Array.isArray(layerIds) || layerIds.length === 0 || !layerIds.every((id) => typeof id === 'string')) throw new Error('"layerIds" must be a non-empty array of layer ids');
+    const ed = useEditorStore.getState();
+    const comp = ed.composition;
+    for (const id of layerIds) if (!comp.layers.some((l) => l.id === id)) throw new Error(missingLayerMessage(id, comp.layers));
+    // Keep their current relative order (bottom to top), and take each group's children along (a rig moves whole).
+    const want = new Set<string>(layerIds as string[]);
+    for (let grew = true; grew;) {
+      grew = false;
+      for (const l of comp.layers) if (l.parentId && want.has(l.parentId) && !want.has(l.id) && comp.layers.find((p) => p.id === l.parentId)?.type === 'group') { want.add(l.id); grew = true; }
+    }
+    const ordered = renderOrder(comp.layers, comp.tracks).filter((l) => want.has(l.id) && l.type !== 'audio').map((l) => l.id);
+    ed.raiseLayersToTop(ordered, 'Bring to front');
+    const after = useEditorStore.getState().composition;
+    return { moved: ordered, topToBottom: renderOrder(after.layers, after.tracks).map((l) => l.id).reverse().slice(0, ordered.length) };
+  },
+
+  // ----- B67 follow-up: give a layer's motion path real nodes (editor.addMotionPath only made an empty one) -----
+  setMotionPath: (layerId, nodes, options) => {
+    const layer = requireLayer(layerId);
+    if (layer.type === 'audio') throw new Error('audio layers have no position to move along a path');
+    const ed = useEditorStore.getState();
+    const oldComp = ed.composition;
+    const all = oldComp.motionPaths ?? [];
+    const own = all.filter((p) => p.layerId === layer.id);
+    if (Array.isArray(nodes) && nodes.length === 0) {
+      if (own.length === 0) return { pathId: null, removed: 0 };
+      const next = { ...oldComp, motionPaths: all.filter((p) => p.layerId !== layer.id) };
+      useHistoryStore.getState().execute({
+        label: 'Remove motion path',
+        execute: () => { useEditorStore.setState({ composition: { ...useEditorStore.getState().composition, motionPaths: next.motionPaths } }); },
+        undo: () => { useEditorStore.setState({ composition: { ...useEditorStore.getState().composition, motionPaths: all } }); },
+      });
+      return { pathId: null, removed: own.length };
+    }
+    const plan = planAgentMotionPath(layer, nodes, options, uid, own[0]);
+    // One path per layer drives it (the resolver takes the first with >= 2 nodes): replace them all.
+    const nextPaths = [...all.filter((p) => p.layerId !== layer.id), plan.path];
+    useHistoryStore.getState().execute({
+      label: own.length ? 'Edit motion path' : 'Add motion path',
+      execute: () => { useEditorStore.setState({ composition: { ...useEditorStore.getState().composition, motionPaths: nextPaths } }); },
+      undo: () => { useEditorStore.setState({ composition: { ...useEditorStore.getState().composition, motionPaths: all } }); },
+    });
+    return {
+      pathId: plan.path.id, nodes: plan.path.nodes.length, closed: plan.path.closed, smooth: plan.path.nodes.some((n) => n.vertexType !== 'corner'),
+      lengthPx: Math.round(plan.length * 10) / 10, startFrame: plan.startFrame, endFrame: plan.endFrame, replaced: own.length > 0,
+      note: 'While the path exists its position replaces the layer position (orientToPath also sets the rotation). Re-time or reshape it by calling agent.setMotionPath again; [] removes it.',
+    };
+  },
+
+  // ----- B67 place text by what the eye sees: ink centre / baseline instead of the line-box centre -----
+  placeText: async (layerId, x, y, anchor, frame) => {
+    const layer = requireTextLayer(layerId);
+    const mode = anchor === undefined || anchor === null ? 'inkCenter' : anchor;
+    if (mode !== 'inkCenter' && mode !== 'baseline' && mode !== 'box') throw new Error('anchor must be "inkCenter", "baseline" (first line) or "box" (line-box centre)');
+    if (typeof y !== 'number' || !Number.isFinite(y)) throw new Error('"y" must be a number (comp px)');
+    if (x !== undefined && x !== null && (typeof x !== 'number' || !Number.isFinite(x))) throw new Error('"x" must be a number (comp px) or null to keep it');
+    await ensureCompositionFonts(layer);
+    const ed = useEditorStore.getState();
+    const f = typeof frame === 'number' && Number.isFinite(frame) ? Math.round(frame) : useTimelineStore.getState().currentFrame;
+    const probe = { ...layer, animators: [], decode: undefined, typing: undefined, masks: [], textPath: undefined, inPoint: Math.min(layer.inPoint, f), outPoint: Math.max(layer.outPoint, f + 1) };
+    const fullText = layer.content.spans.map((sp) => sp.text).join('');
+    const first = layer.content.spans[0];
+    if (first) probe.content = { ...layer.content, spans: [{ ...first, text: fullText }] };
+    const comp = { ...ed.composition, layers: ed.composition.layers.map((l) => (l.id === layer.id ? probe : l)) };
+    const resolved = resolveFrame(comp, f, { getComposition: ed.getComposition }).layers.find((l) => l.id === layer.id);
+    if (!resolved?.text) throw new Error('the text did not resolve at this frame');
+    const m = getTextInkMetrics(resolved.text);
+    const t = resolved.transform;
+    const local = mode === 'inkCenter' ? m.inkCenterY : mode === 'baseline' ? m.baselines[0] ?? 0 : 0;
+    // The raster is centred on the position; the local offset scales and rotates with the layer.
+    const rad = (t.rotation * Math.PI) / 180;
+    const offX = -Math.sin(rad) * local * t.scaleY;
+    const offY = Math.cos(rad) * local * t.scaleY;
+    const dx = x === undefined || x === null ? 0 : x - (t.positionX + offX);
+    const dy = y - (t.positionY + offY);
+    const pos = layer.transform.position;
+    const shift = (v: unknown): [number, number] => { const p = v as [number, number]; return [p[0] + dx, p[1] + dy]; };
+    const nextPos = { ...pos, defaultValue: shift(pos.defaultValue), keyframes: pos.keyframes.map((k) => ({ ...k, value: shift(k.value) })) };
+    if (dx !== 0 || dy !== 0) ed.applyLayerEdits('Place text', { update: [{ ...layer, transform: { ...layer.transform, position: nextPos } }] });
+    return {
+      anchor: mode,
+      moved: [dx, dy],
+      position: shift(pos.defaultValue),
+      keyframesShifted: pos.keyframes.length,
+      inkTop: y - offY + m.inkTop * t.scaleY,
+      inkBottom: y - offY + m.inkBottom * t.scaleY,
+      baselineY: y - offY + (m.baselines[0] ?? 0) * t.scaleY,
+      note: layer.parentId ? 'parented layer: the shift is applied in parent space (exact when the parent chain is unscaled and unrotated)' : undefined,
+    };
+  },
+
+  // ----- B67 trim start angle: rings and arcs draw on from a clock angle (0 = 12 o’clock, clockwise) -----
+  setTrimStartAngle: (layerId, angle, modifierIndex) => {
+    const layer = requireLayer(layerId);
+    if (layer.type !== 'shape') throw new Error(`layer "${String(layerId)}" is a ${layer.type}, not a shape layer`);
+    if (layer.shape.type !== 'polygon') throw new Error('trim works on path shapes: run editor.convertShapeToPath first (rings: a stroked circle converted to a path)');
+    if (typeof angle !== 'number' || !Number.isFinite(angle)) throw new Error('"angle" must be a number in degrees (0 = 12 o’clock, clockwise)');
+    const mods = layer.modifiers ?? [];
+    const idx = modifierIndex === undefined || modifierIndex === null ? mods.findIndex((m) => m.type === 'trim') : modifierIndex;
+    const trim = typeof idx === 'number' ? mods[idx] : undefined;
+    if (!trim || trim.type !== 'trim') throw new Error('no trim modifier on this layer (add one with editor.addShapeModifier { type: "trim" })');
+    const f = pathFractionAtAngle(layer.shape.vertices, layer.shape.closed !== false, angle);
+    // The visible span starts at start + offset; shift the offset (and its keys) so it starts at f.
+    const startNow = trim.start.keyframes.length ? trim.start.keyframes[0].value as number : trim.start.defaultValue as number;
+    const offNow = trim.offset.defaultValue as number;
+    const delta = f - startNow - offNow;
+    const offset = { ...trim.offset, defaultValue: offNow + delta, keyframes: trim.offset.keyframes.map((k) => ({ ...k, value: (k.value as number) + delta })) };
+    const nextMods = mods.map((m, i) => (i === idx ? { ...trim, offset } : m));
+    useEditorStore.getState().applyLayerEdits('Trim start angle', { update: [{ ...layer, modifiers: nextMods }] });
+    return { modifierIndex: idx, angle, pathFraction: f, offset: offNow + delta };
+  },
+
+  // ----- B77 hold-keyed typeface switch (core/textStyleKeys.ts) -----
+  setClipTiming: (layerId, timing) => {
+    // B65: exact clip timing for agents (core/trackPlacement.ts). A magnetic video track turns absolute, so the
+    // clip stays where it is put through later imports, edits and a reload; one undo step.
+    const layer = requireLayer(layerId);
+    if (!timing || typeof timing !== 'object' || Array.isArray(timing)) throw new Error('"timing" must be an object { startFrame?, endFrame? | durationFrames? | sourceEnd?, sourceStart?, speed?, reversed?, moveKeyframes? }');
+    const known = new Set(['startFrame', 'endFrame', 'durationFrames', 'sourceStart', 'sourceEnd', 'speed', 'reversed', 'moveKeyframes']);
+    const unknown = Object.keys(timing).filter((k) => !known.has(k));
+    if (unknown.length) throw new Error(`unknown timing field(s): ${unknown.join(', ')} (accepted: ${[...known].join(', ')})`);
+    const res = useEditorStore.getState().applyClipTiming(layer.id, timing as ClipTimingSpec);
+    if (!res) throw new Error(`layer ${layer.id} not found`);
+    const out: Record<string, unknown> = { layerId: layer.id, inPoint: res.inPoint, outPoint: res.outPoint, durationFrames: res.outPoint - res.inPoint, trackId: res.trackId };
+    if (res.startOffset !== undefined) Object.assign(out, { sourceStart: res.sourceStart, sourceEnd: res.sourceEnd, sourceDuration: res.sourceDuration, startOffset: res.startOffset });
+    if (res.playbackRate !== undefined) Object.assign(out, { speed: res.playbackRate, reversed: !!res.reversed });
+    if (res.keyframeShift) out.keyframesShiftedBy = res.keyframeShift;
+    if (res.unpinnedTrack) out.trackNowAbsolute = true;
+    if (res.movedToNewTrack) out.movedToNewTrack = true;
+    if (res.restacked) out.restacked = true;
+    if (res.warnings.length) out.warnings = res.warnings;
+    return out;
+  },
+
+  setTextStyleKeys: (layerId, keys, spanIndex) => {
+    const layer = requireTextLayer(layerId);
+    if (keys === null) {
+      if (!layer.styleKeys) return { styleKeys: null };
+      useEditorStore.getState().applyLayerEdits('Remove style keys', { update: [{ ...layer, styleKeys: undefined }] });
+      return { styleKeys: null };
+    }
+    if (!Array.isArray(keys) || keys.length === 0) throw new Error('"keys" must be a non-empty array of { frame, fontFamily?, fontWeight?, fontStyle? } or null');
+    if (spanIndex !== undefined && spanIndex !== null && (typeof spanIndex !== 'number' || !Number.isInteger(spanIndex) || spanIndex < 0 || spanIndex >= layer.content.spans.length)) {
+      throw new Error(`"spanIndex" must be a span index 0..${layer.content.spans.length - 1}`);
+    }
+    const idx = typeof spanIndex === 'number' ? spanIndex : 0;
+    const base = layer.content.spans[idx]?.style ?? layer.content.spans[0]?.style;
+    if (!base) throw new Error('the text layer has no spans');
+    const sk = normalizeTextStyleKeys(typeof spanIndex === 'number' ? { keys, spanIndex } : { keys }, base);
+    if (!sk) throw new Error('no valid key (each needs a numeric "frame")');
+    useEditorStore.getState().applyLayerEdits('Text style keys', { update: [{ ...layer, styleKeys: sk }] });
+    return { styleKeys: sk };
+  },
+
+  // ----- B75 number counter on a styled text layer (core/textCounter.ts) -----
+  setTextCounter: (layerId, counter) => {
+    const layer = requireTextLayer(layerId);
+    if (counter === null) {
+      if (!layer.counter) return { counter: null };
+      useEditorStore.getState().applyLayerEdits('Remove counter', { update: [{ ...layer, counter: undefined }] });
+      return { counter: null };
+    }
+    const c = normalizeTextCounter(counter);
+    if (!c) throw new Error('"counter" must be an object { from, to, startFrame, endFrame, ... } or null');
+    if (typeof c.ease === 'string' && !(c.ease in EASINGS)) throw new Error(`"counter.ease": unknown easing "${c.ease}" (one of ${Object.keys(EASINGS).join(', ')}, or a cubic-bezier [x1, y1, x2, y2])`);
+    useEditorStore.getState().applyLayerEdits('Text counter', { update: [{ ...layer, counter: c }] });
+    return {
+      counter: c,
+      sampleText: { start: counterTextAt(c, c.startFrame), middle: counterTextAt(c, Math.round((c.startFrame + c.endFrame) / 2)), end: counterTextAt(c, c.endFrame) },
+    };
+  },
+
+  // ----- B60 cloner per-instance sources -----
+  setClonerSources: (layerId, sources, order, seed) => {
+    const layer = requireLayer(layerId);
+    if (layer.type !== 'cloner') throw new Error(`layer "${String(layerId)}" is a ${layer.type}, not a cloner`);
+    if (!Array.isArray(sources) || sources.some((s) => typeof s !== 'string')) throw new Error('"sources" must be an array of layer ids');
+    const ids = sources as string[];
+    for (const id of ids) {
+      const l = requireLayer(id);
+      if (l.id === layer.id || l.type === 'cloner' || l.type === 'audio' || l.type === 'camera' || l.type === 'group') {
+        throw new Error(`"${id}" (${l.type}) cannot be a cloner source`);
+      }
+    }
+    if (order !== undefined && order !== 'cycle' && order !== 'random') throw new Error('"order" must be "cycle" or "random"');
+    if (seed !== undefined && (typeof seed !== 'number' || !Number.isFinite(seed))) throw new Error('"seed" must be a number');
+    const random = ids.length > 0 && order === 'random';
+    const seedNum = random && typeof seed === 'number' ? Math.trunc(seed) : undefined;
+    const next = ids.length
+      ? { ...layer, sources: ids, sourceOrder: random ? 'random' as const : undefined, sourceSeed: seedNum }
+      : { ...layer, sources: undefined, sourceOrder: undefined, sourceSeed: undefined };
+    useEditorStore.getState().applyLayerEdits(ids.length ? 'Cloner sources' : 'Cloner single source', { update: [next] });
+    const picks = ids.length
+      ? Array.from({ length: Math.min(24, layer.renderCount) }, (_, i) => ids[pickSourceSlot(i, ids.length, random ? 'random' : 'cycle', seedNum)])
+      : [];
+    return { clonerId: layer.id, sources: ids, order: random ? 'random' : 'cycle', seed: seedNum ?? 0, instances: layer.renderCount, picks };
+  },
+
+  setClonerData: (layerId, data, bindings) => {
+    const layer = requireLayer(layerId);
+    if (layer.type !== 'cloner') throw new Error(`layer "${String(layerId)}" is a ${layer.type}, not a cloner`);
+    if (!Array.isArray(data)) throw new Error('"data" must be an array of rows');
+    const rows: Record<string, string | number>[] = [];
+    for (const [i, row] of data.entries()) {
+      if (!row || typeof row !== 'object' || Array.isArray(row)) throw new Error(`data[${i}] must be an object`);
+      const clean: Record<string, string | number> = {};
+      for (const [k, v] of Object.entries(row as Record<string, unknown>)) {
+        if (typeof v === 'string' || (typeof v === 'number' && Number.isFinite(v))) clean[k] = v;
+        else throw new Error(`data[${i}].${k} must be a string or a number`);
+      }
+      rows.push(clean);
+    }
+    if (rows.length === 0) {
+      useEditorStore.getState().applyLayerEdits('Cloner data unbound', { update: [{ ...layer, dataBinding: undefined }] });
+      return { clonerId: layer.id, rows: 0, bindings: [], instances: layer.renderCount };
+    }
+    if (!Array.isArray(bindings) || bindings.length === 0) throw new Error('"bindings" must be a non-empty array of { propertyPath, dataKey }');
+    const binds = bindings.map((b, i) => {
+      const o = b as { propertyPath?: unknown; dataKey?: unknown } | null;
+      if (!o || typeof o.propertyPath !== 'string' || !o.propertyPath || typeof o.dataKey !== 'string' || !o.dataKey) {
+        throw new Error(`bindings[${i}] must be { propertyPath: string, dataKey: string }`);
+      }
+      return { propertyPath: o.propertyPath, dataKey: o.dataKey };
+    });
+    const ref = layer.sourceRef;
+    const source = ref.type === 'layer' ? useEditorStore.getState().composition.layers.find((l) => l.id === ref.layerId) : undefined;
+    if (source) {
+      // Fail loudly on a path that does not exist on the source (the override step would silently skip it).
+      for (const b of binds) {
+        let cur: unknown = source;
+        for (const key of b.propertyPath.split('.')) cur = cur !== null && typeof cur === 'object' ? (cur as Record<string, unknown>)[key] : undefined;
+        if (cur === undefined) throw new Error(`"${b.propertyPath}" does not exist on the source layer "${source.name}" (${source.type}); read the paths with get_layer`);
+      }
+    }
+    useEditorStore.getState().applyLayerEdits('Cloner data binding', { update: [{ ...layer, dataBinding: { data: rows, bindings: binds } }] });
+    return { clonerId: layer.id, rows: rows.length, bindings: binds, instances: layer.renderCount };
+  },
+
+  // ----- B57 effects on text / shape layers (nested in a precomp) -----
+  applyLayerEffects: (layerId, effects, mode) => {
+    const layer = requireLayer(layerId);
+    const route = layerEffectsRoute(layer.type);
+    if (!route) throw new Error(`layer "${String(layerId)}" is a ${layer.type}: effects go on image, adjustment, precomp, text, shape, video or lottieIcon layers`);
+    if (mode !== undefined && mode !== null && mode !== 'replace' && mode !== 'append') throw new Error('"mode" must be "replace" or "append"');
+    const stack = parseAgentEffects(effects);
+    const ed = useEditorStore.getState();
+    let targetId = layer.id;
+    if (route === 'wrap') {
+      ed._setSelection({ selectedIds: [layer.id], activeId: layer.id, selectedKeyframes: [], selectedCurvePoints: [] });
+      ed.precomposeSelection();
+      const after = useEditorStore.getState();
+      const pre = after.composition.layers.find((l) => l.id === after.selection.activeId);
+      if (!pre || pre.type !== 'precomp') throw new Error('precompose failed: no precomp layer was created');
+      targetId = pre.id;
+    }
+    const target = requireLayer(targetId);
+    const existing = 'effects' in target && Array.isArray(target.effects) ? target.effects : [];
+    const next = mode === 'append' ? [...existing, ...stack] : stack;
+    useEditorStore.getState().setLayerEffects(targetId, next);
+    return {
+      layerId: targetId,
+      wrapped: route === 'wrap',
+      compositionId: target.type === 'precomp' ? target.compositionId : undefined,
+      effects: next.map((e) => ({ effect: getEffectDefByType(e.type)?.id, type: e.type, params: e.params })),
+    };
+  },
+
+  // ----- B61 liquid drip / melt (core/effects/liquidDrip.ts), through the B57 precomp wrap -----
+  liquidDrip: (layerId, options) => {
+    const layer = requireLayer(layerId);
+    const route = layerEffectsRoute(layer.type);
+    if (!route) throw new Error(`layer "${String(layerId)}" is a ${layer.type}: liquid drip goes on text, shape, image, video, lottieIcon or precomp layers`);
+    const o = options === undefined || options === null ? {} : pbObject(options, 'options');
+    const known = new Set(['length', 'startFrame', 'endFrame', 'ease', 'floorY', 'floor', 'spacing', 'sway', 'seed', 'flow', 'variance']);
+    const unknown = Object.keys(o).filter((k) => !known.has(k));
+    if (unknown.length) throw new Error(`unknown option(s) ${unknown.join(', ')}; options are ${[...known].join(', ')}`);
+    const length = pbNum(o.length, 'options.length');
+    if (length <= 0) throw new Error('"options.length" must be > 0 (drip length in comp px)');
+    const startFrame = pbOptNum(o.startFrame, 'options.startFrame');
+    const endFrame = pbOptNum(o.endFrame, 'options.endFrame');
+    if ((startFrame === undefined) !== (endFrame === undefined)) throw new Error('give both "options.startFrame" and "options.endFrame" (the melt), or neither (a static drip)');
+    if (startFrame !== undefined && endFrame !== undefined && endFrame <= startFrame) throw new Error('"options.endFrame" must be after "options.startFrame"');
+    const ease = o.ease === undefined ? [0.376, 0.12, 0.234, 0.97] : o.ease;
+    const easeErr = easeSpecError(ease);
+    if (easeErr) throw new Error(`options.ease: ${easeErr}`);
+    // Wrap first (text / shape / video / lottie go into a comp-sized precomp, B57) so the drip can run anywhere in the frame.
+    const ed = useEditorStore.getState();
+    let targetId = layer.id;
+    if (route === 'wrap') {
+      ed._setSelection({ selectedIds: [layer.id], activeId: layer.id, selectedKeyframes: [], selectedCurvePoints: [] });
+      ed.precomposeSelection();
+      const after = useEditorStore.getState();
+      const pre = after.composition.layers.find((l) => l.id === after.selection.activeId);
+      if (!pre || pre.type !== 'precomp') throw new Error('precompose failed: no precomp layer was created');
+      targetId = pre.id;
+    }
+    const target = requireLayer(targetId);
+    const st = useEditorStore.getState();
+    const texH = target.type === 'precomp'
+      ? (st.compositions[target.compositionId]?.settings.height ?? st.composition.settings.height)
+      : st.composition.settings.height;
+    const floorV = o.floor !== undefined && o.floor !== null ? pbNum(o.floor, 'options.floor')
+      : o.floorY !== undefined && o.floorY !== null ? pbNum(o.floorY, 'options.floorY') / texH : 0;
+    const params = [
+      startFrame !== undefined ? 0 : length,
+      floorV,
+      pbOptNum(o.spacing, 'options.spacing') ?? LIQUID_DRIP_DEFAULTS[2],
+      pbOptNum(o.sway, 'options.sway') ?? LIQUID_DRIP_DEFAULTS[3],
+      pbOptNum(o.seed, 'options.seed') ?? LIQUID_DRIP_DEFAULTS[4],
+      pbOptNum(o.flow, 'options.flow') ?? LIQUID_DRIP_DEFAULTS[5],
+      pbOptNum(o.variance, 'options.variance') ?? LIQUID_DRIP_DEFAULTS[6],
+    ];
+    const type = EFFECT_TYPE.liquidDrip;
+    const existing = 'effects' in target && Array.isArray(target.effects) ? target.effects.filter((e) => e.type !== type) : [];
+    const effects = [...existing, { type, enabled: true, params }];
+    let next = { ...target, effects } as Layer;
+    let keys: { frame: number; value: number }[] = [];
+    const anim = (target as { animProps?: LayerAnimProps }).animProps ?? {};
+    const effectParams = { ...(anim.effectParams ?? {}) };
+    delete effectParams[`${type}_0`];
+    if (startFrame !== undefined && endFrame !== undefined) {
+      const kfs = buildKeyframesFromSpecs([{ frame: startFrame, value: 0, ease: ease as KeyframeEaseSpec }, { frame: endFrame, value: length }], { expected: 'number' });
+      effectParams[`${type}_0`] = { id: uid(), name: `Effect ${type} param 0`, valueType: 'number', defaultValue: 0, keyframes: kfs };
+      keys = kfs.map((k) => ({ frame: k.frame, value: k.value as number }));
+    }
+    next = { ...next, animProps: { ...anim, effectParams } } as Layer;
+    useEditorStore.getState().applyLayerEdits('Liquid drip', { update: [next] });
+    return {
+      layerId: targetId,
+      wrapped: route === 'wrap',
+      effectType: type,
+      params,
+      keyPath: `effect.${type}.0`,
+      keys,
+    };
+  },
+
+  // ----- B54 pixel-block dissolve / build-on (core/pixelBlocks.ts) + 8-bit sparkle -----
+  pixelBlockReveal: (layerId, options) => {
+    const layer = requireLayer(layerId);
+    if (!(layer.type === 'shape' || layer.type === 'text' || layer.type === 'video' || layer.type === 'image' || layer.type === 'lottieIcon')) {
+      throw new Error(`layer "${String(layerId)}" is a ${layer.type}: pixel blocks need a masked layer (shape, text, image, video, lottieIcon); nest it in a precomp first`);
+    }
+    const o = pbObject(options, 'options');
+    const direction = o.direction;
+    if (direction !== 'in' && direction !== 'out') throw new Error('"options.direction" must be "in" (build-on) or "out" (dissolve)');
+    const comp = useEditorStore.getState().composition;
+    const region = o.region === undefined || o.region === null
+      ? { x: 0, y: 0, width: comp.settings.width, height: comp.settings.height }
+      : pbRect(o.region, 'options.region');
+    const order = o.order;
+    if (order !== undefined && order !== null && !isPixelBlockOrder(order)) throw new Error('"options.order" must be "random", "directional" or "center"');
+    const existing = layer.masks ?? [];
+    if (existing.length > 6) throw new Error(`the layer already has ${existing.length} masks; a blocks mask needs 2 of the 8 mask slots`);
+    const mask = buildPixelBlockMask({
+      region, direction,
+      startFrame: pbNum(o.startFrame, 'options.startFrame'),
+      durationFrames: Math.max(1, pbNum(o.durationFrames, 'options.durationFrames')),
+      blockSize: pbOptNum(o.blockSize, 'options.blockSize'),
+      order: isPixelBlockOrder(order) ? order : undefined,
+      angle: pbOptNum(o.angle, 'options.angle'),
+      jitter: pbOptNum(o.jitter, 'options.jitter'),
+      seed: pbOptNum(o.seed, 'options.seed'),
+      stepFrames: pbOptNum(o.stepFrames, 'options.stepFrames'),
+      name: typeof o.name === 'string' ? o.name : undefined,
+    });
+    const next = { ...layer, masks: [...existing, mask] } as Layer;
+    useEditorStore.getState().applyLayerEdits(direction === 'in' ? 'Pixel-block build-on' : 'Pixel-block dissolve', { update: [next] });
+    const b = mask.blocks;
+    return {
+      maskId: mask.id,
+      maskIndex: existing.length,
+      region: { x: mask.position.defaultValue, size: mask.size.defaultValue },
+      blockSize: b?.size, order: b?.order, direction: b?.direction,
+      keys: b?.progress.keyframes.map((k) => ({ frame: k.frame, value: k.value, interpolation: k.interpolation })),
+    };
+  },
+  pixelSparkle: (options) => {
+    const o = pbObject(options, 'options');
+    const color = o.color;
+    if (!(Array.isArray(color) && color.length === 4 && color.every((c) => typeof c === 'number' && Number.isFinite(c)))) throw new Error('"options.color" must be an RGBA colour [r, g, b, a] (0..1)');
+    const built = buildPixelSparkle({
+      box: pbRect(o.box, 'options.box'),
+      color: [color[0], color[1], color[2], color[3]],
+      startFrame: pbNum(o.startFrame, 'options.startFrame'),
+      durationFrames: Math.max(1, pbNum(o.durationFrames, 'options.durationFrames')),
+      count: pbOptNum(o.count, 'options.count'),
+      blockSize: pbOptNum(o.blockSize, 'options.blockSize'),
+      margin: pbOptNum(o.margin, 'options.margin'),
+      stepFrames: pbOptNum(o.stepFrames, 'options.stepFrames'),
+      density: pbOptNum(o.density, 'options.density'),
+      wander: pbOptNum(o.wander, 'options.wander'),
+      seed: pbOptNum(o.seed, 'options.seed'),
+      name: typeof o.name === 'string' ? o.name : undefined,
+    });
+    if (built.plan.cells.length === 0) throw new Error('the sparkle ring has no cells: increase margin or blockSize');
+    useEditorStore.getState().applyLayerEdits('8-bit sparkle', { add: [built.group, ...built.squares] });
+    return { groupId: built.group.id, squareIds: built.squares.map((q) => q.id), cells: built.plan.cells.length, steps: built.plan.squares[0]?.length ?? 0 };
   },
 
   // ----- B35 typing caret on a text layer (core/textCaret.ts) -----
@@ -950,6 +1980,132 @@ const HELPERS: Record<AgentHelperMethod, (...args: unknown[]) => unknown> = {
     if (!next) throw new Error('invalid caret');
     useEditorStore.getState().updateLayerProperty(layer.id, 'caret', next);
     return next;
+  },
+
+  // ----- B82 per-character typing schedule + arrival colour (core/textTyping.ts) -----
+  setTextTyping: (layerId, typing) => {
+    const layer = requireTextLayer(layerId);
+    if (typing === null) {
+      if (!layer.typing) return { typing: null };
+      useEditorStore.getState().applyLayerEdits('Remove typing', { update: [{ ...layer, typing: undefined }] });
+      return { typing: null };
+    }
+    const o = pbObject(typing, 'typing');
+    const t = pbTyping(o, ['arrivalColor', 'arrivalFrames', 'enabled']);
+    const content = layer.content.spans.map((sp) => sp.text).join('');
+    if (content.length === 0) throw new Error('the text layer is empty: set its text first (agent.setTextContent)');
+    if (!t.frames && t.startFrame === undefined) throw new Error('"typing" needs "frames" (one absolute frame per character) or "startFrame" with "cps" / "durationFrames"');
+    const ed = useEditorStore.getState();
+    const frames = typingFrames({ count: content.length, startFrame: t.startFrame ?? 0, fps: ed.composition.settings.frameRate, cps: t.cps, durationFrames: t.durationFrames, frames: t.frames, ease: t.ease });
+    const arrivalColor = pbColor(o.arrivalColor, 'typing.arrivalColor');
+    const arrivalFrames = pbOptNum(o.arrivalFrames, 'typing.arrivalFrames');
+    if (arrivalFrames !== undefined && !(arrivalFrames >= 0)) throw new Error('"typing.arrivalFrames" must be >= 0');
+    const next = normalizeTextTyping({ enabled: o.enabled !== false, frames, ...(arrivalColor ? { arrivalColor, arrivalFrames: arrivalFrames ?? 4 } : {}) });
+    if (!next) throw new Error('no usable typing frames');
+    ed.applyLayerEdits('Text typing', { update: [{ ...layer, typing: next }] });
+    return { typing: next, count: content.length, startFrame: frames[0], endFrame: frames[frames.length - 1] };
+  },
+
+  // ----- B82 typing prompt box (animation-templates/promptBox.ts): ONE undo step -----
+  addPromptBox: async (x, y, width, height, radius, theme, fill, textColor, placeholderColor, placeholder, text, startFrame, endFrame, typing, caret, arrivalColor, arrivalFrames,
+    autoGrow, buttons, sendFrame, flash, entrance, entranceFrames, mask, align, fontSize, fontFamily, fontWeight, name) => {
+    const ed = useEditorStore.getState();
+    const cs = ed.composition.settings;
+    if (typeof text !== 'string') throw new Error('"text" must be a string (what gets typed)');
+    if (text.length > 2000) throw new Error('"text" is longer than 2000 characters');
+    if (theme !== undefined && theme !== null && theme !== 'light' && theme !== 'dark') throw new Error('"theme" must be "light" or "dark"');
+    if (align !== undefined && align !== null && align !== 'left' && align !== 'center') throw new Error('"align" must be "left" or "center"');
+    if (entrance !== undefined && entrance !== null && entrance !== 'none' && entrance !== 'pop' && entrance !== 'slideFromRight') throw new Error('"entrance" must be "none", "pop" or "slideFromRight"');
+    const W = dkNum(width, 'width') ?? Math.round(cs.width * 0.5);
+    if (!(W > 0)) throw new Error('"width" must be positive');
+    const start = Math.round(dkNum(startFrame, 'startFrame') ?? 0);
+    const end = Math.round(dkNum(endFrame, 'endFrame') ?? cs.durationFrames);
+    if (!(end > start)) throw new Error('"endFrame" must be after "startFrame"');
+    let caretSpec: PromptBoxSpec['caret'];
+    if (caret === false) caretSpec = false;
+    else if (caret !== undefined && caret !== null) {
+      const c = pbObject(caret, 'caret');
+      const known = new Set(['color', 'gradient', 'blink', 'shape', 'width', 'height', 'gap']);
+      const unknown = Object.keys(c).filter((k) => !known.has(k));
+      if (unknown.length) throw new Error(`unknown caret field(s): ${unknown.join(', ')} (accepted: ${[...known].join(', ')})`);
+      if (c.shape !== undefined && c.shape !== 'bar' && c.shape !== 'block' && c.shape !== 'underline') throw new Error('"caret.shape" must be "bar", "block" or "underline"');
+      if (c.blink !== undefined && typeof c.blink !== 'boolean' && (typeof c.blink !== 'number' || !(c.blink >= 0))) throw new Error('"caret.blink" must be a boolean or blink cycles per second (0 = solid)');
+      let gradient: [Vec4, Vec4] | undefined;
+      if (c.gradient !== undefined && c.gradient !== null) {
+        if (!Array.isArray(c.gradient) || c.gradient.length !== 2) throw new Error('"caret.gradient" must be [topColour, bottomColour]');
+        const top = pbColor(c.gradient[0], 'caret.gradient[0]'), bottom = pbColor(c.gradient[1], 'caret.gradient[1]');
+        if (!top || !bottom) throw new Error('"caret.gradient" must be [topColour, bottomColour]');
+        gradient = [top, bottom];
+      }
+      caretSpec = {
+        color: pbColor(c.color, 'caret.color'), gradient, blink: c.blink as number | boolean | undefined, shape: c.shape as 'bar' | 'block' | 'underline' | undefined,
+        width: dkNum(c.width, 'caret.width'), height: dkNum(c.height, 'caret.height'), gap: dkNum(c.gap, 'caret.gap'),
+      };
+    }
+    let btns: PromptBoxSpec['buttons'];
+    if (buttons !== undefined && buttons !== null) {
+      const b = pbObject(buttons, 'buttons');
+      if (b.row !== undefined && (!Array.isArray(b.row) || !b.row.every((s) => typeof s === 'string'))) throw new Error('"buttons.row" must be an array of chip labels, e.g. ["+", "Attach", "Themes"]');
+      if (b.send !== undefined && typeof b.send !== 'boolean') throw new Error('"buttons.send" must be a boolean');
+      btns = { send: b.send as boolean | undefined, row: b.row as string[] | undefined };
+    }
+    let flashSpec: PromptBoxSpec['flash'];
+    if (flash === true) flashSpec = true;
+    else if (flash !== undefined && flash !== null && flash !== false) {
+      const fo = pbObject(flash, 'flash');
+      if (fo.colors !== undefined && (!Array.isArray(fo.colors) || fo.colors.length < 2)) throw new Error('"flash.colors" must hold at least 2 colours');
+      flashSpec = { colors: Array.isArray(fo.colors) ? fo.colors.map((c, i) => pbColor(c, `flash.colors[${i}]`) ?? [1, 1, 1, 1]) : undefined };
+    }
+    let grow: PromptBoxSpec['autoGrow'];
+    if (autoGrow === true) grow = true;
+    else if (autoGrow !== undefined && autoGrow !== null && autoGrow !== false) {
+      const g = pbObject(autoGrow, 'autoGrow');
+      grow = { maxWidth: dkNum(g.maxWidth, 'autoGrow.maxWidth') };
+    }
+    if (mask !== undefined && mask !== null && typeof mask !== 'boolean' && typeof mask !== 'string') throw new Error('"mask" must be true (asterisks) or the mask character');
+    const fw = dkNum(fontWeight, 'fontWeight');
+    const family = typeof fontFamily === 'string' && fontFamily.trim() ? fontFamily.trim() : 'Inter';
+    const weight = (fw === undefined ? 400 : Math.min(900, Math.max(100, Math.round(fw / 100) * 100))) as FontWeight;
+    // B52: measure in the real (lazy-loaded) faces.
+    const loads = [ensureFontFace(family, weight, 'normal'), ensureFontFace(family, 500, 'normal')].filter((p): p is Promise<void> => !!p);
+    await Promise.allSettled(loads);
+    const arrivalFramesN = dkNum(arrivalFrames, 'arrivalFrames');
+    if (arrivalFramesN !== undefined && !(arrivalFramesN >= 0)) throw new Error('"arrivalFrames" must be >= 0');
+    const spec: PromptBoxSpec = {
+      x: dkNum(x, 'x') ?? cs.width / 2, y: dkNum(y, 'y') ?? cs.height / 2, width: W,
+      height: dkNum(height, 'height'), radius: dkNum(radius, 'radius'), theme: (theme ?? undefined) as PromptBoxSpec['theme'],
+      fill: pbColor(fill, 'fill'), textColor: pbColor(textColor, 'textColor'), placeholderColor: pbColor(placeholderColor, 'placeholderColor'),
+      placeholder: typeof placeholder === 'string' ? placeholder.slice(0, 200) : undefined, text,
+      fontSize: dkNum(fontSize, 'fontSize'), fontFamily: family, fontWeight: weight,
+      startFrame: start, endFrame: end, fps: cs.frameRate, typing: pbTyping(typing), caret: caretSpec,
+      arrivalColor: pbColor(arrivalColor, 'arrivalColor'), arrivalFrames: arrivalFramesN, autoGrow: grow, buttons: btns,
+      sendFrame: dkNum(sendFrame, 'sendFrame'), flash: flashSpec, entrance: (entrance ?? undefined) as PromptBoxSpec['entrance'],
+      entranceFrames: dkNum(entranceFrames, 'entranceFrames'), mask: (mask ?? undefined) as boolean | string | undefined,
+      align: (align ?? undefined) as PromptBoxSpec['align'], name: dkName(name),
+    };
+    const plan = planPromptBox(spec);
+    const warnings = [...plan.warnings];
+    if (plan.typing.frames.length && plan.typing.endFrame >= end) warnings.push(`typing ends at f${plan.typing.endFrame}, after the clip end f${end}: raise endFrame`);
+    if (plan.sendFrame !== null && plan.sendFrame >= end) warnings.push(`sendFrame ${plan.sendFrame} is past the clip end f${end}`);
+    commitDesignKit('Add prompt box', plan.layers);
+    // Caret path: where the caret is (comp px) on each keystroke frame, resolved like the renderer.
+    const after = useEditorStore.getState();
+    const caretFrames = [...new Set([start, ...plan.typing.frames, plan.typing.endFrame + 1])].filter((f) => f >= start && f < end).slice(0, 240);
+    const caretPath: { frame: number; x: number; y: number; left: number }[] = [];
+    if (spec.caret !== false) {
+      const r2 = (n: number): number => Math.round(n * 100) / 100;
+      for (const f of caretFrames) {
+        const st = resolveFrame(after.composition, f, { getComposition: after.getComposition }).layers.find((l) => l.id === `${plan.textId}#caret`);
+        if (!st || !st.shape) continue;
+        caretPath.push({ frame: f, x: r2(st.transform.positionX), y: r2(st.transform.positionY), left: r2(st.transform.positionX - (st.shape.width * st.transform.scaleX) / 2) });
+      }
+    }
+    return {
+      groupId: plan.groupId, boxId: plan.boxId, textId: plan.textId, placeholderId: plan.placeholderId, sendId: plan.sendId, sendArrowId: plan.sendArrowId,
+      rowIds: plan.rowIds, flashId: plan.flashId, refillId: plan.refillId, content: plan.content, typing: plan.typing, box: plan.box,
+      sendCenter: plan.sendCenter, sendFrame: plan.sendFrame, fontSize: plan.fontSize, caretPath,
+      ...(warnings.length ? { warnings } : {}),
+    };
   },
 };
 
@@ -970,9 +2126,10 @@ function resolveCallable(spec: AgentActionSpec): (...args: unknown[]) => unknown
 
 export async function runAgentAction(actionId: string, args?: unknown): Promise<AgentRunResult> {
   const spec = ACTIONS_BY_ID.get(actionId);
-  if (!spec) return { ok: false, actionId, error: `"${actionId}" is not an allowed agent action (see listFeatures().actions)` };
+  if (!spec) return { ok: false, actionId, error: `"${actionId}" is not an allowed agent action${didYouMean(String(actionId), [...ACTIONS_BY_ID.keys()])} (see listFeatures().actions)` };
   try {
     const positional = normalizeArgs(spec, args);
+    assertTargetLayerExists(spec, positional);
     const fn = resolveCallable(spec);
     const result = await fn(...positional);
     const ed = useEditorStore.getState();

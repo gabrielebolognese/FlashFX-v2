@@ -1,0 +1,161 @@
+{
+  "id": "card-emerge",
+  "name": "Card slides out from behind an anchor, then tucks into a slot",
+  "category": "ui",
+  "description": "A rounded card (optionally with a white rim) is born behind another element (pass its centre as fromX / fromY), slides out to its rest position while it widens from nothing and fades up, with the measured soft overshoot on arrival. Optionally, on exitFrame it slides away and shrinks into a slot (a thumbnail position, a corner), accelerating hard and locking on (the measured r08 'tuck'). Build it BEFORE the anchor element so it sits behind it. Put the card's content on top and parent it to the returned layerId.",
+  "source": [
+    "r08 S2.E8 'one warm light' card slides out of the pair card f159-173: centre y 640 -> 1066, width 0 -> 567, cubic-bezier(0.585, 1.093, 0.748, 0.984)",
+    "r08 S3.E8 graph card f540-553 and S4.E8 'Don't' card f781-797 (easeOutQuart [0.306, 1.198, 0.589, 0.975])",
+    "r08 S2.E8 exit f317-329: slides left and shrinks into the thumbnail slot, [0.981, 0.135, 0.655, 1.265]"
+  ],
+  "taste": [
+    "TASTE.md 2 Easing",
+    "3 Timing (entrance 12-16 f30)",
+    "1.7 Overshoot is seasoning"
+  ],
+  "params": {
+    "x": { "type": "number", "default": null, "description": "Rest centre x (default comp centre)." },
+    "y": { "type": "number", "default": null, "description": "Rest centre y (default comp centre)." },
+    "fromX": { "type": "number", "default": null, "description": "Centre x of the element it emerges from (default x)." },
+    "fromY": { "type": "number", "default": null, "description": "Centre y of the element it emerges from (default y - 40 % of the card height)." },
+    "width": { "type": "number", "default": null, "description": "Card width px (default 52 % of the comp width)." },
+    "height": { "type": "number", "default": null, "description": "Card height px (default 56 % of the width)." },
+    "radius": { "type": "number", "default": 26, "min": 0, "description": "Corner radius px." },
+    "fill": { "type": "color", "default": "#0e2a4a", "description": "Card colour." },
+    "rim": { "type": "number", "default": 10, "min": 0, "description": "White rim thickness px (0 = no rim). The rim is a slightly larger rounded rect behind the card." },
+    "rimColor": { "type": "color", "default": "#ffffff", "description": "Rim colour." },
+    "delay": { "type": "number", "default": 0, "min": 0, "description": "Frames at 30 fps before it starts." },
+    "entrance": { "type": "number", "default": 14, "min": 4, "description": "Slide-out length, frames at 30 fps (r08: 13-16)." },
+    "ease": { "type": "ease", "default": [0.585, 1.093, 0.748, 0.984], "description": "Slide ease (measured r08 S2.E8, a soft 2-3 % overshoot)." },
+    "exitFrame": { "type": "number", "default": null, "description": "Frames at 30 fps after startFrame when the tuck starts (default: no tuck)." },
+    "toX": { "type": "number", "default": null, "description": "Tuck target centre x (default the left third)." },
+    "toY": { "type": "number", "default": null, "description": "Tuck target centre y (default y)." },
+    "toScale": { "type": "number", "default": 0.79, "min": 0.05, "description": "Scale at the slot (r08: 567 -> 450 px = 0.79)." },
+    "exitLength": { "type": "number", "default": 12, "min": 3, "description": "Tuck length, frames at 30 fps." },
+    "exitEase": { "type": "ease", "default": [0.981, 0.135, 0.655, 1.265], "description": "Tuck ease (measured: hard acceleration, locks onto the slot)." },
+    "name": { "type": "string", "default": "Card", "description": "Layer name (the rim is '<name> rim')." }
+  },
+  "length30": "(exitFrame == null ? delay + entrance + 60 : exitFrame + exitLength + 20)",
+  "checkFrames30": [
+    "delay + entrance * 0.35",
+    "delay + entrance",
+    "exitFrame == null ? delay + entrance + 20 : exitFrame + exitLength * 0.6"
+  ],
+  "lets": {
+    "X": "x == null ? CX : x",
+    "Y": "y == null ? CY : y",
+    "CW": "width == null ? round(W * 0.52) : width",
+    "s0": "start + f(delay)"
+  },
+  "steps": [
+    {
+      "let": {
+        "CH": "height == null ? round(CW * 0.56) : height"
+      }
+    },
+    {
+      "let": {
+        "FX": "fromX == null ? X : fromX",
+        "FY": "fromY == null ? Y - round(CH * 0.4) : fromY",
+        "TX": "toX == null ? round(W * 0.28) : toX",
+        "TY": "toY == null ? Y : toY",
+        "a1": "s0 + f(entrance)",
+        "x0": "exitFrame == null ? end : start + f(exitFrame)"
+      }
+    },
+    {
+      "id": "grp",
+      "action": "editor.addShapeLayer",
+      "args": { "opts": { "type": "rectangle", "x": "{{X - PX}}", "y": "{{Y - PY}}", "width": 10, "height": 10, "fill": [0, 0, 0, 0], "name": "{{name}} group" } },
+      "layer": true,
+      "root": true
+    },
+    { "let": { "G": "@grp.result" } },
+    {
+      "when": "rim > 0",
+      "id": "rimL",
+      "action": "editor.addShapeLayer",
+      "args": { "opts": { "type": "rectangle", "x": 0, "y": 0, "width": "{{CW + rim * 2}}", "height": "{{CH + rim * 2}}", "radius": "{{radius + rim}}", "fill": "{{rimColor}}", "name": "{{name}} rim" } },
+      "layer": true
+    },
+    { "when": "rim > 0", "action": "editor.setLayerParent", "args": { "childId": "{{@rimL.result}}", "parentId": "{{G}}" } },
+    {
+      "when": "rim > 0",
+      "action": "editor.setKeyframes",
+      "args": {
+        "layerId": "{{@rimL.result}}",
+        "propertyPath": "shape.width",
+        "keyframes": [
+          { "frame": "{{s0}}", "value": 0, "ease": "{{ease}}" },
+          { "frame": "{{a1}}", "value": "{{CW + rim * 2}}", "ease": "hold" }
+        ]
+      }
+    },
+    {
+      "id": "card",
+      "action": "editor.addShapeLayer",
+      "args": { "opts": { "type": "rectangle", "x": 0, "y": 0, "width": "{{CW}}", "height": "{{CH}}", "radius": "{{radius}}", "fill": "{{fill}}", "name": "{{name}}" } },
+      "layer": true
+    },
+    { "let": { "C": "@card.result" } },
+    { "action": "editor.setLayerParent", "args": { "childId": "{{C}}", "parentId": "{{G}}" } },
+    {
+      "action": "editor.setKeyframes",
+      "args": {
+        "layerId": "{{C}}",
+        "propertyPath": "shape.width",
+        "keyframes": [
+          { "frame": "{{s0}}", "value": 0, "ease": "{{ease}}" },
+          { "frame": "{{a1}}", "value": "{{CW}}", "ease": "hold" }
+        ]
+      }
+    },
+    {
+      "action": "editor.setKeyframes",
+      "args": {
+        "layerId": "{{G}}",
+        "propertyPath": "transform.position",
+        "keyframes": [
+          { "frame": "{{s0}}", "value": "{{[FX - PX, FY - PY]}}", "ease": "{{ease}}" },
+          { "frame": "{{a1}}", "value": "{{[X - PX, Y - PY]}}", "ease": "hold" },
+          { "frame": "{{x0}}", "value": "{{[X - PX, Y - PY]}}", "ease": "{{exitEase}}" },
+          { "frame": "{{exitFrame == null ? end : x0 + f(exitLength)}}", "value": "{{exitFrame == null ? [X - PX, Y - PY] : [TX - PX, TY - PY]}}", "ease": "hold" }
+        ]
+      }
+    },
+    {
+      "action": "editor.setKeyframes",
+      "args": {
+        "layerId": "{{G}}",
+        "propertyPath": "transform.opacity",
+        "keyframes": [
+          { "frame": "{{s0}}", "value": 0, "ease": [0.33, 1, 0.68, 1] },
+          { "frame": "{{s0 + f(5)}}", "value": 1, "ease": "hold" }
+        ]
+      }
+    },
+    {
+      "when": "exitFrame != null",
+      "action": "editor.setKeyframes",
+      "args": {
+        "layerId": "{{G}}",
+        "propertyPath": "transform.scale",
+        "keyframes": [
+          { "frame": "{{x0}}", "value": [1, 1], "ease": "{{exitEase}}" },
+          { "frame": "{{x0 + f(exitLength)}}", "value": "{{[toScale, toScale]}}", "ease": "hold" }
+        ]
+      }
+    }
+  ],
+  "returns": {
+    "layerId": "{{G}}",
+    "cardId": "{{C}}",
+    "rimId": "{{@rimL.result}}",
+    "settledFrame": "{{a1}}",
+    "tuckedFrame": "{{exitFrame == null ? end : x0 + f(exitLength)}}"
+  },
+  "example": {
+    "params": { "x": 560, "y": 1066, "fromY": 640, "width": 567, "height": 315, "exitFrame": 160, "toX": 296 },
+    "startFrame": 0
+  }
+}

@@ -32,7 +32,7 @@ function corners(pts: Vec2[]): PathVertex[] {
   return pts.map((p) => ({ position: p, handleIn: [0, 0], handleOut: [0, 0], vertexType: 'corner' as const }));
 }
 
-export type CursorIcon = 'arrow' | 'hand' | 'razor' | 'resize' | 'ibeam';
+export type CursorIcon = 'arrow' | 'hand' | 'razor' | 'resize' | 'ibeam' | 'pen' | 'crosshair' | 'rotate' | 'directSelect';
 /** The icons a rig carries unless told otherwise (the template set; the agent rig adds 'ibeam'). */
 export const DEFAULT_CURSOR_ICONS: readonly CursorIcon[] = ['arrow', 'hand', 'razor', 'resize'];
 
@@ -50,14 +50,57 @@ export interface CursorRig {
   current: CursorIcon;
 }
 
+/** One cursor icon polygon (exported for B70: the agent rig recognises a renamed icon by this geometry). */
+export function cursorIconShape(kind: CursorIcon, color: Vec4): ShapeLayer {
+  return iconShape(kind, color);
+}
+
+// B76 design-app tool cursors (hotspot = local origin, about 20 px tall like the arrow).
+/** Pen tool nib: the tip is the hotspot, the barrel runs down-right at 45 degrees. */
+const PEN_PTS: Vec2[] = (() => {
+  const uv: Vec2[] = [[0, 0], [9, -5], [13, -5], [13, -6.5], [19, -6.5], [19, 6.5], [13, 6.5], [13, 5], [9, 5]];
+  const k = Math.SQRT1_2;
+  return uv.map(([u, v]) => [(u - v) * k, (u + v) * k] as Vec2);
+})();
+/** Thin plus (precision / crosshair), hotspot at the centre. */
+const CROSSHAIR_PTS: Vec2[] = (() => {
+  const a = 10, t = 0.75;
+  return [[-t, -a], [t, -a], [t, -t], [a, -t], [a, t], [t, t], [t, a], [-t, a], [-t, t], [-a, t], [-a, -t], [-t, -t]];
+})();
+/** Rotate tool: an arc over the top with an arrowhead at both ends, centred on the hotspot. */
+const ROTATE_PTS: Vec2[] = (() => {
+  const at = (r: number, deg: number): Vec2 => [r * Math.cos((deg * Math.PI) / 180), r * Math.sin((deg * Math.PI) / 180)];
+  const a0 = 205, a1 = 335, rIn = 6.5, rOut = 9, rMid = (rIn + rOut) / 2, steps = 10;
+  const pts: Vec2[] = [];
+  for (let i = 0; i <= steps; i++) pts.push(at(rOut, a0 + ((a1 - a0) * i) / steps));
+  pts.push(at(rOut + 2.6, a1), at(rMid, a1 + 30), at(rIn - 2.6, a1));
+  for (let i = steps; i >= 0; i--) pts.push(at(rIn, a0 + ((a1 - a0) * i) / steps));
+  pts.push(at(rIn - 2.6, a0), at(rMid, a0 - 30), at(rOut + 2.6, a0));
+  return pts;
+})();
+/** Direct selection: a tail-less arrowhead (Illustrator / Figma's white arrow), tip at the origin. */
+const DIRECT_SELECT_PTS: Vec2[] = [[0, 0], [0, 16], [4.2, 12.2], [11.5, 12.2]];
+
 function iconShape(kind: CursorIcon, color: Vec4): ShapeLayer {
   // Each icon is a small polygon at the cursor's local origin; only one is opaque at a time.
+  if (kind === 'pen') return createPolygonLayer('pen', 0, 0, corners(PEN_PTS), true, color, 600);
+  if (kind === 'crosshair') return createPolygonLayer('crosshair', 0, 0, corners(CROSSHAIR_PTS), true, color, 600);
+  if (kind === 'rotate') return createPolygonLayer('rotate', 0, 0, corners(ROTATE_PTS), true, color, 600);
+  if (kind === 'directSelect') return createPolygonLayer('directSelect', 0, 0, corners(DIRECT_SELECT_PTS), true, color, 600);
   // I-beam (text cursor): hotspot at its centre, serifs top and bottom.
   if (kind === 'ibeam') return createPolygonLayer('ibeam', 0, 0, corners([[-4, -10], [4, -10], [4, -8], [1, -8], [1, 8], [4, 8], [4, 10], [-4, 10], [-4, 8], [-1, 8], [-1, -8], [-4, -8]]), true, color, 600);
   if (kind === 'razor') return createPolygonLayer('razor', 6, 4, corners([[0, 0], [3, 0], [10, 16], [7, 16]]), true, color, 600);
   if (kind === 'resize') return createPolygonLayer('resize', 0, 8, corners([[0, 5], [7, 0], [7, 3], [17, 3], [17, 0], [24, 5], [17, 10], [17, 7], [7, 7], [7, 10]]), true, color, 600);
   if (kind === 'hand') return createPolygonLayer('hand', 2, 2, corners([[0, 6], [3, 6], [3, 0], [6, 0], [6, 6], [9, 6], [9, 2], [12, 2], [12, 14], [2, 14]]), true, color, 600);
   return createPolygonLayer('arrow', 0, 0, corners(ARROW_PTS), true, color, 600);
+}
+
+/** One icon polygon parented to a cursor group, with the rig's dark rim (B76: also used to add an icon to an existing rig). */
+export function makeCursorIcon(kind: CursorIcon, color: Vec4, groupId: string): ShapeLayer {
+  const s = iconShape(kind, color);
+  s.parentId = groupId;
+  if (s.shape.type === 'polygon') s.shape.strokeColor = [0.05, 0.06, 0.09, 1];
+  return s;
 }
 
 /** Build a cursor: a group of stacked icons (arrow shown), positioned at `start`. */
@@ -67,9 +110,7 @@ export function makeCursor(name: string, color: Vec4, start: Vec2, seed: number,
   const iconKeys: Partial<Record<CursorIcon, KeyStep[]>> = {};
   const layers: Layer[] = [];
   for (const k of kinds) {
-    const s = iconShape(k, color);
-    s.parentId = group.id;
-    if (s.shape.type === 'polygon') s.shape.strokeColor = [0.05, 0.06, 0.09, 1];
+    const s = makeCursorIcon(k, color, group.id);
     icons[k] = s;
     iconKeys[k] = [{ f: 0, v: k === 'arrow' ? 1 : 0 }];
     layers.push(s);

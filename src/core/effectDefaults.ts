@@ -1,4 +1,4 @@
-import type { LayerShadow, LayerGlow, LayerBlur } from './types';
+import type { Layer, LayerShadow, LayerGlow, LayerBlur, Vec4 } from './types';
 
 // Default parameters applied when a layer effect is first enabled - used by BOTH
 // the Inspector's Effects section and the top-bar Effects menu, so the two entry
@@ -23,6 +23,20 @@ export const DEFAULT_GLOW: LayerGlow = {
   radius: 12,
   threshold: 0.6,
 };
+
+/**
+ * B67 - the glow a layer gets when it is first switched on. Text and shape layers glow in their own
+ * colour from every pixel (threshold 0): the generic white glow at threshold 0.6 extracts only bright
+ * luminance, so it vanishes on saturated text (a #00c853 green word has luminance ~0.5). Other layers
+ * (images, video, precomps) keep the bloom-style DEFAULT_GLOW.
+ */
+export function defaultGlowFor(layer: Layer | undefined): LayerGlow {
+  let color: Vec4 | undefined;
+  if (layer?.type === 'text') color = layer.content.spans[0]?.style.color;
+  else if (layer?.type === 'shape') color = layer.shape.fillColor[3] > 0 ? layer.shape.fillColor : layer.shape.strokeColor;
+  if (!color) return { ...DEFAULT_GLOW };
+  return { ...DEFAULT_GLOW, color: [color[0], color[1], color[2], 1], threshold: 0 };
+}
 
 export const DEFAULT_BLUR: LayerBlur = {
   enabled: true,

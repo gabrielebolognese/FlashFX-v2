@@ -115,6 +115,9 @@ export const EFFECT_TYPE = {
   woodcut: 310, stainedGlass: 311, paintDaubs: 312,
   // Glitch displacement (class-A spatial, multi-tap): true per-row pixel sort + block datamosh (B14-gpu).
   pixelSorting: 313, datamosh: 314,
+  // B61 liquid drip / melt (spatial, multi-tap upstream walk; core/effects/liquidDrip.ts holds the CPU twin + WGSL).
+  // params [length px, floor V, spacing px, sway px, seed, flow, variance].
+  liquidDrip: 315,
 } as const;
 
 export const EFFECT_DEFS: EffectDef[] = [
@@ -300,6 +303,8 @@ export const EFFECT_DEFS: EffectDef[] = [
   // B14-gpu: ids match the (previously inert) filterDefinitions sliders so they light up. p0 = amount.
   { id: 'pixelSorting',  type: EFFECT_TYPE.pixelSorting,  klass: 'spatial', paramCount: 1, defaults: [0] },
   { id: 'datamosh',      type: EFFECT_TYPE.datamosh,      klass: 'spatial', paramCount: 1, defaults: [0] },
+  // B61: [length px, floor V (<= 0 none), spacing px, sway px, seed, flow (-1..1, 0 outward), variance 0..1]. Slider drives length.
+  { id: 'liquidDrip',    type: EFFECT_TYPE.liquidDrip,    klass: 'spatial', paramCount: 7, defaults: [0, 0, 14, 6, 1, 0, 0.9] },
 ];
 
 const BY_ID = new Map(EFFECT_DEFS.map((d) => [d.id, d]));

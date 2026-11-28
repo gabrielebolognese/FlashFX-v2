@@ -1,0 +1,36 @@
+{
+  "id": "blob-field",
+  "name": "Gradient-blob field / cloud floor",
+  "category": "background",
+  "description": "One editable layer of soft drifting colour blobs (B58). mode field = a full-frame mesh gradient that flows (Lovable / Stripe style grounds, the field inside a button or behind a prompt box); mode floor = a billowing cloud floor with a lumpy soft top edge, transparent above it, that can rise in from below (the blue-to-white glow under a dark UI). Apply right after the ground, before content.",
+  "source": ["r06 S2.E2 blue-to-white cloud floor rising under the prompt bar f97-372 (y 1088 -> 680 f97-112 easeOutCubic, opacity f97-108)", "r10 S9.E1 / S11.E1 / S12.E1 full-frame cream / pink / blue / magenta mesh fields f296-312, f426-548"],
+  "taste": ["TASTE.md 7 Colour", "2 Easing"],
+  "params": {
+    "mode": { "type": "enum", "enum": ["floor", "field"], "default": "floor", "description": "floor = cloud floor from the bottom (transparent above the edge); field = full-frame mesh gradient." },
+    "palette": { "type": "enum", "enum": ["auto", "sky", "lovable", "sunset", "mono"], "default": "auto", "description": "auto = sky for floor, lovable for field. sky: #215cc4 -> #e0e9f8 (r06); lovable: cream / pink / blue / coral / lilac (r10); sunset: plum / coral / orange; mono: greys." },
+    "floor": { "type": "number", "default": 0.4, "min": 0.05, "description": "Floor mode: top edge height as a fraction of the comp height from the bottom." },
+    "seed": { "type": "integer", "default": 1, "min": 0, "description": "Layout seed: change it for another arrangement." },
+    "speed": { "type": "number", "default": 1, "min": 0, "description": "Drift speed (0 = still)." },
+    "size": { "type": "number", "default": 1, "min": 0.1, "description": "Blob / billow size multiplier." },
+    "rise": { "type": "boolean", "default": true, "description": "Floor: rise in from below and fade in (r06). Field: fade in." },
+    "riseFrames": { "type": "number", "default": 15, "min": 1, "description": "Rise / fade length, frames at 30 fps." },
+    "name": { "type": "string", "default": "", "description": "Layer name ('' = Cloud Floor / Blob Field)." }
+  },
+  "length30": 90,
+  "checkFrames30": ["riseFrames * 0.4", "riseFrames + 30"],
+  "lets": {
+    "P": "palette == 'auto' ? (mode == 'floor' ? 'sky' : 'lovable') : palette",
+    "COLORS": "P == 'sky' ? ['#215cc4', '#558cdd', '#9dbdeb', '#e0e9f8'] : P == 'lovable' ? ['#f6eee8', '#e85aa6', '#4a6cf0', '#f6eee8', '#e458b0', '#6175ce', '#fd5d88'] : P == 'sunset' ? ['#2a1238', '#a33a5c', '#ef7b75', '#f9a35a'] : ['#1a1b1f', '#7f838c', '#f2f3f5']",
+    "NM": "name != '' ? name : (mode == 'floor' ? 'Cloud Floor' : 'Blob Field')"
+  },
+  "steps": [
+    { "id": "bf", "action": "editor.addBlobField", "args": { "opts": { "mode": "{{mode}}", "colors": "{{COLORS}}", "seed": "{{seed}}", "speed": "{{speed}}", "size": "{{size}}", "floor": "{{mode == 'floor' ? floor : 0}}", "x": "{{CX - PX}}", "y": "{{CY - PY}}", "width": "{{W}}", "height": "{{H}}", "name": "{{NM}}" } }, "layer": true, "root": true },
+    { "let": { "L": "@bf.result" } },
+    { "when": "rise && mode == 'floor'", "action": "editor.setKeyframes", "args": { "layerId": "{{L}}", "propertyPath": "transform.position", "keyframes": [
+      { "frame": "{{start}}", "value": "{{[CX - PX, CY - PY + round(H * floor)]}}", "ease": [0.33, 1, 0.68, 1] }, { "frame": "{{start + f(riseFrames)}}", "value": "{{[CX - PX, CY - PY]}}" } ] } },
+    { "when": "rise", "action": "editor.setKeyframes", "args": { "layerId": "{{L}}", "propertyPath": "transform.opacity", "keyframes": [
+      { "frame": "{{start}}", "value": 0, "ease": "linear" }, { "frame": "{{start + max(1, round(f(riseFrames) * 0.75))}}", "value": 1 } ] } }
+  ],
+  "returns": { "layerId": "{{L}}", "settledFrame": "{{start + f(riseFrames)}}" },
+  "example": { "params": { "mode": "floor" }, "startFrame": 0 }
+}

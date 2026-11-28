@@ -9,7 +9,9 @@ import type {
   ResolvedVideo,
   ResolvedImage,
   ResolvedLayer,
+  ResolvedCloner,
   ResolvedMask,
+  ResolvedMaskBlocks,
   RenderFrame,
   Layer,
   Composition,
@@ -33,28 +35,34 @@ import { measureText, getTextLayout, measureAdvance, TEXT_POINT_PADDING } from '
 import { mapLinesToContent, lineStartX } from './textGlyphLayout';
 import { accumulateGlyphDeltas, trackingShifts, type GlyphDelta, type ResolvedTextAnimator } from './textAnimator';
 import { decodeCharAt } from './textDecode';
+import { withTextCounter } from './textCounter';
+import { withTextStyleKeys } from './textStyleKeys';
+import { typingAnimatorsAt } from './textTyping';
 import { resolveTextCaretStamp } from './textCaret';
 import { textRunsFromSpans, runAt } from './textRuns';
 import { totalPathLength, pointAndAngleAt, glyphPathFraction, type TextPathNode } from './textPath';
 import { pairTrackMattes, type TrackMatteMode } from './trackMatte';
+import { compareRenderOrder } from './trackPlacement';
 import { resolveMaskVertices, resolveMaskFeathers } from './maskPath';
 import { resolveRefineEdge } from './refineEdge';
 import { resolveEffectStack } from './effects/effectStack';
 import { evalAnimColor, evalAnimNumber, evalEffectParam, mixColorLinear } from './animProps';
 import { resolveAdjustmentCoverage } from './effects/adjustmentCoverage';
 import { adjustmentHasWork, resolveAdjustmentFilters } from './effects/adjustmentComposite';
+import { resolveShapeGlass } from './effects/glass';
 import { evaluateMotionPathAtFrame } from './motionPath';
-import { computeInstanceTransforms, selectClonerRenderPath, buildDataBoundSources } from '../cloner';
-import type { ClonerLayer } from '../cloner/types';
+import { computeInstanceTransforms, selectClonerRenderPath, buildDataBoundSources, pickSourceSlot, settledFrame, relativeSourceTransform, isIdentityRelative } from '../cloner';
+import type { ClonerLayer, InstanceTransform } from '../cloner/types';
 import { rasterizeField, type FieldGrid } from '../field-sampling/fields';
 import { precompLocalFrame, MAX_PRECOMP_DEPTH } from './precomp';
 import type { ResolveContext } from './precomp';
 import { applyPivotCompensation } from './anchor';
 import type { Mat4, Vec3 } from './mat4';
+import { multiply as multiplyMat4, scale as scaleMat4 } from './mat4';
 import type { CameraLayer } from './types';
 import { defaultCamera, cameraFromParams, localModelMatrix, composeWorldMatrix, forwardVector, cubicBezierVec3, type ResolvedCamera } from './camera3d';
 import { resolveStyleColor, type StyleLookup } from './styles';
-import type { PrecompLayer, BeamLayer } from './types';
+import type { PrecompLayer, BeamLayer, ResolvedEffect } from './types';
 import { straightBeam, lightningPath } from './beam/beamGeometry';
 import { resolveDominantColor, resolveShapeFill, resolveShapePattern, hexToVec4 } from './material';
 import { getMotionBlur } from './layerSwitches';
@@ -91,6 +99,8 @@ let _layoutContainerSizes: Map<string, { width: number; height: number }> = new 
 // the top of resolveFrame (and by buildPhysicsEvaluator for its out-of-resolveFrame
 // use). Saved/restored around the precomp recursion like the layout maps.
 let _layerById: Map<string, Layer> = new Map();
+// B66: render-order index per layer id (see StructuralCache.indexById); saved / restored with _layerById.
+let _sortedIndexById: Map<string, number> = new Map();
 
 // ---------------------------------------------------------------------------
 // Structural cache: the frame-INDEPENDENT data resolveFrame would otherwise rebuild
@@ -105,6 +115,9 @@ interface StructuralCache {
   tracksRef: Track[];
   layerById: Map<string, Layer>;
   sortedLayers: Layer[];
+  /** B66: render-order index per layer id (the expression `index`), so an ancestor in a parent chain
+   *  evaluates its expressions with its own context instead of the child's. */
+  indexById: Map<string, number>;
   hiddenTrackIds: Set<string>;
   soloTrackIds: Set<string>;
   soloing: boolean;
@@ -124,12 +137,8 @@ function getStructuralCache(layers: Layer[], tracks: Track[]): StructuralCache {
     layerById: new Map(layers.map((l) => [l.id, l])),
     // Highest track order first (top tracks render last / on top); ties break by
     // clip in-point so abutting multi-clip lanes stack deterministically.
-    sortedLayers: [...layers].sort((a, b) => {
-      const orderA = a.trackId ? (trackOrderMap.get(a.trackId) ?? 0) : 0;
-      const orderB = b.trackId ? (trackOrderMap.get(b.trackId) ?? 0) : 0;
-      if (orderA !== orderB) return orderB - orderA;
-      return a.inPoint - b.inPoint;
-    }),
+    sortedLayers: [...layers].sort(compareRenderOrder(trackOrderMap)),
+    indexById: new Map(),
     hiddenTrackIds: new Set(tracks.filter((t) => !t.visible).map((t) => t.id)),
     soloTrackIds,
     soloing: soloTrackIds.size > 0,
@@ -140,6 +149,7 @@ function getStructuralCache(layers: Layer[], tracks: Track[]): StructuralCache {
     hasThreeDLayers: layers.some((l) => l.is3D === true),
     hasCornerPins: layers.some((l) => l.cornerPin !== undefined),
   };
+  cache.sortedLayers.forEach((l, i) => cache.indexById.set(l.id, i));
   _structCacheByLayers.set(layers, cache);
   return cache;
 }
@@ -328,6 +338,12 @@ function resolveTransform(transform: Transform, frame: number): ResolvedTransfor
 
 // Evaluate a shape layer's path-modifier stack (B8a) to plain numbers for the current frame,
 // dropping disabled modifiers. The pure geometry then runs in core/shapeModifiers.ts.
+/** B64 - text stroke width: a keyed or non-zero animOverrides.strokeWidth wins, else the span style's. */
+function textStrokeWidth(override: AnimatableProperty | undefined, styleWidth: number | undefined, frame: number): number {
+  if (override && (override.keyframes.length > 0 || (override.defaultValue as number) !== 0)) return evaluateNumber(override, frame);
+  return typeof styleWidth === 'number' && Number.isFinite(styleWidth) && styleWidth > 0 ? styleWidth : 0;
+}
+
 function resolveShapeModifiers(modifiers: ShapeLayer['modifiers'], frame: number): ResolvedShapeModifier[] {
   if (!modifiers || modifiers.length === 0) return [];
   const out: ResolvedShapeModifier[] = [];
@@ -395,7 +411,8 @@ function resolveShapeLayer(layer: ShapeLayer, frame: number, getStyle?: StyleLoo
       const r = evaluateNumber(shape.radius, frame);
       base.radius = r;
       base.width = r * 2;
-      base.height = r * 2;
+      // B63: an ellipse carries its vertical radius (absent = circle); the SDF draws the w x h ellipse.
+      base.height = (shape.radiusY ? evaluateNumber(shape.radiusY, frame) : r) * 2;
       break;
     }
     case 'star': {
@@ -412,12 +429,14 @@ function resolveShapeLayer(layer: ShapeLayer, frame: number, getStyle?: StyleLoo
     case 'polygon': {
       let verts = shape.vertices;
       let closedFlag = shape.closed;
+      let holes = shape.holes;
       // Shape morph (B8b): if the outline is animated, evaluate the pose at this frame FIRST - at/beyond
       // a pose this returns the original bezier vertices (byte-identical); between poses, a morph.
       if (shape.pathKeyframes && shape.pathKeyframes.length > 0) {
         const p = evalPathKeyframes(shape.pathKeyframes, frame);
         verts = p.vertices;
         closedFlag = p.closed;
+        if (p.holes) holes = p.holes; // B83: poses with contours drive the holes / islands
       }
       // Path modifier stack (B8a/B8b): trim / offset / roughen / puckerBloat, in order, at resolve
       // time. Absent → vertices untouched (byte-identical). Holes pass through unmodified in v1.
@@ -431,7 +450,7 @@ function resolveShapeLayer(layer: ShapeLayer, frame: number, getStyle?: StyleLoo
       base.closed = closedFlag;
       base.lineCap = shape.lineCap ?? 'butt';
       base.lineJoin = shape.lineJoin ?? 'miter';
-      if (shape.holes && shape.holes.length > 0) base.holes = shape.holes; // M17 glyph counters
+      if (holes && holes.length > 0) base.holes = holes; // M17 glyph counters (B83: or the morphing pose contours)
       // Dashed stroke (B8c): carry the pattern + the (animatable) offset for this frame.
       if (shape.strokeDash && shape.strokeDash.length > 0) {
         base.dashArray = shape.strokeDash;
@@ -486,7 +505,16 @@ function isGroupVisible(groupId: string, layers: Layer[], frame: number): boolea
   return true;
 }
 
-function getParentTransform(layerId: string, layers: Layer[], frame: number): ResolvedTransform {
+/**
+ * The parent chain's world transform for `layerId` (identity, or its layout offset, when it has no parent).
+ * B66: every ancestor is evaluated as ITSELF - with its own expression context (it used to read the
+ * child's: a parent's own expression was ignored and a child's same-named expression was applied to the
+ * parent) and with its own motion path (it used to be ignored, so children of a path-animated null stayed
+ * put). Both only change chains that use them; plain keyframed chains resolve exactly as before. Because
+ * the motion-blur sampler re-resolves this chain one frame earlier, children inherit the parent's motion
+ * for their blur through the same function.
+ */
+function getParentTransform(layerId: string, layers: Layer[], frame: number, motionPaths: MotionPath[] = []): ResolvedTransform {
   const layer = _layerById.get(layerId);
   if (!layer || !layer.parentId) {
     const layoutOffset = _layoutOffsets.get(layerId);
@@ -500,9 +528,18 @@ function getParentTransform(layerId: string, layers: Layer[], frame: number): Re
     return { positionX: 0, positionY: 0, rotation: 0, scaleX: 1, scaleY: 1, anchorX: 0, anchorY: 0, opacity: 1, positionZ: 0, rotationX: 0, rotationY: 0 };
   }
 
-  const parentLocal = resolveTransformRaw(parent.transform, frame);
-  const grandparent = getParentTransform(parent.id, layers, frame);
+  const parentLocal = withAncestorExpressionContext(parent, () => resolveTransformRaw(parent.transform, frame));
+  const grandparent = getParentTransform(parent.id, layers, frame, motionPaths);
   let composed = composeTransforms(grandparent, parentLocal);
+
+  // The parent's own motion path places it in world space exactly like worldTransformAt does for the
+  // layer itself (path position wins; orient-to-path sets the rotation).
+  const parentPath = motionPaths.length > 0 ? motionPaths.find((p) => p.layerId === parent.id && p.nodes.length >= 2) : undefined;
+  if (parentPath) {
+    const { position, angle } = evaluateMotionPathAtFrame(parentPath, frame);
+    composed = { ...composed, positionX: position[0], positionY: position[1] };
+    if (parentPath.orientToPath) composed = { ...composed, rotation: angle };
+  }
 
   const layoutOffset = _layoutOffsets.get(layerId);
   if (layoutOffset) {
@@ -515,6 +552,28 @@ function getParentTransform(layerId: string, layers: Layer[], frame: number): Re
   }
 
   return composed;
+}
+
+/**
+ * Run `fn` with the expression context switched to `ancestor` (same frame / comp, its own id, render
+ * index and in / out), then restore the caller's context. No-op when no expression context is active
+ * (bakes outside resolveFrame), so those keep evaluating keyframes only, as before.
+ */
+function withAncestorExpressionContext<T>(ancestor: Layer, fn: () => T): T {
+  if (!_exprLayerId || _exprLayerId === ancestor.id) return fn();
+  const saved = { id: _exprLayerId, index: _exprLayerIndex, inPoint: _exprLayerInPoint, outPoint: _exprLayerOutPoint };
+  _exprLayerId = ancestor.id;
+  _exprLayerIndex = _sortedIndexById.get(ancestor.id) ?? saved.index;
+  _exprLayerInPoint = ancestor.inPoint;
+  _exprLayerOutPoint = ancestor.outPoint;
+  try {
+    return fn();
+  } finally {
+    _exprLayerId = saved.id;
+    _exprLayerIndex = saved.index;
+    _exprLayerInPoint = saved.inPoint;
+    _exprLayerOutPoint = saved.outPoint;
+  }
 }
 
 function composeTransforms(parent: ResolvedTransform, child: ResolvedTransform): ResolvedTransform {
@@ -568,6 +627,13 @@ function resolveTextAnimatorsAt(active: TextAnimator[], frame: number): Resolved
   }));
 }
 
+/** The layer's animators at one frame plus its B82 typing schedule (explicit-weight animators over `content`). */
+function textAnimatorsWithTypingAt(layer: TextLayer, active: TextAnimator[], content: string, frame: number): ResolvedTextAnimator[] {
+  const base = resolveTextAnimatorsAt(active, frame);
+  if (!layer.typing?.enabled) return base;
+  return [...base, ...typingAnimatorsAt(layer.typing, content, frame)];
+}
+
 /** Where one glyph sits in the layer raster (see expandTextGlyphs): its line's left edge, its centre's
  *  distance along that line, the line's top and its tracking shifts (this frame / the previous one). */
 interface GlyphSlot {
@@ -604,7 +670,9 @@ function expandTextGlyphs(
   // Mixed styles (accent word): per-character face + fill runs. Drawn as glyph stamps even with no
   // animator, since the whole-layer raster draws one style.
   const runs = baseText.runs && baseText.runs.length > 1 ? baseText.runs : null;
-  if ((active.length === 0 && !decode && !onPath && !runs) || !content) return null;
+  // B82: a typing schedule reveals (and tints) glyphs like an animator.
+  const typing = layer.typing?.enabled ? layer.typing : null;
+  if ((active.length === 0 && !decode && !onPath && !runs && !typing) || !content) return null;
 
   const layout = getTextLayout(baseText);
   const singleLine = layout.lines.length === 1 && !content.includes('\n') && layout.lines[0] === content;
@@ -622,10 +690,10 @@ function expandTextGlyphs(
   // Text-on-path (B9b): total arc length, computed once (glyph fractions map into it below).
   const pathLen = onPath ? totalPathLength(onPath.nodes, onPath.closed) : 0;
 
-  const deltas = accumulateGlyphDeltas(content, resolveTextAnimatorsAt(active, frame));
+  const deltas = accumulateGlyphDeltas(content, textAnimatorsWithTypingAt(layer, active, content, frame));
   // Per-glyph motion blur: the same glyph one frame earlier (animator deltas + tracking at prevFrame,
   // under the layer's previous world transform). Only when the layer has motion blur on.
-  const prevDeltas = glyphBlur && active.length > 0 ? accumulateGlyphDeltas(content, resolveTextAnimatorsAt(active, glyphBlur.prevFrame)) : null;
+  const prevDeltas = glyphBlur && (active.length > 0 || typing) ? accumulateGlyphDeltas(content, textAnimatorsWithTypingAt(layer, active, content, glyphBlur.prevFrame)) : null;
 
   // Stamps draw plain run-less text; a run's stamps take that run's face + fill.
   const plainText: ResolvedText = { ...baseText };
@@ -739,6 +807,13 @@ function expandTextGlyphs(
       stampText.measuredWidth = m.width;
       stampText.measuredHeight = m.height;
       const lineY = slot.lineTop - TEXT_POINT_PADDING + m.height / 2 - canvasHeight / 2;
+      // B64: a gradient fill spans the whole text box (as on the whole-layer raster), placed at this
+      // glyph's home slot so the colour sticks to the glyph while it animates.
+      if (stampText.fill) {
+        const homeX = slot.startX + slot.centerDist;
+        const homeY = slot.lineTop - TEXT_POINT_PADDING + m.height / 2;
+        stampText.fillFrame = { x: m.width / 2 - homeX, y: m.height / 2 - homeY, width: canvasWidth, height: canvasHeight };
+      }
       const transform = composeTransforms(world, childTransform(d, slot.shift, slot, lineY));
       // Per-glyph motion blur: velocity of THIS glyph (animator slide/scale/spin + tracking + the layer's
       // own motion), so a static layer whose letters fly in still streaks. Replaces the layer-level
@@ -818,7 +893,9 @@ function resolveTextLayer(layer: TextLayer, frame: number, getStyle?: StyleLooku
     // B33: keyed text colour tracks replace the static (style-linked) colours.
     fillColor: evalAnimColor(layer.animProps?.textColor, resolveStyleColor(layer.fillStyleId, style.color, getStyle), frame),
     strokeColor: evalAnimColor(layer.animProps?.textStrokeColor, resolveStyleColor(layer.strokeStyleId, style.strokeColor, getStyle), frame),
-    strokeWidth: evaluateNumber(layer.animOverrides.strokeWidth, frame),
+    // B64: the span style's strokeWidth (what agents and the style panel write) applies unless the
+    // animated override is keyed or non-zero; before this it was ignored and outline text drew nothing.
+    strokeWidth: textStrokeWidth(layer.animOverrides.strokeWidth, style.strokeWidth, frame),
     textAlign: layer.layoutConfig.horizontalAlign,
     underline: style.underline,
     strikethrough: style.strikethrough,
@@ -875,6 +952,74 @@ function resolveVideoLayer(layer: VideoLayer, frame: number, compositionFrameRat
   };
 }
 
+// B60: the cloner's per-instance source ids (absent / empty = the single sourceRef layer, as before), the
+// source order ('random' + seed; absent = cycle) and each extra source's scale / rotation / opacity relative
+// to the main source's settled transform (an extra source scaled to 0.5 draws its copies at half the main
+// source's size). Position is not carried over: the main source's position still offsets every copy.
+function clonerSourcesField(
+  cloner: ClonerLayer, frame: number, source: Layer | undefined,
+): Pick<ResolvedCloner, 'sourceLayerIds' | 'sourceOrder' | 'sourceSeed' | 'sourceRelative'> {
+  const ids = Array.isArray(cloner.sources) ? cloner.sources.filter((s): s is string => typeof s === 'string' && s.length > 0) : [];
+  if (!ids.length) return {};
+  const out: Pick<ResolvedCloner, 'sourceLayerIds' | 'sourceOrder' | 'sourceSeed' | 'sourceRelative'> = { sourceLayerIds: ids };
+  if (cloner.sourceOrder === 'random') {
+    out.sourceOrder = 'random';
+    out.sourceSeed = typeof cloner.sourceSeed === 'number' && Number.isFinite(cloner.sourceSeed) ? Math.trunc(cloner.sourceSeed) : 0;
+  }
+  if (source) {
+    const main = resolveTransformRaw(source.transform, settledFrame(source.transform));
+    let rel: ResolvedCloner['sourceRelative'];
+    for (const id of ids) {
+      if (id === source.id) continue;
+      const l = _layerById.get(id);
+      if (!l || !('transform' in l) || !l.transform) continue;
+      const own = resolveTransformRaw(l.transform, frame);
+      const r = relativeSourceTransform(own, main);
+      if (isIdentityRelative(r)) continue;
+      (rel ??= {})[id] = r;
+    }
+    if (rel) out.sourceRelative = rel;
+  }
+  return out;
+}
+
+// B60 follow-up: a data-bound cloner's per-instance content. Each instanceSources[j] (the source with the
+// bound values written in, core/overrides) is resolved at this frame through a one-layer composition, so
+// copy j draws its own text / size / colour. Same frame, same in / out as the source; parent and track are
+// dropped (the stamp gets the instance transform anyway). Module-level maps are saved and restored like the
+// precomp recursion does.
+function resolveDataBoundContent(
+  composition: Composition, frame: number, instanceSources: Layer[], ctx: ResolveContext | undefined,
+): ResolvedLayer[] | undefined {
+  const savedOffsets = _layoutOffsets;
+  const savedSizes = _layoutContainerSizes;
+  const savedById = _layerById;
+  const savedIndexById = _sortedIndexById;
+  try {
+    const out: ResolvedLayer[] = [];
+    for (const src of instanceSources) {
+      const solo = { ...src, parentId: null, trackId: null, visible: true } as Layer;
+      const rf = resolveFrame({ ...composition, layers: [solo], tracks: [], physicsBindings: [] }, frame, ctx);
+      const hit = rf.layers.find((l) => l.id === src.id);
+      if (!hit) return undefined;
+      out.push(hit);
+    }
+    return out;
+  } finally {
+    _layoutOffsets = savedOffsets;
+    _layoutContainerSizes = savedSizes;
+    _layerById = savedById;
+    _sortedIndexById = savedIndexById;
+  }
+}
+
+// B57: a precomp's effect stack (B50 keyed params evaluated at this frame). Empty ({}) without effects,
+// so precomps without a stack resolve exactly as before.
+function precompEffectsField(layer: PrecompLayer, frame: number): { effects?: ResolvedEffect[] } {
+  const effects = resolveEffectStack(layer.effects, layer.effectsEnabled !== false, effectParamEvaluator(layer.animProps, frame));
+  return effects.length ? { effects } : {};
+}
+
 function resolveImageLayer(layer: ImageLayer, frame: number): ResolvedImage {
   // Ordered stack, honoring the per-effect enable AND the layer master switch (B11a). B50: a param
   // with a keyed animProps.effectParams track is evaluated at this frame; the rest are copied through.
@@ -909,6 +1054,20 @@ function resolveMask(masks: Mask[] | undefined, frame: number): ResolvedMask | u
     innerRadius: Math.max(0, evaluateNumber(mask.innerRadius, frame)),
     ...maskPathFields(mask, frame),
     ...maskModeFields(mask, frame),
+    ...maskBlocksFields(mask, frame),
+  };
+}
+
+// B54 pixel-block mask: evaluate the keyed progress. Empty ({}) for every other mask (unchanged).
+function maskBlocksFields(mask: Mask, frame: number): { blocks?: ResolvedMaskBlocks } {
+  const b = mask.blocks;
+  if (!b) return {};
+  const p = evaluateNumber(b.progress, frame);
+  return {
+    blocks: {
+      size: b.size, seed: b.seed, order: b.order, angle: b.angle, jitter: b.jitter, direction: b.direction,
+      progress: Number.isFinite(p) ? clamp(p, 0, 1) : 0,
+    },
   };
 }
 
@@ -953,6 +1112,7 @@ function resolveMasks(masks: Mask[] | undefined, frame: number): ResolvedMask[] 
       innerRadius: Math.max(0, evaluateNumber(mask.innerRadius, frame)),
       ...maskPathFields(mask, frame),
       ...maskModeFields(mask, frame),
+      ...maskBlocksFields(mask, frame),
     });
   }
   return result;
@@ -968,7 +1128,7 @@ function worldTransformAt(
   frame: number,
 ): ResolvedTransform {
   const localTransform = resolveTransform(layer.transform, frame);
-  const parentTransform = getParentTransform(layer.id, layers, frame);
+  const parentTransform = getParentTransform(layer.id, layers, frame, motionPaths);
   let worldTransform = composeTransforms(parentTransform, localTransform);
 
   const layerPath = motionPaths.find((p) => p.layerId === layer.id && p.nodes.length >= 2);
@@ -1004,7 +1164,11 @@ function computeMotionBlur(
   if (shutter <= 0) return undefined;
   const phase = shutterPhaseFraction(compShutterPhase, shutter);
 
-  const prevFrame = Math.max(frame - 1, layer.inPoint);
+  // B66: the previous sample may sit before the clip's in-point. Transforms (own keys and the parent
+  // chain) are defined there, so a layer that enters while it - or its parent / camera null - is already
+  // moving smears on its first frame, as in After Effects. It used to clamp to the in-point and render
+  // the first frame sharp. Only comp frame 0 has no earlier sample.
+  const prevFrame = Math.max(frame - 1, 0);
   const prev = prevFrame === frame
     ? current
     : worldTransformAt(layer, layers, motionPaths, prevFrame);
@@ -1028,7 +1192,7 @@ function glyphMotionBlurContext(
   if (!getMotionBlur(layer)) return null;
   const shutter = effectiveShutterAngle(compShutterAngle, layer.motionBlurShutter);
   if (shutter <= 0) return null;
-  const prevFrame = Math.max(frame - 1, layer.inPoint);
+  const prevFrame = Math.max(frame - 1, 0); // B66: see computeMotionBlur (no in-point clamp)
   if (prevFrame === frame) return null;
   return {
     shutter,
@@ -1123,7 +1287,7 @@ export function measureLayerPreferredSize(layer: Layer, frame: number): { width:
         return { width: evaluateNumber(shape.width, frame), height: evaluateNumber(shape.height, frame) };
       case 'circle': {
         const r = evaluateNumber(shape.radius, frame);
-        return { width: r * 2, height: r * 2 };
+        return { width: r * 2, height: (shape.radiusY ? evaluateNumber(shape.radiusY, frame) : r) * 2 };
       }
       case 'star':
       case 'polygon': {
@@ -1148,6 +1312,36 @@ export function measureLayerPreferredSize(layer: Layer, frame: number): { width:
     return { width: vid.video.sourceWidth || 320, height: vid.video.sourceHeight || 240 };
   }
   return { width: 100, height: 100 };
+}
+
+// B89: what per-copy cloner motion blur needs - the cloner's world transform and its instance transforms one
+// frame earlier. Null when neither the cloner's nor its source's motion-blur switch is on, the shutter is
+// closed or there is no earlier frame (comp frame 0), so projects without blur resolve exactly as before.
+function clonerInstanceBlur(
+  cloner: ClonerLayer,
+  source: Layer | undefined,
+  opts: Parameters<typeof computeInstanceTransforms>[2],
+  layers: Layer[],
+  motionPaths: MotionPath[],
+  frame: number,
+  compShutterAngle?: number,
+  compShutterPhase?: number,
+): ResolvedCloner['instanceBlur'] | null {
+  const own = getMotionBlur(cloner as unknown as Layer);
+  const viaSource = !own && !!source && getMotionBlur(source);
+  if (!own && !viaSource) return null;
+  const shutter = effectiveShutterAngle(compShutterAngle, own ? cloner.motionBlurShutter : source!.motionBlurShutter);
+  if (shutter <= 0) return null;
+  const prevFrame = Math.max(frame - 1, 0);
+  if (prevFrame === frame) return null;
+  const prevInstances: Record<number, InstanceTransform> = {};
+  for (const pi of computeInstanceTransforms(cloner, prevFrame, opts)) prevInstances[pi.index] = pi;
+  return {
+    shutter,
+    phase: shutterPhaseFraction(compShutterPhase, shutter),
+    prevTransform: worldTransformAt(cloner as unknown as Layer, layers, motionPaths, prevFrame),
+    prevInstances,
+  };
 }
 
 // Resolve a cloner field ref → an already-sampled FieldGrid, reusing the procedural
@@ -1271,6 +1465,18 @@ function resolveActiveCamera(composition: Composition, sortedLayers: Layer[], fr
 // 2.5D (M1) - a 3D layer's world model matrix: compose local model matrices down the parent
 // chain (root→leaf). Uses the module-level `_layerById` populated by resolveFrame. Dormant
 // until the M3 `is3D` UI + M2 renderer consume it; harness-tested via camera3d directly.
+/** B81: true when some ancestor of `layer` is a 3D layer flagged `orbitChildren` (true 3D parenting). */
+function hasOrbitAncestor(layer: Layer): boolean {
+  const guard = new Set<string>([layer.id]);
+  let cur: Layer | undefined = layer.parentId ? _layerById.get(layer.parentId) : undefined;
+  while (cur && !guard.has(cur.id)) {
+    if (cur.orbitChildren && cur.is3D) return true;
+    guard.add(cur.id);
+    cur = cur.parentId ? _layerById.get(cur.parentId) : undefined;
+  }
+  return false;
+}
+
 function worldMatrixFor(layerId: string, frame: number): Mat4 {
   const chain: Layer[] = [];
   const guard = new Set<string>();
@@ -1297,6 +1503,7 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
   // only soloed tracks render (AE/Premiere semantics); empty set → no-op.
   const struct = getStructuralCache(layers, tracks);
   _layerById = struct.layerById;
+  _sortedIndexById = struct.indexById;
   const hiddenTrackIds = struct.hiddenTrackIds;
   const soloTrackIds = struct.soloTrackIds;
   const soloing = struct.soloing;
@@ -1365,7 +1572,9 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
   }
 
   for (let i = 0; i < sortedLayers.length; i++) {
-    const layer = sortedLayers[i];
+    // B75: a text counter rewrites its span at this frame (same object when there is no counter).
+    // B77: hold-keyed faces switch here too (same object when there are no keys).
+    const layer = withTextStyleKeys(withTextCounter(sortedLayers[i], frame), frame);
     if (layer.type === 'group') continue;
     if (layer.type === 'audio') continue;
     if (layer.type === 'camera') continue; // 2.5D: cameras resolve to matrices, not a drawn quad
@@ -1471,7 +1680,7 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
         }
         // B35 typing caret: one rectangle stamp after the type-on head (core/textCaret.ts).
         if (layer.caret?.enabled) {
-          const caretStamp = resolveTextCaretStamp(layer, resolvedText, worldTransform, resolveTextAnimatorsAt((layer.animators ?? []).filter((a) => a.enabled), frame), frame, settings.frameRate, common, composeTransforms);
+          const caretStamp = resolveTextCaretStamp(layer, resolvedText, worldTransform, textAnimatorsWithTypingAt(layer, (layer.animators ?? []).filter((a) => a.enabled), resolvedText.content, frame), frame, settings.frameRate, common, composeTransforms);
           if (caretStamp) resolvedLayers.push({ ...caretStamp, mask: resolveMask(layer.masks, frame), masks: resolveMasks(layer.masks, frame) });
         }
       } else if (layer.type === 'video') {
@@ -1538,6 +1747,8 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
         const resolvedShape = resolveShapeLayer(shapeLayer, frame, getStyle);
         const rMask = resolveMask(layer.masks, frame);
         const rMasks = resolveMasks(layer.masks, frame);
+        // B38: the glass material (absent / disabled = no field, the shape resolves exactly as before).
+        const rGlass = resolveShapeGlass(shapeLayer.glass, (p) => evaluateNumber(p, frame));
         // In-shape Repeater (B8d): expand into N copies at accumulated transforms (cloner-stamp
         // pattern - each copy is a resolved shape layer reusing the SAME geometry). Absent/disabled →
         // a single copy with the world transform untouched (byte-identical).
@@ -1578,6 +1789,7 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
             shadow,
             glow,
             blur,
+            ...(rGlass ? { glass: rGlass } : {}),
             layerType: 'shape',
           });
         }
@@ -1764,7 +1976,7 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
         const renderPath = selectClonerRenderPath({ layerType: source?.type ?? 'image', isSdfShape: isSdf, isDataBound });
         // Per-instance source animation reuses the EXISTING transform evaluator at
         // each instance's staggered local frame - no keyframe re-implementation.
-        const instances = computeInstanceTransforms(cloner, frame, {
+        const instanceOpts: Parameters<typeof computeInstanceTransforms>[2] = {
           fps: settings.frameRate,
           getMotionPath: (id) => motionPaths.find((p) => p.id === id),
           getField: (ref) => resolveClonerField(ref, layers),
@@ -1779,19 +1991,26 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
                 };
               }
             : undefined,
-        });
+        };
+        const instances = computeInstanceTransforms(cloner, frame, instanceOpts);
+        const instanceBlur = clonerInstanceBlur(cloner, source, instanceOpts, layers, motionPaths, frame, settings.shutterAngle, settings.shutterPhase);
         // Data-bound source: apply the instance-override mechanism (core/overrides,
         // via buildDataBoundSources) to produce one content-overridden source per
         // instance - the inputs the full per-instance render path renders.
         const instanceSources = isDataBound && source
           ? buildDataBoundSources(source, cloner.dataBinding!, instances.length)
           : undefined;
+        const sourcesField = clonerSourcesField(cloner, frame, source);
+        // B60 follow-up: data-bound copies draw their own content (explicit `sources` win when both are set).
+        const instanceContent = instanceSources && !sourcesField.sourceLayerIds && frame >= (source?.inPoint ?? 0) && frame < (source?.outPoint ?? Infinity)
+          ? resolveDataBoundContent(composition, frame, instanceSources, ctx)
+          : undefined;
         resolvedLayers.push({
           id: layer.id,
           visible: true,
           blendMode: layer.blendMode,
           transform: worldTransform,
-          cloner: { renderPath, sourceLayerId, instances, instanceSources },
+          cloner: { renderPath, sourceLayerId, instances, instanceSources, ...sourcesField, ...(instanceContent ? { instanceContent } : {}), ...(instanceBlur ? { instanceBlur } : {}) },
           layerType: 'cloner',
         });
       } else if (layer.type === 'precomp') {
@@ -1816,10 +2035,12 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
           const savedOffsets = _layoutOffsets;
           const savedSizes = _layoutContainerSizes;
           const savedById = _layerById;
+          const savedIndexById = _sortedIndexById;
           nested = resolveFrame(sub, subLocalFrame, { getComposition, depth: depth + 1, visited: inProgress });
           _layoutOffsets = savedOffsets;
           _layoutContainerSizes = savedSizes;
           _layerById = savedById;
+          _sortedIndexById = savedIndexById;
         }
         resolvedLayers.push({
           id: layer.id,
@@ -1837,6 +2058,7 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
             renderFrame: nested,
             width: sub?.settings.width ?? settings.width,
             height: sub?.settings.height ?? settings.height,
+            ...precompEffectsField(precomp, frame),
           },
           layerType: 'precomp',
         });
@@ -1984,34 +2206,62 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
       if (cl.layerType !== 'cloner' || !cl.cloner) continue;
       const srcId = cl.cloner.sourceLayerId;
       const src = srcId ? resolvedLayers.find((l) => l.id === srcId && l.layerType !== 'cloner') : undefined;
+      // B60: per-instance sources (stamp i draws pick[i mod n]); each listed layer is hidden like the source.
+      const pick = (cl.cloner.sourceLayerIds ?? [])
+        .map((id) => resolvedLayers.find((l) => l.id === id && l.layerType !== 'cloner'))
+        .filter((l): l is ResolvedLayer => !!l);
+      for (const p of pick) hiddenSourceIds.add(p.id);
       const stamps: ResolvedLayer[] = [];
+      const { sourceOrder, sourceSeed, sourceRelative, instanceContent } = cl.cloner;
       if (src && srcId) {
         hiddenSourceIds.add(srcId);
-        for (const inst of cl.cloner.instances) {
+        for (let j = 0; j < cl.cloner.instances.length; j++) {
+          const inst = cl.cloner.instances[j];
+          const instSrc = pick.length
+            ? pick[pickSourceSlot(inst.index, pick.length, sourceOrder, sourceSeed)]
+            : (instanceContent?.[j] ?? src);
+          // An extra source's own scale / rotation / opacity, relative to the main source (identity when absent).
+          const rel = pick.length && instSrc.id !== srcId ? sourceRelative?.[instSrc.id] : undefined;
           // Instance transform (relative to the cloner), composed under the cloner's world
           // transform. anchor 0 → the instance position IS the stamp centre.
           const child: ResolvedTransform = {
             positionX: inst.position.x, positionY: inst.position.y,
-            rotation: inst.rotationDegrees.z,
-            scaleX: inst.scale.x, scaleY: inst.scale.y,
+            rotation: inst.rotationDegrees.z + (rel ? rel.rotation : 0),
+            scaleX: inst.scale.x * (rel ? rel.scaleX : 1), scaleY: inst.scale.y * (rel ? rel.scaleY : 1),
             anchorX: 0, anchorY: 0,
-            opacity: inst.opacity,
+            opacity: inst.opacity * (rel ? rel.opacity : 1),
             positionZ: 0, rotationX: 0, rotationY: 0,
           };
+          const stampTransform = composeTransforms(cl.transform, child);
           const stamp: ResolvedLayer = {
-            ...src,
+            ...instSrc,
             id: `${cl.id}#${inst.index}`,
-            transform: composeTransforms(cl.transform, child),
+            transform: stampTransform,
             // instances don't inherit the source's masks (mask coords are absolute - they'd
             // pin every clone to the source's spot). Default sources have none anyway.
             mask: undefined,
             masks: undefined,
           };
+          // B89: each copy streaks along its own path (the cloner's motion + its instance motion). Without
+          // this a copy carried the SOURCE's blur, measured at the source's own (usually static) spot.
+          const ib = cl.cloner.instanceBlur;
+          if (ib) {
+            const pi = ib.prevInstances[inst.index];
+            const prevChild: ResolvedTransform | undefined = pi && {
+              positionX: pi.position.x, positionY: pi.position.y,
+              rotation: pi.rotationDegrees.z + (rel ? rel.rotation : 0),
+              scaleX: pi.scale.x * (rel ? rel.scaleX : 1), scaleY: pi.scale.y * (rel ? rel.scaleY : 1),
+              anchorX: 0, anchorY: 0, opacity: pi.opacity, positionZ: 0, rotationX: 0, rotationY: 0,
+            };
+            stamp.motionBlur = prevChild
+              ? motionBlurBetween(stampTransform, composeTransforms(ib.prevTransform, prevChild), ib.shutter, ib.phase)
+              : undefined;
+          }
           // Multiplicative colour tint on shape fills (effectors can drive it; identity = no-op).
           const t = inst.colorTint;
-          if (src.shape && (t.r !== 1 || t.g !== 1 || t.b !== 1)) {
-            const f = src.shape.fillColor;
-            stamp.shape = { ...src.shape, fillColor: [f[0] * t.r, f[1] * t.g, f[2] * t.b, f[3]] as Vec4 };
+          if (instSrc.shape && (t.r !== 1 || t.g !== 1 || t.b !== 1)) {
+            const f = instSrc.shape.fillColor;
+            stamp.shape = { ...instSrc.shape, fillColor: [f[0] * t.r, f[1] * t.g, f[2] * t.b, f[3]] as Vec4 };
           }
           stamps.push(stamp);
         }
@@ -2056,6 +2306,23 @@ export function resolveFrame(composition: Composition, frame: number, ctx?: Reso
     for (const rl of resolvedLayers) {
       const src = _layerById.get(rl.id);
       if (src?.is3D) { rl.worldMatrix = worldMatrixFor(rl.id, frame); rl.is3D = true; }
+    }
+    // B81 true 3D parenting + card decals. Only layers under an `orbitChildren` ancestor / flagged
+    // `sortWithParent` get the extra matrices, so every other 3D layer resolves exactly as before.
+    for (const rl of resolvedLayers) {
+      const src = _layerById.get(rl.id);
+      if (!src?.is3D || !rl.worldMatrix) continue;
+      if (hasOrbitAncestor(src)) {
+        const sx = rl.transform.scaleX, sy = rl.transform.scaleY;
+        // The pipelines feed `local` = the quad corner already scaled by the resolved scale, so undo it here
+        // and let the RAW world chain (composeModel: anchor pivot, then scale) place the corner. A zero scale
+        // draws nothing either way: leave the cardMVP path in charge.
+        if (sx !== 0 && sy !== 0) rl.cardMatrix = multiplyMat4(rl.worldMatrix, scaleMat4(1 / sx, 1 / sy, 1));
+      }
+      if (src.sortWithParent && src.parentId) {
+        const parent = _layerById.get(src.parentId);
+        if (parent?.is3D) rl.sortMatrix = worldMatrixFor(parent.id, frame);
+      }
     }
   }
 
@@ -2124,7 +2391,7 @@ export function buildPhysicsEvaluator(composition: Composition): (layerId: strin
         case 'circle': {
           const r = evaluateNumber(shape.radius, frame);
           width = r * 2;
-          height = r * 2;
+          height = (shape.radiusY ? evaluateNumber(shape.radiusY, frame) : r) * 2;
           break;
         }
         case 'star': {

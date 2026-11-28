@@ -47,6 +47,11 @@ Rules for the plan (TASTE.md sections 3, 5, 10):
 - One ground colour, one ink, one accent; Inter / Inter Tight, plus Instrument Serif italic for a single
   accent word if wanted.
 - Hard cuts by default; at most one or two signature transitions (`transition` recipe) on the big beats.
+  Exception: when two beats share an object, hinge on it instead of cutting (TASTE 14.1 / 14.2):
+  `iris-reveal` (a disc of the next ground opens from that object), `morph-reveal` with `zoomThrough`
+  (the shape grows into the next ground), `card-emerge` (the next card slides out from behind it).
+- With music or a voice-over: list the audio onsets first (frames) and land the beats on them; captions use
+  `word-hit` with the onsets as `hits` (TASTE 14.3).
 - Copy: short. A headline is 2-5 words. Supporting lines under 6 words.
 
 ## 3. Build with recipes
@@ -56,10 +61,13 @@ Rules for the plan (TASTE.md sections 3, 5, 10):
 2. Apply recipes **back to front** (creation order is stacking order):
    1. `background`
    2. `scene-camera` (optional; keep its `returns.cameraId`)
-   3. content: `kinetic-title`, `blur-in-text`, `type-on`, `prompt-bar`, `pop-in`, `underline-draw`,
-      `shape-morph`, `end-card`
+   3. content: `kinetic-title`, `highlight-title`, `blur-in-text`, `word-hit`, `type-on`, `prompt-bar`,
+      `prompt-box`, `pop-in`, `card-emerge`, `count-up`, `underline-draw`, `shape-morph`, `morph-reveal`,
+      `glyph-edit` (+ `cursor-click`; `design-chrome` needs a shape target: a proxy rectangle or an outlined glyph), `glass-pill`, `liquid-melt`, `card-swarm`, `end-card`
+      (grounds: `background` or `blob-field`; accents: `pixel-sparkle`, `glitch-burst`)
    4. `cursor-click` (on top of the UI it clicks)
-   5. `transition` last (it must cover everything)
+   5. `transition` / `pixel-dissolve` last (they must cover everything). `iris-reveal` is the exception:
+      apply it BEFORE the next section's layers, which start on its `coverFrame` (the disc is their ground).
 3. Each call: `apply_recipe { id, params, startFrame, endFrame }`.
    - `startFrame` / `endFrame` are comp frames. With `endFrame`, exits land on it and the created layers
      are clipped to the shot. Recipe time params (`delay`, `entrance`, `stagger`, `hold`...) are frames
@@ -67,7 +75,10 @@ Rules for the plan (TASTE.md sections 3, 5, 10):
    - Chain results: `apply_recipe` returns `returns` (ids, measured positions, frames). Feed them on:
      `kinetic-title` returns `inkBottom` (place an `underline-draw` at `inkBottom + 0.15 * size`),
      `prompt-bar` returns `sendX`, `sendY`, `pressFrame` (the `cursor-click` target and `clickAt`),
-     `transition` returns `cutFrame` (end the outgoing shot and start the next one there).
+     `transition` returns `cutFrame` (end the outgoing shot and start the next one there),
+     `iris-reveal` / `morph-reveal` return `coverFrame` (same use), `glyph-edit` returns `glyphX`, `glyphY`,
+     `editFrame` (a `cursor-click` that lands on the glyph just before the edit), `highlight-title`
+     returns `boxId` (recolour it per section).
    - `parentId: <cameraId>` hangs a recipe's root layers on the scene camera.
    - Unsure? `dryRun: true` shows the expanded actions without changing anything.
 4. Name things: every recipe takes a `name`; the user edits by layer name.
@@ -114,11 +125,24 @@ Brief: "8 s launch title for FlashFX MCP early access, in the refs' style". Plan
 Then `render_strip` on every shot, fix, `export_project`, `export_mp4`. The same plan as a script (every call
 an MCP tool call, recipes only): `node mcp/examples/build-d-recipe-launch-title.mjs <outDir>`.
 
+## Second worked example (12 s vertical feature reel, the r08-r11 vocabulary)
+
+Brief: "12 s vertical reel: FlashFX now morphs anything". 1080x1920, 30 fps, 360 frames:
+
+| Shot | Frames | Idea | Recipes | Out |
+| --- | --- | --- | --- | --- |
+| 1 | 0-95 | The claim | `background` #e8e8e8, `glyph-edit` "MORPH" (one letter turns, cursor via `cursor-click` on `editFrame`) | `morph-reveal` zoomThrough from the edited letter, cover at about 95 |
+| 2 | 95-230 | The proof | `highlight-title` "any shape into any shape" (box = accent), `morph-reveal` blob -> heart -> logo path, `card-emerge` a UI card from behind the mark | `iris-reveal` from the mark's centre (8 f, ease-in) |
+| 3 | 230-360 | Sign-off | `word-hit` "built in FlashFX" on the music hits, `end-card` | rest 1.5 s |
+
 ## Limits to know
 
 - Masks are composition-space: a masked title does not follow a moving camera, so keep camera pushes on
   masked titles small (<= 1.1).
 - `reorderLayers` does not change stacking yet: create back to front.
-- A circle with non-uniform scale stays a circle and rounded rects wider than about 2048 px draw lens ends
-  (B63): build big soft shapes at half size with scale 2.
 - Imported fonts are not inside the `.ffx`: stick to the bundled families for portable projects.
+- Baked chrome: `design-chrome` (selection box, anchors, readouts) samples its target when applied. Re-apply it
+  after you re-time the edit.
+- `glyph-edit` sets one text layer per letter: edit the letters as layers (re-time the edited glyph's keys);
+  to drag an anchor of a glyph, outline it (`editor.outlineTextLayer`) and morph with `setShapeMorph`
+  align `"vertices"` instead.

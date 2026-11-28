@@ -30,6 +30,7 @@
 // + - * / %, comparisons, && || !, cond ? a : b, and the functions below.
 //   f(n)        n frames at 30 fps -> frames at the comp fps (rounded)      t(n) = start + f(n)
 //   min max round floor ceil abs sqrt sin cos   len(x)   words(s) (array)   chars(s) (count, no spaces)
+//   letters(s) (array of characters, spaces kept)   slice(x, a, b) (sub-array, or substring of a string)
 //   rgba('#hex', a?) / mix(c1, c2, k)  colours        repo('relative/path') absolute path in the repo
 //   num(x) / str(x)                   conversions     pick(arr, i) element with wraparound
 // Context names: start, end, fps, W, H, CX, CY (comp centre), PX, PY, DUR (comp duration).
@@ -173,6 +174,8 @@ function makeFunctions(scope) {
     len: (x) => (x === undefined || x === null ? 0 : Array.isArray(x) || typeof x === 'string' ? x.length : Object.keys(x).length),
     words: (s) => String(s ?? '').split(/\s+/).filter(Boolean),
     chars: (s) => String(s ?? '').replace(/\s+/g, '').length,
+    letters: (s) => Array.from(String(s ?? '')),
+    slice: (x, a, b) => (Array.isArray(x) ? x.slice(a, b) : Array.from(String(x ?? '')).slice(a, b).join('')),
     rgba: (c, a) => { const v = toColor(c); return a === undefined ? v : [v[0], v[1], v[2], a]; },
     mix: (a, b, k) => { const x = toColor(a); const y = toColor(b); return x.map((v, i) => Math.round((v + (y[i] - v) * k) * 1000) / 1000); },
     repo: (rel) => (isAbsolute(String(rel)) ? String(rel) : join(REPO_ROOT, String(rel))).replace(/\\/g, '/'),

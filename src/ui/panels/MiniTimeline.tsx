@@ -111,7 +111,7 @@ export function MiniTimeline() {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       setDrag((d) => {
-        if (moved && d && d.layerId === layer.id && d.inPoint !== startIn) moveClipInTime(layer.id, d.inPoint);
+        if (moved && d && d.layerId === layer.id && d.inPoint !== startIn) moveClipInTime(layer.id, d.inPoint, 'timeline');
         return null;
       });
     };

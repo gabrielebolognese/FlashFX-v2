@@ -1,0 +1,27 @@
+{
+  "id": "glitch-burst",
+  "name": "Glitch burst on a title",
+  "category": "accent",
+  "description": "A short digital-glitch hit on any text / shape layer: row slices and RGB offset ramp in fast, peak, and drop back to clean. Nests the layer in a precomp (still editable inside) and keys the glitch amount.",
+  "source": ["r01 f168-176 slice glitch on the title text"],
+  "taste": ["TASTE.md 3 Timing"],
+  "params": {
+    "layerId": { "type": "layerId", "description": "The text / shape layer (or a precomp) to glitch." },
+    "amount": { "type": "number", "default": 0.8, "min": 0, "max": 1, "description": "Peak glitch amount." },
+    "length": { "type": "number", "default": 8, "min": 2, "description": "Burst length, frames at 30 fps." }
+  },
+  "length30": "length",
+  "checkFrames30": ["length * 0.4"],
+  "lets": {},
+  "steps": [
+    { "id": "fx", "action": "agent.applyLayerEffects", "args": { "layerId": "{{layerId}}", "effects": [{ "effect": "digitalGlitch", "params": [0] }], "mode": "append" } },
+    { "let": { "P": "@fx.result.layerId" } },
+    { "action": "editor.setKeyframes", "args": { "layerId": "{{P}}", "propertyPath": "effect.245.0", "keyframes": [
+      { "frame": "{{start}}", "value": 0, "ease": "linear" },
+      { "frame": "{{start + max(1, round((end - start) * 0.25))}}", "value": "{{amount}}", "ease": "hold" },
+      { "frame": "{{start + max(2, round((end - start) * 0.6))}}", "value": "{{amount * 0.5}}", "ease": "hold" },
+      { "frame": "{{end}}", "value": 0 } ] } }
+  ],
+  "returns": { "layerId": "{{P}}" },
+  "example": { "params": { "layerId": "LAYER" }, "startFrame": 20 }
+}

@@ -5,6 +5,7 @@ import type {
 } from './videoWorker.types';
 import { mediabunnyController } from './mediabunnyController';
 import { imageDecoderController } from './imageDecoderController';
+import type { ExportVideoReader } from './exportFrames';
 
 // Animated images (GIF / animated WebP / APNG / AVIF) are modelled as video assets but decoded by the
 // browser ImageDecoder, not mediabunny (which has no GIF demuxer). Detected from the source's mime /
@@ -237,6 +238,23 @@ class VideoDecoderPool {
     if (!source) return null;
     await this.initAsset(assetId, source);
     return this.workers.get(assetId) ?? null;
+  }
+
+  /**
+   * B68: open a decode session owned by one export / render_frame run. mediabunny assets decode with
+   * forward cursors private to the session (one decoder per clip, each frame decoded once); animated
+   * images and the legacy worker backend fall back to decodeFrameForExport. Never touches the preview
+   * scheduler or the playback cursors. close() releases every decoder the session opened.
+   */
+  openExportReader(): ExportVideoReader {
+    const mb = USE_MEDIABUNNY ? mediabunnyController.openExportReader() : null;
+    return {
+      decode: (assetId, frameIndex) => {
+        if (this.gifAssets.has(assetId) || !mb) return this.decodeFrameForExport(assetId, frameIndex);
+        return mb.decode(assetId, frameIndex);
+      },
+      close: async () => { await mb?.close(); },
+    };
   }
 
   /** Decode a frame at full resolution for export (bypasses proxy mode). */
